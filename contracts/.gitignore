@@ -3,3 +3,8 @@ out/
 broadcast/
 .gas-snapshot
 docs/
+
+# Secrets: never commit a real key file
+.env
+.env.*
+!.env.example
