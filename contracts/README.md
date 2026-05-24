@@ -25,7 +25,7 @@ Line coverage is above 90% on every contract (94.86% total at last run). The `ar
 
 ## Dependencies
 
-OpenZeppelin v5.0.2 and forge-std are vendored under `lib/` (installed with `forge install`) so the project builds and tests offline with no extra setup. Import paths are in `remappings.txt`.
+OpenZeppelin v5.0.2 and forge-std are managed as git submodules under `lib/`. After cloning, fetch them once with `git submodule update --init --recursive` (or `forge install`), then run `forge build`. Import paths are in `remappings.txt`.
 
 ## Deploy
 
