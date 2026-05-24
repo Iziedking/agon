@@ -1,4 +1,4 @@
-# Local-only design doc — not committed
+# Local-only design doc, not committed
 ARCRUN_PLAN.md
 
 # Foundry
@@ -6,6 +6,9 @@ contracts/cache/
 contracts/out/
 contracts/broadcast/
 contracts/.gas-snapshot
+
+# Dev-only demo and seed scripts (kept local, not part of the production build)
+backend/src/demo/
 
 # Node / TS (for week 2+)
 node_modules/
@@ -40,3 +43,5 @@ yarn-debug.log*
 
 # Claude / memory (local only)
 .claude/
+done.md
+todo.md
