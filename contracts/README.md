@@ -23,6 +23,10 @@ forge coverage --no-match-coverage "(test|script)"
 
 Line coverage is above 90% on every contract (94.86% total at last run). The `arc-docs` MCP is the source of truth for Arc addresses and behavior; verify against it before changing anything Arc-specific.
 
+## Dependencies
+
+OpenZeppelin v5.0.2 and forge-std are vendored under `lib/` (installed with `forge install`) so the project builds and tests offline with no extra setup. Import paths are in `remappings.txt`.
+
 ## Deploy
 
 The script deploys all six contracts in dependency order and wires the roles. Syndicates and upgrade prices seed themselves in their constructors.
