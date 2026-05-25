@@ -13,6 +13,9 @@ export const arcTestnet = defineChain({
 
 export const EXPLORER = "https://testnet.arcscan.app";
 
+/// Native USDC on Arc (6 decimals as an ERC-20). Used for agent upgrades.
+export const USDC = "0x3600000000000000000000000000000000000000" as const;
+
 /// Read-only client for fetching on-chain state (no wallet needed).
 export const publicClient = createPublicClient({ chain: arcTestnet, transport: http() });
 
