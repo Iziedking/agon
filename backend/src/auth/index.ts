@@ -153,6 +153,92 @@ app.get("/contests/:id/payout", async (c) => {
   return c.json({ amount: rows[idx]!.amount, proof: merkleProof(leaves, idx) });
 });
 
+// ----- Read surfaces: leaderboard and operator profiles -----
+
+// Global leaderboard from the indexer tables. Participation comes from entries,
+// wins and earnings from the settlement payouts. Public read.
+app.get("/leaderboard", async (c) => {
+  const limit = Math.min(Math.max(Number(c.req.query("limit") ?? 50), 1), 200);
+  const { rows } = await query<{ operator: string; entered: string; wins: string; earned: string | null }>(
+    `select
+       coalesce(e.operator, p.operator) as operator,
+       coalesce(e.entered, 0)           as entered,
+       coalesce(p.wins, 0)              as wins,
+       coalesce(p.earned, 0)           as earned
+     from (select operator, count(distinct contest_id) as entered from entries group by operator) e
+     full outer join
+       (select operator, count(distinct contest_id) as wins, sum(amount) as earned from payouts group by operator) p
+       on e.operator = p.operator
+     order by earned desc, wins desc, entered desc
+     limit $1`,
+    [limit],
+  );
+  return c.json({
+    leaders: rows.map((r) => ({
+      operator: r.operator,
+      entered: Number(r.entered),
+      wins: Number(r.wins),
+      earned: r.earned ?? "0",
+    })),
+  });
+});
+
+// One operator's profile: their agents, lifetime stats, and recent contests.
+app.get("/operators/:address", async (c) => {
+  const address = (c.req.param("address") ?? "").toLowerCase();
+  if (!/^0x[a-f0-9]{40}$/.test(address)) return c.json({ error: "invalid address" }, 400);
+
+  const op = await query<{ address: string; x_handle: string | null; current_syndicate_id: string | null; reputation: string }>(
+    "select address, x_handle, current_syndicate_id, reputation from operators where address = $1",
+    [address],
+  );
+  const agents = await query<{ id: string; scout_tier: number; analyst_tier: number; solver_tier: number; reputation: string }>(
+    "select id, scout_tier, analyst_tier, solver_tier, reputation from agents where owner = $1 order by id",
+    [address],
+  );
+  const stats = await query<{ entered: string; wins: string; earned: string }>(
+    `select
+       (select count(distinct contest_id) from entries where operator = $1) as entered,
+       (select count(distinct contest_id) from payouts where operator = $1) as wins,
+       (select coalesce(sum(amount), 0) from payouts where operator = $1)   as earned`,
+    [address],
+  );
+  const contests = await query<{ contest_id: string; contest_type: number | null; status: string | null; won: string | null; claimed: boolean }>(
+    `select distinct on (e.contest_id)
+       e.contest_id, c.contest_type, c.status, p.amount as won, e.claimed
+     from entries e
+     left join contests c on c.id = e.contest_id
+     left join payouts p on p.contest_id = e.contest_id and p.operator = e.operator
+     where e.operator = $1
+     order by e.contest_id desc
+     limit 20`,
+    [address],
+  );
+
+  const s = stats.rows[0] ?? { entered: "0", wins: "0", earned: "0" };
+  return c.json({
+    operator: op.rows[0]?.address ?? address,
+    xHandle: op.rows[0]?.x_handle ?? null,
+    syndicateId: op.rows[0]?.current_syndicate_id ?? null,
+    reputation: op.rows[0]?.reputation ?? "0",
+    stats: { entered: Number(s.entered), wins: Number(s.wins), earned: s.earned ?? "0" },
+    agents: agents.rows.map((r) => ({
+      id: Number(r.id),
+      scoutTier: r.scout_tier,
+      analystTier: r.analyst_tier,
+      solverTier: r.solver_tier,
+      reputation: r.reputation,
+    })),
+    contests: contests.rows.map((r) => ({
+      contestId: Number(r.contest_id),
+      contestType: r.contest_type,
+      status: r.status,
+      won: r.won,
+      claimed: r.claimed,
+    })),
+  });
+});
+
 // ----- X (Twitter) OAuth2 with PKCE -----
 
 function xConfigured() {
