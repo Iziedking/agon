@@ -17,6 +17,7 @@ const envSchema = z.object({
 
   // Auth service
   JWT_SECRET: z.string().default("dev-insecure-secret-change-me"),
+  ADMIN_TOKEN: z.string().optional(), // gates GET /admin/events; unset = read endpoint disabled
   AUTH_PORT: z.coerce.number().int().positive().default(8082),
   AUTH_DOMAIN: z.string().default("localhost:3000"),
   APP_URL: z.string().url().default("http://localhost:3000"),
@@ -94,6 +95,7 @@ export const config = {
   startBlock: env.START_BLOCK,
   contracts: deployments.contracts,
   external: deployments.external,
+  adminToken: env.ADMIN_TOKEN,
   auth: {
     jwtSecret: env.JWT_SECRET,
     port: env.AUTH_PORT,

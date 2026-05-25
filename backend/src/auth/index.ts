@@ -8,6 +8,7 @@ import { generateSiweNonce, parseSiweMessage } from "viem/siwe";
 import { config } from "../config/index.js";
 import { publicClient } from "../chain/arc.js";
 import { query } from "../db/pool.js";
+import { logEvent } from "../events.js";
 import { redis } from "../redis.js";
 import { issueToken, requireAuth } from "./jwt.js";
 
@@ -72,6 +73,7 @@ app.post("/auth/wallet/verify", async (c) => {
   const address = fields.address.toLowerCase();
   await query("insert into operators (address) values ($1) on conflict (address) do nothing", [address]);
   const token = await issueToken(address);
+  void logEvent({ kind: "login", address, source: "auth" });
   return c.json({ token, address });
 });
 
@@ -85,6 +87,44 @@ app.get("/auth/me", requireAuth, async (c) => {
   // The wallet is the identity; any authenticated operator can compete. X is an
   // optional social link, not a gate.
   return c.json({ ...op, canEnterContests: true });
+});
+
+// ----- Activity and error log -----
+
+// Open ingest: clients and services append events here. The friendly message is
+// shown to the user; the raw error and context land here for the admin.
+app.post("/events", async (c) => {
+  let body: { level?: string; kind?: string; message?: string; context?: unknown; address?: string };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "bad json" }, 400);
+  }
+  if (!body.kind || typeof body.kind !== "string") return c.json({ error: "kind required" }, 400);
+  const level = body.level === "error" || body.level === "warn" ? body.level : "info";
+  await logEvent({
+    level,
+    kind: body.kind,
+    message: typeof body.message === "string" ? body.message : undefined,
+    context: body.context,
+    address: typeof body.address === "string" ? body.address : undefined,
+    source: "web",
+  });
+  return c.json({ ok: true });
+});
+
+// Read: token-gated, admin only. Send the token as the x-admin-token header.
+app.get("/admin/events", async (c) => {
+  const adminToken = config.adminToken;
+  if (!adminToken) return c.json({ error: "admin log disabled (set ADMIN_TOKEN)" }, 503);
+  if (c.req.header("x-admin-token") !== adminToken) return c.json({ error: "unauthorized" }, 401);
+
+  const limit = Math.min(Math.max(Number(c.req.query("limit") ?? 100), 1), 500);
+  const level = c.req.query("level");
+  const { rows } = level
+    ? await query("select * from events where level = $1 order by id desc limit $2", [level, limit])
+    : await query("select * from events order by id desc limit $1", [limit]);
+  return c.json({ events: rows });
 });
 
 // ----- X (Twitter) OAuth2 with PKCE -----

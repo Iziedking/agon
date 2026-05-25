@@ -89,3 +89,18 @@ create table if not exists events_log (
   unique (tx_hash, log_index)
 );
 create index if not exists events_log_block_idx on events_log(block_number);
+
+-- Activity and error log. Clients and services append here (POST /events);
+-- only the admin token can read it (GET /admin/events). Append-only audit stream.
+create table if not exists events (
+  id          bigserial primary key,
+  level       text not null default 'info',  -- info | warn | error
+  kind        text not null,                 -- login, contest_enter, client_error, ...
+  message     text,
+  context     jsonb,
+  address     text,
+  source      text not null default 'server', -- web | auth | coordinator | indexer
+  created_at  timestamptz not null default now()
+);
+create index if not exists events_created_idx on events(created_at desc);
+create index if not exists events_level_idx on events(level);
