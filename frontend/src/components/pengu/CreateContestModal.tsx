@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { zeroAddress } from "viem";
 import { useAccount, useWriteContract } from "wagmi";
+import { Bubble3D } from "@/components/pengu/atoms";
 import { CONTRACTS, USDC, publicClient } from "@/lib/arc";
 import { erc20Abi } from "@/lib/agents";
 import { contestEngineAbi, fetchListingFee, metricForType, nextContestId } from "@/lib/contests";
@@ -90,7 +91,7 @@ export function CreateContestModal({ open, onClose }: { open: boolean; onClose: 
         >
           ✕
         </button>
-        <h2 className="font-bubble text-2xl uppercase text-pengu-dark">host a campaign</h2>
+        <Bubble3D className="text-[26px]">host a campaign</Bubble3D>
 
         {createdId !== null ? (
           <div className="mt-4">

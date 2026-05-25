@@ -9,6 +9,23 @@ export function SectionLabel({ children }: { children: ReactNode }) {
   );
 }
 
+/// A chunky 3D bubble heading: Bagel Fat One in electric purple with a darker
+/// purple extrude stacked beneath, the same drop-edge the buttons use. Gives
+/// titles real sticker depth instead of sitting flat. Caller sets the size.
+export function Bubble3D({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return (
+    <h2
+      className={`font-bubble uppercase leading-none text-pengu-blue ${className}`}
+      style={{
+        textShadow:
+          "0 1px 0 #5b34d6, 0 2px 0 #5b34d6, 0 3px 0 #5b34d6, 0 4px 0 #5b34d6, 0 6px 6px rgba(27,17,64,0.22)",
+      }}
+    >
+      {children}
+    </h2>
+  );
+}
+
 /// Pill CTA. Solid blue with a soft glow, or a ghost outline.
 export function PillButton({
   href,

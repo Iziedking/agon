@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useAccount, useWriteContract } from "wagmi";
+import { Bubble3D } from "@/components/pengu/atoms";
 import { CONTRACTS, publicClient } from "@/lib/arc";
 import { challengeArenaAbi, CHALLENGE_KIND, nextChallengeId } from "@/lib/challenges";
 import { friendlyError } from "@/lib/errors";
@@ -75,7 +76,7 @@ export function CreateChallengeModal({ open, onClose }: { open: boolean; onClose
         >
           ✕
         </button>
-        <h2 className="font-bubble text-2xl uppercase text-pengu-dark">create a challenge</h2>
+        <Bubble3D className="text-[26px]">create a challenge</Bubble3D>
 
         {createdId !== null ? (
           <div className="mt-4">
