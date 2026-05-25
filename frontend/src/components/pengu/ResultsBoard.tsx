@@ -1,13 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { fetchResults, type ArenaResults } from "@/lib/results";
+import { useContestSocket } from "@/hooks/useContestSocket";
+import { fetchResults, type ArenaResults, type ResultEntrant } from "@/lib/results";
 import { formatUsdcString, short } from "@/lib/profiles";
 
 /// The field-and-results board for a contest or challenge detail page. While it
-/// is still live it lists the entrants and polls for new ones; once the winner
-/// payouts are posted it switches to the ranked board and stops polling. Reads
-/// the auth service, so it works for any contest, current or long settled.
+/// is still live it lists the entrants and polls for new ones; for a live
+/// contest it also streams running scores from the coordinator socket. Once the
+/// winner payouts are posted it switches to the ranked board with a reveal and
+/// stops polling. Reads the auth service, so it works for any contest, current
+/// or long settled.
 
 const RANK_BG = ["#ffc24b", "#c9cad8", "#d9a17a"]; // gold, silver, bronze
 
@@ -66,11 +69,12 @@ export function ResultsBoard({
 
       {settled ? (
         <div className="mt-4 flex flex-col gap-2">
-          {winners.map((w) => (
+          {winners.map((w, i) => (
             <a
               key={w.rank}
               href={`/operators/${w.operator}`}
-              className="flex items-center gap-3 rounded-xl border border-pengu-blue/10 bg-pengu-bg px-3 py-3 transition-transform duration-150 hover:-translate-y-0.5"
+              className="flex items-center gap-3 rounded-xl border border-pengu-blue/10 bg-pengu-bg px-3 py-3 animate-stagger-in transition-transform duration-150 hover:-translate-y-0.5"
+              style={{ animationDelay: `${i * 90}ms`, animationFillMode: "both" }}
             >
               <span
                 className="flex h-7 w-7 flex-none items-center justify-center rounded-full font-display text-xs text-pengu-dark"
@@ -87,24 +91,79 @@ export function ResultsBoard({
             </a>
           ))}
         </div>
+      ) : live && kind === "contests" ? (
+        <LiveStandings id={id} entrants={entrants} />
       ) : entrants.length > 0 ? (
-        <div className="mt-4 flex flex-col gap-2">
-          {entrants.map((e) => (
-            <a
-              key={e.agentId}
-              href={`/operators/${e.operator}`}
-              className="flex items-center justify-between rounded-xl border border-pengu-blue/10 bg-pengu-bg px-3 py-2.5 transition-transform duration-150 hover:-translate-y-0.5"
-            >
-              <span className="font-mono text-sm text-pengu-dark">{short(e.operator)}</span>
-              <span className="font-mono text-xs text-pengu-dark/45">agent #{e.agentId}</span>
-            </a>
-          ))}
-        </div>
+        <Field entrants={entrants} />
       ) : (
         <p className="mt-4 text-sm text-pengu-dark/55">
           {live ? "no agents in yet. be the first to enter." : "no entrants."}
         </p>
       )}
+    </div>
+  );
+}
+
+/// Streams the running scoreboard for the active contest. Falls back to the plain
+/// entrant field until the coordinator starts broadcasting this contest's scores.
+function LiveStandings({ id, entrants }: { id: number; entrants: ResultEntrant[] }) {
+  const { standings } = useContestSocket();
+  const entries = standings && standings.contestId === id ? standings.entries : [];
+
+  if (entries.length === 0) {
+    if (entrants.length > 0) return <Field entrants={entrants} />;
+    return <p className="mt-4 text-sm text-pengu-dark/55">no agents in yet. be the first to enter.</p>;
+  }
+
+  const max = Math.max(...entries.map((e) => e.score), 1);
+  return (
+    <div className="mt-4 flex flex-col gap-2">
+      {entries.map((e) => {
+        const leader = e.rank === 1;
+        return (
+          <a
+            key={e.agentId}
+            href={`/operators/${e.operator}`}
+            className={`flex items-center gap-4 rounded-xl px-3 py-3 ${leader ? "bg-pengu-blue/5" : ""}`}
+          >
+            <span className={`w-7 shrink-0 font-mono text-base ${leader ? "text-pengu-blue" : "text-pengu-dark/50"}`}>
+              #{e.rank}
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="font-mono text-xs text-pengu-dark/60">
+                agent {e.agentId} · {short(e.operator)}
+              </div>
+              <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-pengu-blue/10">
+                <div
+                  className="h-full rounded-full bg-pengu-blue transition-all duration-500"
+                  style={{ width: `${(e.score / max) * 100}%` }}
+                />
+              </div>
+            </div>
+            <span className="w-16 shrink-0 text-right font-mono text-sm text-pengu-dark">
+              {e.score.toLocaleString()}
+            </span>
+          </a>
+        );
+      })}
+    </div>
+  );
+}
+
+/// The static entrant field: who has joined, no scores yet.
+function Field({ entrants }: { entrants: ResultEntrant[] }) {
+  return (
+    <div className="mt-4 flex flex-col gap-2">
+      {entrants.map((e) => (
+        <a
+          key={e.agentId}
+          href={`/operators/${e.operator}`}
+          className="flex items-center justify-between rounded-xl border border-pengu-blue/10 bg-pengu-bg px-3 py-2.5 transition-transform duration-150 hover:-translate-y-0.5"
+        >
+          <span className="font-mono text-sm text-pengu-dark">{short(e.operator)}</span>
+          <span className="font-mono text-xs text-pengu-dark/45">agent #{e.agentId}</span>
+        </a>
+      ))}
     </div>
   );
 }
