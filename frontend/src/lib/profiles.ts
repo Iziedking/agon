@@ -73,3 +73,11 @@ export function formatReputation(raw: string | null): number {
 }
 
 export const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
+
+/// A deterministic, unique-per-address color for an operator's mascot avatar, so
+/// every profile reads as its own. Hue derived from the address, vivid but soft.
+export function operatorColor(address: string): string {
+  const hex = address.replace(/^0x/, "").slice(0, 6) || "7c4dff";
+  const hue = parseInt(hex, 16) % 360;
+  return `hsl(${hue}, 70%, 62%)`;
+}
