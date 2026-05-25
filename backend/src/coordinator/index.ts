@@ -2,13 +2,16 @@ import "dotenv/config";
 import { config } from "../config/index.js";
 import { broadcast, startWs } from "./ws.js";
 import { startScheduler } from "./scheduler.js";
+import { startAutopilot } from "./autopilot.js";
 import { TxSender } from "./txSender.js";
 import { runLiveContest } from "./runContest.js";
+import { runContestById } from "./runContestById.js";
 
-/// Coordinator skeleton: the WebSocket fanout, the BullMQ contest scheduler, and
-/// the Arc transaction sender. v0 opens are logged and fanned out rather than
-/// sent on-chain; wiring the real listContest call comes with the treasury
-/// funding flow. See ARCRUN_PLAN.md section 5.2.
+/// Coordinator: the WebSocket fanout, the Arc transaction sender, and the
+/// self-driving contest autopilot. With a funded COORDINATOR_PRIVATE_KEY, the
+/// autopilot opens, runs, and settles contests on a loop, so the whole platform
+/// runs from one `docker compose up` with no per-contest commands. Without a key,
+/// it stays in log-only mode. See ARCRUN_PLAN.md section 5.2.
 
 async function main() {
   startWs(config.coordinator.wsPort);
@@ -33,14 +36,37 @@ async function main() {
       .catch((err) => console.error("live contest failed:", err));
   }
 
-  // Scheduler last and non-blocking, so a Redis hiccup never blocks the WS feed
-  // or the live contest.
-  void startScheduler((contestType) => {
-    console.log(`scheduler: open ${contestType} contest (stub)`);
-    broadcast({ type: "contest_open_intent", contestType, at: Date.now() });
-  }).catch((err) => console.error("scheduler failed (is Redis up?):", err));
+  // Run a real, already-open contest by id: stream the real field over the
+  // window, then run the right runner over everyone and settle. Needs the
+  // indexer running (it supplies the entries). Set RUN_CONTEST_ID=<id>.
+  if (process.env.RUN_CONTEST_ID) {
+    const id = Number(process.env.RUN_CONTEST_ID);
+    console.log(`RUN_CONTEST_ID set: running contest ${id}...`);
+    void runContestById(id, broadcast)
+      .then(() => console.log(`contest ${id} run done`))
+      .catch((err) => console.error(`contest ${id} run failed:`, err));
+  }
 
-  console.log("coordinator running (scheduler + ws). Ctrl+C to stop.");
+  // The autopilot is the real driver: with a key set (and not turned off), it
+  // opens, runs, and settles contests on a loop, no commands needed. Fall back to
+  // the log-only scheduler stub when there is no key or autopilot is disabled.
+  const autopilotOn = Boolean(config.coordinator.privateKey) && process.env.AUTOPILOT !== "0";
+  if (autopilotOn) {
+    void startAutopilot(broadcast).catch((err) => console.error("autopilot failed:", err));
+    console.log("coordinator running (autopilot + ws). Ctrl+C to stop.");
+  } else {
+    if (!config.coordinator.privateKey) {
+      console.log("autopilot off: set COORDINATOR_PRIVATE_KEY to open and settle contests automatically");
+    } else {
+      console.log("autopilot off: AUTOPILOT=0");
+    }
+    // Non-blocking, so a Redis hiccup never blocks the WS feed.
+    void startScheduler((contestType) => {
+      console.log(`scheduler: open ${contestType} contest (stub)`);
+      broadcast({ type: "contest_open_intent", contestType, at: Date.now() });
+    }).catch((err) => console.error("scheduler failed (is Redis up?):", err));
+    console.log("coordinator running (scheduler + ws). Ctrl+C to stop.");
+  }
 }
 
 main().catch((err) => {
