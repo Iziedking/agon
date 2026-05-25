@@ -1,6 +1,7 @@
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/pengu/Footer";
 import { SectionLabel } from "@/components/pengu/atoms";
+import { ArenaCard, type ArenaState } from "@/components/pengu/ArenaCard";
 import { fetchChallenges, CHALLENGE_KIND, type Challenge } from "@/lib/challenges";
 import { formatUsdc } from "@/lib/contests";
 
@@ -8,11 +9,11 @@ import { formatUsdc } from "@/lib/contests";
 /// these from their profile; anyone can join an open one with an agent.
 export const revalidate = 30;
 
-function statusMeta(status: number): { label: string; cls: string } {
-  if (status === 0) return { label: "open", cls: "text-pengu-blue" };
-  if (status === 1) return { label: "locked", cls: "text-pengu-dark" };
-  if (status === 2) return { label: "settled", cls: "text-pengu-dark/50" };
-  return { label: "cancelled", cls: "text-pengu-dark/50" };
+function challengeState(status: number): { state: ArenaState; label: string } {
+  if (status === 0) return { state: "open", label: "open" };
+  if (status === 1) return { state: "active", label: "locked" };
+  if (status === 2) return { state: "settled", label: "settled" };
+  return { state: "cancelled", label: "cancelled" };
 }
 
 export default async function ChallengesPage() {
@@ -46,29 +47,23 @@ export default async function ChallengesPage() {
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {challenges.map((ch) => {
-              const s = statusMeta(ch.status);
+              const s = challengeState(ch.status);
               const pot = ch.stake * BigInt(Math.max(ch.entrants, 1));
               return (
-                <a
+                <ArenaCard
                   key={ch.id}
                   href={`/challenges/${ch.id}`}
-                  className="rounded-card border border-pengu-blue/15 bg-white p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)] transition-transform duration-150 hover:-translate-y-1"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="rounded-pill bg-pengu-blue/10 px-3 py-1 font-display text-xs uppercase text-pengu-blue">
-                      {CHALLENGE_KIND[ch.kind] ?? "challenge"}
-                    </span>
-                    <span className={`font-display text-xs uppercase ${s.cls}`}>{s.label}</span>
-                  </div>
-                  <div className="mt-4 font-display text-sm uppercase tracking-wide text-pengu-dark/55">stake to enter</div>
-                  <div className="mt-2 font-display text-[40px] leading-none text-pengu-blue">{formatUsdc(ch.stake)}</div>
-                  <div className="mt-4 flex items-center justify-between">
-                    <span className="font-mono text-xs text-pengu-dark/45">challenge #{ch.id}</span>
-                    <span className="font-mono text-xs text-pengu-dark/45">
-                      {ch.entrants}/{ch.maxEntrants} in · pot {formatUsdc(pot)}
-                    </span>
-                  </div>
-                </a>
+                  kind={CHALLENGE_KIND[ch.kind] ?? "challenge"}
+                  state={s.state}
+                  stateLabel={s.label}
+                  metric={`${formatUsdc(ch.stake)} stake to enter`}
+                  prizeLabel="pot"
+                  prize={formatUsdc(pot)}
+                  startSec={null}
+                  endSec={ch.status === 0 ? Number(ch.joinDeadline) : null}
+                  footerLeft={`challenge #${ch.id}`}
+                  footerRight={`${ch.entrants}/${ch.maxEntrants} in`}
+                />
               );
             })}
           </div>

@@ -2,18 +2,19 @@ import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/pengu/Footer";
 import { SectionLabel } from "@/components/pengu/atoms";
 import { HostCampaignButton } from "@/components/pengu/HostCampaignButton";
+import { ArenaCard, type ArenaState } from "@/components/pengu/ArenaCard";
 import { fetchContests, CONTEST_TYPE, metricLabel, formatUsdc, type Contest } from "@/lib/contests";
 
 /// The contests grid, read straight from ContestEngine on Arc and cached for
 /// 30 seconds.
 export const revalidate = 30;
 
-function statusMeta(status: number): { label: string; cls: string } {
-  if (status === 1) return { label: "open", cls: "text-pengu-blue" };
-  if (status === 2) return { label: "scoring", cls: "text-pengu-dark" };
-  if (status === 3) return { label: "settled", cls: "text-pengu-dark/50" };
-  if (status === 4) return { label: "cancelled", cls: "text-pengu-dark/50" };
-  return { label: "pending", cls: "text-pengu-dark/50" };
+function contestState(status: number): { state: ArenaState; label: string } {
+  if (status === 1) return { state: "open", label: "open" };
+  if (status === 2) return { state: "active", label: "scoring" };
+  if (status === 3) return { state: "settled", label: "settled" };
+  if (status === 4) return { state: "cancelled", label: "cancelled" };
+  return { state: "active", label: "pending" };
 }
 
 export default async function ContestsPage() {
@@ -50,28 +51,22 @@ export default async function ContestsPage() {
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {contests.map((c) => {
-              const s = statusMeta(c.status);
+              const s = contestState(c.status);
               return (
-                <a
+                <ArenaCard
                   key={c.id}
                   href={`/contests/${c.id}`}
-                  className="rounded-card border border-pengu-blue/15 bg-white p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)] transition-transform duration-150 hover:-translate-y-1"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="rounded-pill bg-pengu-blue/10 px-3 py-1 font-display text-xs uppercase text-pengu-blue">
-                      {CONTEST_TYPE[c.contestType] ?? "contest"}
-                    </span>
-                    <span className={`font-display text-xs uppercase ${s.cls}`}>{s.label}</span>
-                  </div>
-                  <div className="mt-4 font-display text-sm uppercase tracking-wide text-pengu-dark/55">
-                    {metricLabel(c.metric).toLowerCase()}
-                  </div>
-                  <div className="mt-2 font-display text-[40px] leading-none text-pengu-blue">{formatUsdc(c.prizePool)}</div>
-                  <div className="mt-4 flex items-center justify-between">
-                    <span className="font-mono text-xs text-pengu-dark/45">contest #{c.id}</span>
-                    <span className="font-mono text-xs text-pengu-dark/45">{c.entrants} entrants</span>
-                  </div>
-                </a>
+                  kind={CONTEST_TYPE[c.contestType] ?? "contest"}
+                  state={s.state}
+                  stateLabel={s.label}
+                  metric={metricLabel(c.metric).toLowerCase()}
+                  prizeLabel="prize pool"
+                  prize={formatUsdc(c.prizePool)}
+                  startSec={Number(c.startTime)}
+                  endSec={Number(c.endTime)}
+                  footerLeft={`contest #${c.id}`}
+                  footerRight={`${c.entrants} entrants`}
+                />
               );
             })}
           </div>
