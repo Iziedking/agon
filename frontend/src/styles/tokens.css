@@ -1,0 +1,179 @@
+/* ArcRun design tokens. Mirror these in tailwind.config.ts.
+   Do not introduce new tokens without updating SKILL.md.
+   Font families are wired to next/font variables (set in app/layout.tsx),
+   with the skill's named fonts kept as fallbacks. */
+
+:root {
+  /* Canvas and surface */
+  --color-bg: #0A0E1A;
+  --color-surface: #1A1F2E;
+  --color-surface-2: #222838;
+  --color-border: #1F2937;
+  --color-border-strong: #2A3445;
+
+  /* Accent */
+  --color-accent-pink: #FF4081;
+  --color-accent-pink-dim: #C2185B;
+  --color-accent-cyan: #00E5FF;
+  --color-accent-cyan-dim: #0097A7;
+
+  /* Outcome */
+  --color-win: #FFD54F;
+  --color-win-2: #C0C0C0;
+  --color-win-3: #CD7F32;
+  --color-loss: #FF5252;
+
+  /* Rank tint, contest-detail leaderboard only */
+  --color-rank-leader: #10B981;
+  --color-rank-leader-bg: rgba(16, 185, 129, 0.12);
+  --color-rank-contender-bg: rgba(255, 64, 129, 0.10);
+  --color-rank-back-bg: rgba(255, 64, 129, 0.04);
+
+  /* Text */
+  --color-text: #F5F5F5;
+  --color-text-muted: #9CA3AF;
+  --color-text-dim: #4B5563;
+  --color-text-on-accent: #0A0E1A;
+
+  /* Syndicate identity */
+  --color-syndicate-crimson: #DC2626;
+  --color-syndicate-cyan: #06B6D4;
+  --color-syndicate-gold: #F59E0B;
+  --color-syndicate-violet: #8B5CF6;
+
+  /* Typography families (next/font variables, skill names as fallback) */
+  --font-display: var(--font-geist-sans), "Geist", "Inter", system-ui, sans-serif;
+  --font-body: var(--font-geist-sans), "Geist", "Inter", system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
+
+  /* Type scale */
+  --text-display: clamp(64px, 9vw, 128px);
+  --text-h1: clamp(40px, 5vw, 64px);
+  --text-h2: 32px;
+  --text-h3: 20px;
+  --text-body: 16px;
+  --text-small: 14px;
+  --text-label: 12px;
+
+  --text-mono-xl: 48px;
+  --text-mono-lg: 32px;
+  --text-mono-md: 24px;
+  --text-mono-sm: 14px;
+
+  /* Type metrics */
+  --tracking-display: -0.03em;
+  --tracking-tight: -0.02em;
+  --tracking-label: 0.08em;
+  --leading-tight: 1.05;
+  --leading-snug: 1.2;
+  --leading-body: 1.5;
+
+  /* Spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-24: 96px;
+  --space-32: 128px;
+
+  /* Radius */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-pill: 999px;
+
+  /* Borders */
+  --border-hairline: 1px solid var(--color-border);
+  --border-strong: 1px solid var(--color-border-strong);
+  --border-accent-cyan: 2px solid var(--color-accent-cyan);
+  --border-accent-pink: 2px solid var(--color-accent-pink);
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --duration-fast: 120ms;
+  --duration-base: 240ms;
+  --duration-slow: 600ms;
+  --duration-reveal: 400ms;
+
+  /* Z-index, intentional and finite */
+  --z-base: 0;
+  --z-sticky: 10;
+  --z-ribbon: 20;
+  --z-dropdown: 30;
+  --z-modal: 40;
+  --z-toast: 50;
+}
+
+/* Base body */
+html, body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Pill label, the small uppercase tag above every major section */
+.pill-label {
+  display: inline-block;
+  padding: 6px 14px;
+  font-family: var(--font-body);
+  font-size: var(--text-label);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--color-accent-cyan);
+  background: var(--color-surface);
+  border: var(--border-hairline);
+  border-radius: var(--radius-pill);
+}
+
+/* Live dot, the single most-used motion in the product */
+@keyframes pulse-live {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.85); }
+}
+.live-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: var(--color-accent-cyan);
+  border-radius: var(--radius-pill);
+  animation: pulse-live 1.5s var(--ease-in-out) infinite;
+}
+
+/* Score tick, the heartbeat under any mono number that updates in real time */
+@keyframes score-tick {
+  0% { transform: translateY(0); opacity: 1; }
+  50% { transform: translateY(-2px); opacity: 0.85; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+.score-tick { animation: score-tick 800ms var(--ease-out); }
+
+/* Settlement sweep, the cinematic moment when a contest resolves */
+@keyframes settle-sweep {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100%); }
+}
+.settle-sweep {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 0%, var(--color-accent-cyan) 50%, transparent 100%);
+  opacity: 0.15;
+  animation: settle-sweep var(--duration-reveal) var(--ease-out) forwards;
+}
+
+/* Reduced motion respect */
+@media (prefers-reduced-motion: reduce) {
+  .live-dot { animation: none; }
+  .score-tick { animation: none; }
+  .settle-sweep { animation: none; opacity: 0.08; }
+  * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+}
