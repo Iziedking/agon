@@ -175,6 +175,47 @@ app.get("/challenges/:id/payout", async (c) => {
   return c.json({ amount: rows[idx]!.amount, proof: merkleProof(leaves, idx) });
 });
 
+// ----- Results boards -----
+
+// The full field for a contest: every entrant and, once settled, the ranked
+// payouts. Public read, drives the contest detail page's results board.
+app.get("/contests/:id/results", async (c) => {
+  const contestId = Number(c.req.param("id"));
+  if (!Number.isFinite(contestId)) return c.json({ entrants: [], winners: [] });
+
+  const entrants = await query<{ agent_id: string; operator: string }>(
+    "select agent_id, operator from entries where contest_id = $1 order by agent_id",
+    [contestId],
+  );
+  const winners = await query<{ rank: number; operator: string; amount: string }>(
+    "select rank, operator, amount from payouts where contest_id = $1 order by rank",
+    [contestId],
+  );
+  return c.json({
+    entrants: entrants.rows.map((r) => ({ agentId: Number(r.agent_id), operator: r.operator })),
+    winners: winners.rows.map((r) => ({ rank: r.rank, operator: r.operator, amount: r.amount })),
+  });
+});
+
+// Same board for a peer challenge, from the challenge entry and payout tables.
+app.get("/challenges/:id/results", async (c) => {
+  const challengeId = Number(c.req.param("id"));
+  if (!Number.isFinite(challengeId)) return c.json({ entrants: [], winners: [] });
+
+  const entrants = await query<{ agent_id: string; operator: string }>(
+    "select agent_id, operator from challenge_entries where challenge_id = $1 order by agent_id",
+    [challengeId],
+  );
+  const winners = await query<{ rank: number; operator: string; amount: string }>(
+    "select rank, operator, amount from challenge_payouts where challenge_id = $1 order by rank",
+    [challengeId],
+  );
+  return c.json({
+    entrants: entrants.rows.map((r) => ({ agentId: Number(r.agent_id), operator: r.operator })),
+    winners: winners.rows.map((r) => ({ rank: r.rank, operator: r.operator, amount: r.amount })),
+  });
+});
+
 // ----- Read surfaces: leaderboard and operator profiles -----
 
 // Global leaderboard from the indexer tables. Participation from entries, wins

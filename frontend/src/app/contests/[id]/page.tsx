@@ -4,6 +4,7 @@ import { Footer } from "@/components/pengu/Footer";
 import { SectionLabel } from "@/components/pengu/atoms";
 import { Countdown } from "@/components/pengu/Countdown";
 import { EnterPanel } from "@/components/pengu/EnterPanel";
+import { ResultsBoard } from "@/components/pengu/ResultsBoard";
 import { CONTRACTS, EXPLORER } from "@/lib/arc";
 import { CONTEST_TYPE, fetchContest, formatUsdc, metricLabel, type Contest } from "@/lib/contests";
 
@@ -108,6 +109,10 @@ export default async function ContestDetail({ params }: { params: Promise<{ id: 
                   view contestengine on arcscan ↗
                 </a>
               </p>
+
+              <div className="mt-6">
+                <ResultsBoard kind="contests" id={c.id} live={c.status === 1 || c.status === 2} />
+              </div>
             </div>
 
             <aside className="lg:col-span-1">

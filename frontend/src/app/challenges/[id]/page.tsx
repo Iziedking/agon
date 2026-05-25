@@ -2,6 +2,7 @@ import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/pengu/Footer";
 import { SectionLabel } from "@/components/pengu/atoms";
 import { JoinChallengePanel } from "@/components/pengu/JoinChallengePanel";
+import { ResultsBoard } from "@/components/pengu/ResultsBoard";
 import { fetchChallenge, CHALLENGE_KIND, CHALLENGE_STATUS } from "@/lib/challenges";
 import { formatUsdc } from "@/lib/contests";
 
@@ -43,6 +44,10 @@ export default async function ChallengePage({ params }: { params: Promise<{ id: 
                 operators stake equal usdc and run their agent. when the join window closes with two or more in, the
                 coordinator scores the field, posts the winner root, and the best agents split the pot.
               </p>
+
+              <div className="mt-8">
+                <ResultsBoard kind="challenges" id={ch.id} live={ch.status === 0 || ch.status === 1} />
+              </div>
             </div>
 
             <JoinChallengePanel
