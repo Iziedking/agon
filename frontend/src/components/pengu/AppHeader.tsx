@@ -1,5 +1,6 @@
 import { ArcLogo } from "@/components/pengu/ArcLogo";
 import { LoginButton } from "@/components/pengu/LoginButton";
+import { ProfileLink } from "@/components/pengu/ProfileLink";
 
 /// The app navbar (home page and inner surfaces). Logo, route links, and a
 /// single LOGIN entry that opens the two-method login popout (wallet or email).
@@ -19,6 +20,12 @@ export function AppHeader() {
             contests
           </a>
           <a
+            href="/challenges"
+            className="rounded-pill px-4 py-1.5 font-display text-xs uppercase tracking-wide text-pengu-blue2 hover:text-pengu-dark"
+          >
+            challenges
+          </a>
+          <a
             href="/live"
             className="rounded-pill px-4 py-1.5 font-display text-xs uppercase tracking-wide text-pengu-blue2 hover:text-pengu-dark"
           >
@@ -36,6 +43,7 @@ export function AppHeader() {
           >
             workshop
           </a>
+          <ProfileLink />
         </nav>
         <LoginButton />
       </div>

@@ -208,6 +208,17 @@ async function applyDenormalized(client: PoolClient, log: Log) {
         [s(a.id), lc(a.creator), Number(a.kind), s(a.stake)],
       );
       break;
+    case "ChallengeJoined":
+      await client.query(
+        `insert into challenge_entries (challenge_id, agent_id, operator)
+         values ($1, $2, $3) on conflict (challenge_id, agent_id) do nothing`,
+        [s(a.id), s(a.agentId), lc(a.operator)],
+      );
+      await client.query(
+        "insert into operators (address) values ($1) on conflict (address) do nothing",
+        [lc(a.operator)],
+      );
+      break;
     case "ChallengeLocked":
       await client.query("update challenges set status = 'locked', pot = $2, entrants = $3 where id = $1", [
         s(a.id),

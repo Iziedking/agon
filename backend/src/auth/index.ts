@@ -153,6 +153,28 @@ app.get("/contests/:id/payout", async (c) => {
   return c.json({ amount: rows[idx]!.amount, proof: merkleProof(leaves, idx) });
 });
 
+// The (amount, proof) a challenge winner needs for claimChallengePayout, rebuilt
+// from the stored challenge payout tree. Same shape as the contest endpoint.
+app.get("/challenges/:id/payout", async (c) => {
+  const challengeId = Number(c.req.param("id"));
+  const operator = (c.req.query("operator") ?? "").toLowerCase();
+  if (!Number.isFinite(challengeId) || !/^0x[a-f0-9]{40}$/.test(operator)) {
+    return c.json({ amount: null });
+  }
+
+  const { rows } = await query<{ rank: number; operator: string; amount: string }>(
+    "select rank, operator, amount from challenge_payouts where challenge_id = $1 order by rank",
+    [challengeId],
+  );
+  if (rows.length === 0) return c.json({ amount: null });
+
+  const leaves = rows.map((r) => payoutLeaf(r.operator as `0x${string}`, BigInt(r.amount)));
+  const idx = rows.findIndex((r) => r.operator.toLowerCase() === operator);
+  if (idx === -1) return c.json({ amount: null });
+
+  return c.json({ amount: rows[idx]!.amount, proof: merkleProof(leaves, idx) });
+});
+
 // ----- Read surfaces: leaderboard and operator profiles -----
 
 // Global leaderboard from the indexer tables. Participation from entries, wins

@@ -1,6 +1,7 @@
 import { config } from "../config/index.js";
 import { coordinatorAddress, findDueContests, findOpenContests, openContest } from "./contestOps.js";
 import { runContestById } from "./runContestById.js";
+import { findActiveChallenges, resolveChallengeById } from "./runChallengeById.js";
 
 /// Self-driving contest loop. With a funded COORDINATOR_PRIVATE_KEY in place, the
 /// coordinator opens a contest, streams its standings over the window, funds Scout
@@ -59,6 +60,36 @@ async function startDueSweeper(broadcast: (message: unknown) => void): Promise<v
   }
 }
 
+/// Peer challenges: lock, score, resolve, and refund-cancel. Separate in-flight
+/// set since challenge ids and contest ids are different id spaces.
+const challengeInFlight = new Set<number>();
+
+async function resolveChallengeOnce(id: number, broadcast: (message: unknown) => void): Promise<void> {
+  if (challengeInFlight.has(id)) return;
+  challengeInFlight.add(id);
+  try {
+    await resolveChallengeById(id, broadcast);
+  } finally {
+    challengeInFlight.delete(id);
+  }
+}
+
+async function startChallengeSweeper(broadcast: (message: unknown) => void): Promise<void> {
+  const everyMs = Number(process.env.AUTOPILOT_SWEEP_SECONDS ?? "60") * 1000;
+  for (;;) {
+    await sleep(everyMs);
+    try {
+      const active = await findActiveChallenges();
+      for (const id of active) {
+        if (challengeInFlight.has(id)) continue;
+        await resolveChallengeOnce(id, broadcast);
+      }
+    } catch (err) {
+      console.error("autopilot challenge sweeper failed:", err instanceof Error ? err.message : err);
+    }
+  }
+}
+
 export async function startAutopilot(broadcast: (message: unknown) => void): Promise<void> {
   const configured = (process.env.AUTOPILOT_TYPE ?? "solver").toLowerCase();
   const poolUsdc = Number(process.env.AUTOPILOT_POOL_USDC ?? "2");
@@ -101,6 +132,11 @@ export async function startAutopilot(broadcast: (message: unknown) => void): Pro
   // other operators, so their campaigns resolve without the coordinator hosting them.
   void startDueSweeper(broadcast).catch((err) =>
     console.error("autopilot sweeper crashed:", err instanceof Error ? err.message : err),
+  );
+
+  // Concurrently lock, resolve, and refund-cancel peer challenges.
+  void startChallengeSweeper(broadcast).catch((err) =>
+    console.error("autopilot challenge sweeper crashed:", err instanceof Error ? err.message : err),
   );
 
   for (let cycle = 0; ; cycle++) {

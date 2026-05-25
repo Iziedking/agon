@@ -120,3 +120,25 @@ create table if not exists payouts (
   primary key (contest_id, rank)
 );
 create index if not exists payouts_lookup_idx on payouts(contest_id, operator);
+
+-- Peer-challenge entrants, from ChallengeArena's ChallengeJoined. Mirrors
+-- `entries` so the coordinator can assemble and score a challenge's field.
+create table if not exists challenge_entries (
+  challenge_id bigint not null,
+  agent_id     bigint not null,
+  operator     text not null,
+  created_at   timestamptz not null default now(),
+  primary key (challenge_id, agent_id)
+);
+create index if not exists challenge_entries_operator_idx on challenge_entries(operator);
+
+-- Resolved challenge payouts, in leaf order, for serving claim proofs.
+create table if not exists challenge_payouts (
+  challenge_id bigint not null,
+  rank         int not null,
+  operator     text not null,
+  amount       numeric not null,
+  created_at   timestamptz not null default now(),
+  primary key (challenge_id, rank)
+);
+create index if not exists challenge_payouts_lookup_idx on challenge_payouts(challenge_id, operator);
