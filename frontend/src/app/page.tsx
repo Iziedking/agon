@@ -4,37 +4,17 @@ import { PenguStat } from "@/components/pengu/PenguStat";
 import { Reveal } from "@/components/pengu/Reveal";
 import { BuiltOn } from "@/components/pengu/BuiltOn";
 import { Syndicates } from "@/components/pengu/Syndicates";
+import { ForProjects } from "@/components/pengu/ForProjects";
+import { RoadAhead } from "@/components/pengu/RoadAhead";
 import { SectionLabel, PillButton, Card } from "@/components/pengu/atoms";
 import { Footer } from "@/components/pengu/Footer";
-import { fetchContests, CONTEST_TYPE, metricLabel, formatUsdc, type Contest } from "@/lib/contests";
 
-/// Reads live contest state from Arc and caches it for 30 seconds, so the
-/// numbers are real with no loading flash.
-export const revalidate = 30;
+/// The landing is a generic marketing page. No platform data or live state here:
+/// real contests and numbers live inside the app (/app, /contests).
 
 const MASCOTS = ["#9b6bff", "#ff7ab8", "#7c4dff", "#ffc24b", "#3dd9b0"];
 
-function statusMeta(status: number): { label: string; cls: string } {
-  if (status === 1) return { label: "open", cls: "text-pengu-blue" };
-  if (status === 2) return { label: "scoring", cls: "text-pengu-dark" };
-  if (status === 3) return { label: "settled", cls: "text-pengu-dark/50" };
-  if (status === 4) return { label: "cancelled", cls: "text-pengu-dark/50" };
-  return { label: "pending", cls: "text-pengu-dark/50" };
-}
-
-export default async function Home() {
-  let contests: Contest[] = [];
-  try {
-    contests = await fetchContests();
-  } catch {
-    contests = [];
-  }
-
-  const settled = contests.filter((c) => c.status === 3).length;
-  const live = contests.filter((c) => c.status === 1).length;
-  const totalPoolUsdc = contests.reduce((sum, c) => sum + Number(c.prizePool) / 1e6, 0);
-  const recent = contests.slice(0, 6);
-
+export default function Home() {
   return (
     <div id="top" className="min-h-screen text-pengu-dark" style={{ background: "#f3effb" }}>
       <header className="relative z-20">
@@ -64,7 +44,7 @@ export default async function Home() {
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-4">
             <PillButton href="/app">enter the arena</PillButton>
-            <PillButton href="#contests" variant="ghost">
+            <PillButton href="/contests" variant="ghost">
               see live contests
             </PillButton>
           </div>
@@ -78,59 +58,16 @@ export default async function Home() {
         </div>
       </section>
 
-      {/* Stats */}
+      {/* Stats, generic marketing facts (no live platform state) */}
       <section id="stats" className="mx-auto max-w-[1200px] px-6 py-24">
         <Reveal>
           <SectionLabel>by the numbers</SectionLabel>
         </Reveal>
         <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <PenguStat value={totalPoolUsdc} prefix="$" label="usdc prize pool funded" />
-          <PenguStat value={settled} label="contests settled" />
-          <PenguStat value={live} label="contests live now" />
+          <PenguStat value={3} label="contest types" />
           <PenguStat value={4} label="founding syndicates" />
-        </div>
-      </section>
-
-      {/* Contests */}
-      <section id="contests" className="mx-auto max-w-[1200px] px-6 py-24">
-        <Reveal>
-          <SectionLabel>live contests</SectionLabel>
-          <h2 className="mt-5 font-bubble text-[clamp(32px,5vw,64px)] uppercase leading-tight text-pengu-dark">
-            live pools, usdc payouts
-          </h2>
-        </Reveal>
-        <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {recent.length === 0 ? (
-            <p className="text-pengu-dark/60">no contests yet. the first results show up here.</p>
-          ) : (
-            recent.map((c) => {
-              const s = statusMeta(c.status);
-              return (
-                <a
-                  key={c.id}
-                  href={`/contests/${c.id}`}
-                  className="rounded-card border border-pengu-blue/15 bg-white p-6 shadow-[0_10px_30px_rgba(30,80,160,0.08)] transition-transform duration-150 hover:-translate-y-1"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="rounded-pill bg-pengu-blue/15 px-3 py-1 font-display text-xs uppercase text-pengu-blue">
-                      {CONTEST_TYPE[c.contestType]}
-                    </span>
-                    <span className={`font-display text-xs uppercase ${s.cls}`}>{s.label}</span>
-                  </div>
-                  <div className="mt-4 font-display text-sm uppercase tracking-wide text-pengu-dark/55">
-                    {metricLabel(c.metric).toLowerCase()}
-                  </div>
-                  <div className="mt-2 font-display text-[40px] leading-none text-pengu-blue">{formatUsdc(c.prizePool)}</div>
-                  <div className="mt-4 font-mono text-xs text-pengu-dark/45">contest #{c.id}</div>
-                </a>
-              );
-            })
-          )}
-        </div>
-        <div className="mt-8">
-          <PillButton href="/contests" variant="ghost">
-            view all contests
-          </PillButton>
+          <PenguStat value={0.4} decimals={1} suffix="%" label="daily reputation decay" />
+          <PenguStat value={100} suffix="%" label="usdc, settled onchain" />
         </div>
       </section>
 
@@ -157,6 +94,8 @@ export default async function Home() {
         </div>
       </section>
 
+      <ForProjects />
+
       {/* Syndicates */}
       <section id="syndicates" className="mx-auto max-w-[1200px] px-6 py-24">
         <Reveal>
@@ -175,6 +114,8 @@ export default async function Home() {
         </Reveal>
         <BuiltOn />
       </section>
+
+      <RoadAhead />
 
       {/* Closing CTA */}
       <section className="mx-auto max-w-[1200px] px-6 py-20 text-center">
