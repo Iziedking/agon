@@ -1,126 +1,135 @@
-"use client";
-
-import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
-import { ConnectButton } from "@/components/ConnectButton";
+import type { ReactNode } from "react";
+import { AppHeader } from "@/components/pengu/AppHeader";
+import { Footer } from "@/components/pengu/Footer";
+import { SectionLabel } from "@/components/pengu/atoms";
+import { Countdown } from "@/components/pengu/Countdown";
+import { LoginCTA } from "@/components/pengu/LoginCTA";
 import { CONTRACTS, EXPLORER } from "@/lib/arc";
-import {
-  CONTEST_STATUS,
-  CONTEST_TYPE,
-  fetchContest,
-  formatUsdc,
-  metricLabel,
-  statusClass,
-  type Contest,
-} from "@/lib/contests";
+import { CONTEST_TYPE, fetchContest, formatUsdc, metricLabel, type Contest } from "@/lib/contests";
 
-function timeInfo(c: Contest): string {
-  if (c.status >= 2) return "ended";
-  const left = Number(c.endTime) - Math.floor(Date.now() / 1000);
-  if (left <= 0) return "entry window closed";
-  const h = Math.floor(left / 3600);
-  const m = Math.floor((left % 3600) / 60);
-  return `${h}h ${m}m left`;
-}
+export const revalidate = 30;
 
+const ZERO = "0x0000000000000000000000000000000000000000";
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
-export default function ContestDetail() {
-  const params = useParams<{ id: string }>();
-  const id = Number(params.id);
-  const [c, setC] = useState<Contest | null | undefined>(undefined);
-  const [error, setError] = useState<string | null>(null);
+function statusMeta(status: number): { label: string; cls: string } {
+  if (status === 1) return { label: "open", cls: "text-pengu-blue" };
+  if (status === 2) return { label: "scoring", cls: "text-pengu-dark" };
+  if (status === 3) return { label: "settled", cls: "text-pengu-dark/50" };
+  if (status === 4) return { label: "cancelled", cls: "text-pengu-dark/50" };
+  return { label: "pending", cls: "text-pengu-dark/50" };
+}
 
-  useEffect(() => {
-    if (!Number.isFinite(id)) {
-      setC(null);
-      return;
+function Row({ k, children }: { k: string; children: ReactNode }) {
+  return (
+    <div className="flex items-center justify-between border-b border-pengu-blue/10 py-3 last:border-0">
+      <span className="font-display text-xs uppercase tracking-wide text-pengu-dark/45">{k}</span>
+      <span className="font-mono text-sm text-pengu-dark">{children}</span>
+    </div>
+  );
+}
+
+export default async function ContestDetail({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const nid = Number(id);
+  let c: Contest | null = null;
+  if (Number.isFinite(nid)) {
+    try {
+      c = await fetchContest(nid);
+    } catch {
+      c = null;
     }
-    fetchContest(id)
-      .then(setC)
-      .catch((e) => setError(e instanceof Error ? e.message : "failed to load"));
-  }, [id]);
+  }
+  const s = c ? statusMeta(c.status) : null;
 
   return (
-    <div className="wrap">
-      <nav className="nav">
-        <a className="wordmark" href="/">
-          Arc<span>Run</span>
+    <div className="min-h-screen text-pengu-dark" style={{ background: "#f3effb" }}>
+      <AppHeader />
+
+      <section className="mx-auto max-w-[1200px] px-6 pb-16 pt-12">
+        <a href="/contests" className="font-display text-xs uppercase tracking-wide text-pengu-blue">
+          all contests
         </a>
-        <div className="nav-links">
-          <a href="/contests">All contests</a>
-          <ConnectButton />
-        </div>
-      </nav>
 
-      <div className="login">
-        {error ? <div className="mono err">{error}</div> : null}
-        {c === undefined && !error ? <div className="mono muted">loading from Arc...</div> : null}
-        {c === null ? <div className="mono muted">Contest #{id} not found.</div> : null}
+        {!c || !s ? (
+          <div className="mt-8 rounded-card border border-pengu-blue/15 bg-white p-8 shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
+            <h1 className="font-bubble text-2xl uppercase text-pengu-dark">contest not found</h1>
+            <p className="mt-2 text-pengu-dark/65">contest #{id} is not on arc yet.</p>
+          </div>
+        ) : (
+          <div className="mt-6 grid gap-6 lg:grid-cols-3">
+            <div className="lg:col-span-2">
+              <div className="flex flex-wrap items-center gap-3">
+                <SectionLabel>
+                  {CONTEST_TYPE[c.contestType] ?? "contest"} · #{c.id}
+                </SectionLabel>
+                <span className={`font-display text-xs uppercase ${s.cls}`}>{s.label}</span>
+              </div>
 
-        {c ? (
-          <>
-            <div className="section-head" style={{ marginTop: 8 }}>
-              <h1>
-                Contest #{c.id} · {CONTEST_TYPE[c.contestType] ?? "?"}
-              </h1>
-              <span className={`pill ${statusClass(c.status)}`}>{CONTEST_STATUS[c.status] ?? "?"}</span>
-            </div>
+              <div className="mt-5 font-bubble text-[clamp(48px,8vw,92px)] leading-none text-pengu-blue">
+                {formatUsdc(c.prizePool)}
+              </div>
+              <p className="mt-3 font-mono text-sm text-pengu-dark/55">
+                prize pool · <Countdown endTime={Number(c.endTime)} status={c.status} />
+              </p>
 
-            <div className="big-num" style={{ fontSize: 40 }}>
-              {formatUsdc(c.prizePool)}
-            </div>
-            <p className="mono muted">prize pool · {timeInfo(c)}</p>
-
-            <section className="card" style={{ marginTop: 20 }}>
-              <div className="kv">
-                <span className="k">metric</span>
-                <span className="v">{metricLabel(c.metric)}</span>
-              </div>
-              <div className="kv">
-                <span className="k">entrants</span>
-                <span className="v">{c.entrants}</span>
-              </div>
-              <div className="kv">
-                <span className="k">headline winners (topN)</span>
-                <span className="v">{c.topN}</span>
-              </div>
-              <div className="kv">
-                <span className="k">winner cut</span>
-                <span className="v">{(c.winnerCutBps / 100).toFixed(0)}%</span>
-              </div>
-              <div className="kv">
-                <span className="k">platform fee</span>
-                <span className="v">{(c.platformFeeBps / 100).toFixed(1)}%</span>
-              </div>
-              <div className="kv">
-                <span className="k">sponsor</span>
-                <span className="v">
-                  <a href={`${EXPLORER}/address/${c.sponsor}`} target="_blank" rel="noreferrer">
+              <div className="mt-8 rounded-card border border-pengu-blue/15 bg-white p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
+                <Row k="metric">{metricLabel(c.metric).toLowerCase()}</Row>
+                <Row k="entrants">{c.entrants}</Row>
+                <Row k="headline winners">{c.topN}</Row>
+                <Row k="winner cut">{(c.winnerCutBps / 100).toFixed(0)}%</Row>
+                <Row k="platform fee">{(c.platformFeeBps / 100).toFixed(1)}%</Row>
+                <Row k="sponsor">
+                  <a href={`${EXPLORER}/address/${c.sponsor}`} target="_blank" rel="noreferrer" className="text-pengu-blue">
                     {short(c.sponsor)}
                   </a>
-                </span>
-              </div>
-              {c.protocolTarget !== "0x0000000000000000000000000000000000000000" ? (
-                <div className="kv">
-                  <span className="k">protocol target</span>
-                  <span className="v">
-                    <a href={`${EXPLORER}/address/${c.protocolTarget}`} target="_blank" rel="noreferrer">
+                </Row>
+                {c.protocolTarget !== ZERO ? (
+                  <Row k="protocol target">
+                    <a
+                      href={`${EXPLORER}/address/${c.protocolTarget}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-pengu-blue"
+                    >
                       {short(c.protocolTarget)}
                     </a>
-                  </span>
-                </div>
-              ) : null}
-            </section>
+                  </Row>
+                ) : null}
+              </div>
 
-            <p className="mono muted" style={{ marginTop: 16 }}>
-              <a href={`${EXPLORER}/address/${CONTRACTS.ContestEngine}`} target="_blank" rel="noreferrer">
-                ContestEngine on Arcscan
-              </a>
-            </p>
-          </>
-        ) : null}
-      </div>
+              <p className="mt-4">
+                <a
+                  href={`${EXPLORER}/address/${CONTRACTS.ContestEngine}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-mono text-xs text-pengu-dark/45 hover:text-pengu-blue"
+                >
+                  view contestengine on arcscan ↗
+                </a>
+              </p>
+            </div>
+
+            <aside className="lg:col-span-1">
+              <div className="rounded-card border border-pengu-blue/15 bg-white p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)] lg:sticky lg:top-20">
+                <h2 className="font-bubble text-xl uppercase text-pengu-dark">enter this contest</h2>
+                <p className="mt-2 text-sm text-pengu-dark/65">
+                  entries run through your agent. log in, then register it to compete for the duration of the contest.
+                </p>
+                <LoginCTA
+                  label="log in to enter"
+                  className="mt-5 w-full rounded-pill bg-pengu-blue px-6 py-3 text-center font-display text-sm uppercase tracking-wide text-white transition-transform duration-150 hover:-translate-y-0.5"
+                />
+                <p className="mt-3 font-mono text-xs text-pengu-dark/45">
+                  {s.label === "open" ? "open for entries" : `status: ${s.label}`}
+                </p>
+              </div>
+            </aside>
+          </div>
+        )}
+      </section>
+
+      <Footer />
     </div>
   );
 }
