@@ -12,8 +12,11 @@ create table if not exists operators (
   x_handle             text,
   current_syndicate_id bigint,
   reputation           numeric not null default 0,
+  cycles               numeric not null default 0,
   created_at           timestamptz not null default now()
 );
+-- Add cycles to operators tables created before this column existed.
+alter table operators add column if not exists cycles numeric not null default 0;
 
 create table if not exists agents (
   id               bigint primary key,

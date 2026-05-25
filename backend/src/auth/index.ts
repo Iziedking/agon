@@ -155,21 +155,35 @@ app.get("/contests/:id/payout", async (c) => {
 
 // ----- Read surfaces: leaderboard and operator profiles -----
 
-// Global leaderboard from the indexer tables. Participation comes from entries,
-// wins and earnings from the settlement payouts. Public read.
+// Global leaderboard from the indexer tables. Participation from entries, wins
+// and earnings from payouts, Cycles from operators, reputation summed across the
+// operator's agents (raw, scaled 1e6). Public read.
 app.get("/leaderboard", async (c) => {
   const limit = Math.min(Math.max(Number(c.req.query("limit") ?? 50), 1), 200);
-  const { rows } = await query<{ operator: string; entered: string; wins: string; earned: string | null }>(
+  const { rows } = await query<{
+    operator: string;
+    entered: string;
+    wins: string;
+    earned: string | null;
+    cycles: string;
+    reputation: string;
+  }>(
     `select
-       coalesce(e.operator, p.operator) as operator,
-       coalesce(e.entered, 0)           as entered,
-       coalesce(p.wins, 0)              as wins,
-       coalesce(p.earned, 0)           as earned
-     from (select operator, count(distinct contest_id) as entered from entries group by operator) e
-     full outer join
-       (select operator, count(distinct contest_id) as wins, sum(amount) as earned from payouts group by operator) p
-       on e.operator = p.operator
-     order by earned desc, wins desc, entered desc
+       op.address              as operator,
+       coalesce(e.entered, 0)  as entered,
+       coalesce(p.wins, 0)     as wins,
+       coalesce(p.earned, 0)   as earned,
+       op.cycles               as cycles,
+       coalesce(ag.reputation, 0) as reputation
+     from operators op
+     left join (select operator, count(distinct contest_id) as entered from entries group by operator) e
+       on e.operator = op.address
+     left join (select operator, count(distinct contest_id) as wins, sum(amount) as earned from payouts group by operator) p
+       on p.operator = op.address
+     left join (select owner, sum(reputation) as reputation from agents group by owner) ag
+       on ag.owner = op.address
+     where op.address in (select distinct operator from entries)
+     order by earned desc nulls last, wins desc, cycles desc, entered desc
      limit $1`,
     [limit],
   );
@@ -179,6 +193,8 @@ app.get("/leaderboard", async (c) => {
       entered: Number(r.entered),
       wins: Number(r.wins),
       earned: r.earned ?? "0",
+      cycles: Number(r.cycles ?? "0"),
+      reputation: r.reputation ?? "0",
     })),
   });
 });
@@ -188,8 +204,8 @@ app.get("/operators/:address", async (c) => {
   const address = (c.req.param("address") ?? "").toLowerCase();
   if (!/^0x[a-f0-9]{40}$/.test(address)) return c.json({ error: "invalid address" }, 400);
 
-  const op = await query<{ address: string; x_handle: string | null; current_syndicate_id: string | null; reputation: string }>(
-    "select address, x_handle, current_syndicate_id, reputation from operators where address = $1",
+  const op = await query<{ address: string; x_handle: string | null; current_syndicate_id: string | null; cycles: string }>(
+    "select address, x_handle, current_syndicate_id, cycles from operators where address = $1",
     [address],
   );
   const agents = await query<{ id: string; scout_tier: number; analyst_tier: number; solver_tier: number; reputation: string }>(
@@ -216,11 +232,14 @@ app.get("/operators/:address", async (c) => {
   );
 
   const s = stats.rows[0] ?? { entered: "0", wins: "0", earned: "0" };
+  // Total reputation is the sum across the operator's agents (raw, scaled 1e6).
+  const reputation = agents.rows.reduce((sum, a) => sum + BigInt(a.reputation ?? "0"), 0n).toString();
   return c.json({
     operator: op.rows[0]?.address ?? address,
     xHandle: op.rows[0]?.x_handle ?? null,
     syndicateId: op.rows[0]?.current_syndicate_id ?? null,
-    reputation: op.rows[0]?.reputation ?? "0",
+    cycles: Number(op.rows[0]?.cycles ?? "0"),
+    reputation,
     stats: { entered: Number(s.entered), wins: Number(s.wins), earned: s.earned ?? "0" },
     agents: agents.rows.map((r) => ({
       id: Number(r.id),

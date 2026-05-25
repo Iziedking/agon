@@ -143,6 +143,21 @@ async function applyDenormalized(client: PoolClient, log: Log) {
       ]);
       break;
 
+    // ----- PointsLedger (Cycles) -----
+    case "PointsCredited":
+      await client.query(
+        `insert into operators (address, cycles) values ($1, $2)
+         on conflict (address) do update set cycles = operators.cycles + excluded.cycles`,
+        [lc(a.operator), s(a.amount)],
+      );
+      break;
+    case "PointsDebited":
+      await client.query(
+        "update operators set cycles = greatest(cycles - $2, 0) where address = $1",
+        [lc(a.operator), s(a.amount)],
+      );
+      break;
+
     // ----- ContestEngine -----
     case "ContestListed":
       await client.query(

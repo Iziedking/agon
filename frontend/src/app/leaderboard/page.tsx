@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/pengu/Footer";
 import { SectionLabel } from "@/components/pengu/atoms";
-import { fetchLeaderboard, formatUsdcString, short, type LeaderRow } from "@/lib/profiles";
+import { fetchLeaderboard, formatReputation, formatUsdcString, short, type LeaderRow } from "@/lib/profiles";
+
+const COLS = "grid-cols-[2.5rem_1fr_3.5rem_3.5rem_4rem_4.5rem_7rem]";
 
 export default function LeaderboardPage() {
   const [rows, setRows] = useState<LeaderRow[] | null>(null);
@@ -33,11 +35,13 @@ export default function LeaderboardPage() {
         </p>
 
         <div className="mt-8 overflow-hidden rounded-card border border-pengu-blue/15 bg-white shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
-          <div className="grid grid-cols-[3rem_1fr_5rem_5rem_8rem] items-center gap-4 border-b border-pengu-blue/10 px-5 py-3 font-display text-[11px] uppercase tracking-wide text-pengu-dark/45">
+          <div className={`grid ${COLS} items-center gap-3 border-b border-pengu-blue/10 px-5 py-3 font-display text-[11px] uppercase tracking-wide text-pengu-dark/45`}>
             <span>rank</span>
             <span>operator</span>
             <span className="text-right">entered</span>
             <span className="text-right">wins</span>
+            <span className="text-right">cycles</span>
+            <span className="text-right">rep</span>
             <span className="text-right">earned</span>
           </div>
 
@@ -55,7 +59,7 @@ export default function LeaderboardPage() {
               <a
                 key={r.operator}
                 href={`/operators/${r.operator}`}
-                className={`grid grid-cols-[3rem_1fr_5rem_5rem_8rem] items-center gap-4 border-b border-pengu-blue/5 px-5 py-3.5 transition-colors last:border-0 hover:bg-pengu-blue/5 ${
+                className={`grid ${COLS} items-center gap-3 border-b border-pengu-blue/5 px-5 py-3.5 transition-colors last:border-0 hover:bg-pengu-blue/5 ${
                   top ? "bg-[#F59E0B]/5" : ""
                 }`}
               >
@@ -63,6 +67,8 @@ export default function LeaderboardPage() {
                 <span className="truncate font-mono text-sm text-pengu-dark">{short(r.operator)}</span>
                 <span className="text-right font-mono text-sm text-pengu-dark/65">{r.entered}</span>
                 <span className="text-right font-mono text-sm text-pengu-dark/65">{r.wins}</span>
+                <span className="text-right font-mono text-sm text-pengu-dark/65">{r.cycles}</span>
+                <span className="text-right font-mono text-sm text-pengu-dark/65">{formatReputation(r.reputation)}</span>
                 <span className="text-right font-mono text-sm font-medium text-pengu-blue">{formatUsdcString(r.earned)}</span>
               </a>
             );
