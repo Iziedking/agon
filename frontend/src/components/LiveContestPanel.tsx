@@ -40,6 +40,7 @@ export function LiveContestPanel({
   }
 
   const max = Math.max(...standings.entries.map((e) => e.score), 1);
+  const empty = standings.entries.length === 0;
 
   return (
     <div className="rounded-card border border-pengu-blue/15 bg-white p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
@@ -47,9 +48,20 @@ export function LiveContestPanel({
         <div className="flex items-center gap-2">
           <span className="h-2 w-2 rounded-full bg-[#22c55e] animate-pulse-live" />
           <span className="font-bubble text-lg uppercase text-pengu-dark">live · contest #{standings.contestId}</span>
+          {standings.contestType && (
+            <span className="rounded-full bg-pengu-blue/10 px-2.5 py-0.5 font-mono text-xs uppercase text-pengu-blue">
+              {standings.contestType}
+            </span>
+          )}
         </div>
         <span className="font-mono text-sm text-pengu-blue">{countdown(standings.endsAt)}</span>
       </div>
+
+      {empty && (
+        <p className="mt-5 font-mono text-sm text-pengu-dark/55">
+          just opened · waiting for operators to enter…
+        </p>
+      )}
 
       <div className="mt-5 flex flex-col gap-2">
         {standings.entries.map((e) => {

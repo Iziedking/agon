@@ -29,8 +29,27 @@ export function useContestSocket() {
       ws.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data as string) as WsMessage;
-          if (msg.type === "standings") setStandings(msg);
-          else if (msg.type === "settled") setSettled(msg);
+          if (msg.type === "contest_open") {
+            // New contest: seed an empty board so it shows the instant it opens,
+            // and clear the previous result so the win modal does not linger.
+            setSettled(null);
+            setStandings({
+              type: "standings",
+              contestId: msg.contestId,
+              contestType: msg.contestType,
+              endsAt: msg.endsAt,
+              entries: [],
+            });
+          } else if (msg.type === "standings") {
+            // Standings frames omit the type; keep the one from the open event.
+            setStandings((prev) => ({
+              ...msg,
+              contestType:
+                msg.contestType ?? (prev && prev.contestId === msg.contestId ? prev.contestType : undefined),
+            }));
+          } else if (msg.type === "settled") {
+            setSettled(msg);
+          }
         } catch {
           // ignore malformed frames
         }

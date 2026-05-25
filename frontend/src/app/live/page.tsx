@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAccount } from "wagmi";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/pengu/Footer";
@@ -13,6 +13,13 @@ export default function LivePage() {
   const { connected, standings, settled } = useContestSocket();
   const { address } = useAccount();
   const [dismissed, setDismissed] = useState(false);
+
+  // The autopilot runs contests back to back. When a new one opens, allow the
+  // next win modal to show again.
+  const currentId = standings?.contestId;
+  useEffect(() => {
+    setDismissed(false);
+  }, [currentId]);
 
   return (
     <div className="min-h-screen text-pengu-dark" style={{ background: "#f3effb" }}>
