@@ -9,6 +9,7 @@ import { config } from "../config/index.js";
 import { publicClient } from "../chain/arc.js";
 import { query } from "../db/pool.js";
 import { logEvent } from "../events.js";
+import { merkleProof, payoutLeaf } from "../coordinator/merkle.js";
 import { redis } from "../redis.js";
 import { issueToken, requireAuth } from "./jwt.js";
 
@@ -125,6 +126,31 @@ app.get("/admin/events", async (c) => {
     ? await query("select * from events where level = $1 order by id desc limit $2", [level, limit])
     : await query("select * from events order by id desc limit $1", [limit]);
   return c.json({ events: rows });
+});
+
+// ----- Claim proofs -----
+
+// Returns the (amount, proof) a winner needs to call claimPrize, rebuilt from
+// the stored payout tree. Public read: a proof is only useful to the operator
+// it pays, and the contract verifies it on-chain.
+app.get("/contests/:id/payout", async (c) => {
+  const contestId = Number(c.req.param("id"));
+  const operator = (c.req.query("operator") ?? "").toLowerCase();
+  if (!Number.isFinite(contestId) || !/^0x[a-f0-9]{40}$/.test(operator)) {
+    return c.json({ amount: null });
+  }
+
+  const { rows } = await query<{ rank: number; operator: string; amount: string }>(
+    "select rank, operator, amount from payouts where contest_id = $1 order by rank",
+    [contestId],
+  );
+  if (rows.length === 0) return c.json({ amount: null });
+
+  const leaves = rows.map((r) => payoutLeaf(r.operator as `0x${string}`, BigInt(r.amount)));
+  const idx = rows.findIndex((r) => r.operator.toLowerCase() === operator);
+  if (idx === -1) return c.json({ amount: null });
+
+  return c.json({ amount: rows[idx]!.amount, proof: merkleProof(leaves, idx) });
 });
 
 // ----- X (Twitter) OAuth2 with PKCE -----

@@ -13,6 +13,8 @@
     "indexer:dev": "tsx watch src/indexer/index.ts",
     "auth": "tsx src/auth/index.ts",
     "coordinator": "tsx src/coordinator/index.ts",
+    "open-contest": "tsx src/coordinator/openContest.ts",
+    "fund-scouts": "tsx src/coordinator/fundScouts.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

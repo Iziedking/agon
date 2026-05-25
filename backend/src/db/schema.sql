@@ -104,3 +104,16 @@ create table if not exists events (
 );
 create index if not exists events_created_idx on events(created_at desc);
 create index if not exists events_level_idx on events(level);
+
+-- Settlement payouts the coordinator wrote, in the exact leaf order used to build
+-- the merkle root. Serves claim proofs (GET /contests/:id/payout). Keyed by rank
+-- so the rebuilt tree matches what was posted, even if an operator appears twice.
+create table if not exists payouts (
+  contest_id  bigint not null,
+  rank        int not null,
+  operator    text not null,
+  amount      numeric not null,
+  created_at  timestamptz not null default now(),
+  primary key (contest_id, rank)
+);
+create index if not exists payouts_lookup_idx on payouts(contest_id, operator);

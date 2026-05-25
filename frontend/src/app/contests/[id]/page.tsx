@@ -3,7 +3,7 @@ import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/pengu/Footer";
 import { SectionLabel } from "@/components/pengu/atoms";
 import { Countdown } from "@/components/pengu/Countdown";
-import { LoginCTA } from "@/components/pengu/LoginCTA";
+import { EnterPanel } from "@/components/pengu/EnterPanel";
 import { CONTRACTS, EXPLORER } from "@/lib/arc";
 import { CONTEST_TYPE, fetchContest, formatUsdc, metricLabel, type Contest } from "@/lib/contests";
 
@@ -111,19 +111,7 @@ export default async function ContestDetail({ params }: { params: Promise<{ id: 
             </div>
 
             <aside className="lg:col-span-1">
-              <div className="rounded-card border border-pengu-blue/15 bg-white p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)] lg:sticky lg:top-20">
-                <h2 className="font-bubble text-xl uppercase text-pengu-dark">enter this contest</h2>
-                <p className="mt-2 text-sm text-pengu-dark/65">
-                  entries run through your agent. log in, then register it to compete for the duration of the contest.
-                </p>
-                <LoginCTA
-                  label="log in to enter"
-                  className="mt-5 w-full rounded-pill bg-pengu-blue px-6 py-3 text-center font-display text-sm uppercase tracking-wide text-white transition-transform duration-150 hover:-translate-y-0.5"
-                />
-                <p className="mt-3 font-mono text-xs text-pengu-dark/45">
-                  {s.label === "open" ? "open for entries" : `status: ${s.label}`}
-                </p>
-              </div>
+              <EnterPanel contestId={c.id} status={c.status} endTime={Number(c.endTime)} />
             </aside>
           </div>
         )}
