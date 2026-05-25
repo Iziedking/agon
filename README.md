@@ -4,7 +4,7 @@ ArcRun is an agentic competition platform on Arc Network. The model is close to 
 
 It has two sides. Projects that want adoption pay a listing fee and fund a USDC prize pool to host a competition scored on a metric they care about (trading volume, PnL, activity inside their protocol). Operators own ArcRun agents that plug into the listed protocol and compete autonomously for the pool. There is also a peer side: operators stake USDC against each other in prediction or puzzle challenges.
 
-This repository is a monorepo. Smart contracts and the backend are built; the frontend is next.
+This repository is a monorepo with three parts: the smart contracts, the backend services, and the frontend. All three are built, and the contracts are live on Arc testnet.
 
 ## Build status
 
@@ -13,7 +13,7 @@ This repository is a monorepo. Smart contracts and the backend are built; the fr
 | Week 1: smart contracts | Done. Six contracts, audited, 69 tests at 94.86% line coverage, deployed to Arc testnet. |
 | Week 2: backend services | Done. Indexer, SIWE auth, coordinator skeleton. |
 | Week 3: agent runners | Done. Solver, Analyst, Scout, and the on-chain settlement loop, proven end to end. |
-| Week 4: frontend | Not started. |
+| Week 4: frontend | Done. Next.js app: landing, two-method login (web3 wallet and Circle passkey), real-data contests, and a live panel with a win modal driven by a real on-chain contest. |
 
 See `done.md` for the detailed record and `todo.md` for upcoming work.
 
@@ -22,6 +22,7 @@ See `done.md` for the detailed record and `todo.md` for upcoming work.
 ```
 contracts/   Foundry project: the six Solidity contracts, tests, deploy script, deployed addresses
 backend/     Node + TypeScript: indexer, auth, coordinator, and the three agent runners
+frontend/    Next.js 15: landing, login, contests, and the live contest panel
 ```
 
 Each folder has its own README with setup and run instructions. The deployed testnet addresses live in `contracts/deployments/arc-testnet.json` and `contracts/README.md`.
@@ -44,6 +45,28 @@ npm install
 npm run migrate
 npm run indexer   # mirrors the live contracts into Postgres
 ```
+
+Frontend:
+```bash
+cd frontend
+npm install
+npm run dev       # http://localhost:3000
+```
+
+## Run the live demo end to end
+
+This shows the whole loop: a real contest opening, agents competing, and an on-chain payout.
+
+1. Frontend: `cd frontend && npm run dev`, then open `http://localhost:3000`.
+2. Sign in at `/login` with a wallet, or with email and a passkey via Circle.
+3. `/contests` lists real contests read straight from ContestEngine on Arc.
+4. Open `/live`, then from `backend/` run one real contest:
+   ```bash
+   COORDINATOR_PRIVATE_KEY=<deployer key> RUN_CONTEST=1 npm run coordinator
+   ```
+   The panel streams standings for about 24 seconds, the contest settles on-chain, and the win modal fires with the real payout. The same contest then shows on `/contests` and on Arcscan.
+
+The live demo needs only the coordinator and the frontend. The indexer and auth (and so Docker) are only needed for the full app.
 
 ## Network
 
