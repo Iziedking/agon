@@ -77,6 +77,29 @@ function loadDeployments(file: string) {
   return deploymentsSchema.parse(JSON.parse(raw));
 }
 
+/// Sanitize a private key from the environment. Env files (especially with CRLF
+/// line endings on Windows, or values pasted with quotes) often carry a trailing
+/// \r or surrounding quotes that make viem reject the key. Trim those, add the 0x
+/// prefix if missing, and validate the shape. An invalid key returns undefined so
+/// the coordinator runs in log-only mode with a clear warning instead of crash-looping.
+function normalizePrivateKey(raw?: string): `0x${string}` | undefined {
+  if (!raw) return undefined;
+  let v = raw.trim();
+  if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+    v = v.slice(1, -1).trim();
+  }
+  if (!v) return undefined;
+  if (!v.startsWith("0x")) v = `0x${v}`;
+  if (!/^0x[0-9a-fA-F]{64}$/.test(v)) {
+    console.warn(
+      `COORDINATOR_PRIVATE_KEY is set but is not a 32-byte hex key (got ${v.length} chars after cleanup). ` +
+        "Running in log-only mode. Expected 0x followed by 64 hex characters.",
+    );
+    return undefined;
+  }
+  return v as `0x${string}`;
+}
+
 const env = loadEnv();
 const deployments = loadDeployments(env.DEPLOYMENTS_FILE);
 
@@ -108,11 +131,11 @@ export const config = {
     },
   },
   coordinator: {
-    privateKey: env.COORDINATOR_PRIVATE_KEY,
+    privateKey: normalizePrivateKey(env.COORDINATOR_PRIVATE_KEY),
     wsPort: env.WS_PORT,
   },
   scout: {
-    masterMnemonic: env.SCOUT_MASTER_MNEMONIC,
+    masterMnemonic: env.SCOUT_MASTER_MNEMONIC?.trim() || undefined,
   },
 } as const;
 
