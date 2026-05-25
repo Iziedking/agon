@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useAccount } from "wagmi";
 import { useContestSocket } from "@/hooks/useContestSocket";
+import { OperatorAvatar } from "@/components/pengu/OperatorAvatar";
 import { fetchResults, type ArenaResults, type ResultEntrant } from "@/lib/results";
 import { formatUsdcString, short } from "@/lib/profiles";
 
@@ -111,6 +112,7 @@ export function ResultsBoard({
                 >
                   {w.rank}
                 </span>
+                <OperatorAvatar address={w.operator} className="h-6 w-6" />
                 <span className="min-w-0 flex-1 truncate font-mono text-sm text-pengu-dark">{short(w.operator)}</span>
                 {mine ? <YouTag /> : null}
                 <span
@@ -163,6 +165,7 @@ function LiveStandings({ id, entrants, me }: { id: number; entrants: ResultEntra
             <span className={`w-7 shrink-0 font-mono text-base ${leader ? "text-pengu-blue" : "text-pengu-dark/50"}`}>
               #{e.rank}
             </span>
+            <OperatorAvatar address={e.operator} className="h-7 w-7" />
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 font-mono text-xs text-pengu-dark/60">
                 <span className="truncate">
@@ -201,7 +204,8 @@ function Field({ entrants, me }: { entrants: ResultEntrant[]; me?: string }) {
               mine ? "border-pengu-blue/40 ring-2 ring-pengu-blue/20" : "border-pengu-blue/10"
             }`}
           >
-            <span className="flex min-w-0 items-center gap-2">
+            <span className="flex min-w-0 items-center gap-2.5">
+              <OperatorAvatar address={e.operator} className="h-6 w-6" />
               <span className="truncate font-mono text-sm text-pengu-dark">{short(e.operator)}</span>
               {mine ? <YouTag /> : null}
             </span>

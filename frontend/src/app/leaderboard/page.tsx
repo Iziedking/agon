@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/pengu/Footer";
 import { SectionLabel } from "@/components/pengu/atoms";
+import { OperatorAvatar } from "@/components/pengu/OperatorAvatar";
 import { fetchLeaderboard, formatReputation, formatUsdcString, short, type LeaderRow } from "@/lib/profiles";
 
 const COLS = "grid-cols-[2.5rem_1fr_3.5rem_3.5rem_4rem_4.5rem_7rem]";
@@ -64,7 +65,10 @@ export default function LeaderboardPage() {
                 }`}
               >
                 <span className={`font-mono text-lg ${top ? "text-[#F59E0B]" : "text-pengu-dark/45"}`}>#{rank}</span>
-                <span className="truncate font-mono text-sm text-pengu-dark">{short(r.operator)}</span>
+                <span className="flex min-w-0 items-center gap-2.5">
+                  <OperatorAvatar address={r.operator} className="h-7 w-7" />
+                  <span className="truncate font-mono text-sm text-pengu-dark">{short(r.operator)}</span>
+                </span>
                 <span className="text-right font-mono text-sm text-pengu-dark/65">{r.entered}</span>
                 <span className="text-right font-mono text-sm text-pengu-dark/65">{r.wins}</span>
                 <span className="text-right font-mono text-sm text-pengu-dark/65">{r.cycles}</span>

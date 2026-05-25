@@ -6,18 +6,11 @@ import { useAccount } from "wagmi";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/pengu/Footer";
 import { SectionLabel } from "@/components/pengu/atoms";
-import { AgentMascot } from "@/components/pengu/AgentMascot";
+import { OperatorAvatar } from "@/components/pengu/OperatorAvatar";
 import { CreateChallengeModal } from "@/components/pengu/CreateChallengeModal";
 import { HostCampaignButton } from "@/components/pengu/HostCampaignButton";
 import { CONTEST_TYPE } from "@/lib/contests";
-import {
-  fetchOperator,
-  formatReputation,
-  formatUsdcString,
-  operatorColor,
-  short,
-  type OperatorProfile,
-} from "@/lib/profiles";
+import { fetchOperator, formatReputation, formatUsdcString, short, type OperatorProfile } from "@/lib/profiles";
 
 const primaryBtn =
   "rounded-pill bg-pengu-blue px-5 py-2.5 font-display text-xs uppercase tracking-wide text-white shadow-[0_4px_0_0_#5b34d6] transition-all duration-100 hover:translate-y-[2px] hover:shadow-[0_2px_0_0_#5b34d6]";
@@ -67,9 +60,7 @@ export default function OperatorPage() {
       <section className="mx-auto max-w-[900px] px-6 pb-16 pt-12">
         <SectionLabel>operator</SectionLabel>
         <div className="mt-5 flex items-center gap-4">
-          <span className="flex h-16 w-16 flex-none items-center justify-center rounded-full border border-pengu-blue/15 bg-white shadow-[0_8px_24px_rgba(70,45,150,0.06)]">
-            <AgentMascot color={operatorColor(address)} className="h-12 w-auto" />
-          </span>
+          <OperatorAvatar address={address} className="h-16 w-16 shadow-[0_8px_24px_rgba(70,45,150,0.06)]" />
           <div className="min-w-0">
             <h1 className="break-all font-bubble text-[clamp(28px,4vw,48px)] uppercase leading-tight text-pengu-dark">
               {short(address)}
