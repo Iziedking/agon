@@ -12,7 +12,39 @@ export const contestEngineAbi = parseAbi([
   "function registerEntry(uint256 contestId, uint256 agentId, uint256 syndicateId)",
   "function prizeClaimed(uint256 contestId, address operator) view returns (bool)",
   "function claimPrize(uint256 contestId, uint256 amount, bytes32[] proof)",
+  "function listContest(uint8 cType, address protocolTarget, bytes32 metric, uint256 prizePool, uint64 duration, uint16 winnerCutBps, uint16 topN) returns (uint256)",
+  "function listingFee() view returns (uint256)",
 ]);
+
+/// The scoring metric each contest family settles on (matches the coordinator).
+export const METRIC_FOR_TYPE = ["VOLUME", "BRIER", "PUZZLE"] as const;
+
+export function metricForType(cType: number): `0x${string}` {
+  return keccak256(toBytes(METRIC_FOR_TYPE[cType] ?? "VOLUME"));
+}
+
+/// Flat USDC fee a sponsor pays on top of the pool to list a contest.
+export async function fetchListingFee(): Promise<bigint> {
+  try {
+    return (await publicClient.readContract({
+      address: CONTRACTS.ContestEngine,
+      abi: contestEngineAbi,
+      functionName: "listingFee",
+    })) as bigint;
+  } catch {
+    return 0n;
+  }
+}
+
+/// The id the next listed contest will get.
+export async function nextContestId(): Promise<number> {
+  const n = await publicClient.readContract({
+    address: CONTRACTS.ContestEngine,
+    abi: contestEngineAbi,
+    functionName: "nextContestId",
+  });
+  return Number(n);
+}
 
 const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL ?? "http://localhost:8082";
 

@@ -2,11 +2,19 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import { useAccount } from "wagmi";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/pengu/Footer";
 import { SectionLabel } from "@/components/pengu/atoms";
+import { CreateChallengeModal } from "@/components/pengu/CreateChallengeModal";
+import { HostCampaignButton } from "@/components/pengu/HostCampaignButton";
 import { CONTEST_TYPE } from "@/lib/contests";
-import { fetchOperator, formatUsdcString, short, type OperatorProfile } from "@/lib/profiles";
+import { fetchOperator, formatReputation, formatUsdcString, short, type OperatorProfile } from "@/lib/profiles";
+
+const primaryBtn =
+  "rounded-pill bg-pengu-blue px-5 py-2.5 font-display text-xs uppercase tracking-wide text-white shadow-[0_4px_0_0_#5b34d6] transition-all duration-100 hover:translate-y-[2px] hover:shadow-[0_2px_0_0_#5b34d6]";
+const secondaryBtn =
+  "rounded-pill border border-pengu-blue/25 bg-white px-5 py-2.5 font-display text-xs uppercase tracking-wide text-pengu-blue hover:border-pengu-blue";
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
@@ -24,6 +32,9 @@ function tiers(a: { scoutTier: number; analystTier: number; solverTier: number }
 export default function OperatorPage() {
   const params = useParams();
   const address = (Array.isArray(params.address) ? params.address[0] : params.address) ?? "";
+  const { address: me } = useAccount();
+  const isMe = !!me && !!address && me.toLowerCase() === address.toLowerCase();
+  const [showCreate, setShowCreate] = useState(false);
   const [profile, setProfile] = useState<OperatorProfile | null | "loading">("loading");
 
   useEffect(() => {
@@ -50,6 +61,21 @@ export default function OperatorPage() {
           <p className="mt-2 font-mono text-sm text-pengu-blue">@{profile.xHandle}</p>
         )}
 
+        {isMe && (
+          <div className="mt-6 flex flex-wrap items-center gap-3">
+            <button onClick={() => setShowCreate(true)} className={primaryBtn}>
+              create challenge
+            </button>
+            <HostCampaignButton className={secondaryBtn} />
+            <a href="/contests" className={secondaryBtn}>
+              enter a contest
+            </a>
+            <a href="/workshop" className={secondaryBtn}>
+              workshop
+            </a>
+          </div>
+        )}
+
         {profile === "loading" && <p className="mt-8 font-mono text-sm text-pengu-dark/50">loading profile…</p>}
         {profile === null && (
           <p className="mt-8 font-mono text-sm text-pengu-dark/50">no activity found for this address yet.</p>
@@ -57,11 +83,12 @@ export default function OperatorPage() {
 
         {profile && profile !== "loading" && (
           <>
-            <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
+            <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
               <Stat label="entered" value={String(profile.stats.entered)} />
               <Stat label="wins" value={String(profile.stats.wins)} />
               <Stat label="earned" value={formatUsdcString(profile.stats.earned)} />
-              <Stat label="reputation" value={String(Number(profile.reputation))} />
+              <Stat label="cycles" value={String(profile.cycles)} />
+              <Stat label="reputation" value={String(formatReputation(profile.reputation))} />
             </div>
 
             <h2 className="mt-12 font-bubble text-2xl uppercase text-pengu-dark">agents</h2>
@@ -111,6 +138,8 @@ export default function OperatorPage() {
       </section>
 
       <Footer />
+
+      <CreateChallengeModal open={showCreate} onClose={() => setShowCreate(false)} />
     </div>
   );
 }

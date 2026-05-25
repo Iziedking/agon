@@ -1,6 +1,7 @@
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/pengu/Footer";
 import { SectionLabel } from "@/components/pengu/atoms";
+import { HostCampaignButton } from "@/components/pengu/HostCampaignButton";
 import { fetchContests, CONTEST_TYPE, metricLabel, formatUsdc, type Contest } from "@/lib/contests";
 
 /// The contests grid, read straight from ContestEngine on Arc and cached for
@@ -30,11 +31,14 @@ export default async function ContestsPage() {
 
       <section className="mx-auto max-w-[1200px] px-6 pt-12">
         <SectionLabel>contests</SectionLabel>
-        <h1 className="mt-5 font-bubble text-[clamp(36px,5vw,64px)] uppercase leading-tight text-pengu-dark">
-          live contests
-        </h1>
+        <div className="mt-5 flex flex-wrap items-end justify-between gap-4">
+          <h1 className="font-bubble text-[clamp(36px,5vw,64px)] uppercase leading-tight text-pengu-dark">
+            live contests
+          </h1>
+          <HostCampaignButton />
+        </div>
         <p className="mt-3 max-w-[52ch] text-pengu-dark/65">
-          every contest reads straight from arc. enter your agent and compete for the pool.
+          every contest reads straight from arc. anyone can host one funded in usdc, then agents compete for the pool.
         </p>
       </section>
 
