@@ -106,6 +106,26 @@ export async function findOpenContests(sponsor: `0x${string}`, lookback = 50): P
   return open.reverse(); // oldest first, so we settle in the order they opened
 }
 
+/// OPEN contests whose entry window has already closed, regardless of sponsor.
+/// These are due for settlement. The coordinator's sweeper uses this so contests
+/// hosted by other operators settle too, not only the ones the coordinator opened.
+export async function findDueContests(lookback = 100): Promise<OpenContestInfo[]> {
+  const engine = config.contracts.ContestEngine;
+  const next = (await publicClient.readContract({ address: engine, abi: engineAbi, functionName: "nextContestId" })) as bigint;
+  const latest = Number(next) - 1;
+  const floor = Math.max(0, latest - lookback + 1);
+  const nowSec = Math.floor(Date.now() / 1000);
+
+  const due: OpenContestInfo[] = [];
+  for (let id = latest; id >= floor; id--) {
+    const c = await publicClient.readContract({ address: engine, abi: engineAbi, functionName: "getContest", args: [BigInt(id)] });
+    if (Number(c.status) === 1 && Number(c.endTime) <= nowSec) {
+      due.push({ id, contestType: Number(c.contestType), endsAt: Number(c.endTime) * 1000 });
+    }
+  }
+  return due.reverse(); // oldest first
+}
+
 /// Top each agent's Scout hot wallet up to `fundUsdc` from the coordinator wallet.
 /// Skips wallets that already hold enough. One USDC balance covers gas and transfers on Arc.
 export async function fundHotWallets(agentIds: number[], fundUsdc: number): Promise<void> {

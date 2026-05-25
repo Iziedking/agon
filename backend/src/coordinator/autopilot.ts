@@ -1,5 +1,5 @@
 import { config } from "../config/index.js";
-import { coordinatorAddress, findOpenContests, openContest } from "./contestOps.js";
+import { coordinatorAddress, findDueContests, findOpenContests, openContest } from "./contestOps.js";
 import { runContestById } from "./runContestById.js";
 
 /// Self-driving contest loop. With a funded COORDINATOR_PRIVATE_KEY in place, the
@@ -22,6 +22,41 @@ const TYPE_NAMES = ["scout", "analyst", "solver"]; // contract index to name
 
 function nextType(configured: string, cycle: number): string {
   return configured === "rotate" ? ROTATION[cycle % ROTATION.length]! : configured;
+}
+
+/// Contests currently being run, so the main loop and the due-sweeper never act
+/// on the same contest at once. The check-and-add is synchronous (no await
+/// between), so two callers can't both pass the guard for the same id.
+const inFlight = new Set<number>();
+
+async function runOnce(contestId: number, broadcast: (message: unknown) => void): Promise<void> {
+  if (inFlight.has(contestId)) return;
+  inFlight.add(contestId);
+  try {
+    await runContestById(contestId, broadcast);
+  } finally {
+    inFlight.delete(contestId);
+  }
+}
+
+/// Settle any contest whose window has closed, including ones hosted by other
+/// operators (the main loop only runs the coordinator's own). Runs concurrently
+/// with the open-loop; the in-flight guard keeps them from colliding.
+async function startDueSweeper(broadcast: (message: unknown) => void): Promise<void> {
+  const everyMs = Number(process.env.AUTOPILOT_SWEEP_SECONDS ?? "60") * 1000;
+  for (;;) {
+    await sleep(everyMs);
+    try {
+      const due = await findDueContests();
+      for (const info of due) {
+        if (inFlight.has(info.id)) continue;
+        console.log(`autopilot: settling due contest ${info.id}`);
+        await runOnce(info.id, broadcast);
+      }
+    } catch (err) {
+      console.error("autopilot sweeper failed:", err instanceof Error ? err.message : err);
+    }
+  }
 }
 
 export async function startAutopilot(broadcast: (message: unknown) => void): Promise<void> {
@@ -55,12 +90,18 @@ export async function startAutopilot(broadcast: (message: unknown) => void): Pro
         contestType: TYPE_NAMES[info.contestType] ?? String(info.contestType),
         endsAt: info.endsAt,
       });
-      await runContestById(info.id, broadcast);
+      await runOnce(info.id, broadcast);
       console.log(`autopilot: resumed contest ${info.id} complete`);
     }
   } catch (err) {
     console.error("autopilot: resume scan failed:", err instanceof Error ? err.message : err);
   }
+
+  // Concurrently settle any contest past its window, including ones hosted by
+  // other operators, so their campaigns resolve without the coordinator hosting them.
+  void startDueSweeper(broadcast).catch((err) =>
+    console.error("autopilot sweeper crashed:", err instanceof Error ? err.message : err),
+  );
 
   for (let cycle = 0; ; cycle++) {
     const type = nextType(configured, cycle);
@@ -70,7 +111,7 @@ export async function startAutopilot(broadcast: (message: unknown) => void): Pro
       broadcast({ type: "contest_open", contestId, contestType: type, endsAt: Date.now() + durationSeconds * 1000 });
 
       // Streams standings over the window, then settles (or refunds if empty).
-      await runContestById(contestId, broadcast);
+      await runOnce(contestId, broadcast);
       console.log(`autopilot: contest ${contestId} complete`);
     } catch (err) {
       console.error("autopilot cycle failed:", err instanceof Error ? err.message : err);
