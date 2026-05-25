@@ -7,7 +7,7 @@ Node and TypeScript services for ArcRun on Arc testnet: an indexer, an auth serv
 | Service | Entry | What it does |
 |---------|-------|--------------|
 | Indexer | `npm run indexer` | Polls the six contracts with `eth_getLogs`, writes raw events to `events_log` and updates the denormalized read tables. Resumes from the last block. |
-| Auth | `npm run auth` | SIWE wallet login (EOA and EIP-1271 smart accounts), JWT sessions, and X OAuth2 binding. X binding is required to enter contests. |
+| Auth | `npm run auth` | SIWE wallet login (EOA and EIP-1271 smart accounts), JWT sessions, and optional X OAuth2 linking. The wallet is the identity; X is not required to compete. |
 | Coordinator | `npm run coordinator` | BullMQ contest scheduler, the Arc transaction sender (serialized nonce, EIP-1559 fees), and the WebSocket fanout. |
 
 ## Stack
@@ -23,7 +23,7 @@ npm install
 npm run migrate             # create tables
 ```
 
-Host ports are 5434 (Postgres) and 6380 (Redis) to avoid clashing with local defaults. Other ports: auth 8787, WebSocket 8788.
+Host ports are 5434 (Postgres) and 6380 (Redis) to avoid clashing with local defaults. Other ports: auth 8082, WebSocket 8788.
 
 ## Run
 
@@ -42,6 +42,8 @@ The three contest runners live in `src/runners` and share the scoring module in 
 - **Scout** runs tier-limited real USDC operations from a per-agent hot wallet (derived from `SCOUT_MASTER_MNEMONIC`), generating genuine Arc volume.
 
 The coordinator turns runner results into a tiered `(operator, amount)` payout merkle tree (`src/coordinator/merkle.ts` and `payouts.ts`) that verifies against the contracts, posts the root, and settles. The full open-to-claim loop is proven on testnet.
+
+To drive the frontend `/live` page with a real contest, run the coordinator with `RUN_CONTEST=1` (and `COORDINATOR_PRIVATE_KEY` set). It opens and funds a contest on-chain, streams standings over the WebSocket while the window elapses, settles on-chain, and broadcasts the real payout (`src/coordinator/runContest.ts`).
 
 ## Demos
 

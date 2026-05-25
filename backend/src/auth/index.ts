@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import { createHash, randomBytes } from "node:crypto";
 import { generateSiweNonce, parseSiweMessage } from "viem/siwe";
 
@@ -10,11 +11,22 @@ import { query } from "../db/pool.js";
 import { redis } from "../redis.js";
 import { issueToken, requireAuth } from "./jwt.js";
 
-/// Auth service: SIWE wallet login plus X (Twitter) OAuth2 binding. X binding is
-/// mandatory to enter contests; `GET /auth/me` reports whether it is set.
+/// Auth service: SIWE wallet login plus optional X (Twitter) OAuth2 linking.
+/// The wallet is the identity, so X is not required to enter contests; it is a
+/// social link, and Discord can be added the same way later.
 /// See ARCRUN_PLAN.md section 5.1.
 
 const app = new Hono<{ Variables: { address: string } }>();
+
+// Allow the frontend origin to call the auth API from the browser.
+app.use(
+  "*",
+  cors({
+    origin: config.auth.appUrl,
+    allowHeaders: ["Content-Type", "Authorization"],
+    allowMethods: ["GET", "POST", "OPTIONS"],
+  }),
+);
 
 const NONCE_TTL = 300; // seconds
 const STATE_TTL = 600;
@@ -70,7 +82,9 @@ app.get("/auth/me", requireAuth, async (c) => {
     [address],
   );
   const op = rows[0] ?? { address, x_handle: null, current_syndicate_id: null };
-  return c.json({ ...op, canEnterContests: Boolean(op.x_handle) });
+  // The wallet is the identity; any authenticated operator can compete. X is an
+  // optional social link, not a gate.
+  return c.json({ ...op, canEnterContests: true });
 });
 
 // ----- X (Twitter) OAuth2 with PKCE -----

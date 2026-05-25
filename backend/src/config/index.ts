@@ -17,7 +17,7 @@ const envSchema = z.object({
 
   // Auth service
   JWT_SECRET: z.string().default("dev-insecure-secret-change-me"),
-  AUTH_PORT: z.coerce.number().int().positive().default(8787),
+  AUTH_PORT: z.coerce.number().int().positive().default(8082),
   AUTH_DOMAIN: z.string().default("localhost:3000"),
   APP_URL: z.string().url().default("http://localhost:3000"),
   X_CLIENT_ID: z.string().optional(),
