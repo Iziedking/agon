@@ -27,46 +27,54 @@ export function LiveContestPanel({
 
   if (!standings) {
     return (
-      <section className="card">
-        <div className="live-head">
-          <span className="live-dot" />
-          <strong>Live contest</strong>
+      <div className="rounded-card border border-pengu-blue/15 bg-white p-8 shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
+        <div className="flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full bg-[#22c55e] animate-pulse-live" />
+          <span className="font-bubble text-lg uppercase text-pengu-dark">live contest</span>
         </div>
-        <p className="mono muted" style={{ marginTop: 12 }}>
-          {connected ? "waiting for a contest to start..." : "connecting to the live feed..."}
+        <p className="mt-3 font-mono text-sm text-pengu-dark/55">
+          {connected ? "waiting for a contest to start…" : "connecting to the live feed…"}
         </p>
-      </section>
+      </div>
     );
   }
 
   const max = Math.max(...standings.entries.map((e) => e.score), 1);
 
   return (
-    <section className="card">
-      <div className="contest-top">
-        <div className="live-head">
-          <span className="live-dot" />
-          <strong>Live · contest #{standings.contestId}</strong>
+    <div className="rounded-card border border-pengu-blue/15 bg-white p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full bg-[#22c55e] animate-pulse-live" />
+          <span className="font-bubble text-lg uppercase text-pengu-dark">live · contest #{standings.contestId}</span>
         </div>
-        <span className="countdown">{countdown(standings.endsAt)}</span>
+        <span className="font-mono text-sm text-pengu-blue">{countdown(standings.endsAt)}</span>
       </div>
 
-      <div>
-        {standings.entries.map((e) => (
-          <div className={`standing r${e.rank}`} key={e.agentId}>
-            <span className="rank">#{e.rank}</span>
-            <div className="who">
-              <span className="mono">
-                agent {e.agentId} · {short(e.operator)}
+      <div className="mt-5 flex flex-col gap-2">
+        {standings.entries.map((e) => {
+          const leader = e.rank === 1;
+          return (
+            <div key={e.agentId} className={`flex items-center gap-4 rounded-xl px-3 py-3 ${leader ? "bg-pengu-blue/5" : ""}`}>
+              <span className={`w-8 shrink-0 font-mono text-lg ${leader ? "text-pengu-blue" : "text-pengu-dark/50"}`}>
+                #{e.rank}
               </span>
-              <div className="bar">
-                <span style={{ width: `${(e.score / max) * 100}%` }} />
+              <div className="min-w-0 flex-1">
+                <div className="font-mono text-xs text-pengu-dark/60">
+                  agent {e.agentId} · {short(e.operator)}
+                </div>
+                <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-pengu-blue/10">
+                  <div
+                    className="h-full rounded-full bg-pengu-blue transition-all duration-500"
+                    style={{ width: `${(e.score / max) * 100}%` }}
+                  />
+                </div>
               </div>
+              <span className="w-20 shrink-0 text-right font-mono text-sm text-pengu-dark">{e.score.toLocaleString()}</span>
             </div>
-            <span className="score">{e.score.toLocaleString()}</span>
-          </div>
-        ))}
+          );
+        })}
       </div>
-    </section>
+    </div>
   );
 }
