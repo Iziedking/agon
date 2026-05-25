@@ -31,6 +31,10 @@ const envSchema = z.object({
 
   // Scout runner: master mnemonic for deriving per-agent hot wallets
   SCOUT_MASTER_MNEMONIC: z.string().optional(),
+
+  // ERC-8004 validator wallet for on-chain reputation feedback. Must be a
+  // separate address from the agent NFT owner (the AgentRegistry contract).
+  VALIDATOR_PRIVATE_KEY: z.string().optional(),
 });
 
 const addr = z
@@ -82,7 +86,7 @@ function loadDeployments(file: string) {
 /// \r or surrounding quotes that make viem reject the key. Trim those, add the 0x
 /// prefix if missing, and validate the shape. An invalid key returns undefined so
 /// the coordinator runs in log-only mode with a clear warning instead of crash-looping.
-function normalizePrivateKey(raw?: string): `0x${string}` | undefined {
+function normalizePrivateKey(raw?: string, name = "COORDINATOR_PRIVATE_KEY"): `0x${string}` | undefined {
   if (!raw) return undefined;
   let v = raw.trim();
   if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
@@ -92,8 +96,8 @@ function normalizePrivateKey(raw?: string): `0x${string}` | undefined {
   if (!v.startsWith("0x")) v = `0x${v}`;
   if (!/^0x[0-9a-fA-F]{64}$/.test(v)) {
     console.warn(
-      `COORDINATOR_PRIVATE_KEY is set but is not a 32-byte hex key (got ${v.length} chars after cleanup). ` +
-        "Running in log-only mode. Expected 0x followed by 64 hex characters.",
+      `${name} is set but is not a 32-byte hex key (got ${v.length} chars after cleanup). ` +
+        "Ignoring it. Expected 0x followed by 64 hex characters.",
     );
     return undefined;
   }
@@ -136,6 +140,9 @@ export const config = {
   },
   scout: {
     masterMnemonic: env.SCOUT_MASTER_MNEMONIC?.trim() || undefined,
+  },
+  validator: {
+    privateKey: normalizePrivateKey(env.VALIDATOR_PRIVATE_KEY, "VALIDATOR_PRIVATE_KEY"),
   },
 } as const;
 

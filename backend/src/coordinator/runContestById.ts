@@ -10,6 +10,7 @@ import { ScoutRunner } from "../runners/scout.js";
 import { SolverRunner } from "../runners/solver.js";
 import type { AgentResult, ContestEntryInput } from "../runners/types.js";
 import { fundHotWallets } from "./contestOps.js";
+import { applyReputation, creditPoints, postValidatorFeedback, qualifiedField } from "./reputation.js";
 import { merkleRoot, payoutLeaf } from "./merkle.js";
 import { computePayouts } from "./payouts.js";
 
@@ -113,7 +114,10 @@ export async function runContestById(contestId: number, broadcast: (message: unk
   // Window closed. Wait a beat so chain time is past endTime, then settle.
   await sleep(3000);
 
-  const field = await fetchField(contestId, cType);
+  let field = await fetchField(contestId, cType);
+
+  // Off-chain qualification gate (no-op unless QUALIFY_MIN_POINTS is set).
+  field = await qualifiedField(field);
 
   // Scout scoring runs real on-chain operations from each agent's hot wallet, so
   // those wallets need USDC first. Top them up from the coordinator wallet (one
@@ -163,4 +167,10 @@ export async function runContestById(contestId: number, broadcast: (message: unk
     contestId,
     winners: payouts.map((p, i) => ({ rank: i + 1, operator: p.operator, amount: p.amount.toString() })),
   });
+
+  // Post-settlement rewards (best-effort, each logs on failure):
+  // in-game reputation, Cycles, and ERC-8004 validator feedback.
+  await applyReputation(contestId, results);
+  await creditPoints(contestId, cType, results);
+  await postValidatorFeedback(contestId, cType, results);
 }
