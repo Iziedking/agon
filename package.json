@@ -1,0 +1,17 @@
+{
+  "name": "arcrun",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ArcRun monorepo: smart contracts, backend services, and frontend. Convenience scripts that delegate to each package.",
+  "scripts": {
+    "dev:frontend": "cd frontend && npm run dev",
+    "build:frontend": "cd frontend && npm run build",
+    "migrate": "cd backend && npm run migrate",
+    "indexer": "cd backend && npm run indexer",
+    "indexer:dev": "cd backend && npm run indexer:dev",
+    "auth": "cd backend && npm run auth",
+    "coordinator": "cd backend && npm run coordinator",
+    "build:contracts": "cd contracts && forge build",
+    "test:contracts": "cd contracts && forge test"
+  }
+}
