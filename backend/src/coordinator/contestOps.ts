@@ -18,6 +18,7 @@ const engineAbi = parseAbi([
   "function listContest(uint8 cType,address protocolTarget,bytes32 metric,uint256 prizePool,uint64 duration,uint16 winnerCutBps,uint16 topN) returns (uint256)",
   "function listingFee() view returns (uint256)",
   "function nextContestId() view returns (uint256)",
+  "function getContest(uint256 contestId) view returns ((uint8 contestType,uint8 status,uint16 winnerCutBps,uint16 topN,uint16 platformFeeBps,address sponsor,address protocolTarget,bytes32 metric,uint64 startTime,uint64 endTime,uint256 prizePool,bytes32 finalRoot))",
 ]);
 
 const TYPES: Record<string, { index: number; metric: string }> = {
@@ -26,12 +27,20 @@ const TYPES: Record<string, { index: number; metric: string }> = {
   solver: { index: 2, metric: "PUZZLE" },
 };
 
-export function coordinatorWallet() {
+function coordinatorPk(): `0x${string}` {
   if (!config.coordinator.privateKey) throw new Error("COORDINATOR_PRIVATE_KEY required");
-  const pk = config.coordinator.privateKey.startsWith("0x")
+  return (config.coordinator.privateKey.startsWith("0x")
     ? config.coordinator.privateKey
-    : `0x${config.coordinator.privateKey}`;
-  return createWalletClient({ account: privateKeyToAccount(pk as `0x${string}`) as Account, chain: arcTestnet, transport: http(config.rpcHttp) });
+    : `0x${config.coordinator.privateKey}`) as `0x${string}`;
+}
+
+export function coordinatorWallet() {
+  return createWalletClient({ account: privateKeyToAccount(coordinatorPk()) as Account, chain: arcTestnet, transport: http(config.rpcHttp) });
+}
+
+/// The coordinator wallet's address (the sponsor of contests it opens).
+export function coordinatorAddress(): `0x${string}` {
+  return privateKeyToAccount(coordinatorPk()).address;
 }
 
 export interface OpenOpts {
@@ -69,6 +78,32 @@ export async function openContest(opts: OpenOpts): Promise<number> {
     args: [t.index, zeroAddress, keccak256(toBytes(t.metric)), prizePool, duration, opts.winnerCutBps ?? 6000, opts.topN ?? 3],
   });
   return Number(contestId);
+}
+
+export interface OpenContestInfo {
+  id: number;
+  contestType: number;
+  endsAt: number; // epoch ms
+}
+
+/// Contests this coordinator opened that are still OPEN (status 1). Scans back
+/// from the newest contest id. Used on startup to resume and settle anything left
+/// in flight by a previous run, instead of abandoning its escrowed pool.
+export async function findOpenContests(sponsor: `0x${string}`, lookback = 50): Promise<OpenContestInfo[]> {
+  const engine = config.contracts.ContestEngine;
+  const next = (await publicClient.readContract({ address: engine, abi: engineAbi, functionName: "nextContestId" })) as bigint;
+  const latest = Number(next) - 1;
+  const floor = Math.max(0, latest - lookback + 1);
+  const want = sponsor.toLowerCase();
+
+  const open: OpenContestInfo[] = [];
+  for (let id = latest; id >= floor; id--) {
+    const c = await publicClient.readContract({ address: engine, abi: engineAbi, functionName: "getContest", args: [BigInt(id)] });
+    if (Number(c.status) === 1 && c.sponsor.toLowerCase() === want) {
+      open.push({ id, contestType: Number(c.contestType), endsAt: Number(c.endTime) * 1000 });
+    }
+  }
+  return open.reverse(); // oldest first, so we settle in the order they opened
 }
 
 /// Top each agent's Scout hot wallet up to `fundUsdc` from the coordinator wallet.

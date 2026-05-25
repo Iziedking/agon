@@ -1,5 +1,5 @@
 import { config } from "../config/index.js";
-import { openContest } from "./contestOps.js";
+import { coordinatorAddress, findOpenContests, openContest } from "./contestOps.js";
 import { runContestById } from "./runContestById.js";
 
 /// Self-driving contest loop. With a funded COORDINATOR_PRIVATE_KEY in place, the
@@ -18,6 +18,7 @@ import { runContestById } from "./runContestById.js";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const ROTATION = ["solver", "analyst", "scout"] as const;
+const TYPE_NAMES = ["scout", "analyst", "solver"]; // contract index to name
 
 function nextType(configured: string, cycle: number): string {
   return configured === "rotate" ? ROTATION[cycle % ROTATION.length]! : configured;
@@ -36,6 +37,29 @@ export async function startAutopilot(broadcast: (message: unknown) => void): Pro
   // A Scout rotation needs the master mnemonic to fund hot wallets; warn once.
   if ((configured === "scout" || configured === "rotate") && !config.scout.masterMnemonic) {
     console.warn("autopilot: SCOUT_MASTER_MNEMONIC not set; Scout contests will run unfunded");
+  }
+
+  // Resume anything this coordinator left OPEN (e.g. after a restart) before
+  // opening new contests, so a restart settles the in-flight contest instead of
+  // abandoning its escrowed pool.
+  try {
+    const pending = await findOpenContests(coordinatorAddress());
+    if (pending.length > 0) {
+      console.log(`autopilot: resuming ${pending.length} open contest(s): ${pending.map((p) => p.id).join(", ")}`);
+    }
+    for (const info of pending) {
+      console.log(`autopilot: resuming contest ${info.id}`);
+      broadcast({
+        type: "contest_open",
+        contestId: info.id,
+        contestType: TYPE_NAMES[info.contestType] ?? String(info.contestType),
+        endsAt: info.endsAt,
+      });
+      await runContestById(info.id, broadcast);
+      console.log(`autopilot: resumed contest ${info.id} complete`);
+    }
+  } catch (err) {
+    console.error("autopilot: resume scan failed:", err instanceof Error ? err.message : err);
   }
 
   for (let cycle = 0; ; cycle++) {
