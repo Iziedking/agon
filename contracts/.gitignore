@@ -8,3 +8,4 @@ docs/
 .env
 .env.*
 !.env.example
+grant-roles.sh
