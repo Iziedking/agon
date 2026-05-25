@@ -1,3 +1,22 @@
+# One `docker compose up --build` spins up the whole stack: Postgres, Redis, the
+# schema migration, the indexer, the auth service, the coordinator, and the
+# frontend. Secrets and chain config come from backend/.env; the DB and Redis
+# hosts are overridden to the in-network service names.
+
+x-backend: &backend
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: arcrun-backend:local
+  env_file: .env
+  environment:
+    DATABASE_URL: postgres://arcrun:arcrun@postgres:5432/arcrun
+    REDIS_URL: redis://redis:6379
+  volumes:
+    # config reads ../contracts/deployments/arc-testnet.json relative to /app/backend.
+    - ../contracts/deployments:/app/contracts/deployments:ro
+  restart: unless-stopped
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -30,6 +49,69 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  migrate:
+    <<: *backend
+    container_name: arcrun-migrate
+    command: npm run migrate
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  indexer:
+    <<: *backend
+    container_name: arcrun-indexer
+    command: npm run indexer
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  auth:
+    <<: *backend
+    container_name: arcrun-auth
+    command: npm run auth
+    ports:
+      - "8082:8082"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  coordinator:
+    <<: *backend
+    container_name: arcrun-coordinator
+    command: npm run coordinator
+    ports:
+      - "8788:8788"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+      args:
+        # Set NEXT_PUBLIC_CIRCLE_CLIENT_KEY in backend/.env to enable email login.
+        NEXT_PUBLIC_CIRCLE_CLIENT_KEY: "${NEXT_PUBLIC_CIRCLE_CLIENT_KEY:-}"
+    image: arcrun-frontend:local
+    container_name: arcrun-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - auth
+      - coordinator
+    restart: unless-stopped
 
 volumes:
   arcrun_pgdata:
