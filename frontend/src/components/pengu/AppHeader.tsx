@@ -24,6 +24,12 @@ export function AppHeader() {
           >
             live
           </a>
+          <a
+            href="/workshop"
+            className="rounded-pill px-4 py-1.5 font-display text-xs uppercase tracking-wide text-pengu-blue2 hover:text-pengu-dark"
+          >
+            workshop
+          </a>
         </nav>
         <LoginButton />
       </div>

@@ -4,6 +4,7 @@ import { JetBrains_Mono, Lilita_One, Bagel_Fat_One } from "next/font/google";
 import "../styles/tokens.css";
 import "./globals.css";
 import { Providers } from "@/components/Providers";
+import { ErrorReporter } from "@/components/ErrorReporter";
 
 const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
@@ -37,6 +38,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${GeistSans.variable} ${jetbrainsMono.variable} ${lilita.variable} ${bagel.variable}`}>
       <body>
         <Providers>{children}</Providers>
+        <ErrorReporter />
       </body>
     </html>
   );
