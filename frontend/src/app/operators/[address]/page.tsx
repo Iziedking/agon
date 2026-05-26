@@ -17,13 +17,10 @@ import {
   fetchOperator,
   getAgentNickname,
   getSetting,
-  getSocial,
   setAgentNickname,
   setSetting,
-  setSocial,
   short,
   type OperatorProfile,
-  type SocialKind,
   type SettingKey,
 } from "@/lib/profiles";
 
@@ -168,15 +165,9 @@ export default function OperatorPage() {
 
           <div className="h-px bg-pengu-blue/10" />
 
-          {/* Telegram + Discord (localStorage) */}
-          <SocialField kind="telegram" label="telegram" placeholder="your handle, no @" isMe={isMe} />
-          <SocialField kind="discord" label="discord" placeholder="your handle" isMe={isMe} />
-
-          {!isMe ? (
-            <p className="font-mono text-[11px] text-pengu-dark/45">
-              telegram and discord handles are saved per-browser for now, so only their owner sees them here.
-            </p>
-          ) : null}
+          {/* Telegram + Discord (OAuth) */}
+          <OauthSocial label="telegram" hint="login widget, verified handle and id" isMe={isMe} />
+          <OauthSocial label="discord" hint="oauth2, verified handle and avatar" isMe={isMe} />
         </div>
       </section>
 
@@ -283,49 +274,33 @@ function AgentCustomizeCard({ agent, isMe }: { agent: AgentState; isMe: boolean 
   );
 }
 
-function SocialField({
-  kind,
+function OauthSocial({
   label,
-  placeholder,
+  hint,
   isMe,
 }: {
-  kind: SocialKind;
   label: string;
-  placeholder: string;
+  hint: string;
   isMe: boolean;
 }) {
-  const [value, setValue] = useState("");
-  const [savedNote, setSavedNote] = useState(false);
-
-  useEffect(() => {
-    setValue(getSocial(kind));
-  }, [kind]);
-
-  function save() {
-    setSocial(kind, value);
-    setSavedNote(true);
-    setTimeout(() => setSavedNote(false), 1500);
-  }
-
+  // Placeholder until the real OAuth flow lands. Telegram uses the Login
+  // Widget (passes id, username, photo_url, hash); Discord uses OAuth2 (passes
+  // snowflake id, username, avatar). Once wired, the disabled button becomes a
+  // real connect link matching the X pattern.
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="min-w-0">
         <div className="font-display text-xs uppercase tracking-wide text-pengu-dark/45">{label}</div>
-        <div className="mt-1 font-mono text-sm text-pengu-dark">{value ? `@${value}` : "not set"}</div>
+        <div className="mt-1 font-mono text-sm text-pengu-dark">not linked</div>
+        <div className="mt-0.5 font-mono text-[11px] text-pengu-dark/45">{hint}</div>
       </div>
       {isMe ? (
-        <div className="flex flex-wrap items-center gap-2">
-          <input
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            placeholder={placeholder}
-            className={`max-w-[240px] ${input}`}
-          />
-          <button onClick={save} className={chunkyBtn}>
-            save
-          </button>
-          {savedNote ? <span className="font-mono text-xs text-[#22c55e]">saved</span> : null}
-        </div>
+        <button
+          disabled
+          className="cursor-not-allowed rounded-pill border border-pengu-blue/15 bg-pengu-bg px-5 py-2.5 font-display text-xs uppercase tracking-wide text-pengu-dark/40"
+        >
+          connect {label} · soon
+        </button>
       ) : null}
     </div>
   );
