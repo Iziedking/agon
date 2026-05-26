@@ -15,7 +15,7 @@ const PER_PAGE = 20;
 /// reappear on page 2.
 const MEDALS: Record<number, { text: string; bg: string }> = {
   1: { text: "#F59E0B", bg: "rgba(245, 158, 11, 0.08)" }, // gold
-  2: { text: "#94A3B8", bg: "rgba(148, 163, 184, 0.12)" }, // silver
+  2: { text: "#5F7A99", bg: "rgba(95, 122, 153, 0.10)" }, // silver (steel blue)
   3: { text: "#CD7F32", bg: "rgba(205, 127, 50, 0.08)" }, // bronze
 };
 
@@ -80,7 +80,7 @@ export default function LeaderboardPage() {
                 style={medal ? { backgroundColor: medal.bg } : undefined}
               >
                 <span
-                  className={`font-mono text-lg ${medal ? "font-medium" : "text-pengu-dark/45"}`}
+                  className={`font-mono text-lg ${medal ? "font-medium" : "text-pengu-dark"}`}
                   style={medal ? { color: medal.text } : undefined}
                 >
                   #{rank}
