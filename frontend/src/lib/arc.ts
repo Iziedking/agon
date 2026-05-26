@@ -8,6 +8,18 @@ export { arcTestnet };
 
 export const EXPLORER = "https://testnet.arcscan.app";
 
+/// Arc system contracts: the ERC-8004 IdentityRegistry mints the ERC-721 NFT
+/// that backs every ArcRun agent. The token id is stored on the agent's row in
+/// AgentRegistry as `erc8004TokenId` and is what other Arc contracts read for
+/// trustless agent identity.
+export const ERC8004_IDENTITY_REGISTRY = "0x8004A818BFB912233c491871b3d84c89A494BD9e" as const;
+
+/// Arcscan token page for a given ERC-721 token. Most explorers accept the
+/// `?a=tokenId` parameter on the contract page.
+export function nftLink(tokenId: bigint | number | string): string {
+  return `${EXPLORER}/token/${ERC8004_IDENTITY_REGISTRY}?a=${String(tokenId)}`;
+}
+
 /// Native USDC on Arc (6 decimals as an ERC-20). Used for agent upgrades.
 export const USDC = "0x3600000000000000000000000000000000000000" as const;
 

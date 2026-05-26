@@ -46,6 +46,8 @@ export interface AgentState {
   analystTier: number;
   solverTier: number;
   reputation: bigint;
+  /// ERC-8004 IdentityRegistry token id. Every ArcRun agent IS this NFT.
+  erc8004TokenId: bigint;
 }
 
 export function ctypeIndex(t: ContestTypeName): number {
@@ -84,6 +86,7 @@ export async function fetchAgents(owner: `0x${string}`): Promise<AgentState[]> {
       analystTier: Number(a.analystTier),
       solverTier: Number(a.solverTier),
       reputation: a.reputation,
+      erc8004TokenId: a.erc8004TokenId,
     });
   }
   return agents;
