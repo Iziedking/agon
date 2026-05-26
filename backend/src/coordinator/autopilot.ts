@@ -6,15 +6,17 @@ import { findActiveChallenges, resolveChallengeById } from "./runChallengeById.j
 /// Self-driving contest loop. With a funded COORDINATOR_PRIVATE_KEY in place, the
 /// coordinator opens a contest, streams its standings over the window, funds Scout
 /// entrants when needed, settles on-chain (or refunds itself if nobody entered),
-/// waits a short gap, and opens the next one. No open-contest, fund-scouts, or
-/// RUN_CONTEST_ID commands, and no container restart between contests.
+/// waits a gap, and opens the next one. The coordinator wallet funds each pool
+/// (and recovers it on cancel), so it needs USDC.
 ///
 /// Env (all optional, sensible defaults):
-///   AUTOPILOT=0                     turn it off even with a key set
-///   AUTOPILOT_TYPE=solver           solver | analyst | scout | rotate
-///   AUTOPILOT_POOL_USDC=2           prize pool per contest
-///   AUTOPILOT_DURATION_SECONDS=180  how long entries stay open
-///   AUTOPILOT_GAP_SECONDS=30        pause between one contest settling and the next opening
+///   AUTOPILOT=0                       turn it off even with a key set
+///   AUTOPILOT_TYPE=rotate             solver | analyst | scout | rotate (default rotates across all three)
+///   AUTOPILOT_POOL_USDC_MIN=1         lower bound of the randomized pool, USDC
+///   AUTOPILOT_POOL_USDC_MAX=10        upper bound of the randomized pool, USDC
+///   AUTOPILOT_POOL_USDC=...           legacy single value; if set, used as both min and max
+///   AUTOPILOT_DURATION_SECONDS=1500   how long entries stay open (25 min default)
+///   AUTOPILOT_GAP_SECONDS=7200        pause between one contest settling and the next opening (2 hr default)
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -91,13 +93,15 @@ async function startChallengeSweeper(broadcast: (message: unknown) => void): Pro
 }
 
 export async function startAutopilot(broadcast: (message: unknown) => void): Promise<void> {
-  const configured = (process.env.AUTOPILOT_TYPE ?? "solver").toLowerCase();
-  const poolUsdc = Number(process.env.AUTOPILOT_POOL_USDC ?? "2");
-  const durationSeconds = Number(process.env.AUTOPILOT_DURATION_SECONDS ?? "180");
-  const gapSeconds = Number(process.env.AUTOPILOT_GAP_SECONDS ?? "30");
+  const configured = (process.env.AUTOPILOT_TYPE ?? "rotate").toLowerCase();
+  const legacyPool = process.env.AUTOPILOT_POOL_USDC;
+  const poolMin = Number(process.env.AUTOPILOT_POOL_USDC_MIN ?? legacyPool ?? "1");
+  const poolMax = Number(process.env.AUTOPILOT_POOL_USDC_MAX ?? legacyPool ?? "10");
+  const durationSeconds = Number(process.env.AUTOPILOT_DURATION_SECONDS ?? "1500");
+  const gapSeconds = Number(process.env.AUTOPILOT_GAP_SECONDS ?? "7200");
 
   console.log(
-    `autopilot on: ${configured} contests, ${poolUsdc} USDC pool, ${durationSeconds}s window, ${gapSeconds}s gap`,
+    `autopilot on: ${configured} contests, pool ${poolMin}-${poolMax} USDC, ${durationSeconds}s window, ${gapSeconds}s gap`,
   );
 
   // A Scout rotation needs the master mnemonic to fund hot wallets; warn once.
@@ -141,9 +145,14 @@ export async function startAutopilot(broadcast: (message: unknown) => void): Pro
 
   for (let cycle = 0; ; cycle++) {
     const type = nextType(configured, cycle);
+    // Randomize the pool per cycle so the activity feed reads as varied campaigns
+    // instead of identical pools. Two-decimal precision keeps amounts readable.
+    const lo = Math.min(poolMin, poolMax);
+    const hi = Math.max(poolMin, poolMax);
+    const poolUsdc = Math.round((lo + Math.random() * (hi - lo)) * 100) / 100;
     try {
       const contestId = await openContest({ type, poolUsdc, durationSeconds });
-      console.log(`autopilot: opened ${type} contest ${contestId}`);
+      console.log(`autopilot: opened ${type} contest ${contestId} with ${poolUsdc} USDC pool`);
       broadcast({ type: "contest_open", contestId, contestType: type, endsAt: Date.now() + durationSeconds * 1000 });
 
       // Streams standings over the window, then settles (or refunds if empty).
