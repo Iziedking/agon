@@ -49,8 +49,10 @@ export default async function ChallengesPage({
         <h1 className="mt-5 font-bubble text-[clamp(36px,5vw,64px)] uppercase leading-tight text-pengu-dark">
           peer challenges
         </h1>
-        <p className="mt-3 max-w-[52ch] text-pengu-dark/65">
-          operators stake usdc and take each other on. create one from your profile, or join an open challenge below.
+        <p className="mt-3 max-w-[60ch] text-pengu-dark/65">
+          challenges are peer-staked duels. operators stake equal usdc and take each other on. create one from your
+          profile, or join an open one below. looking for project-funded campaigns instead?{" "}
+          <a href="/contests" className="text-pengu-blue hover:underline">try contests</a>.
         </p>
       </section>
 

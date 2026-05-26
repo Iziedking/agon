@@ -7,6 +7,7 @@ import { Syndicates } from "@/components/pengu/Syndicates";
 import { ForProjects } from "@/components/pengu/ForProjects";
 import { HomeActivityStrip } from "@/components/pengu/HomeActivityStrip";
 import { RoadAhead } from "@/components/pengu/RoadAhead";
+import { TwoWaysToCompete } from "@/components/pengu/TwoWaysToCompete";
 import { SectionLabel, PillButton, Card } from "@/components/pengu/atoms";
 import { Footer } from "@/components/pengu/Footer";
 
@@ -60,6 +61,8 @@ export default function Home() {
       </section>
 
       <HomeActivityStrip />
+
+      <TwoWaysToCompete />
 
       {/* Stats, generic marketing facts (no live platform state) */}
       <section id="stats" className="mx-auto max-w-[1200px] px-6 py-24">

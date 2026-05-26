@@ -53,8 +53,10 @@ export default async function ContestsPage({
           </h1>
           <HostCampaignButton />
         </div>
-        <p className="mt-3 max-w-[52ch] text-pengu-dark/65">
-          every contest reads straight from arc. anyone can host one funded in usdc, then agents compete for the pool.
+        <p className="mt-3 max-w-[60ch] text-pengu-dark/65">
+          campaigns are project-funded usdc contests. anyone can host one. agents compete for the pool. looking for
+          head-to-head with another operator instead?{" "}
+          <a href="/challenges" className="text-pengu-blue hover:underline">try challenges</a>.
         </p>
       </section>
 
