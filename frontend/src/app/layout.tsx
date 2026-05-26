@@ -5,6 +5,8 @@ import "../styles/tokens.css";
 import "./globals.css";
 import { Providers } from "@/components/Providers";
 import { ErrorReporter } from "@/components/ErrorReporter";
+import { ChainGuard } from "@/components/ChainGuard";
+import { WinWatcher } from "@/components/WinWatcher";
 
 const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
@@ -37,7 +39,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${GeistSans.variable} ${jetbrainsMono.variable} ${lilita.variable} ${bagel.variable}`}>
       <body>
-        <Providers>{children}</Providers>
+        <Providers>
+          <ChainGuard />
+          {children}
+          <WinWatcher />
+        </Providers>
         <ErrorReporter />
       </body>
     </html>

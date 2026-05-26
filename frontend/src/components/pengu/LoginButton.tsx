@@ -25,7 +25,7 @@ export function LoginButton() {
           onClick={() => setOpen(true)}
           className="rounded-pill bg-pengu-blue px-6 py-2 font-display text-xs uppercase tracking-wide text-white transition-transform duration-150 hover:-translate-y-0.5"
         >
-          login
+          sign in
         </button>
       )}
       <LoginModal open={open} onClose={() => setOpen(false)} />
