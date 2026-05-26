@@ -13,7 +13,7 @@ import { fundHotWallets } from "./contestOps.js";
 import { applyReputation, creditPoints, postValidatorFeedback, qualifiedField } from "./reputation.js";
 import { merkleRoot, payoutLeaf } from "./merkle.js";
 import { computePayouts } from "./payouts.js";
-import { applyTraitMultipliers, fetchAgentMultipliers } from "./traits.js";
+import { applyTraitMultipliers, awardPlacementTraits, fetchAgentMultipliers } from "./traits.js";
 
 /// Step 3 and 4 of the multi-user loop: take a real, open contest, assemble the
 /// field of every operator who entered (from the indexer's entries table, with
@@ -178,8 +178,12 @@ export async function runContestById(contestId: number, broadcast: (message: unk
   });
 
   // Post-settlement rewards (best-effort, each logs on failure):
-  // in-game reputation, Cycles, and ERC-8004 validator feedback.
+  // in-game reputation, Cycles, ERC-8004 validator feedback, and one
+  // placement-tagged trait per top-3 finisher.
   await applyReputation(contestId, results);
   await creditPoints(contestId, cType, results);
   await postValidatorFeedback(contestId, cType, results);
+  await awardPlacementTraits("contest", contestId, results).catch((err) =>
+    console.error(`contest ${contestId}: placement trait awards failed:`, err instanceof Error ? err.message : err),
+  );
 }

@@ -12,7 +12,7 @@ import type { AgentResult, ContestEntryInput } from "../runners/types.js";
 import { fundHotWallets } from "./contestOps.js";
 import { merkleRoot, payoutLeaf } from "./merkle.js";
 import { computePayouts } from "./payouts.js";
-import { applyTraitMultipliers, fetchAgentMultipliers } from "./traits.js";
+import { applyTraitMultipliers, awardPlacementTraits, fetchAgentMultipliers } from "./traits.js";
 
 /// Peer-challenge counterpart to runContestById. Locks a full or expired
 /// challenge, scores its entrants with the runner matching the challenge kind,
@@ -241,5 +241,10 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
       challengeId,
       winners: payouts.map((p, i) => ({ rank: i + 1, operator: p.operator, amount: p.amount.toString() })),
     });
+
+    // Placement-tagged trait awards to the top finishers (best-effort).
+    await awardPlacementTraits("challenge", challengeId, results).catch((err) =>
+      console.error(`challenge ${challengeId}: placement trait awards failed:`, err instanceof Error ? err.message : err),
+    );
   }
 }
