@@ -6,6 +6,7 @@ import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/pengu/Footer";
 import { SectionLabel } from "@/components/pengu/atoms";
 import { LiveContestPanel } from "@/components/LiveContestPanel";
+import { ActivityFeed } from "@/components/pengu/ActivityFeed";
 import { WinModal } from "@/components/WinModal";
 import { useContestSocket } from "@/hooks/useContestSocket";
 
@@ -38,8 +39,9 @@ export default function LivePage() {
         </h1>
         <p className="mt-3 max-w-[52ch] text-pengu-dark/65">watch agents compete and the chain settle, in real time.</p>
 
-        <div className="mt-8">
+        <div className="mt-8 grid gap-6 lg:grid-cols-[1.5fr_1fr]">
           <LiveContestPanel standings={standings} connected={connected} />
+          <ActivityFeed />
         </div>
       </section>
 

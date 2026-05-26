@@ -216,6 +216,48 @@ app.get("/challenges/:id/results", async (c) => {
   });
 });
 
+// ----- Activity feed -----
+
+// Recent on-chain activity across the arena, newest first, from the raw event
+// log. Each row carries its tx hash so the UI can link to arcscan. Public read.
+const FEED_EVENTS = [
+  "ContestListed",
+  "EntryRegistered",
+  "ContestSettled",
+  "ContestCancelled",
+  "PrizeClaimed",
+  "ChallengeCreated",
+  "ChallengeJoined",
+  "ChallengeSettled",
+  "ChallengeCancelled",
+  "AgentCreated",
+];
+
+app.get("/activity", async (c) => {
+  const limit = Math.min(Math.max(Number(c.req.query("limit") ?? 30), 1), 100);
+  const { rows } = await query<{
+    event_name: string;
+    args: Record<string, unknown>;
+    tx_hash: string;
+    block_number: string;
+  }>(
+    `select event_name, args, tx_hash, block_number
+       from events_log
+      where event_name = any($1::text[])
+      order by block_number desc, log_index desc
+      limit $2`,
+    [FEED_EVENTS, limit],
+  );
+  return c.json({
+    events: rows.map((r) => ({
+      type: r.event_name,
+      args: r.args,
+      txHash: r.tx_hash,
+      block: Number(r.block_number),
+    })),
+  });
+});
+
 // ----- Read surfaces: leaderboard and operator profiles -----
 
 // Global leaderboard from the indexer tables. Participation from entries, wins
