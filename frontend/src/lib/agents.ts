@@ -60,30 +60,69 @@ export function usdc(amount6: bigint): string {
   return `${(Number(amount6) / 1e6).toLocaleString(undefined, { maximumFractionDigits: 2 })} USDC`;
 }
 
-/// The operator's first agent, or null if they have none yet.
-export async function fetchFirstAgent(owner: `0x${string}`): Promise<AgentState | null> {
+/// All agents owned by this wallet, in creation order.
+export async function fetchAgents(owner: `0x${string}`): Promise<AgentState[]> {
   const ids = (await publicClient.readContract({
     address: CONTRACTS.AgentRegistry,
     abi: agentRegistryAbi,
     functionName: "agentsOf",
     args: [owner],
   })) as readonly bigint[];
-  if (ids.length === 0) return null;
+  if (ids.length === 0) return [];
 
-  const id = ids[0];
-  const a = await publicClient.readContract({
-    address: CONTRACTS.AgentRegistry,
-    abi: agentRegistryAbi,
-    functionName: "getAgent",
-    args: [id],
-  });
-  return {
-    id: Number(id),
-    scoutTier: Number(a.scoutTier),
-    analystTier: Number(a.analystTier),
-    solverTier: Number(a.solverTier),
-    reputation: a.reputation,
-  };
+  const agents: AgentState[] = [];
+  for (const id of ids) {
+    const a = await publicClient.readContract({
+      address: CONTRACTS.AgentRegistry,
+      abi: agentRegistryAbi,
+      functionName: "getAgent",
+      args: [id],
+    });
+    agents.push({
+      id: Number(id),
+      scoutTier: Number(a.scoutTier),
+      analystTier: Number(a.analystTier),
+      solverTier: Number(a.solverTier),
+      reputation: a.reputation,
+    });
+  }
+  return agents;
+}
+
+/// The operator's first agent, kept for callers that still want a single-agent
+/// shape. Prefer `fetchAgents` and the active-agent helpers below.
+export async function fetchFirstAgent(owner: `0x${string}`): Promise<AgentState | null> {
+  const list = await fetchAgents(owner);
+  return list[0] ?? null;
+}
+
+/// Active-agent selection lives in localStorage, keyed by lowercased owner. The
+/// chain allows multiple agents per wallet, so the UI lets the operator pick
+/// which one enters or joins. The choice is read by EnterPanel and
+/// JoinChallengePanel via `resolveActiveAgent`.
+const ACTIVE_KEY = (owner: string) => `arcrun:activeAgent:${owner.toLowerCase()}`;
+
+export function getActiveAgentId(owner: string): number | null {
+  if (typeof window === "undefined" || !owner) return null;
+  const v = window.localStorage.getItem(ACTIVE_KEY(owner));
+  return v ? Number(v) : null;
+}
+
+export function setActiveAgentId(owner: string, id: number): void {
+  if (typeof window === "undefined" || !owner) return;
+  window.localStorage.setItem(ACTIVE_KEY(owner), String(id));
+}
+
+/// Resolve which of an owner's agents is active. Falls back to the first agent
+/// if there is no stored choice or the stored id is no longer in the list.
+export function resolveActiveAgent(agents: AgentState[], owner: string): AgentState | null {
+  if (agents.length === 0) return null;
+  const stored = getActiveAgentId(owner);
+  if (stored != null) {
+    const hit = agents.find((a) => a.id === stored);
+    if (hit) return hit;
+  }
+  return agents[0]!;
 }
 
 export async function fetchPrice(t: ContestTypeName, fromTier: number): Promise<bigint> {

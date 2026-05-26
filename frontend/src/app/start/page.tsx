@@ -9,7 +9,7 @@ import { SectionLabel, Bubble3D } from "@/components/pengu/atoms";
 import { LoginCTA } from "@/components/pengu/LoginCTA";
 import { ClaimAgentButton } from "@/components/pengu/ClaimAgentButton";
 import { OperatorAvatar } from "@/components/pengu/OperatorAvatar";
-import { fetchFirstAgent, type AgentState } from "@/lib/agents";
+import { fetchAgents, type AgentState } from "@/lib/agents";
 import { fetchContests } from "@/lib/contests";
 
 /// A judge-friendly walkthrough: connect, claim, enter. Mirrors the real flow,
@@ -77,24 +77,24 @@ function Step({
 
 export default function StartPage() {
   const { address, isConnected } = useAccount();
-  const [agent, setAgent] = useState<AgentState | null | undefined>(undefined);
+  const [agents, setAgents] = useState<AgentState[] | undefined>(undefined);
   const [openCount, setOpenCount] = useState<number | null>(null);
 
-  const refreshAgent = useCallback(async () => {
+  const refreshAgents = useCallback(async () => {
     if (!address) {
-      setAgent(null);
+      setAgents([]);
       return;
     }
     try {
-      setAgent(await fetchFirstAgent(address));
+      setAgents(await fetchAgents(address));
     } catch {
-      setAgent(null);
+      setAgents([]);
     }
   }, [address]);
 
   useEffect(() => {
-    void refreshAgent();
-  }, [refreshAgent]);
+    void refreshAgents();
+  }, [refreshAgents]);
 
   useEffect(() => {
     let live = true;
@@ -111,9 +111,10 @@ export default function StartPage() {
     };
   }, []);
 
+  const hasAgents = !!agents && agents.length > 0;
   const step1: StepStatus = isConnected ? "done" : "active";
-  const step2: StepStatus = !isConnected ? "locked" : agent ? "done" : "active";
-  const step3: StepStatus = !isConnected || !agent ? "locked" : "active";
+  const step2: StepStatus = !isConnected ? "locked" : hasAgents ? "done" : "active";
+  const step3: StepStatus = !isConnected || !hasAgents ? "locked" : "active";
 
   return (
     <div className="min-h-screen text-pengu-dark" style={{ background: "#f3effb" }}>
@@ -153,14 +154,20 @@ export default function StartPage() {
           >
             {!isConnected ? (
               <p className="font-mono text-xs text-pengu-dark/45">connect first.</p>
-            ) : agent === undefined ? (
-              <p className="font-mono text-xs text-pengu-dark/55">checking your agent on arc…</p>
-            ) : agent ? (
-              <span className="inline-flex items-center gap-2 rounded-full bg-[#22c55e]/10 px-3 py-1.5 font-mono text-xs text-[#22c55e]">
-                <Check /> agent #{agent.id} ready
-              </span>
+            ) : agents === undefined ? (
+              <p className="font-mono text-xs text-pengu-dark/55">checking your agents on arc…</p>
+            ) : agents.length > 0 ? (
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="inline-flex items-center gap-2 rounded-full bg-[#22c55e]/10 px-3 py-1.5 font-mono text-xs text-[#22c55e]">
+                  <Check />
+                  {agents.length === 1 ? "agent #" + agents[0]!.id + " ready" : agents.length + " agents ready"}
+                </span>
+                <a href="/workshop" className="font-mono text-xs text-pengu-blue hover:underline">
+                  manage in workshop
+                </a>
+              </div>
             ) : (
-              <ClaimAgentButton className={chunkyBtn} onClaimed={refreshAgent} />
+              <ClaimAgentButton className={chunkyBtn} onClaimed={refreshAgents} />
             )}
           </Step>
 

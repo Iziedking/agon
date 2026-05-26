@@ -3,7 +3,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAccount, useWriteContract } from "wagmi";
 import { CONTRACTS, USDC, publicClient } from "@/lib/arc";
-import { erc20Abi, fetchFirstAgent, type AgentState } from "@/lib/agents";
+import {
+  erc20Abi,
+  fetchAgents,
+  resolveActiveAgent,
+  setActiveAgentId,
+  type AgentState,
+} from "@/lib/agents";
 import {
   challengeArenaAbi,
   fetchChallengePayout,
@@ -15,6 +21,7 @@ import { formatUsdc } from "@/lib/contests";
 import { friendlyError } from "@/lib/errors";
 import { reportEvent } from "@/lib/report";
 import { LoginCTA } from "@/components/pengu/LoginCTA";
+import { AgentPicker } from "@/components/pengu/AgentPicker";
 
 const card =
   "rounded-card border border-pengu-blue/15 bg-white p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)] lg:sticky lg:top-20";
@@ -24,7 +31,9 @@ const chunky =
 type Payout = { amount: bigint; proof: `0x${string}`[] };
 
 /// The challenge side panel. Join while open, claim once resolved, refund if it
-/// was cancelled. Gated on a connected wallet and an agent.
+/// was cancelled. Gated on a connected wallet and at least one agent. When the
+/// operator owns more than one agent, a picker lets them choose which agent
+/// joins; the choice persists via the active-agent helpers in `lib/agents`.
 export function JoinChallengePanel({
   id,
   status,
@@ -39,7 +48,8 @@ export function JoinChallengePanel({
   const { address, isConnected } = useAccount();
   const { writeContractAsync } = useWriteContract();
   const stakeWei = BigInt(stake);
-  const [agent, setAgent] = useState<AgentState | null | undefined>(undefined);
+  const [agents, setAgents] = useState<AgentState[] | undefined>(undefined);
+  const [activeId, setActiveId] = useState<number | null>(null);
   const [joined, setJoined] = useState(false);
   const [payout, setPayout] = useState<Payout | null | undefined>(undefined);
   const [claimed, setClaimed] = useState(false);
@@ -48,11 +58,13 @@ export function JoinChallengePanel({
   const [step, setStep] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const active = agents?.find((a) => a.id === activeId) ?? null;
   const joinOpen = status === 0 && Math.floor(Date.now() / 1000) < joinDeadline;
 
   const load = useCallback(async () => {
     if (!address) {
-      setAgent(null);
+      setAgents([]);
+      setActiveId(null);
       setJoined(false);
       setPayout(null);
       setClaimed(false);
@@ -60,8 +72,10 @@ export function JoinChallengePanel({
       return;
     }
     if (status === 0) {
-      const a = await fetchFirstAgent(address).catch(() => null);
-      setAgent(a);
+      const list = await fetchAgents(address).catch(() => []);
+      setAgents(list);
+      const resolved = resolveActiveAgent(list, address);
+      setActiveId(resolved?.id ?? null);
       setJoined(await hasJoined(id, address as `0x${string}`));
     } else if (status === 2) {
       setPayout(await fetchChallengePayout(id, address));
@@ -76,8 +90,14 @@ export function JoinChallengePanel({
     void load();
   }, [load]);
 
+  function pick(picked: number) {
+    if (!address) return;
+    setActiveAgentId(address, picked);
+    setActiveId(picked);
+  }
+
   async function join() {
-    if (!address || !agent) return;
+    if (!address || !active) return;
     setBusy(true);
     setError(null);
     try {
@@ -95,11 +115,11 @@ export function JoinChallengePanel({
         address: CONTRACTS.ChallengeArena,
         abi: challengeArenaAbi,
         functionName: "joinChallenge",
-        args: [BigInt(id), BigInt(agent.id)],
+        args: [BigInt(id), BigInt(active.id)],
       });
       await publicClient.waitForTransactionReceipt({ hash: h });
       setJoined(true);
-      reportEvent("challenge_join", { context: { id, agentId: agent.id }, address });
+      reportEvent("challenge_join", { context: { id, agentId: active.id }, address });
     } catch (e) {
       setError(friendlyError(e, "could not join."));
       reportEvent("challenge_join_error", { level: "error", message: e instanceof Error ? e.message : String(e), context: { id }, address });
@@ -190,8 +210,8 @@ export function JoinChallengePanel({
     // OPEN
     if (!isConnected) return <LoginGate label="log in to join" />;
     if (!joinOpen) return <p className="mt-3 text-sm text-pengu-dark/60">the join window has closed. scoring is next.</p>;
-    if (agent === undefined) return <p className="mt-3 font-mono text-sm text-pengu-dark/55">reading your agent…</p>;
-    if (agent === null) {
+    if (agents === undefined) return <p className="mt-3 font-mono text-sm text-pengu-dark/55">reading your agents…</p>;
+    if (agents.length === 0 || !active) {
       return (
         <>
           <p className="mt-2 text-sm text-pengu-dark/65">you need an agent first. claim one in the workshop.</p>
@@ -202,11 +222,17 @@ export function JoinChallengePanel({
       );
     }
     if (joined) {
-      return <p className="mt-2 text-sm text-pengu-dark/65">agent #{agent.id} is staked in. results come when the window closes.</p>;
+      return (
+        <>
+          <AgentPicker agents={agents} activeId={active.id} onPick={pick} />
+          <p className="mt-3 text-sm text-pengu-dark/65">agent #{active.id} is staked in. results come when the window closes.</p>
+        </>
+      );
     }
     return (
       <>
-        <p className="mt-2 text-sm text-pengu-dark/65">join stakes {formatUsdc(stakeWei)} and commits agent #{agent.id}.</p>
+        <AgentPicker agents={agents} activeId={active.id} onPick={pick} />
+        <p className="mt-3 text-sm text-pengu-dark/65">join stakes {formatUsdc(stakeWei)} and commits agent #{active.id}.</p>
         <button onClick={join} disabled={busy} className={`mt-5 ${chunky}`}>
           {busy ? (step ?? "working…") : `join for ${formatUsdc(stakeWei)}`}
         </button>

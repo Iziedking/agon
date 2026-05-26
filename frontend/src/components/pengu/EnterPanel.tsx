@@ -4,10 +4,16 @@ import { useCallback, useEffect, useState } from "react";
 import { useAccount, useWriteContract } from "wagmi";
 import { CONTRACTS, publicClient } from "@/lib/arc";
 import { contestEngineAbi, hasEntered, hasClaimed, fetchPayout, formatUsdc } from "@/lib/contests";
-import { fetchFirstAgent, type AgentState } from "@/lib/agents";
+import {
+  fetchAgents,
+  resolveActiveAgent,
+  setActiveAgentId,
+  type AgentState,
+} from "@/lib/agents";
 import { friendlyError } from "@/lib/errors";
 import { reportEvent } from "@/lib/report";
 import { LoginCTA } from "@/components/pengu/LoginCTA";
+import { AgentPicker } from "@/components/pengu/AgentPicker";
 
 const card =
   "rounded-card border border-pengu-blue/15 bg-white p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)] lg:sticky lg:top-20";
@@ -17,31 +23,37 @@ const chunky =
 type Payout = { amount: bigint; proof: `0x${string}`[] };
 
 /// The contest side panel. Enter while open, claim once settled. Gated on a
-/// connected wallet and an agent.
+/// connected wallet and at least one agent. When the operator owns more than one
+/// agent, a picker lets them choose which agent enters; the choice persists in
+/// localStorage via the active-agent helpers in `lib/agents`.
 export function EnterPanel({ contestId, status, endTime }: { contestId: number; status: number; endTime: number }) {
   const { address, isConnected } = useAccount();
   const { writeContractAsync } = useWriteContract();
-  const [agent, setAgent] = useState<AgentState | null | undefined>(undefined);
+  const [agents, setAgents] = useState<AgentState[] | undefined>(undefined);
+  const [activeId, setActiveId] = useState<number | null>(null);
   const [entered, setEntered] = useState(false);
   const [payout, setPayout] = useState<Payout | null | undefined>(undefined);
   const [claimed, setClaimed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const active = agents?.find((a) => a.id === activeId) ?? null;
   const nowOpen = status === 1 && Math.floor(Date.now() / 1000) < endTime;
 
   const load = useCallback(async () => {
     if (!address) {
-      setAgent(null);
+      setAgents([]);
+      setActiveId(null);
       setEntered(false);
       setPayout(null);
       setClaimed(false);
       return;
     }
     if (status === 1) {
-      const a = await fetchFirstAgent(address).catch(() => null);
-      setAgent(a);
-      setEntered(a ? await hasEntered(contestId, a.id) : false);
+      const list = await fetchAgents(address).catch(() => []);
+      setAgents(list);
+      const resolved = resolveActiveAgent(list, address);
+      setActiveId(resolved?.id ?? null);
     } else if (status === 3) {
       setPayout(await fetchPayout(contestId, address));
       setClaimed(await hasClaimed(contestId, address as `0x${string}`));
@@ -52,8 +64,32 @@ export function EnterPanel({ contestId, status, endTime }: { contestId: number; 
     void load();
   }, [load]);
 
+  // Recheck the entered flag whenever the chosen agent changes: different
+  // agents have separate entries on the contract.
+  useEffect(() => {
+    if (status !== 1 || !active) {
+      setEntered(false);
+      return;
+    }
+    let live = true;
+    hasEntered(contestId, active.id)
+      .then((v) => {
+        if (live) setEntered(v);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [active?.id, contestId, status]);
+
+  function pick(id: number) {
+    if (!address) return;
+    setActiveAgentId(address, id);
+    setActiveId(id);
+  }
+
   async function enter() {
-    if (!address || !agent) return;
+    if (!address || !active) return;
     setBusy(true);
     setError(null);
     try {
@@ -61,11 +97,11 @@ export function EnterPanel({ contestId, status, endTime }: { contestId: number; 
         address: CONTRACTS.ContestEngine,
         abi: contestEngineAbi,
         functionName: "registerEntry",
-        args: [BigInt(contestId), BigInt(agent.id), 0n],
+        args: [BigInt(contestId), BigInt(active.id), 0n],
       });
       await publicClient.waitForTransactionReceipt({ hash });
       setEntered(true);
-      reportEvent("contest_enter", { context: { contestId, agentId: agent.id }, address });
+      reportEvent("contest_enter", { context: { contestId, agentId: active.id }, address });
     } catch (e) {
       setError(friendlyError(e, "could not enter."));
       reportEvent("contest_enter_error", { level: "error", message: e instanceof Error ? e.message : String(e), context: { contestId }, address });
@@ -138,8 +174,8 @@ export function EnterPanel({ contestId, status, endTime }: { contestId: number; 
           </>
         );
       }
-      if (agent === undefined) return <p className="mt-3 font-mono text-sm text-pengu-dark/55">reading your agent…</p>;
-      if (agent === null) {
+      if (agents === undefined) return <p className="mt-3 font-mono text-sm text-pengu-dark/55">reading your agents…</p>;
+      if (agents.length === 0 || !active) {
         return (
           <>
             <p className="mt-2 text-sm text-pengu-dark/65">you need an agent first. claim one in the workshop.</p>
@@ -152,7 +188,8 @@ export function EnterPanel({ contestId, status, endTime }: { contestId: number; 
       if (entered) {
         return (
           <>
-            <p className="mt-2 text-sm text-pengu-dark/65">agent #{agent.id} is entered. it competes for the window. you can leave the page.</p>
+            <AgentPicker agents={agents} activeId={active.id} onPick={pick} />
+            <p className="mt-3 text-sm text-pengu-dark/65">agent #{active.id} is entered. it competes for the window. you can leave the page.</p>
             <a href="/live" className={`mt-5 ${chunky}`}>
               watch live
             </a>
@@ -161,7 +198,8 @@ export function EnterPanel({ contestId, status, endTime }: { contestId: number; 
       }
       return (
         <>
-          <p className="mt-2 text-sm text-pengu-dark/65">entering commits agent #{agent.id} for the contest window.</p>
+          <AgentPicker agents={agents} activeId={active.id} onPick={pick} />
+          <p className="mt-3 text-sm text-pengu-dark/65">entering commits agent #{active.id} for the contest window.</p>
           <button onClick={enter} disabled={busy} className={`mt-5 ${chunky}`}>
             {busy ? "entering…" : "enter contest"}
           </button>
