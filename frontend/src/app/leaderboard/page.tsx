@@ -10,6 +10,15 @@ import { fetchLeaderboard, formatReputation, formatUsdcString, short, type Leade
 const COLS = "grid-cols-[2.5rem_1fr_3.5rem_3.5rem_4rem_4.5rem_7rem]";
 const PER_PAGE = 20;
 
+/// Medal palette for the top three global ranks. The pages reset their visible
+/// ranks but the medal applies to the absolute rank, so silver/bronze do not
+/// reappear on page 2.
+const MEDALS: Record<number, { text: string; bg: string }> = {
+  1: { text: "#F59E0B", bg: "rgba(245, 158, 11, 0.08)" }, // gold
+  2: { text: "#94A3B8", bg: "rgba(148, 163, 184, 0.12)" }, // silver
+  3: { text: "#CD7F32", bg: "rgba(205, 127, 50, 0.08)" }, // bronze
+};
+
 export default function LeaderboardPage() {
   const [rows, setRows] = useState<LeaderRow[] | null>(null);
   const [page, setPage] = useState(1);
@@ -62,16 +71,20 @@ export default function LeaderboardPage() {
 
           {pageRows.map((r, i) => {
             const rank = (safePage - 1) * PER_PAGE + i + 1;
-            const top = rank === 1;
+            const medal = MEDALS[rank];
             return (
               <a
                 key={r.operator}
                 href={`/operators/${r.operator}`}
-                className={`grid ${COLS} items-center gap-3 border-b border-pengu-blue/5 px-5 py-3.5 transition-colors last:border-0 hover:bg-pengu-blue/5 ${
-                  top ? "bg-[#F59E0B]/5" : ""
-                }`}
+                className={`grid ${COLS} items-center gap-3 border-b border-pengu-blue/5 px-5 py-3.5 transition-colors last:border-0 hover:bg-pengu-blue/5`}
+                style={medal ? { backgroundColor: medal.bg } : undefined}
               >
-                <span className={`font-mono text-lg ${top ? "text-[#F59E0B]" : "text-pengu-dark/45"}`}>#{rank}</span>
+                <span
+                  className={`font-mono text-lg ${medal ? "font-medium" : "text-pengu-dark/45"}`}
+                  style={medal ? { color: medal.text } : undefined}
+                >
+                  #{rank}
+                </span>
                 <span className="flex min-w-0 items-center gap-2.5">
                   <OperatorAvatar address={r.operator} className="h-7 w-7" />
                   <span className="truncate font-mono text-sm text-pengu-dark">{short(r.operator)}</span>
