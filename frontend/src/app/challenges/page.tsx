@@ -2,8 +2,11 @@ import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/pengu/Footer";
 import { SectionLabel } from "@/components/pengu/atoms";
 import { ArenaCard, type ArenaState } from "@/components/pengu/ArenaCard";
+import { Pagination } from "@/components/pengu/Pagination";
 import { fetchChallenges, CHALLENGE_KIND, type Challenge } from "@/lib/challenges";
 import { formatUsdc } from "@/lib/contests";
+
+const PER_PAGE = 12;
 
 /// Peer challenges, read straight from ChallengeArena on Arc. Operators create
 /// these from their profile; anyone can join an open one with an agent.
@@ -16,7 +19,14 @@ function challengeState(status: number): { state: ArenaState; label: string } {
   return { state: "cancelled", label: "cancelled" };
 }
 
-export default async function ChallengesPage() {
+export default async function ChallengesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>;
+}) {
+  const sp = await searchParams;
+  const requested = Math.max(1, Number(sp.page ?? "1"));
+
   let challenges: Challenge[] = [];
   let failed = false;
   try {
@@ -24,6 +34,11 @@ export default async function ChallengesPage() {
   } catch {
     failed = true;
   }
+
+  const total = challenges.length;
+  const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
+  const page = Math.min(requested, totalPages);
+  const pageItems = challenges.slice((page - 1) * PER_PAGE, page * PER_PAGE);
 
   return (
     <div className="min-h-screen text-pengu-dark" style={{ background: "#f3effb" }}>
@@ -45,28 +60,31 @@ export default async function ChallengesPage() {
         ) : challenges.length === 0 ? (
           <p className="text-pengu-dark/60">no challenges yet. open one from your profile to start.</p>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {challenges.map((ch) => {
-              const s = challengeState(ch.status);
-              const pot = ch.stake * BigInt(Math.max(ch.entrants, 1));
-              return (
-                <ArenaCard
-                  key={ch.id}
-                  href={`/challenges/${ch.id}`}
-                  kind={CHALLENGE_KIND[ch.kind] ?? "challenge"}
-                  state={s.state}
-                  stateLabel={s.label}
-                  metric={`${formatUsdc(ch.stake)} stake to enter`}
-                  prizeLabel="pot"
-                  prize={formatUsdc(pot)}
-                  startSec={null}
-                  endSec={ch.status === 0 ? Number(ch.joinDeadline) : null}
-                  footerLeft={`challenge #${ch.id}`}
-                  footerRight={`${ch.entrants}/${ch.maxEntrants} in`}
-                />
-              );
-            })}
-          </div>
+          <>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {pageItems.map((ch) => {
+                const s = challengeState(ch.status);
+                const pot = ch.stake * BigInt(Math.max(ch.entrants, 1));
+                return (
+                  <ArenaCard
+                    key={ch.id}
+                    href={`/challenges/${ch.id}`}
+                    kind={CHALLENGE_KIND[ch.kind] ?? "challenge"}
+                    state={s.state}
+                    stateLabel={s.label}
+                    metric={`${formatUsdc(ch.stake)} stake to enter`}
+                    prizeLabel="pot"
+                    prize={formatUsdc(pot)}
+                    startSec={null}
+                    endSec={ch.status === 0 ? Number(ch.joinDeadline) : null}
+                    footerLeft={`challenge #${ch.id}`}
+                    footerRight={`${ch.entrants}/${ch.maxEntrants} in`}
+                  />
+                );
+              })}
+            </div>
+            <Pagination page={page} totalPages={totalPages} basePath="/challenges" />
+          </>
         )}
       </section>
 
