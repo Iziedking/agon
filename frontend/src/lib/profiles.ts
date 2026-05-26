@@ -89,3 +89,50 @@ export function agentColorById(id: number): string {
   const hue = (id * 137) % 360;
   return `hsl(${hue}, 70%, 62%)`;
 }
+
+// --- Local user preferences (browser-scoped) ---
+//
+// Nicknames for agents and the operator's telegram/discord handles live in
+// localStorage for now. They're shown to the owner on their own profile so the
+// page reads as personal even before we wire a shared backend store. X is
+// already persisted server-side via OAuth, so that stays on the wallet's row
+// in the operators table.
+
+const NICK_KEY = (agentId: number) => `arcrun:agentName:${agentId}`;
+const SOCIAL_KEY = (kind: string) => `arcrun:social:${kind}`;
+const SETTING_KEY = (k: string) => `arcrun:setting:${k}`;
+
+export function getAgentNickname(agentId: number): string {
+  if (typeof window === "undefined") return "";
+  return window.localStorage.getItem(NICK_KEY(agentId)) ?? "";
+}
+export function setAgentNickname(agentId: number, name: string): void {
+  if (typeof window === "undefined") return;
+  const trimmed = name.trim();
+  if (trimmed) window.localStorage.setItem(NICK_KEY(agentId), trimmed);
+  else window.localStorage.removeItem(NICK_KEY(agentId));
+}
+
+export type SocialKind = "telegram" | "discord";
+
+export function getSocial(kind: SocialKind): string {
+  if (typeof window === "undefined") return "";
+  return window.localStorage.getItem(SOCIAL_KEY(kind)) ?? "";
+}
+export function setSocial(kind: SocialKind, value: string): void {
+  if (typeof window === "undefined") return;
+  const trimmed = value.trim();
+  if (trimmed) window.localStorage.setItem(SOCIAL_KEY(kind), trimmed);
+  else window.localStorage.removeItem(SOCIAL_KEY(kind));
+}
+
+export type SettingKey = "theme" | "lang" | "muted";
+
+export function getSetting(key: SettingKey, fallback: string = ""): string {
+  if (typeof window === "undefined") return fallback;
+  return window.localStorage.getItem(SETTING_KEY(key)) ?? fallback;
+}
+export function setSetting(key: SettingKey, value: string): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(SETTING_KEY(key), value);
+}
