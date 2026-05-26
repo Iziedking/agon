@@ -53,7 +53,7 @@ export function PillButton({
 export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
   return (
     <div
-      className={`rounded-card border border-pengu-blue/15 bg-white p-8 shadow-[0_10px_30px_rgba(30,80,160,0.08)] ${className}`}
+      className={`rounded-card border border-pengu-blue/15 bg-pengu-card p-8 shadow-[0_10px_30px_rgba(30,80,160,0.08)] ${className}`}
     >
       {children}
     </div>

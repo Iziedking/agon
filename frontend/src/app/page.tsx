@@ -21,7 +21,7 @@ const SYNDICATES: Array<{ variant: AgentVariant; name: string; brief: string; co
 
 export default function Home() {
   return (
-    <div id="top" className="min-h-screen text-pengu-dark" style={{ background: "#f3effb" }}>
+    <div id="top" className="min-h-screen text-pengu-dark">
       <header className="relative z-20">
         <div className="mx-auto flex h-16 max-w-[1200px] items-center justify-between px-6">
           <a href="/" className="flex items-center gap-2 font-bubble text-2xl uppercase text-pengu-blue">
@@ -79,7 +79,7 @@ export default function Home() {
           {SYNDICATES.map((s, i) => (
             <div
               key={s.name}
-              className={`relative overflow-hidden rounded-card border bg-white p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)] drift-${(i % 4) + 1}`}
+              className={`relative overflow-hidden rounded-card border bg-pengu-card p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)] drift-${(i % 4) + 1}`}
               style={{ borderColor: `${s.color}30` }}
             >
               <div

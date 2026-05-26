@@ -32,6 +32,10 @@ export interface OperatorContest {
 export interface OperatorProfile {
   operator: string;
   xHandle: string | null;
+  telegramId: string | null;
+  telegramUsername: string | null;
+  discordId: string | null;
+  discordUsername: string | null;
   syndicateId: string | null;
   cycles: number;
   reputation: string; // raw, scaled 1e6, as a string
@@ -169,4 +173,15 @@ export function getSetting(key: SettingKey, fallback: string = ""): string {
 export function setSetting(key: SettingKey, value: string): void {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(SETTING_KEY(key), value);
+  // Theme changes apply to the document immediately so the page flips live.
+  if (key === "theme") applyTheme(value);
+}
+
+/// Apply or remove the `html.dark` class. Called on every theme change and on
+/// page load so the active theme matches localStorage without a flash.
+export function applyTheme(value: string | null): void {
+  if (typeof document === "undefined") return;
+  const html = document.documentElement;
+  if (value === "dark") html.classList.add("dark");
+  else html.classList.remove("dark");
 }

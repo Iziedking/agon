@@ -42,7 +42,7 @@ function PageBtn({
   if (target == null) {
     return <span className={`${base} border-pengu-blue/10 text-pengu-dark/30`}>{children}</span>;
   }
-  const enabled = `${base} border-pengu-blue/30 bg-white text-pengu-blue transition-colors hover:border-pengu-blue`;
+  const enabled = `${base} border-pengu-blue/30 bg-pengu-card text-pengu-blue transition-colors hover:border-pengu-blue`;
   if (basePath) {
     return (
       <a href={`${basePath}?page=${target}`} className={enabled}>

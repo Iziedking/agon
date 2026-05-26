@@ -72,7 +72,7 @@ export function HeroArena() {
 
   return (
     <div className="relative mx-auto mt-12 w-full max-w-[1100px] px-2">
-      <div className="relative overflow-hidden rounded-[28px] border border-pengu-blue/15 bg-white shadow-[0_18px_50px_rgba(70,45,150,0.10)]">
+      <div className="relative overflow-hidden rounded-[28px] border border-pengu-blue/15 bg-pengu-card shadow-[0_18px_50px_rgba(70,45,150,0.10)]">
         {/* ambient grid + scan beam */}
         <div className="arena-grid absolute inset-0 opacity-50" aria-hidden />
         <div className="scan" aria-hidden />

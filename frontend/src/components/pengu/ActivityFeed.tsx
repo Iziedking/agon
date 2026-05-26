@@ -34,7 +34,7 @@ export function ActivityFeed() {
   const pageEvents = (events ?? []).slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE);
 
   return (
-    <div className="rounded-card border border-pengu-blue/15 bg-white p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
+    <div className="rounded-card border border-pengu-blue/15 bg-pengu-card p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
       <div className="flex items-center gap-2">
         <span className="h-2 w-2 rounded-full bg-[#22c55e] animate-pulse-live" />
         <span className="font-bubble text-lg uppercase text-pengu-dark">arena activity</span>
@@ -107,7 +107,7 @@ function PageBtn({
     return <span className={`${base} border-pengu-blue/10 text-pengu-dark/30`}>{children}</span>;
   }
   return (
-    <button onClick={onClick} className={`${base} border-pengu-blue/30 bg-white text-pengu-blue hover:border-pengu-blue`}>
+    <button onClick={onClick} className={`${base} border-pengu-blue/30 bg-pengu-card text-pengu-blue hover:border-pengu-blue`}>
       {children}
     </button>
   );

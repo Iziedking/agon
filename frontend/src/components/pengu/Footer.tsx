@@ -41,7 +41,7 @@ function ExtLink({ href, label }: { href: string; label: string }) {
 export function Footer() {
   return (
     <footer className="px-4 pb-10 pt-8">
-      <div className="mx-auto max-w-[1200px] rounded-card border border-pengu-blue/15 bg-white p-8 shadow-[0_10px_40px_rgba(70,45,150,0.08)] sm:p-12">
+      <div className="mx-auto max-w-[1200px] rounded-card border border-pengu-blue/15 bg-pengu-card p-8 shadow-[0_10px_40px_rgba(70,45,150,0.08)] sm:p-12">
         <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-5">
           <div className="lg:col-span-2">
             <a href="/" className="flex items-center gap-2 font-bubble text-2xl uppercase text-pengu-blue">

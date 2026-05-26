@@ -7,7 +7,7 @@ import { operatorColor } from "@/lib/profiles";
 export function OperatorAvatar({ address, className = "h-8 w-8" }: { address: string; className?: string }) {
   return (
     <span
-      className={`flex flex-none items-center justify-center overflow-hidden rounded-full border border-pengu-blue/15 bg-white ${className}`}
+      className={`flex flex-none items-center justify-center overflow-hidden rounded-full border border-pengu-blue/15 bg-pengu-card ${className}`}
     >
       <AgentMascot color={operatorColor(address)} className="h-[68%] w-auto" />
     </span>

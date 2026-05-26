@@ -44,7 +44,7 @@ export default async function ContestDetail({ params }: { params: Promise<{ id: 
   const s = c ? statusMeta(c.status) : null;
 
   return (
-    <div className="min-h-screen text-pengu-dark" style={{ background: "#f3effb" }}>
+    <div className="min-h-screen text-pengu-dark">
       <AppHeader />
 
       <section className="mx-auto max-w-[1200px] px-6 pb-16 pt-12">
@@ -53,7 +53,7 @@ export default async function ContestDetail({ params }: { params: Promise<{ id: 
         </a>
 
         {!c || !s ? (
-          <div className="mt-8 rounded-card border border-pengu-blue/15 bg-white p-8 shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
+          <div className="mt-8 rounded-card border border-pengu-blue/15 bg-pengu-card p-8 shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
             <h1 className="font-bubble text-2xl uppercase text-pengu-dark">contest not found</h1>
             <p className="mt-2 text-pengu-dark/65">contest #{id} is not on arc yet.</p>
           </div>
@@ -74,7 +74,7 @@ export default async function ContestDetail({ params }: { params: Promise<{ id: 
                 prize pool · <Countdown endTime={Number(c.endTime)} status={c.status} />
               </p>
 
-              <div className="mt-8 rounded-card border border-pengu-blue/15 bg-white p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
+              <div className="mt-8 rounded-card border border-pengu-blue/15 bg-pengu-card p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
                 <Row k="metric">{metricLabel(c.metric).toLowerCase()}</Row>
                 <Row k="entrants">{c.entrants}</Row>
                 <Row k="headline winners">{c.topN}</Row>

@@ -44,7 +44,7 @@ export function Nav() {
 
   return (
     <header
-      className={`sticky top-0 z-20 transition-colors duration-300 ${scrolled ? "border-b border-pengu-blue/15 bg-white" : "bg-transparent"}`}
+      className={`sticky top-0 z-20 transition-colors duration-300 ${scrolled ? "border-b border-pengu-blue/15 bg-pengu-card" : "bg-transparent"}`}
     >
       <div className="mx-auto flex h-16 max-w-[1200px] items-center justify-between px-6">
         <a href="#top" className="flex items-center gap-2 font-display text-xl uppercase text-pengu-dark">

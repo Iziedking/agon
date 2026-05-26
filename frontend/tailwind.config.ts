@@ -2,6 +2,9 @@ import type { Config } from "tailwindcss";
 
 const config: Config = {
   content: ["./src/**/*.{ts,tsx,mdx}"],
+  // Dark mode flips by toggling `html.dark`. Tokens for the pengu palette swap
+  // under that selector in tokens.css; every surface that reads pengu-* auto-flips.
+  darkMode: "class",
   theme: {
     extend: {
       colors: {
@@ -44,20 +47,22 @@ const config: Config = {
           gold: "var(--color-syndicate-gold)",
           violet: "var(--color-syndicate-violet)",
         },
-        // ArcRun palette: electric purple on a solid creamy lavender. Flat, no
-        // gradients, no glass. (Token namespace kept as `pengu` for the layout
-        // it came from; the `blue` key now holds the electric purple accent.)
+        // ArcRun palette. RGB-triplet CSS vars defined in tokens.css under
+        // :root (light) and html.dark (dark). The `<alpha-value>` placeholder
+        // lets every Tailwind opacity modifier (bg-pengu-blue/15 etc.) keep
+        // working through a variable, so the dark-mode swap is invisible to
+        // any consumer of the tokens.
         pengu: {
-          bg: "#f3effb",
-          "bg-2": "#ffffff",
-          card: "#ffffff",
-          card2: "#ffffff",
-          blue: "#7c4dff",
-          blue2: "#6a35f0",
-          soft: "#d9ccff",
-          text: "#ffffff",
-          dim: "#b9c6ea",
-          dark: "#1b1140",
+          bg: "rgb(var(--pengu-bg) / <alpha-value>)",
+          "bg-2": "rgb(var(--pengu-bg-2) / <alpha-value>)",
+          card: "rgb(var(--pengu-card) / <alpha-value>)",
+          card2: "rgb(var(--pengu-card-2) / <alpha-value>)",
+          blue: "rgb(var(--pengu-blue) / <alpha-value>)",
+          blue2: "rgb(var(--pengu-blue-2) / <alpha-value>)",
+          soft: "rgb(var(--pengu-soft) / <alpha-value>)",
+          text: "rgb(var(--pengu-text) / <alpha-value>)",
+          dim: "rgb(var(--pengu-dim) / <alpha-value>)",
+          dark: "rgb(var(--pengu-dark) / <alpha-value>)",
         },
       },
       fontFamily: {

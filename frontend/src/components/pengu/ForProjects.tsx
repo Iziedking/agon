@@ -25,7 +25,7 @@ export function ForProjects() {
 
       <div className="mt-10 grid gap-4 sm:grid-cols-3">
         {FACTS.map(([n, l]) => (
-          <div key={l} className="rounded-card border border-pengu-blue/15 bg-white p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
+          <div key={l} className="rounded-card border border-pengu-blue/15 bg-pengu-card p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
             <div className="font-bubble text-3xl text-pengu-blue">{n}</div>
             <div className="mt-2 text-sm text-pengu-dark/60">{l}</div>
           </div>

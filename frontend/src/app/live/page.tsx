@@ -38,7 +38,7 @@ export default function LivePage() {
   }, []);
 
   return (
-    <div className="min-h-screen text-pengu-dark" style={{ background: "#f3effb" }}>
+    <div className="min-h-screen text-pengu-dark">
       <AppHeader />
 
       <section className="mx-auto max-w-[1200px] px-6 pb-12 pt-12">

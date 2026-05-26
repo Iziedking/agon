@@ -34,9 +34,9 @@ type Slug = (typeof STEPS)[number]["slug"];
 const chunkyBtn =
   "rounded-pill bg-pengu-blue px-6 py-3 font-display text-sm uppercase tracking-wide text-white shadow-[0_4px_0_0_#5b34d6] transition-all duration-100 hover:translate-y-[2px] hover:shadow-[0_2px_0_0_#5b34d6] active:translate-y-[3px] disabled:opacity-60";
 const ghostBtn =
-  "rounded-pill border border-pengu-blue/30 bg-white px-6 py-3 font-display text-sm uppercase tracking-wide text-pengu-blue hover:border-pengu-blue";
+  "rounded-pill border border-pengu-blue/30 bg-pengu-card px-6 py-3 font-display text-sm uppercase tracking-wide text-pengu-blue hover:border-pengu-blue";
 const ghostSmall =
-  "rounded-pill border border-pengu-blue/20 bg-white px-4 py-2 font-display text-xs uppercase tracking-wide text-pengu-blue/80 hover:border-pengu-blue/50 hover:text-pengu-blue";
+  "rounded-pill border border-pengu-blue/20 bg-pengu-card px-4 py-2 font-display text-xs uppercase tracking-wide text-pengu-blue/80 hover:border-pengu-blue/50 hover:text-pengu-blue";
 
 function ProgressBar({ index }: { index: number }) {
   return (
@@ -127,7 +127,7 @@ export default function OnboardingPage() {
             : false; // done is the terminal step
 
   return (
-    <div className="min-h-screen text-pengu-dark" style={{ background: "#f3effb" }}>
+    <div className="min-h-screen text-pengu-dark">
       <AppHeader />
 
       <section className="mx-auto max-w-[720px] px-6 pb-16 pt-12">
@@ -136,7 +136,7 @@ export default function OnboardingPage() {
         </SectionLabel>
         <ProgressBar index={index} />
 
-        <div className="mt-6 rounded-card border border-pengu-blue/15 bg-white p-8 shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
+        <div className="mt-6 rounded-card border border-pengu-blue/15 bg-pengu-card p-8 shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
           <Bubble3D className="text-[clamp(28px,4vw,44px)]">{STEPS[index]!.title}</Bubble3D>
 
           <div className="mt-6">
@@ -372,7 +372,7 @@ function DoneStep({ address }: { address?: `0x${string}` }) {
             aria-hidden
           />
           {address ? (
-            <span className="relative flex h-32 w-32 items-center justify-center rounded-full border border-pengu-blue/15 bg-white shadow-[0_12px_30px_rgba(70,45,150,0.18)]">
+            <span className="relative flex h-32 w-32 items-center justify-center rounded-full border border-pengu-blue/15 bg-pengu-card shadow-[0_12px_30px_rgba(70,45,150,0.18)]">
               <AgentMascot color={operatorColor(address)} live className="drift h-24 w-auto" />
             </span>
           ) : (

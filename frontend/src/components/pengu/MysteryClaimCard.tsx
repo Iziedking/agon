@@ -106,7 +106,7 @@ export function MysteryClaimCard({
   else if (!operatorReady) buttonLabel = "claimed today";
 
   return (
-    <div className="rounded-card border border-pengu-blue/15 bg-white p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
+    <div className="rounded-card border border-pengu-blue/15 bg-pengu-card p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
       <div className="flex flex-wrap items-start gap-5">
         <span className="flex h-16 w-16 flex-none items-center justify-center overflow-hidden rounded-full border border-pengu-blue/15 bg-pengu-bg">
           <AgentMascot color="#7c4dff" className="h-[68%] w-auto" />

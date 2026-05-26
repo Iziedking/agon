@@ -22,7 +22,7 @@ export function ConnectButton() {
 
   if (!mounted) {
     return (
-      <button className={`${pill} border border-pengu-blue/40 bg-white text-pengu-blue/50`} disabled>
+      <button className={`${pill} border border-pengu-blue/40 bg-pengu-card text-pengu-blue/50`} disabled>
         connect wallet
       </button>
     );
@@ -31,7 +31,7 @@ export function ConnectButton() {
   if (!isConnected) {
     return (
       <button
-        className={`${pill} border border-pengu-blue/50 bg-white text-pengu-blue hover:bg-pengu-blue/10`}
+        className={`${pill} border border-pengu-blue/50 bg-pengu-card text-pengu-blue hover:bg-pengu-blue/10`}
         onClick={() => connect({ connector: injected() })}
         disabled={isPending}
       >
@@ -51,7 +51,7 @@ export function ConnectButton() {
   const short = `${address!.slice(0, 6)}…${address!.slice(-4)}`;
   return (
     <button
-      className="rounded-pill border border-pengu-blue/30 bg-white px-4 py-2 font-mono text-xs text-pengu-dark transition-colors hover:bg-pengu-blue/5"
+      className="rounded-pill border border-pengu-blue/30 bg-pengu-card px-4 py-2 font-mono text-xs text-pengu-dark transition-colors hover:bg-pengu-blue/5"
       onClick={() => disconnect()}
       title="Disconnect"
     >

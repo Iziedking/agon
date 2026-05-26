@@ -58,7 +58,7 @@ export function Syndicates() {
       {SYNDICATES.map((s) => (
         <div
           key={s.name}
-          className="group rounded-card border border-pengu-blue/15 bg-white p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)] transition-transform duration-150 hover:-translate-y-1"
+          className="group rounded-card border border-pengu-blue/15 bg-pengu-card p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)] transition-transform duration-150 hover:-translate-y-1"
         >
           <div
             className="flex h-14 w-14 items-center justify-center rounded-2xl"

@@ -24,7 +24,7 @@ export function LoginButton() {
       {short ? (
         <button
           onClick={() => setOpen(true)}
-          className="rounded-pill border border-pengu-blue/30 bg-white px-4 py-2 font-mono text-xs text-pengu-dark transition-colors hover:bg-pengu-blue/5"
+          className="rounded-pill border border-pengu-blue/30 bg-pengu-card px-4 py-2 font-mono text-xs text-pengu-dark transition-colors hover:bg-pengu-blue/5"
         >
           {short}
         </button>

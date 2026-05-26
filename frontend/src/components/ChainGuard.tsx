@@ -41,7 +41,7 @@ export function ChainGuard() {
       <button
         onClick={() => switchChain({ chainId: arcTestnet.id })}
         disabled={isPending}
-        className="rounded-full bg-white px-3 py-1 font-display text-xs uppercase tracking-wide text-[#e0466e] hover:bg-white/90 disabled:opacity-60"
+        className="rounded-full bg-pengu-card px-3 py-1 font-display text-xs uppercase tracking-wide text-[#e0466e] hover:bg-white/90 disabled:opacity-60"
       >
         {isPending ? "switching…" : "switch to arc"}
       </button>

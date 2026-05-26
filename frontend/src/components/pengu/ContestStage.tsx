@@ -1,38 +1,52 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { StandingsEntry } from "@/lib/live";
+import type { AgentProgress, StandingsEntry } from "@/lib/live";
 import { AgentMascot, type AgentVariant } from "@/components/pengu/AgentMascot";
+import { nameFor, useAgentNames } from "@/hooks/useAgentNames";
 
 /// The visible competition surface that sits above the standings list. Picks
 /// the right "stage" for the contest's type so the page declares "agents are
-/// doing X" rather than "scores are climbing". This first pass derives the
-/// visible activity from the existing standings frames (score, rank), so it
-/// works against the broadcast we already have. A later pass will enrich the
-/// coordinator broadcast with real per-agent progress detail (which cells the
-/// puzzle agent solved, which tx hashes the volume agent posted, which nodes
-/// the solver explored) and the stage will read that directly.
+/// doing X" rather than "scores are climbing".
+///
+/// Real per-agent progress arrives on the standings broadcast for runners that
+/// have something to stream:
+///   - Solver  -> `progress.correct[]` (which puzzles the agent got right)
+///   - Analyst -> `progress.calls[]` (each probability call and its outcome)
+///   - Scout   -> `progress.recent[]` (real tx hashes from the hot wallet)
+///
+/// When the broadcast lacks progress (Scout preview, an old frame, a kind we
+/// don't recognize) the stage falls back to score-derived placeholders so the
+/// surface never goes blank.
 
-/// How many agents the stage features. The rest stay in the standings list
-/// below. Three keeps the per-stage detail readable without making the page
-/// feel empty when only one or two have entered.
 const FEATURED = 3;
 
-/// Friendly labels for the four canonical kinds the backend emits today.
-function normalizeKind(raw?: string): "puzzle" | "volume" | "solver" | "prediction" | "custom" {
+function normalizeKind(raw?: string): "puzzle" | "volume" | "prediction" | "custom" {
   const k = (raw ?? "").toUpperCase();
-  if (k === "ANALYST" || k === "PUZZLE") return "puzzle";
   if (k === "SCOUT" || k === "VOLUME") return "volume";
-  if (k === "SOLVER") return "solver";
-  if (k === "PREDICTION") return "prediction";
+  if (k === "ANALYST" || k === "PREDICTION") return "prediction";
+  if (k === "SOLVER" || k === "PUZZLE") return "puzzle";
   return "custom";
 }
 
-/// Pick a stable mascot variant from an agentId so the same agent always
-/// renders in the same color across the page.
 const VARIANTS: AgentVariant[] = ["violet", "crimson", "cyan", "gold"];
 function variantFor(agentId: number): AgentVariant {
   return VARIANTS[agentId % VARIANTS.length]!;
+}
+
+function variantColor(v: AgentVariant): string {
+  switch (v) {
+    case "crimson":
+      return "#DC2626";
+    case "cyan":
+      return "#0891B2";
+    case "gold":
+      return "#D97706";
+    case "violet":
+      return "#7C3AED";
+    default:
+      return "#7c4dff";
+  }
 }
 
 export function ContestStage({
@@ -47,8 +61,7 @@ export function ContestStage({
   const maxScore = Math.max(...entries.map((e) => e.score), 1);
 
   return (
-    <div className="relative overflow-hidden rounded-card border border-pengu-blue/15 bg-white">
-      {/* arena grid + scan beam, the broadcast-floor backdrop */}
+    <div className="relative overflow-hidden rounded-card border border-pengu-blue/15 bg-pengu-card">
       <div className="arena-grid absolute inset-0 opacity-50" aria-hidden />
       <div className="scan" aria-hidden />
 
@@ -65,16 +78,8 @@ export function ContestStage({
       <div className="relative z-10 p-5 sm:p-6">
         {featured.length === 0 ? (
           <EmptyStage kind={kind} />
-        ) : kind === "puzzle" ? (
-          <PuzzleStage featured={featured} maxScore={maxScore} />
-        ) : kind === "volume" ? (
-          <VolumeStage featured={featured} maxScore={maxScore} />
-        ) : kind === "solver" ? (
-          <SolverStage featured={featured} maxScore={maxScore} />
-        ) : kind === "prediction" ? (
-          <PredictionStage featured={featured} maxScore={maxScore} />
         ) : (
-          <CustomStage featured={featured} maxScore={maxScore} />
+          <StageBody kind={kind} featured={featured} maxScore={maxScore} />
         )}
       </div>
     </div>
@@ -92,9 +97,42 @@ function EmptyStage({ kind }: { kind: string }) {
   );
 }
 
-/// Header used by every stage variant: top-N agents in a row with their mascot
-/// and the score number. The body below the headers is the kind-specific
-/// activity.
+function StageBody({
+  kind,
+  featured,
+  maxScore,
+}: {
+  kind: ReturnType<typeof normalizeKind>;
+  featured: StandingsEntry[];
+  maxScore: number;
+}) {
+  const headline =
+    kind === "puzzle"
+      ? "each agent's grid shows which puzzles it locked in · lit cell = correct answer"
+      : kind === "prediction"
+        ? "each agent placed a probability call per question · dots near the actual outcome score higher"
+        : kind === "volume"
+          ? "each agent ships real usdc tx from its own hot wallet · most recent first"
+          : "custom metric · sponsor sets the rules · pulse tracks live progress";
+
+  const bodies = featured.map((e) => {
+    const accent = variantColor(variantFor(e.agentId));
+    if (kind === "puzzle") return <PuzzleBody key={e.agentId} entry={e} accent={accent} maxScore={maxScore} />;
+    if (kind === "prediction") return <PredictionBody key={e.agentId} entry={e} accent={accent} maxScore={maxScore} />;
+    if (kind === "volume") return <VolumeBody key={e.agentId} entry={e} accent={accent} maxScore={maxScore} />;
+    return <CustomBody key={e.agentId} entry={e} accent={accent} maxScore={maxScore} />;
+  });
+
+  return (
+    <div>
+      <div className="mb-4 text-center font-display text-[11px] uppercase tracking-wide text-pengu-dark/45">
+        {headline}
+      </div>
+      <AgentRoster featured={featured} maxScore={maxScore} bodies={bodies} />
+    </div>
+  );
+}
+
 function AgentRoster({
   featured,
   maxScore,
@@ -104,6 +142,7 @@ function AgentRoster({
   maxScore: number;
   bodies: React.ReactNode[];
 }) {
+  const names = useAgentNames(featured.map((e) => e.agentId));
   return (
     <div className="grid gap-4 sm:grid-cols-3">
       {featured.map((e, i) => {
@@ -113,7 +152,7 @@ function AgentRoster({
           <div
             key={e.agentId}
             className={`relative flex flex-col items-center rounded-2xl border p-4 ${
-              leader ? "border-pengu-blue/40 bg-pengu-blue/5" : "border-pengu-blue/10 bg-white"
+              leader ? "border-pengu-blue/40 bg-pengu-blue/5" : "border-pengu-blue/10 bg-pengu-card"
             }`}
           >
             {leader ? (
@@ -126,10 +165,7 @@ function AgentRoster({
               <span className={`font-mono text-xs ${leader ? "text-pengu-blue" : "text-pengu-dark/55"}`}>
                 #{e.rank}
               </span>
-              <span
-                key={e.score}
-                className="tick-up font-mono text-base tabular-nums text-pengu-dark"
-              >
+              <span key={e.score} className="tick-up font-mono text-base tabular-nums text-pengu-dark">
                 {e.score.toLocaleString()}
               </span>
             </div>
@@ -141,8 +177,8 @@ function AgentRoster({
               className={`mt-2 h-20 w-auto ${leader ? "drift" : ""}`}
             />
 
-            <div className="mt-2 w-full text-center font-mono text-[10px] uppercase tracking-wide text-pengu-dark/45">
-              agent {e.agentId}
+            <div className="mt-2 w-full truncate text-center font-mono text-[10px] uppercase tracking-wide text-pengu-dark/55">
+              {nameFor(names, e.agentId)}
             </div>
 
             <div className="mt-3 w-full">{bodies[i]}</div>
@@ -164,178 +200,102 @@ function AgentRoster({
   );
 }
 
-/// Puzzle stage: each agent gets a 6x6 grid of cells. The fraction of cells lit
-/// tracks their score. Cells light in a deterministic scan order so the same
-/// score always shows the same grid, and rising scores look like the agent is
-/// "filling in" their puzzle. Pulsing cells at the leading edge sell that the
-/// solver is actively working, not paused.
-function PuzzleStage({ featured, maxScore }: { featured: StandingsEntry[]; maxScore: number }) {
-  const bodies = featured.map((e) => {
-    const pct = Math.min(1, e.score / maxScore);
-    const filled = Math.round(36 * pct);
-    return <PuzzleGrid key={e.agentId} filled={filled} accent={variantColor(variantFor(e.agentId))} />;
-  });
-  return (
-    <div>
-      <div className="mb-4 text-center font-display text-[11px] uppercase tracking-wide text-pengu-dark/45">
-        each agent fills its own 6×6 logic grid · cells light as the solver locks them in
-      </div>
-      <AgentRoster featured={featured} maxScore={maxScore} bodies={bodies} />
-    </div>
-  );
-}
+// ---------------- Per-kind bodies ----------------
 
-function PuzzleGrid({ filled, accent }: { filled: number; accent: string }) {
-  const cells = Array.from({ length: 36 }, (_, i) => i);
+/// Solver puzzle stage. Reads `progress.correct[]` if present; each cell of the
+/// row is one puzzle, lit when the agent's answer matched. Falls back to a
+/// score-derived 6x6 grid when progress is missing (older frames).
+function PuzzleBody({ entry, accent, maxScore }: { entry: StandingsEntry; accent: string; maxScore: number }) {
+  if (entry.progress?.kind === "solver") {
+    const { correct, total } = entry.progress;
+    const cols = Math.min(total, 6);
+    const rows = Math.ceil(total / cols);
+    const cells = Array.from({ length: total }, (_, i) => correct[i] ?? false);
+    return (
+      <div>
+        <div className="grid gap-[3px]" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
+          {cells.map((isCorrect, i) => (
+            <span
+              key={i}
+              className="aspect-square rounded-[4px]"
+              style={{
+                background: isCorrect ? accent : "rgba(27,17,64,0.07)",
+                border: isCorrect ? `1px solid ${accent}` : "1px solid rgba(27,17,64,0.05)",
+              }}
+              title={`q${i + 1} ${isCorrect ? "correct" : "missed"}`}
+            />
+          ))}
+        </div>
+        <div className="mt-1.5 text-right font-mono text-[10px] text-pengu-dark/55">
+          {cells.filter(Boolean).length} / {total} solved
+          <span className="sr-only">across {rows} row(s)</span>
+        </div>
+      </div>
+    );
+  }
+  // Derived fallback when progress isn't on the frame yet.
+  const pct = Math.min(1, entry.score / maxScore);
+  const filled = Math.round(36 * pct);
   return (
     <div className="grid grid-cols-6 gap-[3px]">
-      {cells.map((i) => {
-        const isFilled = i < filled;
-        const isLeadingEdge = i === filled - 1 || i === filled;
-        return (
-          <span
-            key={i}
-            className={`aspect-square rounded-[3px] ${isLeadingEdge && isFilled ? "glow-pulse" : ""}`}
-            style={{
-              background: isFilled ? accent : "rgba(27,17,64,0.06)",
-              color: accent,
-              transition: "background 200ms linear",
-            }}
-          />
-        );
-      })}
-    </div>
-  );
-}
-
-/// Volume stage: each agent's lane shows a stream of mock tx hashes. The number
-/// of hashes corresponds to their score scaled down so a busy lane reads as
-/// "this agent is shipping". Hashes shift up like a printer feed; the most
-/// recent is at the bottom with a colored glow.
-function VolumeStage({ featured, maxScore }: { featured: StandingsEntry[]; maxScore: number }) {
-  const bodies = featured.map((e) => {
-    const pct = Math.min(1, e.score / maxScore);
-    const txCount = Math.max(1, Math.round(8 * pct));
-    return (
-      <TxFeed
-        key={e.agentId}
-        count={txCount}
-        accent={variantColor(variantFor(e.agentId))}
-        seed={e.agentId * 1000 + e.score}
-      />
-    );
-  });
-  return (
-    <div>
-      <div className="mb-4 text-center font-display text-[11px] uppercase tracking-wide text-pengu-dark/45">
-        each agent ships real tx from its own hot wallet · most recent on top
-      </div>
-      <AgentRoster featured={featured} maxScore={maxScore} bodies={bodies} />
-    </div>
-  );
-}
-
-function TxFeed({ count, accent, seed }: { count: number; accent: string; seed: number }) {
-  // Deterministic mock hashes from seed so the feed looks stable between frames
-  // (real per-agent tx hashes come in a later backend pass).
-  const hashes = useMemo(() => {
-    const arr: string[] = [];
-    let s = seed;
-    for (let i = 0; i < count; i++) {
-      s = (s * 9301 + 49297) % 233280;
-      const r = Math.abs(s).toString(16).padStart(6, "0");
-      arr.push(`0x${r}${(seed + i).toString(16).padStart(4, "0")}`);
-    }
-    return arr;
-  }, [seed, count]);
-
-  return (
-    <div className="flex flex-col gap-1 rounded-md bg-pengu-blue/5 p-2 font-mono text-[10px] text-pengu-dark/60">
-      {hashes.slice(0, 4).map((h, idx) => (
-        <div key={`${h}-${idx}`} className="flex items-center gap-1.5 tick-up">
-          <span
-            className="h-1.5 w-1.5 rounded-full"
-            style={{ background: accent, opacity: idx === 0 ? 1 : 0.45 }}
-          />
-          <span className="truncate">{h}</span>
-        </div>
-      ))}
-      <div className="mt-1 text-right font-display text-[9px] uppercase tracking-wide text-pengu-dark/40">
-        {count}+ tx
-      </div>
-    </div>
-  );
-}
-
-/// Solver stage: each agent gets a small graph of 8 nodes arranged in a ring,
-/// with a polyline traced through them. Path length scales with score so a
-/// leader shows a longer trace. The last segment glows to imply the solver is
-/// still actively drawing.
-function SolverStage({ featured, maxScore }: { featured: StandingsEntry[]; maxScore: number }) {
-  const bodies = featured.map((e) => {
-    const pct = Math.min(1, e.score / maxScore);
-    const visited = Math.max(2, Math.round(8 * pct));
-    return <NodeGraph key={e.agentId} visited={visited} accent={variantColor(variantFor(e.agentId))} />;
-  });
-  return (
-    <div>
-      <div className="mb-4 text-center font-display text-[11px] uppercase tracking-wide text-pengu-dark/45">
-        each agent explores its own graph · longer trace = more nodes resolved
-      </div>
-      <AgentRoster featured={featured} maxScore={maxScore} bodies={bodies} />
-    </div>
-  );
-}
-
-function NodeGraph({ visited, accent }: { visited: number; accent: string }) {
-  const N = 8;
-  const r = 38;
-  const cx = 50;
-  const cy = 50;
-  const nodes = Array.from({ length: N }, (_, i) => {
-    const a = (i / N) * Math.PI * 2 - Math.PI / 2;
-    return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
-  });
-  const path = nodes
-    .slice(0, visited)
-    .map((n, i) => `${i === 0 ? "M" : "L"}${n.x.toFixed(1)} ${n.y.toFixed(1)}`)
-    .join(" ");
-  return (
-    <svg viewBox="0 0 100 100" className="h-24 w-full">
-      {nodes.map((n, i) => (
-        <circle
+      {Array.from({ length: 36 }, (_, i) => (
+        <span
           key={i}
-          cx={n.x}
-          cy={n.y}
-          r={i < visited ? 3.5 : 2}
-          fill={i < visited ? accent : "rgba(27,17,64,0.18)"}
+          className={`aspect-square rounded-[3px] ${i === filled - 1 || i === filled ? "glow-pulse" : ""}`}
+          style={{ background: i < filled ? accent : "rgba(27,17,64,0.06)", color: accent }}
         />
       ))}
-      <path d={path} fill="none" stroke={accent} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-/// Prediction stage: tiny candle chart where each agent's call is plotted as a
-/// horizontal line at its predicted level. The "actual" line walks across.
-/// Agents whose line is closer to actual score higher.
-function PredictionStage({ featured, maxScore }: { featured: StandingsEntry[]; maxScore: number }) {
-  const bodies = featured.map((e) => {
-    const pct = Math.min(1, e.score / maxScore);
-    return <PredictionChart key={e.agentId} accuracy={pct} accent={variantColor(variantFor(e.agentId))} />;
-  });
-  return (
-    <div>
-      <div className="mb-4 text-center font-display text-[11px] uppercase tracking-wide text-pengu-dark/45">
-        each agent placed a call · closer to actual = more points
-      </div>
-      <AgentRoster featured={featured} maxScore={maxScore} bodies={bodies} />
     </div>
   );
 }
 
-function PredictionChart({ accuracy, accent }: { accuracy: number; accent: string }) {
-  // Synthetic candle line; the call is fixed and "actual" lands within accuracy.
+/// Analyst prediction stage. Each call is a dot placed on a 0..1 axis with the
+/// actual outcome at 0 or 1. Color saturation reflects correctness; the closer
+/// the dot to the outcome edge, the more confident-and-right the call.
+function PredictionBody({ entry, accent, maxScore }: { entry: StandingsEntry; accent: string; maxScore: number }) {
+  if (entry.progress?.kind === "analyst") {
+    const { calls } = entry.progress;
+    return (
+      <div>
+        <svg viewBox="0 0 100 36" className="h-12 w-full">
+          {/* baseline */}
+          <line x1="2" y1="18" x2="98" y2="18" stroke="rgba(27,17,64,0.18)" strokeWidth="0.6" />
+          {/* 0 and 1 ticks */}
+          <text x="0" y="34" fontSize="6" fill="rgba(27,17,64,0.45)" fontFamily="monospace">0</text>
+          <text x="94" y="34" fontSize="6" fill="rgba(27,17,64,0.45)" fontFamily="monospace">1</text>
+          {calls.map((c, i) => {
+            const x = 4 + c.p * 92;
+            const outcomeY = c.outcome === 1 ? 6 : 30;
+            return (
+              <g key={i}>
+                {/* line from call to outcome edge */}
+                <line
+                  x1={x}
+                  y1="18"
+                  x2={x}
+                  y2={outcomeY}
+                  stroke={c.correct ? accent : "rgba(224,70,110,0.5)"}
+                  strokeWidth="0.6"
+                />
+                <circle cx={x} cy="18" r="2" fill={c.correct ? accent : "#e0466e"} />
+                <circle cx={x} cy={outcomeY} r="1.4" fill={c.outcome === 1 ? accent : "rgba(27,17,64,0.4)"} />
+              </g>
+            );
+          })}
+        </svg>
+        <div className="mt-1 flex items-center justify-between font-mono text-[10px] text-pengu-dark/55">
+          <span>{calls.filter((c) => c.correct).length} / {calls.length} right</span>
+          <span className="text-pengu-dark/35">prob → outcome</span>
+        </div>
+      </div>
+    );
+  }
+  // Derived fallback: a candle-like line that bends toward the leader.
+  const pct = Math.min(1, entry.score / maxScore);
+  return <DerivedPredictionChart accuracy={pct} accent={accent} />;
+}
+
+function DerivedPredictionChart({ accuracy, accent }: { accuracy: number; accent: string }) {
   const points = useMemo(() => {
     const xs = Array.from({ length: 12 }, (_, i) => i / 11);
     return xs.map((x) => {
@@ -343,13 +303,10 @@ function PredictionChart({ accuracy, accent }: { accuracy: number; accent: strin
       return 0.5 + noise * (1 - accuracy * 0.5);
     });
   }, [accuracy]);
-  const callY = 0.5;
-  const actualY = callY + (1 - accuracy) * 0.3 * (accuracy > 0.5 ? 1 : -1);
+  const actualY = 0.5 + (1 - accuracy) * 0.3 * (accuracy > 0.5 ? 1 : -1);
   return (
     <svg viewBox="0 0 100 40" className="h-14 w-full">
-      {/* call line */}
-      <line x1="0" y1={callY * 40} x2="100" y2={callY * 40} stroke={accent} strokeWidth="0.6" strokeDasharray="2 2" opacity="0.6" />
-      {/* actual walk */}
+      <line x1="0" y1="20" x2="100" y2="20" stroke={accent} strokeWidth="0.6" strokeDasharray="2 2" opacity="0.6" />
       <polyline
         points={points.map((y, i) => `${(i / (points.length - 1)) * 100},${y * 40}`).join(" ")}
         fill="none"
@@ -357,28 +314,61 @@ function PredictionChart({ accuracy, accent }: { accuracy: number; accent: strin
         strokeWidth="1.6"
         strokeLinecap="round"
       />
-      {/* settle marker */}
       <circle cx="100" cy={actualY * 40} r="2.5" fill={accent} />
     </svg>
   );
 }
 
-/// Custom stage: contests with a sponsor-defined metric. We don't know what to
-/// visualize, so we show a clean activity heartbeat: a moving sparkline keyed
-/// off score so the agent still looks like it is doing something concrete.
-function CustomStage({ featured, maxScore }: { featured: StandingsEntry[]; maxScore: number }) {
-  const bodies = featured.map((e) => {
-    const pct = Math.min(1, e.score / maxScore);
-    return <Heartbeat key={e.agentId} accuracy={pct} accent={variantColor(variantFor(e.agentId))} />;
-  });
-  return (
-    <div>
-      <div className="mb-4 text-center font-display text-[11px] uppercase tracking-wide text-pengu-dark/45">
-        custom metric · sponsor sets the rules · pulse tracks live progress
+/// Scout volume stage. Reads `progress.recent[]` of actual tx hashes once the
+/// final standings frame lands. During preview (when the runner is tier-proxy),
+/// shows a "queued" state so we don't fake activity that hasn't happened.
+function VolumeBody({ entry, accent, maxScore }: { entry: StandingsEntry; accent: string; maxScore: number }) {
+  if (entry.progress?.kind === "scout") {
+    const { recent, opsCount } = entry.progress;
+    return (
+      <div className="flex flex-col gap-1 rounded-md bg-pengu-blue/5 p-2 font-mono text-[10px] text-pengu-dark/65">
+        {recent.length === 0 ? (
+          <div className="py-2 text-center text-pengu-dark/45">no tx yet</div>
+        ) : (
+          recent.slice(0, 4).map((h, idx) => (
+            <a
+              key={h}
+              href={`https://arcscan.net/tx/${h}`}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-1.5 tick-up hover:text-pengu-blue"
+            >
+              <span
+                className="h-1.5 w-1.5 rounded-full"
+                style={{ background: accent, opacity: idx === 0 ? 1 : 0.45 }}
+              />
+              <span className="truncate">{h.slice(0, 10)}…{h.slice(-6)}</span>
+            </a>
+          ))
+        )}
+        <div className="mt-1 text-right font-display text-[9px] uppercase tracking-wide text-pengu-dark/40">
+          {opsCount} tx total
+        </div>
       </div>
-      <AgentRoster featured={featured} maxScore={maxScore} bodies={bodies} />
+    );
+  }
+  // Preview pass (no progress yet): show queued state, no synthetic hashes.
+  const pct = Math.min(1, entry.score / maxScore);
+  const queuedOps = Math.max(0, Math.round(5 * pct));
+  return (
+    <div className="flex flex-col gap-1 rounded-md bg-pengu-blue/5 p-2 font-mono text-[10px] text-pengu-dark/55">
+      <div className="text-center text-pengu-dark/55">queued</div>
+      <div className="text-center text-pengu-dark/40">{queuedOps} ops · waiting for window to close</div>
+      <div className="mt-0.5 h-1 w-full overflow-hidden rounded-full bg-pengu-blue/10">
+        <div className="h-full rounded-full" style={{ width: `${pct * 100}%`, background: accent, opacity: 0.5 }} />
+      </div>
     </div>
   );
+}
+
+function CustomBody({ entry, accent, maxScore }: { entry: StandingsEntry; accent: string; maxScore: number }) {
+  const pct = Math.min(1, entry.score / maxScore);
+  return <Heartbeat accuracy={pct} accent={accent} />;
 }
 
 function Heartbeat({ accuracy, accent }: { accuracy: number; accent: string }) {
@@ -399,17 +389,6 @@ function Heartbeat({ accuracy, accent }: { accuracy: number; accent: string }) {
   );
 }
 
-function variantColor(v: AgentVariant): string {
-  switch (v) {
-    case "crimson":
-      return "#DC2626";
-    case "cyan":
-      return "#0891B2";
-    case "gold":
-      return "#D97706";
-    case "violet":
-      return "#7C3AED";
-    default:
-      return "#7c4dff";
-  }
-}
+// Re-export progress type so callers can type-narrow before passing entries
+// down. Avoids a separate import path.
+export type { AgentProgress };

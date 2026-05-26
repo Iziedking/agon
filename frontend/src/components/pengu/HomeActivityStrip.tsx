@@ -41,7 +41,7 @@ export function HomeActivityStrip() {
               <a
                 key={`${ev.txHash}-${i}`}
                 href={d.href}
-                className="flex flex-none items-center gap-2 rounded-full border border-pengu-blue/15 bg-white px-4 py-2 shadow-[0_4px_12px_rgba(70,45,150,0.05)] transition-transform duration-150 hover:-translate-y-0.5"
+                className="flex flex-none items-center gap-2 rounded-full border border-pengu-blue/15 bg-pengu-card px-4 py-2 shadow-[0_4px_12px_rgba(70,45,150,0.05)] transition-transform duration-150 hover:-translate-y-0.5"
               >
                 <span className="rounded-full bg-pengu-blue/10 px-2 py-0.5 font-display text-[10px] uppercase tracking-wide text-pengu-blue">
                   {d.label}

@@ -69,7 +69,7 @@ function Step({
         : "bg-pengu-blue/10 text-pengu-blue";
   return (
     <div
-      className={`rounded-card border bg-white p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)] ${borderCls} ${
+      className={`rounded-card border bg-pengu-card p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)] ${borderCls} ${
         status === "locked" ? "opacity-55" : ""
       }`}
     >
@@ -143,7 +143,7 @@ export default function StartPage() {
   const step3: StepStatus = !isConnected || !hasAgents ? "locked" : "active";
 
   return (
-    <div className="min-h-screen text-pengu-dark" style={{ background: "#f3effb" }}>
+    <div className="min-h-screen text-pengu-dark">
       <AppHeader />
 
       <section className="mx-auto max-w-[860px] px-6 pb-16 pt-12">
@@ -190,7 +190,7 @@ export default function StartPage() {
               <>
                 <div className="rounded-2xl border border-pengu-blue/15 bg-pengu-bg px-4 py-3">
                   <div className="flex items-center gap-4">
-                    <span className="flex h-14 w-14 flex-none items-center justify-center overflow-hidden rounded-full border border-pengu-blue/15 bg-white">
+                    <span className="flex h-14 w-14 flex-none items-center justify-center overflow-hidden rounded-full border border-pengu-blue/15 bg-pengu-card">
                       <AgentMascot color={agentColorById(active.id)} className="h-[68%] w-auto" />
                     </span>
                     <div className="min-w-0 flex-1">

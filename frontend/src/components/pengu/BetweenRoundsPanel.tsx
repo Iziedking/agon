@@ -9,7 +9,7 @@ import { HostCampaignButton } from "@/components/pengu/HostCampaignButton";
 /// CTAs to do something about it.
 export function BetweenRoundsPanel({ connected }: { connected: boolean }) {
   return (
-    <div className="rounded-card border border-pengu-blue/15 bg-white p-8 shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
+    <div className="rounded-card border border-pengu-blue/15 bg-pengu-card p-8 shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
       <div className="flex flex-col items-center gap-5 text-center">
         <AgentMascot color="#7c4dff" className="h-32 w-auto" />
 
@@ -28,7 +28,7 @@ export function BetweenRoundsPanel({ connected }: { connected: boolean }) {
           />
           <a
             href="/contests"
-            className="rounded-pill border border-pengu-blue/30 bg-white px-6 py-3 font-display text-sm uppercase tracking-wide text-pengu-blue transition-colors hover:border-pengu-blue"
+            className="rounded-pill border border-pengu-blue/30 bg-pengu-card px-6 py-3 font-display text-sm uppercase tracking-wide text-pengu-blue transition-colors hover:border-pengu-blue"
           >
             browse contests
           </a>

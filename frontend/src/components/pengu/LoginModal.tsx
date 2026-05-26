@@ -17,9 +17,9 @@ import { reportEvent } from "@/lib/report";
 const solid =
   "group flex w-full items-center justify-between rounded-pill bg-pengu-blue px-6 py-4 font-display text-base uppercase tracking-wide text-white shadow-[0_5px_0_0_#5b34d6] transition-all duration-100 hover:translate-y-[2px] hover:shadow-[0_3px_0_0_#5b34d6] active:translate-y-[4px] active:shadow-[0_1px_0_0_#5b34d6] disabled:opacity-60";
 const ghost =
-  "group flex w-full items-center justify-between rounded-pill border-2 border-pengu-blue bg-white px-6 py-4 font-display text-base uppercase tracking-wide text-pengu-blue shadow-[0_5px_0_0_#e3dbff] transition-all duration-100 hover:translate-y-[2px] hover:shadow-[0_3px_0_0_#e3dbff] active:translate-y-[4px] disabled:opacity-60";
+  "group flex w-full items-center justify-between rounded-pill border-2 border-pengu-blue bg-pengu-card px-6 py-4 font-display text-base uppercase tracking-wide text-pengu-blue shadow-[0_5px_0_0_#e3dbff] transition-all duration-100 hover:translate-y-[2px] hover:shadow-[0_3px_0_0_#e3dbff] active:translate-y-[4px] disabled:opacity-60";
 const ghostCenter =
-  "flex w-full items-center justify-center rounded-pill border-2 border-pengu-blue bg-white px-6 py-4 font-display text-base uppercase tracking-wide text-pengu-blue shadow-[0_5px_0_0_#e3dbff] transition-all duration-100 hover:translate-y-[2px] hover:shadow-[0_3px_0_0_#e3dbff] active:translate-y-[4px] disabled:opacity-60";
+  "flex w-full items-center justify-center rounded-pill border-2 border-pengu-blue bg-pengu-card px-6 py-4 font-display text-base uppercase tracking-wide text-pengu-blue shadow-[0_5px_0_0_#e3dbff] transition-all duration-100 hover:translate-y-[2px] hover:shadow-[0_3px_0_0_#e3dbff] active:translate-y-[4px] disabled:opacity-60";
 
 function MailIcon() {
   return (
@@ -192,7 +192,7 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
           onClick={onClose}
         >
           <motion.div
-            className="relative w-full max-w-[420px] rounded-[28px] border-2 border-pengu-dark/5 bg-white p-8 text-center shadow-[0_30px_80px_rgba(27,17,64,0.35)]"
+            className="relative w-full max-w-[420px] rounded-[28px] border-2 border-pengu-dark/5 bg-pengu-card p-8 text-center shadow-[0_30px_80px_rgba(27,17,64,0.35)]"
             initial={{ opacity: 0, y: 18, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 12, scale: 0.98 }}
@@ -268,7 +268,7 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
                       your email names a device passkey. no emailed code, no seed phrase. a gasless smart account is created for you.
                     </p>
                     <input
-                      className="mt-5 w-full rounded-pill border-2 border-pengu-dark/15 bg-white px-5 py-3.5 text-left font-mono text-sm text-pengu-dark outline-none transition-colors focus:border-pengu-blue"
+                      className="mt-5 w-full rounded-pill border-2 border-pengu-dark/15 bg-pengu-card px-5 py-3.5 text-left font-mono text-sm text-pengu-dark outline-none transition-colors focus:border-pengu-blue"
                       type="email"
                       placeholder="you@email.com"
                       value={email}

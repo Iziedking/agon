@@ -6,7 +6,7 @@ import { ProfileLink } from "@/components/pengu/ProfileLink";
 /// single LOGIN entry that opens the two-method login popout (wallet or email).
 export function AppHeader() {
   return (
-    <header className="sticky top-0 z-20 border-b border-pengu-blue/15 bg-white">
+    <header className="sticky top-0 z-20 border-b border-pengu-blue/15 bg-pengu-card">
       <div className="mx-auto flex h-16 max-w-[1200px] items-center justify-between px-6">
         <a href="/" className="flex items-center gap-2 font-bubble text-2xl uppercase text-pengu-blue">
           <ArcLogo className="h-7 w-7" />

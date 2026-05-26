@@ -14,7 +14,7 @@ function Screen({ h, label }: { h: string; label?: string }) {
 
 export function WorkshopScene({ level }: { level: number }) {
   return (
-    <div className="rounded-card border border-pengu-blue/15 bg-white p-8 shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
+    <div className="rounded-card border border-pengu-blue/15 bg-pengu-card p-8 shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
       <div className="flex flex-wrap items-end justify-center gap-6 sm:gap-10">
         <div className="flex items-end gap-3">
           <Screen h="h-12" label="laptop" />

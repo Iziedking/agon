@@ -74,7 +74,7 @@ export function ResultsBoard({
   const myWin = settled && me ? winners.find((w) => w.operator.toLowerCase() === me) : undefined;
 
   return (
-    <div className="rounded-card border border-pengu-blue/15 bg-white p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
+    <div className="rounded-card border border-pengu-blue/15 bg-pengu-card p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
       <div className="flex items-center justify-between">
         <span className="font-display text-xs uppercase tracking-wide text-pengu-dark/45">
           {settled ? "results" : "in the arena"}

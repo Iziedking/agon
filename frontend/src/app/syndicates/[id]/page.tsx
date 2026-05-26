@@ -27,7 +27,7 @@ import {
 const chunkyBtn =
   "rounded-pill bg-pengu-blue px-6 py-3 font-display text-sm uppercase tracking-wide text-white shadow-[0_4px_0_0_#5b34d6] transition-all duration-100 hover:translate-y-[2px] hover:shadow-[0_2px_0_0_#5b34d6]";
 const ghostBtn =
-  "rounded-pill border border-pengu-blue/30 bg-white px-6 py-3 font-display text-sm uppercase tracking-wide text-pengu-blue hover:border-pengu-blue";
+  "rounded-pill border border-pengu-blue/30 bg-pengu-card px-6 py-3 font-display text-sm uppercase tracking-wide text-pengu-blue hover:border-pengu-blue";
 
 export default function SyndicateDetail() {
   const params = useParams();
@@ -181,7 +181,7 @@ export default function SyndicateDetail() {
       </section>
 
       <section className="mx-auto max-w-[900px] px-6 pb-8">
-        <div className="rounded-card border border-pengu-blue/15 bg-white p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
+        <div className="rounded-card border border-pengu-blue/15 bg-pengu-card p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
           {!isConnected ? (
             <p className="text-pengu-dark/65">connect your wallet to pick this side.</p>
           ) : isCurrent ? (
@@ -230,7 +230,7 @@ export default function SyndicateDetail() {
 
       <section className="mx-auto max-w-[900px] px-6 pb-16">
         <SectionLabel>weekly war</SectionLabel>
-        <div className="mt-4 rounded-card border border-pengu-blue/15 bg-white p-6 shadow-[0_8px_24px_rgba(70,45,150,0.06)]">
+        <div className="mt-4 rounded-card border border-pengu-blue/15 bg-pengu-card p-6 shadow-[0_8px_24px_rgba(70,45,150,0.06)]">
           <p className="text-sm text-pengu-dark/65">
             every week, the coordinator settles the syndicate war: total contributions across the seven days,
             standings emitted on-chain. the war pool distribution is a v1 refinement.
@@ -243,7 +243,7 @@ export default function SyndicateDetail() {
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen text-pengu-dark" style={{ background: "#f3effb" }}>
+    <div className="min-h-screen text-pengu-dark">
       <AppHeader />
       {children}
       <Footer />
@@ -253,7 +253,7 @@ function Shell({ children }: { children: React.ReactNode }) {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-card border border-pengu-blue/15 bg-white px-5 py-4 shadow-[0_8px_24px_rgba(70,45,150,0.06)]">
+    <div className="rounded-card border border-pengu-blue/15 bg-pengu-card px-5 py-4 shadow-[0_8px_24px_rgba(70,45,150,0.06)]">
       <div className="font-display text-[11px] uppercase tracking-wide text-pengu-dark/45">{label}</div>
       <div className="mt-1 font-mono text-2xl text-pengu-dark">{value}</div>
     </div>

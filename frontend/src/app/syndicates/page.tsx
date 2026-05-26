@@ -25,7 +25,7 @@ import {
 const chunkyBtn =
   "rounded-pill bg-pengu-blue px-5 py-2 font-display text-xs uppercase tracking-wide text-white shadow-[0_4px_0_0_#5b34d6] transition-all duration-100 hover:translate-y-[2px] hover:shadow-[0_2px_0_0_#5b34d6]";
 const ghostBtn =
-  "rounded-pill border border-pengu-blue/30 bg-white px-5 py-2 font-display text-xs uppercase tracking-wide text-pengu-blue hover:border-pengu-blue";
+  "rounded-pill border border-pengu-blue/30 bg-pengu-card px-5 py-2 font-display text-xs uppercase tracking-wide text-pengu-blue hover:border-pengu-blue";
 
 export default function SyndicatesPage() {
   const { address, isConnected } = useAccount();
@@ -101,7 +101,7 @@ export default function SyndicatesPage() {
   const currentName = syndicates?.find((s) => s.id === current)?.name;
 
   return (
-    <div className="min-h-screen text-pengu-dark" style={{ background: "#f3effb" }}>
+    <div className="min-h-screen text-pengu-dark">
       <AppHeader />
 
       <section className="mx-auto max-w-[1200px] px-6 pt-12">
@@ -127,7 +127,7 @@ export default function SyndicatesPage() {
             <button
               onClick={leave}
               disabled={busy === "leave"}
-              className="ml-2 rounded-full bg-white px-3 py-0.5 font-mono text-[10px] text-pengu-dark/65 hover:text-pengu-dark"
+              className="ml-2 rounded-full bg-pengu-card px-3 py-0.5 font-mono text-[10px] text-pengu-dark/65 hover:text-pengu-dark"
             >
               {busy === "leave" ? "leaving…" : "leave"}
             </button>
@@ -158,7 +158,7 @@ export default function SyndicatesPage() {
               return (
                 <div
                   key={s.id}
-                  className={`flex flex-col rounded-card border bg-white p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)] transition-transform duration-150 hover:-translate-y-1 ${
+                  className={`flex flex-col rounded-card border bg-pengu-card p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)] transition-transform duration-150 hover:-translate-y-1 ${
                     isCurrent ? "ring-2" : "border-pengu-blue/15"
                   }`}
                   style={isCurrent ? { borderColor: `${theme.color}66`, boxShadow: `0 0 0 2px ${theme.color}33` } : undefined}

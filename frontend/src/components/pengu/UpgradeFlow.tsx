@@ -120,7 +120,7 @@ export function UpgradeFlow({
           onClick={onClose}
         >
           <motion.div
-            className="relative w-full max-w-[760px] rounded-[28px] border-2 border-pengu-dark/5 bg-white p-8 shadow-[0_30px_80px_rgba(27,17,64,0.35)]"
+            className="relative w-full max-w-[760px] rounded-[28px] border-2 border-pengu-dark/5 bg-pengu-card p-8 shadow-[0_30px_80px_rgba(27,17,64,0.35)]"
             initial={{ opacity: 0, y: 18, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 12, scale: 0.98 }}
@@ -141,7 +141,7 @@ export function UpgradeFlow({
                 const maxed = cur >= MAX_TIER;
                 const price = prices[t];
                 return (
-                  <div key={t} className="rounded-card border border-pengu-blue/15 bg-white p-5 shadow-[0_8px_24px_rgba(70,45,150,0.06)]">
+                  <div key={t} className="rounded-card border border-pengu-blue/15 bg-pengu-card p-5 shadow-[0_8px_24px_rgba(70,45,150,0.06)]">
                     <div className="flex items-center justify-between">
                       <span className="font-bubble text-lg uppercase text-pengu-dark">{t}</span>
                       <span className="rounded-pill bg-pengu-blue/10 px-2.5 py-1 font-mono text-xs text-pengu-blue">tier {cur}</span>

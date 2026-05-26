@@ -92,7 +92,7 @@ export function LiveDirectory({
       </div>
 
       {totalActive === 0 ? (
-        <div className="mt-6 rounded-card border border-pengu-blue/15 bg-white p-8 text-center shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
+        <div className="mt-6 rounded-card border border-pengu-blue/15 bg-pengu-card p-8 text-center shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
           <p className="font-display text-sm uppercase tracking-wide text-pengu-dark/55">
             no events live right now
           </p>

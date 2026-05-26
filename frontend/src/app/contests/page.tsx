@@ -47,7 +47,7 @@ export default function ContestsPage() {
   const pageItems = (contests ?? []).slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE);
 
   return (
-    <div className="min-h-screen text-pengu-dark" style={{ background: "#f3effb" }}>
+    <div className="min-h-screen text-pengu-dark">
       <AppHeader />
 
       <section className="mx-auto max-w-[1200px] px-6 pt-12">

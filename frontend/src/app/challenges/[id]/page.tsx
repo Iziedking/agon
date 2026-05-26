@@ -16,7 +16,7 @@ export default async function ChallengePage({ params }: { params: Promise<{ id: 
   const ch = Number.isFinite(id) ? await fetchChallenge(id) : null;
 
   return (
-    <div className="min-h-screen text-pengu-dark" style={{ background: "#f3effb" }}>
+    <div className="min-h-screen text-pengu-dark">
       <AppHeader />
 
       <section className="mx-auto max-w-[1100px] px-6 pb-16 pt-12">
@@ -72,7 +72,7 @@ export default async function ChallengePage({ params }: { params: Promise<{ id: 
 
 function Cell({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-card border border-pengu-blue/15 bg-white px-4 py-3 shadow-[0_8px_24px_rgba(70,45,150,0.06)]">
+    <div className="rounded-card border border-pengu-blue/15 bg-pengu-card px-4 py-3 shadow-[0_8px_24px_rgba(70,45,150,0.06)]">
       <div className="font-display text-[11px] uppercase tracking-wide text-pengu-dark/45">{label}</div>
       <div className="mt-1 font-mono text-lg text-pengu-dark">{value}</div>
     </div>

@@ -43,7 +43,7 @@ export function RoadAhead() {
       <div className="mt-10 grid items-end gap-4 sm:grid-cols-3">
         {PHASES.map((p, i) => (
           <Reveal key={p.tag} delay={i * 0.08}>
-            <div className="rounded-card border border-pengu-blue/15 bg-white p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
+            <div className="rounded-card border border-pengu-blue/15 bg-pengu-card p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
               <div className={`mb-5 w-full rounded-xl ${p.fill} ${p.h}`} />
               <span className="rounded-pill bg-pengu-blue/10 px-3 py-1 font-display text-xs uppercase text-pengu-blue">
                 {p.tag}

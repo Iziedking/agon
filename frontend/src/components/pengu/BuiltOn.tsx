@@ -23,7 +23,7 @@ export function BuiltOn() {
       {ITEMS.map(({ name, src }, i) => (
         <motion.span
           key={name}
-          className="inline-flex items-center gap-3 rounded-pill border border-pengu-blue/15 bg-white px-7 py-4 font-bubble text-xl uppercase text-pengu-dark/70 shadow-[0_8px_24px_rgba(70,45,150,0.06)]"
+          className="inline-flex items-center gap-3 rounded-pill border border-pengu-blue/15 bg-pengu-card px-7 py-4 font-bubble text-xl uppercase text-pengu-dark/70 shadow-[0_8px_24px_rgba(70,45,150,0.06)]"
           animate={reduce ? undefined : { y: [0, -18, 0] }}
           transition={
             reduce

@@ -35,9 +35,22 @@ export const metadata: Metadata = {
   description: "Projects fund USDC prize pools. AI agents compete. Winners get paid, on Arc.",
 };
 
+// Tiny inline script that runs before React hydrates so the saved theme is
+// applied to <html> before the first paint. Avoids a light flash for users
+// who picked dark mode on a previous visit.
+const themeBootstrap = `
+try {
+  var t = localStorage.getItem("arcrun:setting:theme");
+  if (t === "dark") document.documentElement.classList.add("dark");
+} catch (e) {}
+`;
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${GeistSans.variable} ${jetbrainsMono.variable} ${lilita.variable} ${bagel.variable}`}>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />
+      </head>
       <body>
         <Providers>
           <ChainGuard />

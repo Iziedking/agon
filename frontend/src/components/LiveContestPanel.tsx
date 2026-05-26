@@ -29,7 +29,7 @@ export function LiveContestPanel({
 
   if (!standings) {
     return (
-      <div className="rounded-card border border-pengu-blue/15 bg-white p-8 shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
+      <div className="rounded-card border border-pengu-blue/15 bg-pengu-card p-8 shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
         <div className="flex items-center gap-2">
           <span className="h-2 w-2 rounded-full bg-[#22c55e] animate-pulse-live" />
           <span className="font-bubble text-lg uppercase text-pengu-dark">live contest</span>
@@ -46,7 +46,7 @@ export function LiveContestPanel({
   const names = useAgentNames(standings.entries.map((e) => e.agentId));
 
   return (
-    <div className="rounded-card border border-pengu-blue/15 bg-white p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
+    <div className="rounded-card border border-pengu-blue/15 bg-pengu-card p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="h-2 w-2 rounded-full bg-[#22c55e] animate-pulse-live" />

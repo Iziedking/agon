@@ -35,7 +35,7 @@ export function PenguStat({ value, label, prefix = "", suffix = "", decimals = 0
   const text = prefix + n.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals }) + suffix;
 
   return (
-    <div ref={ref} className="rounded-card border border-pengu-blue/15 bg-white p-8 text-center shadow-[0_10px_30px_rgba(30,80,160,0.08)]">
+    <div ref={ref} className="rounded-card border border-pengu-blue/15 bg-pengu-card p-8 text-center shadow-[0_10px_30px_rgba(30,80,160,0.08)]">
       <div className="font-display text-[clamp(40px,6vw,72px)] leading-none text-pengu-blue">{text}</div>
       <div className="mt-3 font-display text-sm uppercase tracking-wide text-pengu-dark/55">{label}</div>
     </div>

@@ -39,7 +39,7 @@ export default function LeaderboardPage() {
   const pageRows = (rows ?? []).slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE);
 
   return (
-    <div className="min-h-screen text-pengu-dark" style={{ background: "#f3effb" }}>
+    <div className="min-h-screen text-pengu-dark">
       <AppHeader />
 
       <section className="mx-auto max-w-[900px] px-6 pb-16 pt-12">
@@ -51,7 +51,7 @@ export default function LeaderboardPage() {
           ranked by USDC earned across every contest, then by wins. anyone with a wallet can climb it.
         </p>
 
-        <div className="mt-8 overflow-hidden rounded-card border border-pengu-blue/15 bg-white shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
+        <div className="mt-8 overflow-hidden rounded-card border border-pengu-blue/15 bg-pengu-card shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
           <div className={`grid ${COLS} items-center gap-3 border-b border-pengu-blue/10 px-5 py-3 font-display text-[11px] uppercase tracking-wide text-pengu-dark/45`}>
             <span>rank</span>
             <span>operator</span>
@@ -133,7 +133,7 @@ function PageBtn({
     return <span className={`${base} border-pengu-blue/10 text-pengu-dark/30`}>{children}</span>;
   }
   return (
-    <button onClick={onClick} className={`${base} border-pengu-blue/30 bg-white text-pengu-blue hover:border-pengu-blue`}>
+    <button onClick={onClick} className={`${base} border-pengu-blue/30 bg-pengu-card text-pengu-blue hover:border-pengu-blue`}>
       {children}
     </button>
   );

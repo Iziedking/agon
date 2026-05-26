@@ -40,7 +40,7 @@ import {
 const chunkyBtn =
   "block w-full rounded-pill bg-pengu-blue px-6 py-3 text-center font-display text-sm uppercase tracking-wide text-white shadow-[0_4px_0_0_#5b34d6] transition-all duration-100 hover:translate-y-[2px] hover:shadow-[0_2px_0_0_#5b34d6] active:translate-y-[3px] disabled:opacity-60";
 const ghostBtn =
-  "block w-full rounded-pill border border-pengu-blue/30 bg-white px-6 py-3 text-center font-display text-sm uppercase tracking-wide text-pengu-blue transition-colors hover:border-pengu-blue";
+  "block w-full rounded-pill border border-pengu-blue/30 bg-pengu-card px-6 py-3 text-center font-display text-sm uppercase tracking-wide text-pengu-blue transition-colors hover:border-pengu-blue";
 
 export default function DashboardPage() {
   const { address, isConnected } = useAccount();
@@ -113,6 +113,10 @@ export default function DashboardPage() {
   const safeProfile: OperatorProfile = profile ?? {
     operator: address,
     xHandle: null,
+    telegramId: null,
+    telegramUsername: null,
+    discordId: null,
+    discordUsername: null,
     syndicateId: null,
     cycles: 0,
     reputation: "0",
@@ -218,7 +222,7 @@ export default function DashboardPage() {
         </div>
 
         {agents.length === 0 ? (
-          <div className="mt-5 rounded-card border border-pengu-blue/15 bg-white p-6 text-center shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
+          <div className="mt-5 rounded-card border border-pengu-blue/15 bg-pengu-card p-6 text-center shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
             <p className="text-pengu-dark/65">no agents yet. claim one to start competing.</p>
             <div className="mt-4 flex justify-center">
               <ClaimAgentButton
@@ -266,7 +270,7 @@ export default function DashboardPage() {
 
       <section className="mx-auto max-w-[1200px] px-6 pb-16">
         <SectionLabel>recent contests</SectionLabel>
-        <div className="mt-5 overflow-hidden rounded-card border border-pengu-blue/15 bg-white shadow-[0_8px_24px_rgba(70,45,150,0.06)]">
+        <div className="mt-5 overflow-hidden rounded-card border border-pengu-blue/15 bg-pengu-card shadow-[0_8px_24px_rgba(70,45,150,0.06)]">
           {safeProfile.contests.length === 0 ? (
             <p className="px-5 py-8 font-mono text-sm text-pengu-dark/50">
               no contests entered yet. <a href="/contests" className="text-pengu-blue hover:underline">browse and enter one →</a>
@@ -284,7 +288,7 @@ export default function DashboardPage() {
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen text-pengu-dark" style={{ background: "#f3effb" }}>
+    <div className="min-h-screen text-pengu-dark">
       <AppHeader />
       {children}
       <Footer />
@@ -295,7 +299,7 @@ function Shell({ children }: { children: React.ReactNode }) {
 function Stat({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return (
     <div
-      className="relative overflow-hidden rounded-card border border-pengu-blue/15 bg-white px-5 py-4 shadow-[0_8px_24px_rgba(70,45,150,0.06)]"
+      className="relative overflow-hidden rounded-card border border-pengu-blue/15 bg-pengu-card px-5 py-4 shadow-[0_8px_24px_rgba(70,45,150,0.06)]"
       style={accent ? { borderTopColor: accent, borderTopWidth: 3 } : undefined}
     >
       {accent ? (
@@ -336,7 +340,7 @@ function CommandBand({
 
   return (
     <div
-      className="relative mt-6 overflow-hidden rounded-card border border-pengu-blue/15 bg-white shadow-[0_10px_30px_rgba(70,45,150,0.08)]"
+      className="relative mt-6 overflow-hidden rounded-card border border-pengu-blue/15 bg-pengu-card shadow-[0_10px_30px_rgba(70,45,150,0.08)]"
       style={{ borderTopColor: accent, borderTopWidth: 3 }}
     >
       <div className="arena-grid absolute inset-0 opacity-30" aria-hidden />
@@ -384,7 +388,7 @@ function CommandBand({
           </a>
           <a
             href="/contests"
-            className="rounded-pill border border-pengu-blue/30 bg-white px-5 py-2.5 font-display text-xs uppercase tracking-wide text-pengu-blue hover:border-pengu-blue"
+            className="rounded-pill border border-pengu-blue/30 bg-pengu-card px-5 py-2.5 font-display text-xs uppercase tracking-wide text-pengu-blue hover:border-pengu-blue"
           >
             enter a contest
           </a>
@@ -408,7 +412,7 @@ function ActionCard({
   const accent = tone === "prize" ? "#7c4dff" : "#22c55e";
   return (
     <div
-      className="relative overflow-hidden rounded-card border border-pengu-blue/15 bg-white p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)]"
+      className="relative overflow-hidden rounded-card border border-pengu-blue/15 bg-pengu-card p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)]"
       style={{ borderTopColor: accent, borderTopWidth: 3 }}
     >
       {tone === "live" ? <div className="scan" aria-hidden /> : null}
@@ -449,12 +453,12 @@ function AgentTile({
 }) {
   return (
     <div
-      className={`rounded-card border bg-white p-5 shadow-[0_8px_24px_rgba(70,45,150,0.06)] ${
+      className={`rounded-card border bg-pengu-card p-5 shadow-[0_8px_24px_rgba(70,45,150,0.06)] ${
         isActive ? "border-pengu-blue/40 ring-2 ring-pengu-blue/15" : "border-pengu-blue/15"
       }`}
     >
       <div className="flex items-center gap-3">
-        <span className="flex h-12 w-12 flex-none items-center justify-center overflow-hidden rounded-full border border-pengu-blue/15 bg-white">
+        <span className="flex h-12 w-12 flex-none items-center justify-center overflow-hidden rounded-full border border-pengu-blue/15 bg-pengu-card">
           <AgentMascot variant={variantForAgentId(agent.id)} live className="h-[68%] w-auto" />
         </span>
         <div className="min-w-0 flex-1">

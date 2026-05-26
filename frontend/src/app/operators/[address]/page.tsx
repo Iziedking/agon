@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { useAccount } from "wagmi";
 import { AppHeader } from "@/components/pengu/AppHeader";
@@ -35,11 +35,11 @@ const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL ?? "http://localhost:8082";
 const chunkyBtn =
   "rounded-pill bg-pengu-blue px-5 py-2.5 font-display text-xs uppercase tracking-wide text-white shadow-[0_4px_0_0_#5b34d6] transition-all duration-100 hover:translate-y-[2px] hover:shadow-[0_2px_0_0_#5b34d6]";
 const ghostBtn =
-  "rounded-pill border border-pengu-blue/30 bg-white px-5 py-2.5 font-display text-xs uppercase tracking-wide text-pengu-blue hover:border-pengu-blue";
+  "rounded-pill border border-pengu-blue/30 bg-pengu-card px-5 py-2.5 font-display text-xs uppercase tracking-wide text-pengu-blue hover:border-pengu-blue";
 const input =
-  "w-full rounded-pill border border-pengu-blue/20 bg-white px-4 py-2 font-mono text-sm text-pengu-dark outline-none transition-colors focus:border-pengu-blue";
+  "w-full rounded-pill border border-pengu-blue/20 bg-pengu-card px-4 py-2 font-mono text-sm text-pengu-dark outline-none transition-colors focus:border-pengu-blue";
 const card =
-  "rounded-card border border-pengu-blue/15 bg-white p-6 shadow-[0_8px_24px_rgba(70,45,150,0.06)]";
+  "rounded-card border border-pengu-blue/15 bg-pengu-card p-6 shadow-[0_8px_24px_rgba(70,45,150,0.06)]";
 
 export default function OperatorPage() {
   const params = useParams();
@@ -85,7 +85,7 @@ export default function OperatorPage() {
   }
 
   return (
-    <div className="min-h-screen text-pengu-dark" style={{ background: "#f3effb" }}>
+    <div className="min-h-screen text-pengu-dark">
       <AppHeader />
 
       <section className="mx-auto max-w-[900px] px-6 pb-10 pt-12">
@@ -164,9 +164,36 @@ export default function OperatorPage() {
 
           <div className="h-px bg-pengu-blue/10" />
 
-          {/* Telegram + Discord (OAuth) */}
-          <OauthSocial label="telegram" hint="login widget, verified handle and id" isMe={isMe} />
-          <OauthSocial label="discord" hint="oauth2, verified handle and avatar" isMe={isMe} />
+          {/* Telegram */}
+          <TelegramRow
+            isMe={isMe}
+            handle={profile !== "loading" ? profile?.telegramUsername ?? null : null}
+            telegramId={profile !== "loading" ? profile?.telegramId ?? null : null}
+            onUnbind={async () => {
+              await fetch(`${AUTH_URL}/auth/telegram/unbind`, {
+                method: "POST",
+                credentials: "include",
+              });
+              const next = await fetchOperator(address);
+              setProfile(next);
+            }}
+          />
+
+          <div className="h-px bg-pengu-blue/10" />
+
+          {/* Discord */}
+          <DiscordRow
+            isMe={isMe}
+            handle={profile !== "loading" ? profile?.discordUsername ?? null : null}
+            onUnbind={async () => {
+              await fetch(`${AUTH_URL}/auth/discord/unbind`, {
+                method: "POST",
+                credentials: "include",
+              });
+              const next = await fetchOperator(address);
+              setProfile(next);
+            }}
+          />
         </div>
       </section>
 
@@ -178,10 +205,10 @@ export default function OperatorPage() {
             <SettingRow
               k="theme"
               label="theme"
-              hint="dark mode is coming"
+              hint="flip the entire arena to dark; choice persists across visits"
               options={[
                 { value: "light", label: "light" },
-                { value: "dark", label: "dark (soon)", disabled: true },
+                { value: "dark", label: "dark" },
               ]}
               fallback="light"
             />
@@ -237,9 +264,9 @@ function AgentCustomizeCard({ agent, isMe }: { agent: AgentState; isMe: boolean 
   const display = (name || agent.nickname || "").trim();
 
   return (
-    <div className="rounded-card border border-pengu-blue/15 bg-white p-5 shadow-[0_8px_24px_rgba(70,45,150,0.06)]">
+    <div className="rounded-card border border-pengu-blue/15 bg-pengu-card p-5 shadow-[0_8px_24px_rgba(70,45,150,0.06)]">
       <div className="flex flex-wrap items-center gap-4">
-        <span className="flex h-14 w-14 flex-none items-center justify-center overflow-hidden rounded-full border border-pengu-blue/15 bg-white">
+        <span className="flex h-14 w-14 flex-none items-center justify-center overflow-hidden rounded-full border border-pengu-blue/15 bg-pengu-card">
           <AgentMascot color={agentColorById(agent.id)} className="h-[68%] w-auto" />
         </span>
         <div className="min-w-0 flex-1">
@@ -259,7 +286,7 @@ function AgentCustomizeCard({ agent, isMe }: { agent: AgentState; isMe: boolean 
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder={`name agent #${agent.id}`}
-            className="w-full max-w-[280px] rounded-pill border border-pengu-blue/20 bg-white px-4 py-2 font-mono text-sm text-pengu-dark outline-none transition-colors focus:border-pengu-blue"
+            className="w-full max-w-[280px] rounded-pill border border-pengu-blue/20 bg-pengu-card px-4 py-2 font-mono text-sm text-pengu-dark outline-none transition-colors focus:border-pengu-blue"
             disabled={busy}
             maxLength={24}
           />
@@ -290,33 +317,123 @@ function AgentCustomizeCard({ agent, isMe }: { agent: AgentState; isMe: boolean 
   );
 }
 
-function OauthSocial({
-  label,
-  hint,
+/// Telegram linking row. Fetches the bot's username from the backend so we
+/// know whether telegram is configured server-side, then embeds the Telegram
+/// Login Widget script for the connect action. Already-linked state shows the
+/// handle and an unbind button. Skipping or failing the config fetch falls
+/// back to a "not configured" message so judges can see the rest of the page.
+function TelegramRow({
   isMe,
+  handle,
+  telegramId,
+  onUnbind,
 }: {
-  label: string;
-  hint: string;
   isMe: boolean;
+  handle: string | null;
+  telegramId: string | null;
+  onUnbind: () => Promise<void>;
 }) {
-  // Placeholder until the real OAuth flow lands. Telegram uses the Login
-  // Widget (passes id, username, photo_url, hash); Discord uses OAuth2 (passes
-  // snowflake id, username, avatar). Once wired, the disabled button becomes a
-  // real connect link matching the X pattern.
+  const [botUsername, setBotUsername] = useState<string | null>(null);
+  const [configured, setConfigured] = useState<boolean | null>(null);
+  const widgetMount = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let live = true;
+    fetch(`${AUTH_URL}/auth/telegram/config`)
+      .then((r) => r.json())
+      .then((d: { configured?: boolean; botUsername?: string | null }) => {
+        if (!live) return;
+        setConfigured(!!d.configured);
+        setBotUsername(d.botUsername ?? null);
+      })
+      .catch(() => live && setConfigured(false));
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  // Mount the Telegram Login Widget when configured, the connected user is
+  // viewing their own profile, and they haven't already linked.
+  useEffect(() => {
+    if (!isMe || handle || !configured || !botUsername || !widgetMount.current) return;
+    const host = widgetMount.current;
+    host.innerHTML = "";
+    const script = document.createElement("script");
+    script.src = "https://telegram.org/js/telegram-widget.js?22";
+    script.async = true;
+    script.setAttribute("data-telegram-login", botUsername);
+    script.setAttribute("data-size", "medium");
+    script.setAttribute("data-auth-url", `${AUTH_URL}/auth/telegram/callback`);
+    script.setAttribute("data-request-access", "write");
+    script.setAttribute("data-radius", "20");
+    host.appendChild(script);
+    return () => {
+      host.innerHTML = "";
+    };
+  }, [isMe, handle, configured, botUsername]);
+
+  const displayHandle = handle ? `@${handle}` : telegramId ? `id ${telegramId}` : "not linked";
+
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="min-w-0">
-        <div className="font-display text-xs uppercase tracking-wide text-pengu-dark/45">{label}</div>
-        <div className="mt-1 font-mono text-sm text-pengu-dark">not linked</div>
-        <div className="mt-0.5 font-mono text-[11px] text-pengu-dark/45">{hint}</div>
+        <div className="font-display text-xs uppercase tracking-wide text-pengu-dark/45">telegram</div>
+        <div className="mt-1 font-mono text-sm text-pengu-dark">{displayHandle}</div>
+        <div className="mt-0.5 font-mono text-[11px] text-pengu-dark/45">
+          {configured === false ? "telegram bot not configured" : "verified by telegram login widget"}
+        </div>
       </div>
+
       {isMe ? (
-        <button
-          disabled
-          className="cursor-not-allowed rounded-pill border border-pengu-blue/15 bg-pengu-bg px-5 py-2.5 font-display text-xs uppercase tracking-wide text-pengu-dark/40"
-        >
-          connect {label} · soon
-        </button>
+        handle ? (
+          <button onClick={onUnbind} className={ghostBtn}>
+            unbind
+          </button>
+        ) : configured ? (
+          <div ref={widgetMount} />
+        ) : (
+          <button
+            disabled
+            className="cursor-not-allowed rounded-pill border border-pengu-blue/15 bg-pengu-bg px-5 py-2.5 font-display text-xs uppercase tracking-wide text-pengu-dark/40"
+          >
+            unavailable
+          </button>
+        )
+      ) : null}
+    </div>
+  );
+}
+
+/// Discord linking row. Matches the X pattern: connect link points at the
+/// server start endpoint, which redirects to discord.com and back with a code.
+/// Already-linked state shows the username and an unbind button.
+function DiscordRow({
+  isMe,
+  handle,
+  onUnbind,
+}: {
+  isMe: boolean;
+  handle: string | null;
+  onUnbind: () => Promise<void>;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="min-w-0">
+        <div className="font-display text-xs uppercase tracking-wide text-pengu-dark/45">discord</div>
+        <div className="mt-1 font-mono text-sm text-pengu-dark">{handle ? handle : "not linked"}</div>
+        <div className="mt-0.5 font-mono text-[11px] text-pengu-dark/45">oauth2 identify scope</div>
+      </div>
+
+      {isMe ? (
+        handle ? (
+          <button onClick={onUnbind} className={ghostBtn}>
+            unbind
+          </button>
+        ) : (
+          <a href={`${AUTH_URL}/auth/discord/start`} className={chunkyBtn}>
+            connect discord
+          </a>
+        )
       ) : null}
     </div>
   );
@@ -399,7 +516,7 @@ function ToggleRow({ k, label, hint }: { k: SettingKey; label: string; hint?: st
         aria-pressed={on}
       >
         <span
-          className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow-[0_2px_4px_rgba(0,0,0,0.2)] transition-transform ${
+          className={`absolute top-1 h-5 w-5 rounded-full bg-pengu-card shadow-[0_2px_4px_rgba(0,0,0,0.2)] transition-transform ${
             on ? "translate-x-6" : "translate-x-1"
           }`}
         />

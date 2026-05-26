@@ -11,7 +11,7 @@ import { reportEvent } from "@/lib/report";
 const chunky =
   "block w-full rounded-pill bg-pengu-blue px-6 py-3 text-center font-display text-sm uppercase tracking-wide text-white shadow-[0_4px_0_0_#5b34d6] transition-all duration-100 hover:translate-y-[2px] hover:shadow-[0_2px_0_0_#5b34d6] active:translate-y-[3px] disabled:opacity-60";
 const input =
-  "w-full rounded-xl border border-pengu-blue/20 bg-white px-3 py-2 font-mono text-sm text-pengu-dark outline-none focus:border-pengu-blue";
+  "w-full rounded-xl border border-pengu-blue/20 bg-pengu-card px-3 py-2 font-mono text-sm text-pengu-dark outline-none focus:border-pengu-blue";
 const label = "font-display text-[11px] uppercase tracking-wide text-pengu-dark/50";
 
 /// Opens a peer-to-peer ChallengeArena challenge. The creator does not stake at
@@ -76,7 +76,7 @@ export function CreateChallengeModal({ open, onClose }: { open: boolean; onClose
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-pengu-dark/40" onClick={onClose} />
-      <div className="relative w-full max-w-[440px] rounded-card border border-pengu-blue/15 bg-white p-6 shadow-[0_20px_60px_rgba(70,45,150,0.25)]">
+      <div className="relative w-full max-w-[440px] rounded-card border border-pengu-blue/15 bg-pengu-card p-6 shadow-[0_20px_60px_rgba(70,45,150,0.25)]">
         <button
           onClick={onClose}
           className="absolute right-4 top-4 font-mono text-sm text-pengu-dark/40 hover:text-pengu-dark"

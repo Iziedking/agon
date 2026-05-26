@@ -1,10 +1,37 @@
 /* ArcRun design tokens. Mirror these in tailwind.config.ts.
    Do not introduce new tokens without updating SKILL.md.
    Font families are wired to next/font variables (set in app/layout.tsx),
-   with the skill's named fonts kept as fallbacks. */
+   with the skill's named fonts kept as fallbacks.
+
+   The pengu palette is exposed as RGB triplets (space-separated, no parens)
+   so Tailwind 3.4 opacity modifiers (bg-pengu-blue/15) keep working through
+   `rgb(var(--pengu-blue) / <alpha-value>)`. Dark mode swaps the same names
+   under `html.dark` so most surfaces auto-flip with zero per-component
+   changes. */
 
 :root {
-  /* Canvas and surface */
+  /* Pengu palette as RGB triplets */
+  --pengu-bg: 243 239 251;
+  --pengu-bg-2: 255 255 255;
+  --pengu-card: 255 255 255;
+  --pengu-card-2: 255 255 255;
+  --pengu-blue: 124 77 255;
+  --pengu-blue-2: 106 53 240;
+  --pengu-soft: 217 204 255;
+  --pengu-text: 255 255 255;
+  --pengu-dim: 185 198 234;
+  --pengu-dark: 27 17 64;
+
+  /* Arena grid line color (used by the scan-grid pattern on stage surfaces) */
+  --pengu-grid: 124 77 255;
+  --pengu-grid-strength: 0.08;
+
+  /* Card surface shadow (subtle in light, near-invisible in dark) */
+  --pengu-card-shadow: 0 10px 30px rgba(70, 45, 150, 0.08);
+  --pengu-card-shadow-soft: 0 8px 24px rgba(70, 45, 150, 0.06);
+  --pengu-card-shadow-hero: 0 18px 50px rgba(70, 45, 150, 0.10);
+
+  /* Canvas and surface (legacy tokens, kept for back-compat) */
   --color-bg: #0A0E1A;
   --color-surface: #1A1F2E;
   --color-surface-2: #222838;
@@ -109,15 +136,38 @@
   --z-toast: 50;
 }
 
-/* Base body */
+/* Base body, uses the pengu palette so toggling html.dark flips the page. */
 html, body {
-  background-color: var(--color-bg);
-  color: var(--color-text);
+  background-color: rgb(var(--pengu-bg));
+  color: rgb(var(--pengu-dark));
   font-family: var(--font-body);
   font-size: var(--text-body);
   line-height: var(--leading-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  transition: background-color 200ms ease, color 200ms ease;
+}
+
+/* Dark mode: swap the pengu palette only. Every surface that reads from
+   pengu-* tokens flips automatically. */
+html.dark {
+  --pengu-bg: 14 10 26;          /* deep night-lavender base */
+  --pengu-bg-2: 26 21 48;
+  --pengu-card: 31 26 53;        /* raised surface */
+  --pengu-card-2: 42 35 72;
+  --pengu-blue: 157 109 255;     /* slightly brighter purple for contrast */
+  --pengu-blue-2: 180 151 255;
+  --pengu-soft: 61 47 94;
+  --pengu-text: 255 255 255;     /* unchanged: text on solid blue buttons */
+  --pengu-dim: 139 136 168;
+  --pengu-dark: 244 241 255;     /* body/text color, now light */
+
+  --pengu-grid: 157 109 255;
+  --pengu-grid-strength: 0.18;
+
+  --pengu-card-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  --pengu-card-shadow-soft: 0 8px 24px rgba(0, 0, 0, 0.25);
+  --pengu-card-shadow-hero: 0 18px 50px rgba(0, 0, 0, 0.45);
 }
 
 /* Pill label, the small uppercase tag above every major section */
@@ -279,8 +329,8 @@ html, body {
 }
 .arena-grid {
   background-image:
-    linear-gradient(to right, rgba(124, 77, 255, 0.08) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(124, 77, 255, 0.08) 1px, transparent 1px);
+    linear-gradient(to right, rgb(var(--pengu-grid) / var(--pengu-grid-strength)) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(var(--pengu-grid) / var(--pengu-grid-strength)) 1px, transparent 1px);
   background-size: 40px 40px;
   animation: arena-grid 20s linear infinite;
 }

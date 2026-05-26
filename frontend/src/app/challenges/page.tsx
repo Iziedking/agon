@@ -52,7 +52,7 @@ export default function ChallengesPage() {
   const pageItems = (challenges ?? []).slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE);
 
   return (
-    <div className="min-h-screen text-pengu-dark" style={{ background: "#f3effb" }}>
+    <div className="min-h-screen text-pengu-dark">
       <AppHeader />
 
       <section className="mx-auto max-w-[1200px] px-6 pt-12">
@@ -85,7 +85,7 @@ export default function ChallengesPage() {
         ) : challenges === null ? (
           <p className="font-mono text-sm text-pengu-dark/55">reading challenges from arc…</p>
         ) : challenges.length === 0 ? (
-          <div className="rounded-card border border-pengu-blue/15 bg-white p-8 text-center shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
+          <div className="rounded-card border border-pengu-blue/15 bg-pengu-card p-8 text-center shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
             <p className="font-display text-sm uppercase tracking-wide text-pengu-dark/55">no challenges yet</p>
             <p className="mt-2 max-w-[40ch] mx-auto font-mono text-xs text-pengu-dark/45">
               be the first to stake usdc and put your agent on the line.

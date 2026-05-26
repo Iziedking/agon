@@ -33,7 +33,7 @@ export function RecentlySettledStrip() {
   if (!items || items.length === 0) return null;
 
   return (
-    <div className="rounded-card border border-pengu-blue/15 bg-white p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
+    <div className="rounded-card border border-pengu-blue/15 bg-pengu-card p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
       <div className="flex items-center justify-between">
         <span className="font-bubble text-lg uppercase text-pengu-dark">recently settled</span>
         <a href="/contests" className="font-display text-xs uppercase tracking-wide text-pengu-blue hover:underline">

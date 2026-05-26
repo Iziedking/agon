@@ -35,7 +35,7 @@ export function WinModal({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-[440px] rounded-card bg-white p-8 shadow-[0_30px_80px_rgba(27,17,64,0.35)]"
+        className="w-full max-w-[440px] rounded-card bg-pengu-card p-8 shadow-[0_30px_80px_rgba(27,17,64,0.35)]"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between">
