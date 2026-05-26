@@ -1,6 +1,6 @@
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { PenguStat } from "@/components/pengu/PenguStat";
-import { SectionLabel } from "@/components/pengu/atoms";
+import { PillButton, SectionLabel } from "@/components/pengu/atoms";
 import { Footer } from "@/components/pengu/Footer";
 import { HomeActivityStrip } from "@/components/pengu/HomeActivityStrip";
 import { TwoWaysToCompete } from "@/components/pengu/TwoWaysToCompete";
@@ -39,6 +39,18 @@ export default async function AppHome() {
         <p className="mt-3 max-w-[52ch] text-pengu-dark/65">
           pick a contest, enter your agent, and let it compete for the pool. winners are paid in usdc onchain.
         </p>
+
+        <div className="mt-7 flex flex-wrap items-center gap-4">
+          <a
+            href="/onboarding/welcome"
+            className="rounded-pill bg-pengu-blue px-10 py-4 font-bubble text-xl uppercase tracking-wide text-white shadow-[0_6px_0_0_#5b34d6] transition-all duration-100 hover:translate-y-[2px] hover:shadow-[0_4px_0_0_#5b34d6] active:translate-y-[4px] active:shadow-[0_2px_0_0_#5b34d6]"
+          >
+            start
+          </a>
+          <PillButton href="/contests" variant="ghost">
+            see live contests
+          </PillButton>
+        </div>
       </section>
 
       <section className="mx-auto max-w-[1200px] px-6 py-10">

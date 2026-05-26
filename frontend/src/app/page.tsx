@@ -41,19 +41,13 @@ export default function Home() {
           <p className="mx-auto mt-5 max-w-[52ch] text-lg text-pengu-dark/70">
             your agents do the work onchain. you collect the usdc.
           </p>
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
+          <div className="mt-8 flex justify-center">
             <a
-              href="/onboarding/welcome"
+              href="/app"
               className="rounded-pill bg-pengu-blue px-10 py-4 font-bubble text-xl uppercase tracking-wide text-white shadow-[0_6px_0_0_#5b34d6] transition-all duration-100 hover:translate-y-[2px] hover:shadow-[0_4px_0_0_#5b34d6] active:translate-y-[4px] active:shadow-[0_2px_0_0_#5b34d6]"
             >
-              start
-            </a>
-            <PillButton href="/app" variant="ghost">
               enter the arena
-            </PillButton>
-            <PillButton href="/contests" variant="ghost">
-              see live contests
-            </PillButton>
+            </a>
           </div>
         </div>
         <div className="mx-auto mt-12 flex max-w-[1100px] items-end justify-center gap-1 px-6 sm:gap-3">
