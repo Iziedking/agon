@@ -107,7 +107,14 @@ function standings(results: AgentResult[]) {
   return results
     .slice()
     .sort((a, b) => b.score - a.score)
-    .map((r, i) => ({ rank: i + 1, agentId: r.agentId, operator: r.operator, score: Math.round(r.score) }));
+    .map((r, i) => ({
+      rank: i + 1,
+      agentId: r.agentId,
+      operator: r.operator,
+      score: Math.round(r.score),
+      // Carry runner progress through (solver cells, analyst calls, scout txs).
+      progress: r.progress,
+    }));
 }
 
 // Each challenge gets at most one preview pass per process lifetime so the
@@ -178,73 +185,122 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
       return;
     }
 
-    const field = await fetchField(challengeId, cType);
-    if (cType === 0 && field.length > 0 && config.scout.masterMnemonic && config.coordinator.privateKey) {
-      await fundHotWallets(field.map((e) => e.agentId), Number(process.env.SCOUT_FUND_USDC ?? "1"));
-    }
+    // Retry-safe resolve. The previous shape did one shot: score, persist
+    // payouts, postWinnerRoot, broadcast. If postWinnerRoot threw (RPC blip,
+    // gas, deadline crossed mid-flight), the function exited; the next sweep
+    // re-ran scoring with fresh randomness so the merkle root no longer
+    // matched the persisted payouts, and the deadline check eventually
+    // cancelled the whole thing. The fix: if payouts are already persisted
+    // from a previous attempt, skip scoring and reuse them so postWinnerRoot
+    // retries with the same root until it lands.
+    const existing = await query<{ rank: number; operator: string; amount: string }>(
+      "select rank, operator, amount from challenge_payouts where challenge_id = $1 order by rank",
+      [challengeId],
+    );
 
-    // Per-kind randomness; preview frames re-roll so the race visibly shuffles,
-    // and the final scoring rolls once for the authoritative winner.
-    const factor = kindRandomness(Number(ch.kind));
+    let payouts: { operator: `0x${string}`; amount: bigint }[];
 
-    // Trait multipliers are stable across the locked field, so fetch once and
-    // reuse for every preview frame and the authoritative scoring.
-    const traitMult = await fetchAgentMultipliers(field.map((e) => e.agentId));
-
-    // Stream a preview race so the challenge detail board animates before the
-    // winner root posts. Only on the first sweep that sees this challenge
-    // locked in this process, and only when there is enough resolve window
-    // left to fit the preview without missing the deadline.
-    const previewSecs = Number(process.env.CHALLENGE_PREVIEW_SECONDS ?? "20");
-    const haveTime = Number(ch.resolveDeadline) - nowSec > previewSecs + 5;
-    if (!previewed.has(challengeId) && field.length >= 2 && haveTime) {
-      previewed.add(challengeId);
-      const previewUntil = Date.now() + previewSecs * 1000;
+    if (existing.rows.length > 0) {
+      // Retry path. Skip field fetch, scoring, preview, and trait award; they
+      // already ran on the first attempt. Only postWinnerRoot retries here.
+      payouts = existing.rows.map((r) => ({
+        operator: r.operator as `0x${string}`,
+        amount: BigInt(r.amount),
+      }));
       console.log(
-        `challenge ${challengeId}: streaming ${previewSecs}s preview to ${field.length} entrant(s) (kind ${ch.kind}, randomness ±${(factor * 100).toFixed(0)}%)`,
+        `challenge ${challengeId}: retrying postWinnerRoot with ${payouts.length} previously persisted payout(s)`,
       );
-      while (Date.now() < previewUntil) {
-        const preview = await previewScores(cType, challengeId, field);
-        const boosted = applyTraitMultipliers(preview, traitMult);
-        broadcast({ type: "challenge_standings", challengeId, entries: standings(applyRandomness(boosted, factor)) });
-        await sleep(2500);
+    } else {
+      // Fresh resolve path.
+      const field = await fetchField(challengeId, cType);
+      if (cType === 0 && field.length > 0 && config.scout.masterMnemonic && config.coordinator.privateKey) {
+        await fundHotWallets(field.map((e) => e.agentId), Number(process.env.SCOUT_FUND_USDC ?? "1"));
       }
-    }
 
-    const baseResults = await scoreField(cType, challengeId, field);
-    const withTraits = applyTraitMultipliers(baseResults, traitMult);
-    const results = applyRandomness(withTraits, factor);
+      // Per-kind randomness; preview frames re-roll so the race visibly
+      // shuffles, the final scoring rolls once for the authoritative winner.
+      const factor = kindRandomness(Number(ch.kind));
 
-    const pot = ch.stake * BigInt(entrants);
-    const fee = (pot * BigInt(ch.platformFeeBps)) / 10_000n;
-    const payouts = computePayouts(results, pot - fee);
-    if (payouts.length === 0) {
-      // A LOCKED challenge can only be cancelled after its resolve deadline, so
-      // don't cancel here. Leave it; if it never scores, the deadline path above
-      // cancels it on a later sweep and entrants refund.
-      console.log(`challenge ${challengeId}: no scoring entrants yet; will retry until resolve deadline`);
-      return;
-    }
+      // Trait multipliers are stable across the locked field, so fetch once
+      // and reuse for every preview frame and the authoritative scoring.
+      const traitMult = await fetchAgentMultipliers(field.map((e) => e.agentId));
 
-    for (let i = 0; i < payouts.length; i++) {
-      await query(
-        "insert into challenge_payouts (challenge_id, rank, operator, amount) values ($1, $2, $3, $4) on conflict (challenge_id, rank) do nothing",
-        [challengeId, i + 1, payouts[i]!.operator.toLowerCase(), payouts[i]!.amount.toString()],
+      // Stream a preview race so the challenge detail board animates before
+      // the winner root posts. Only on the first sweep that sees this
+      // challenge locked in this process, and only when there is enough
+      // resolve window left to fit the preview.
+      const previewSecs = Number(process.env.CHALLENGE_PREVIEW_SECONDS ?? "20");
+      const haveTime = Number(ch.resolveDeadline) - nowSec > previewSecs + 5;
+      if (!previewed.has(challengeId) && field.length >= 2 && haveTime) {
+        previewed.add(challengeId);
+        const previewUntil = Date.now() + previewSecs * 1000;
+        console.log(
+          `challenge ${challengeId}: streaming ${previewSecs}s preview to ${field.length} entrant(s) (kind ${ch.kind}, randomness ±${(factor * 100).toFixed(0)}%)`,
+        );
+        while (Date.now() < previewUntil) {
+          const preview = await previewScores(cType, challengeId, field);
+          const boosted = applyTraitMultipliers(preview, traitMult);
+          broadcast({ type: "challenge_standings", challengeId, entries: standings(applyRandomness(boosted, factor)) });
+          await sleep(2500);
+        }
+      }
+
+      const baseResults = await scoreField(cType, challengeId, field);
+      const withTraits = applyTraitMultipliers(baseResults, traitMult);
+      const results = applyRandomness(withTraits, factor);
+
+      // Final standings frame with the authoritative progress so the live
+      // stage gets the real per-agent state (Scout tx hashes especially)
+      // before the settled banner clears it.
+      broadcast({ type: "challenge_standings", challengeId, entries: standings(results) });
+
+      const pot = ch.stake * BigInt(entrants);
+      const fee = (pot * BigInt(ch.platformFeeBps)) / 10_000n;
+      payouts = computePayouts(results, pot - fee);
+      if (payouts.length === 0) {
+        // A LOCKED challenge can only be cancelled after its resolve deadline,
+        // so leave it; if it never scores, the deadline path above cancels it
+        // on a later sweep and entrants refund.
+        console.log(`challenge ${challengeId}: no scoring entrants yet; will retry until resolve deadline`);
+        return;
+      }
+
+      for (let i = 0; i < payouts.length; i++) {
+        await query(
+          "insert into challenge_payouts (challenge_id, rank, operator, amount) values ($1, $2, $3, $4) on conflict (challenge_id, rank) do nothing",
+          [challengeId, i + 1, payouts[i]!.operator.toLowerCase(), payouts[i]!.amount.toString()],
+        );
+      }
+
+      // Award placement traits before the chain call so a postWinnerRoot
+      // failure doesn't cost the field its earned traits. agent_traits is keyed
+      // on (agent_id, trait_id) so reruns would conflict-skip anyway; calling
+      // here before the retry branch ensures the trait pull happens once with
+      // the fresh results we have in scope.
+      await awardPlacementTraits("challenge", challengeId, results).catch((err) =>
+        console.error(`challenge ${challengeId}: placement trait awards failed:`, err instanceof Error ? err.message : err),
       );
     }
 
     const root = merkleRoot(payouts.map((p) => payoutLeaf(p.operator, p.amount)));
-    await send({ address: arena, abi: arenaAbi, functionName: "postWinnerRoot", args: [BigInt(challengeId), root] });
+    try {
+      await send({ address: arena, abi: arenaAbi, functionName: "postWinnerRoot", args: [BigInt(challengeId), root] });
+    } catch (err) {
+      // Don't cancel the challenge from here. Leave it LOCKED; the next sweep
+      // hits the retry branch above and tries postWinnerRoot again with the
+      // same persisted payouts. Only the deadline-missed check cancels.
+      console.error(
+        `challenge ${challengeId}: postWinnerRoot failed; will retry on next sweep:`,
+        err instanceof Error ? err.message : err,
+      );
+      return;
+    }
+
     console.log(`challenge ${challengeId} resolved with ${payouts.length} winner(s)`);
     broadcast({
       type: "challenge_settled",
       challengeId,
       winners: payouts.map((p, i) => ({ rank: i + 1, operator: p.operator, amount: p.amount.toString() })),
     });
-
-    // Placement-tagged trait awards to the top finishers (best-effort).
-    await awardPlacementTraits("challenge", challengeId, results).catch((err) =>
-      console.error(`challenge ${challengeId}: placement trait awards failed:`, err instanceof Error ? err.message : err),
-    );
   }
 }
