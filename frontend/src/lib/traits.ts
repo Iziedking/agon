@@ -30,6 +30,16 @@ export interface CooldownStatus {
   totalClaims: number;
 }
 
+/// Global daily mystery pool status. `max` is the total slots per UTC day,
+/// `claimed` is how many have been used, `remaining` is the live count for the
+/// claim UI, and `resetsAt` is the epoch ms of the next midnight UTC.
+export interface PoolStatus {
+  max: number;
+  claimed: number;
+  remaining: number;
+  resetsAt: number;
+}
+
 export interface ClaimResult {
   trait: Trait | null;
   rugged: boolean;
@@ -70,6 +80,18 @@ export async function fetchMysteryCooldown(): Promise<CooldownStatus | null> {
     const res = await fetch(`${AUTH_URL}/mystery/cooldown`, { credentials: "include" });
     if (!res.ok) return null;
     return (await res.json()) as CooldownStatus;
+  } catch {
+    return null;
+  }
+}
+
+/// Reads how many mystery boxes are left in today's global pool. Public,
+/// unauthenticated; safe to render alongside the cooldown.
+export async function fetchMysteryPool(): Promise<PoolStatus | null> {
+  try {
+    const res = await fetch(`${AUTH_URL}/mystery/pool`, { cache: "no-store" });
+    if (!res.ok) return null;
+    return (await res.json()) as PoolStatus;
   } catch {
     return null;
   }
