@@ -1,20 +1,19 @@
-import { createPublicClient, defineChain, http, webSocket } from "viem";
+import { createPublicClient, http, webSocket } from "viem";
+import { arcTestnet } from "viem/chains";
 import { config } from "../config/index.js";
 
-/// Arc testnet as a viem chain. Native currency uses 18 internal decimals
-/// (USDC shows 6 to users), per the Arc docs network configuration.
-export const arcTestnet = defineChain({
-  id: config.chainId,
-  name: "Arc Testnet",
-  nativeCurrency: { name: "USD Coin", symbol: "USDC", decimals: 18 },
-  rpcUrls: {
-    default: { http: [config.rpcHttp], webSocket: [config.rpcWs] },
-  },
-  blockExplorers: {
-    default: { name: "Arcscan", url: "https://testnet.arcscan.app" },
-  },
-  testnet: true,
-});
+/// Re-export viem's built-in Arc testnet (chain id 5042002). Per the
+/// `circle:use-arc` skill, a custom `defineChain` is never required since viem
+/// ships the chain natively. RPC URLs come from env via `config.rpcHttp` and
+/// `config.rpcWs`, passed explicitly to the transports below so a paid or
+/// regional RPC can override the canonical one without redefining the chain.
+if (config.chainId !== arcTestnet.id) {
+  console.warn(
+    `chain mismatch: config.chainId=${config.chainId} but viem's arcTestnet.id=${arcTestnet.id}. ` +
+      "Reads/writes will still target arcTestnet; update CHAIN_ID in .env to align.",
+  );
+}
+export { arcTestnet };
 
 /// HTTP client for reads and log polling.
 export const publicClient = createPublicClient({

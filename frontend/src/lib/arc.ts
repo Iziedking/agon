@@ -1,15 +1,10 @@
-import { createPublicClient, defineChain, http } from "viem";
+import { createPublicClient, http } from "viem";
+import { arcTestnet } from "viem/chains";
 
-/// Arc testnet, verified against the Arc docs. Native currency uses 18 internal
-/// decimals (USDC shows 6 to users).
-export const arcTestnet = defineChain({
-  id: 5042002,
-  name: "Arc Testnet",
-  nativeCurrency: { name: "USD Coin", symbol: "USDC", decimals: 18 },
-  rpcUrls: { default: { http: ["https://rpc.testnet.arc.network"] } },
-  blockExplorers: { default: { name: "Arcscan", url: "https://testnet.arcscan.app" } },
-  testnet: true,
-});
+/// Re-export viem's built-in Arc testnet chain. Per the `circle:use-arc` skill,
+/// viem ships `arcTestnet` natively (chain id 5042002, RPC, explorer, 18-dec
+/// USDC native gas), so a custom `defineChain` is never required.
+export { arcTestnet };
 
 export const EXPLORER = "https://testnet.arcscan.app";
 
