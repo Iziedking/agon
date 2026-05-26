@@ -80,10 +80,10 @@ export default function OnboardingPage() {
   // compete steps so we don't refetch on every step transition.
   const [agents, setAgents] = useState<AgentState[] | undefined>(undefined);
   const refreshAgents = useCallback(async () => {
-    if (!address) {
-      setAgents([]);
-      return;
-    }
+    // Wagmi flashes address=undefined while hydrating; don't pre-empt that
+    // with an empty list (would briefly show the "claim your agent" branch
+    // for someone who already has one).
+    if (!address) return;
     try {
       setAgents(await fetchAgents(address));
     } catch {

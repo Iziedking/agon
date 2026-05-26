@@ -8,8 +8,17 @@ import { Footer } from "@/components/pengu/Footer";
 import { SectionLabel, Bubble3D } from "@/components/pengu/atoms";
 import { LoginCTA } from "@/components/pengu/LoginCTA";
 import { ClaimAgentButton } from "@/components/pengu/ClaimAgentButton";
+import { AgentMascot } from "@/components/pengu/AgentMascot";
 import { OperatorAvatar } from "@/components/pengu/OperatorAvatar";
-import { fetchAgents, type AgentState } from "@/lib/agents";
+import {
+  CONTEST_TYPES,
+  fetchAgents,
+  resolveActiveAgent,
+  setActiveAgentId,
+  tierOf,
+  type AgentState,
+} from "@/lib/agents";
+import { agentColorById } from "@/lib/profiles";
 import { fetchContests } from "@/lib/contests";
 
 /// A judge-friendly walkthrough: connect, claim, enter. Mirrors the real flow,
@@ -78,19 +87,32 @@ function Step({
 export default function StartPage() {
   const { address, isConnected } = useAccount();
   const [agents, setAgents] = useState<AgentState[] | undefined>(undefined);
+  const [activeId, setActiveId] = useState<number | null>(null);
   const [openCount, setOpenCount] = useState<number | null>(null);
 
   const refreshAgents = useCallback(async () => {
-    if (!address) {
-      setAgents([]);
-      return;
-    }
+    // While wagmi is still hydrating, `address` flashes undefined before the
+    // real value arrives. Treat that as "not yet known" and leave agents at
+    // its current state (undefined on first paint), so the UI shows
+    // "checking your agents on arc…" instead of falsely flipping to claim.
+    if (!address) return;
     try {
-      setAgents(await fetchAgents(address));
+      const list = await fetchAgents(address);
+      setAgents(list);
+      const resolved = resolveActiveAgent(list, address);
+      setActiveId(resolved?.id ?? null);
     } catch {
       setAgents([]);
     }
   }, [address]);
+
+  const active = agents?.find((a) => a.id === activeId) ?? agents?.[0] ?? null;
+
+  function pickAgent(id: number) {
+    if (!address) return;
+    setActiveAgentId(address, id);
+    setActiveId(id);
+  }
 
   useEffect(() => {
     void refreshAgents();
@@ -160,16 +182,41 @@ export default function StartPage() {
               <p className="font-mono text-xs text-pengu-dark/45">connect first.</p>
             ) : agents === undefined ? (
               <p className="font-mono text-xs text-pengu-dark/55">checking your agents on arc…</p>
-            ) : agents.length > 0 ? (
-              <div className="flex flex-wrap items-center gap-3">
-                <span className="inline-flex items-center gap-2 rounded-full bg-[#22c55e]/10 px-3 py-1.5 font-mono text-xs text-[#22c55e]">
-                  <Check />
-                  {agents.length === 1 ? "agent #" + agents[0]!.id + " ready" : agents.length + " agents ready"}
-                </span>
-                <a href="/workshop" className="font-mono text-xs text-pengu-blue hover:underline">
-                  manage in workshop
-                </a>
-              </div>
+            ) : agents.length > 0 && active ? (
+              <>
+                <div className="flex items-center gap-4 rounded-2xl border border-pengu-blue/15 bg-pengu-bg px-4 py-3">
+                  <span className="flex h-14 w-14 flex-none items-center justify-center overflow-hidden rounded-full border border-pengu-blue/15 bg-white">
+                    <AgentMascot color={agentColorById(active.id)} className="h-[68%] w-auto" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="font-bubble text-base uppercase text-pengu-dark">agent #{active.id}</div>
+                    <div className="mt-0.5 font-mono text-xs text-pengu-dark/60">
+                      {CONTEST_TYPES.map((t) => `${t} t${tierOf(active, t)}`).join(" · ")}
+                    </div>
+                  </div>
+                  <a href="/workshop" className="font-mono text-xs text-pengu-blue hover:underline">
+                    workshop →
+                  </a>
+                </div>
+
+                {agents.length > 1 ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {agents.map((a) => (
+                      <button
+                        key={a.id}
+                        onClick={() => pickAgent(a.id)}
+                        className={`rounded-full px-3 py-1 font-display text-[11px] uppercase tracking-wide transition-colors ${
+                          a.id === activeId
+                            ? "bg-pengu-blue text-white"
+                            : "bg-pengu-blue/10 text-pengu-blue hover:bg-pengu-blue/20"
+                        }`}
+                      >
+                        agent #{a.id}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </>
             ) : (
               <ClaimAgentButton className={chunkyBtn} onClaimed={refreshAgents} />
             )}

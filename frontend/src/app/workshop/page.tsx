@@ -37,11 +37,10 @@ export default function WorkshopPage() {
   const [upgradingId, setUpgradingId] = useState<number | null>(null);
 
   const refresh = useCallback(async () => {
-    if (!address) {
-      setAgents([]);
-      setActiveId(null);
-      return;
-    }
+    // Wagmi flashes address=undefined while hydrating; don't pre-empt that
+    // with an empty list (would briefly show the "claim your first agent"
+    // card for someone who already has one).
+    if (!address) return;
     try {
       const list = await fetchAgents(address);
       setAgents(list);

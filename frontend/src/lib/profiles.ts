@@ -81,3 +81,11 @@ export function operatorColor(address: string): string {
   const hue = parseInt(hex, 16) % 360;
   return `hsl(${hue}, 70%, 62%)`;
 }
+
+/// Per-agent mascot color so two agents owned by the same operator are visually
+/// distinct. The multiplier spreads ids across the wheel so neighboring ids
+/// don't pick neighboring hues.
+export function agentColorById(id: number): string {
+  const hue = (id * 137) % 360;
+  return `hsl(${hue}, 70%, 62%)`;
+}
