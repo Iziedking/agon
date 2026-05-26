@@ -25,6 +25,14 @@ export interface ContestOpenMessage {
   endsAt: number; // epoch ms
 }
 
+/// Live preview of a peer challenge while the coordinator scores it. Mirrors the
+/// contest `standings` frame but keyed by challengeId.
+export interface ChallengeStandingsMessage {
+  type: "challenge_standings";
+  challengeId: number;
+  entries: StandingsEntry[];
+}
+
 export interface SettledWinner {
   rank: number;
   operator: string;
@@ -41,4 +49,5 @@ export type WsMessage =
   | { type: "hello"; service?: string }
   | ContestOpenMessage
   | StandingsMessage
+  | ChallengeStandingsMessage
   | SettledMessage;

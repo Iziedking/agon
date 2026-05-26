@@ -1,16 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { SettledMessage, StandingsMessage, WsMessage } from "@/lib/live";
+import type { ChallengeStandingsMessage, SettledMessage, StandingsMessage, WsMessage } from "@/lib/live";
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8788";
 
-/// Subscribes to the coordinator fanout and exposes the latest standings and the
-/// settled result. Auto-reconnects, so restarting the coordinator does not
-/// require a page refresh. Browser-only.
+/// Subscribes to the coordinator fanout and exposes the latest contest standings,
+/// the latest challenge standings (peer challenges race too), and the settled
+/// result. Auto-reconnects, so restarting the coordinator does not require a
+/// page refresh. Browser-only.
 export function useContestSocket() {
   const [connected, setConnected] = useState(false);
   const [standings, setStandings] = useState<StandingsMessage | null>(null);
+  const [challengeStandings, setChallengeStandings] = useState<ChallengeStandingsMessage | null>(null);
   const [settled, setSettled] = useState<SettledMessage | null>(null);
 
   useEffect(() => {
@@ -47,6 +49,8 @@ export function useContestSocket() {
               contestType:
                 msg.contestType ?? (prev && prev.contestId === msg.contestId ? prev.contestType : undefined),
             }));
+          } else if (msg.type === "challenge_standings") {
+            setChallengeStandings(msg);
           } else if (msg.type === "settled") {
             setSettled(msg);
           }
@@ -64,5 +68,5 @@ export function useContestSocket() {
     };
   }, []);
 
-  return { connected, standings, settled };
+  return { connected, standings, challengeStandings, settled };
 }

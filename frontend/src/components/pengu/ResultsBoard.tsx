@@ -124,8 +124,8 @@ export function ResultsBoard({
             );
           })}
         </div>
-      ) : live && kind === "contests" ? (
-        <LiveStandings id={id} entrants={entrants} me={me} />
+      ) : live ? (
+        <LiveStandings id={id} entrants={entrants} me={me} kind={kind} />
       ) : entrants.length > 0 ? (
         <Field entrants={entrants} me={me} />
       ) : (
@@ -137,11 +137,29 @@ export function ResultsBoard({
   );
 }
 
-/// Streams the running scoreboard for the active contest. Falls back to the plain
-/// entrant field until the coordinator starts broadcasting this contest's scores.
-function LiveStandings({ id, entrants, me }: { id: number; entrants: ResultEntrant[]; me?: string }) {
-  const { standings } = useContestSocket();
-  const entries = standings && standings.contestId === id ? standings.entries : [];
+/// Streams the running scoreboard for the active contest or peer challenge.
+/// Falls back to the plain entrant field until the coordinator starts
+/// broadcasting this id's scores.
+function LiveStandings({
+  id,
+  entrants,
+  me,
+  kind,
+}: {
+  id: number;
+  entrants: ResultEntrant[];
+  me?: string;
+  kind: "contests" | "challenges";
+}) {
+  const { standings, challengeStandings } = useContestSocket();
+  const entries =
+    kind === "contests"
+      ? standings && standings.contestId === id
+        ? standings.entries
+        : []
+      : challengeStandings && challengeStandings.challengeId === id
+        ? challengeStandings.entries
+        : [];
 
   if (entries.length === 0) {
     if (entrants.length > 0) return <Field entrants={entrants} me={me} />;

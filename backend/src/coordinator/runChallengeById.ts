@@ -64,6 +64,27 @@ async function scoreField(cType: number, challengeId: number, field: ContestEntr
   return new SolverRunner(6).run(challengeId, field);
 }
 
+/// Live preview of a locked challenge, used to broadcast standings frames before
+/// the authoritative scoring. Scout is real on-chain, so its preview is a pure
+/// tier-based proxy (mirrors the contest preview).
+async function previewScores(cType: number, challengeId: number, field: ContestEntryInput[]): Promise<AgentResult[]> {
+  if (cType === 1) return new AnalystRunner().run(challengeId, field);
+  if (cType === 2) return new SolverRunner(6).run(challengeId, field);
+  return field.map((e) => ({ agentId: e.agentId, operator: e.operator, score: (e.tier + 1) * 100, detail: {} }));
+}
+
+function standings(results: AgentResult[]) {
+  return results
+    .slice()
+    .sort((a, b) => b.score - a.score)
+    .map((r, i) => ({ rank: i + 1, agentId: r.agentId, operator: r.operator, score: Math.round(r.score) }));
+}
+
+// Each challenge gets at most one preview pass per process lifetime so the
+// sweeper does not re-stream every minute if scoring is retried.
+const previewed = new Set<number>();
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 /// OPEN or LOCKED challenges, newest-first scan. The resolver decides per id
 /// whether to lock, resolve, cancel, or wait.
 export async function findActiveChallenges(lookback = 100): Promise<number[]> {
@@ -131,6 +152,24 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
     if (cType === 0 && field.length > 0 && config.scout.masterMnemonic && config.coordinator.privateKey) {
       await fundHotWallets(field.map((e) => e.agentId), Number(process.env.SCOUT_FUND_USDC ?? "1"));
     }
+
+    // Stream a preview race so the challenge detail board animates before the
+    // winner root posts. Only on the first sweep that sees this challenge
+    // locked in this process, and only when there is enough resolve window
+    // left to fit the preview without missing the deadline.
+    const previewSecs = Number(process.env.CHALLENGE_PREVIEW_SECONDS ?? "20");
+    const haveTime = Number(ch.resolveDeadline) - nowSec > previewSecs + 5;
+    if (!previewed.has(challengeId) && field.length >= 2 && haveTime) {
+      previewed.add(challengeId);
+      const previewUntil = Date.now() + previewSecs * 1000;
+      console.log(`challenge ${challengeId}: streaming ${previewSecs}s preview to ${field.length} entrant(s)`);
+      while (Date.now() < previewUntil) {
+        const preview = await previewScores(cType, challengeId, field);
+        broadcast({ type: "challenge_standings", challengeId, entries: standings(preview) });
+        await sleep(2500);
+      }
+    }
+
     const results = await scoreField(cType, challengeId, field);
 
     const pot = ch.stake * BigInt(entrants);
