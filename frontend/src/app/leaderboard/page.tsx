@@ -8,9 +8,11 @@ import { OperatorAvatar } from "@/components/pengu/OperatorAvatar";
 import { fetchLeaderboard, formatReputation, formatUsdcString, short, type LeaderRow } from "@/lib/profiles";
 
 const COLS = "grid-cols-[2.5rem_1fr_3.5rem_3.5rem_4rem_4.5rem_7rem]";
+const PER_PAGE = 20;
 
 export default function LeaderboardPage() {
   const [rows, setRows] = useState<LeaderRow[] | null>(null);
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     let live = true;
@@ -21,6 +23,11 @@ export default function LeaderboardPage() {
       live = false;
     };
   }, []);
+
+  const total = rows?.length ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
+  const safePage = Math.min(page, totalPages);
+  const pageRows = (rows ?? []).slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE);
 
   return (
     <div className="min-h-screen text-pengu-dark" style={{ background: "#f3effb" }}>
@@ -53,8 +60,8 @@ export default function LeaderboardPage() {
             </p>
           )}
 
-          {rows?.map((r, i) => {
-            const rank = i + 1;
+          {pageRows.map((r, i) => {
+            const rank = (safePage - 1) * PER_PAGE + i + 1;
             const top = rank === 1;
             return (
               <a
@@ -78,9 +85,43 @@ export default function LeaderboardPage() {
             );
           })}
         </div>
+
+        {totalPages > 1 ? (
+          <div className="mt-6 flex items-center justify-center gap-3">
+            <PageBtn disabled={safePage <= 1} onClick={() => setPage(safePage - 1)}>
+              ← prev
+            </PageBtn>
+            <span className="font-mono text-xs text-pengu-dark/60">
+              page {safePage} of {totalPages}
+            </span>
+            <PageBtn disabled={safePage >= totalPages} onClick={() => setPage(safePage + 1)}>
+              next →
+            </PageBtn>
+          </div>
+        ) : null}
       </section>
 
       <Footer />
     </div>
+  );
+}
+
+function PageBtn({
+  disabled,
+  onClick,
+  children,
+}: {
+  disabled: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  const base = "rounded-pill border px-4 py-2 font-display text-xs uppercase tracking-wide transition-colors";
+  if (disabled) {
+    return <span className={`${base} border-pengu-blue/10 text-pengu-dark/30`}>{children}</span>;
+  }
+  return (
+    <button onClick={onClick} className={`${base} border-pengu-blue/30 bg-white text-pengu-blue hover:border-pengu-blue`}>
+      {children}
+    </button>
   );
 }
