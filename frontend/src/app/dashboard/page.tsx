@@ -5,7 +5,7 @@ import { useAccount } from "wagmi";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/pengu/Footer";
 import { Bubble3D, SectionLabel } from "@/components/pengu/atoms";
-import { AgentMascot } from "@/components/pengu/AgentMascot";
+import { AgentMascot, variantColor, variantForAgentId } from "@/components/pengu/AgentMascot";
 import { AgentTraits } from "@/components/pengu/AgentTraits";
 import { ClaimAgentButton } from "@/components/pengu/ClaimAgentButton";
 import { CreateChallengeModal } from "@/components/pengu/CreateChallengeModal";
@@ -25,7 +25,6 @@ import {
 } from "@/lib/agents";
 import { CONTEST_TYPE } from "@/lib/contests";
 import {
-  agentColorById,
   fetchOperator,
   formatReputation,
   formatUsdcString,
@@ -146,15 +145,23 @@ export default function DashboardPage() {
             </p>
           </div>
         </div>
+
+        {active ? (
+          <CommandBand
+            agent={active}
+            inFlight={inFlight.length}
+            claimable={claimable.length}
+          />
+        ) : null}
       </section>
 
       <section className="mx-auto max-w-[1200px] px-6 py-8">
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-          <Stat label="entered" value={String(safeProfile.stats.entered)} />
-          <Stat label="wins" value={String(safeProfile.stats.wins)} />
-          <Stat label="earned" value={formatUsdcString(safeProfile.stats.earned)} />
-          <Stat label="cycles" value={String(safeProfile.cycles)} />
-          <Stat label="reputation" value={String(formatReputation(safeProfile.reputation))} />
+          <Stat label="entered" value={String(safeProfile.stats.entered)} accent="#0891B2" />
+          <Stat label="wins" value={String(safeProfile.stats.wins)} accent="#D97706" />
+          <Stat label="earned" value={formatUsdcString(safeProfile.stats.earned)} accent="#7c4dff" />
+          <Stat label="cycles" value={String(safeProfile.cycles)} accent="#7C3AED" />
+          <Stat label="reputation" value={String(formatReputation(safeProfile.reputation))} accent="#DC2626" />
         </div>
       </section>
 
@@ -285,11 +292,104 @@ function Shell({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return (
-    <div className="rounded-card border border-pengu-blue/15 bg-white px-5 py-4 shadow-[0_8px_24px_rgba(70,45,150,0.06)]">
-      <div className="font-display text-[11px] uppercase tracking-wide text-pengu-dark/45">{label}</div>
-      <div className="mt-1 font-mono text-2xl text-pengu-dark">{value}</div>
+    <div
+      className="relative overflow-hidden rounded-card border border-pengu-blue/15 bg-white px-5 py-4 shadow-[0_8px_24px_rgba(70,45,150,0.06)]"
+      style={accent ? { borderTopColor: accent, borderTopWidth: 3 } : undefined}
+    >
+      {accent ? (
+        <span
+          className="pointer-events-none absolute -right-6 -top-6 h-16 w-16 rounded-full opacity-20"
+          style={{ background: accent, filter: "blur(24px)" }}
+          aria-hidden
+        />
+      ) : null}
+      <div className="relative font-display text-[11px] uppercase tracking-wide text-pengu-dark/45">{label}</div>
+      <div className="relative mt-1 font-mono text-2xl text-pengu-dark">{value}</div>
+    </div>
+  );
+}
+
+/// Featured band for the operator's active agent. Big mascot in its syndicate
+/// variant, name and tiers up close, status read-out ("racing now" if anything
+/// is in flight, "prizes to claim" if so, else "between rounds"). Sits between
+/// the page header and the stat row so the dashboard declares "this is your
+/// agent" before anything else.
+function CommandBand({
+  agent,
+  inFlight,
+  claimable,
+}: {
+  agent: AgentState;
+  inFlight: number;
+  claimable: number;
+}) {
+  const variant = variantForAgentId(agent.id);
+  const accent = variantColor(variant);
+  const status =
+    claimable > 0
+      ? { label: `${claimable} prize${claimable === 1 ? "" : "s"} to claim`, color: "#22c55e", pulse: true }
+      : inFlight > 0
+        ? { label: `racing in ${inFlight} contest${inFlight === 1 ? "" : "s"}`, color: accent, pulse: true }
+        : { label: "between rounds · ready to enter", color: "#7c4dff", pulse: false };
+
+  return (
+    <div
+      className="relative mt-6 overflow-hidden rounded-card border border-pengu-blue/15 bg-white shadow-[0_10px_30px_rgba(70,45,150,0.08)]"
+      style={{ borderTopColor: accent, borderTopWidth: 3 }}
+    >
+      <div className="arena-grid absolute inset-0 opacity-30" aria-hidden />
+      <span
+        className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full opacity-25"
+        style={{ background: accent, filter: "blur(48px)" }}
+        aria-hidden
+      />
+
+      <div className="relative grid items-center gap-6 p-6 sm:grid-cols-[auto_1fr_auto]">
+        <div className="flex justify-center sm:justify-start">
+          <AgentMascot variant={variant} mood="focus" live className="drift h-28 w-auto sm:h-32" />
+        </div>
+
+        <div className="min-w-0">
+          <div className="font-display text-[10px] uppercase tracking-wide text-pengu-dark/45">your active agent</div>
+          <div className="mt-1 font-bubble text-2xl uppercase leading-tight text-pengu-dark sm:text-3xl">
+            {agentDisplayName(agent)}
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {CONTEST_TYPES.map((t) => (
+              <span
+                key={t}
+                className="rounded-pill bg-pengu-blue/10 px-2.5 py-1 font-display text-[10px] uppercase tracking-wide text-pengu-blue"
+              >
+                {t} t{tierOf(agent, t)}
+              </span>
+            ))}
+          </div>
+          <div className="mt-3 inline-flex items-center gap-2 font-mono text-xs text-pengu-dark/65">
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${status.pulse ? "animate-pulse-live" : ""}`}
+              style={{ background: status.color }}
+            />
+            {status.label}
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2 sm:items-end">
+          <a
+            href="/workshop"
+            className="rounded-pill bg-pengu-blue px-5 py-2.5 font-display text-xs uppercase tracking-wide text-white shadow-[0_4px_0_0_#5b34d6] transition-all duration-100 hover:translate-y-[2px] hover:shadow-[0_2px_0_0_#5b34d6]"
+          >
+            workshop
+          </a>
+          <a
+            href="/contests"
+            className="rounded-pill border border-pengu-blue/30 bg-white px-5 py-2.5 font-display text-xs uppercase tracking-wide text-pengu-blue hover:border-pengu-blue"
+          >
+            enter a contest
+          </a>
+        </div>
+      </div>
     </div>
   );
 }
@@ -307,14 +407,18 @@ function ActionCard({
 }) {
   const accent = tone === "prize" ? "#7c4dff" : "#22c55e";
   return (
-    <div className="rounded-card border border-pengu-blue/15 bg-white p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
-      <div className="flex items-center gap-2 font-display text-xs uppercase tracking-wide" style={{ color: accent }}>
+    <div
+      className="relative overflow-hidden rounded-card border border-pengu-blue/15 bg-white p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)]"
+      style={{ borderTopColor: accent, borderTopWidth: 3 }}
+    >
+      {tone === "live" ? <div className="scan" aria-hidden /> : null}
+      <div className="relative flex items-center gap-2 font-display text-xs uppercase tracking-wide" style={{ color: accent }}>
         {tone === "live" ? <span className="h-2 w-2 rounded-full bg-[#22c55e] animate-pulse-live" /> : null}
         {tone === "prize" ? "claim" : "live"}
       </div>
-      <h3 className="mt-2 font-bubble text-xl uppercase text-pengu-dark">{title}</h3>
-      <p className="mt-2 text-sm text-pengu-dark/65">{body}</p>
-      <div className="mt-4 flex flex-col gap-2">
+      <h3 className="relative mt-2 font-bubble text-xl uppercase text-pengu-dark">{title}</h3>
+      <p className="relative mt-2 text-sm text-pengu-dark/65">{body}</p>
+      <div className="relative mt-4 flex flex-col gap-2">
         {items.map((it) => (
           <a
             key={it.href}
@@ -351,7 +455,7 @@ function AgentTile({
     >
       <div className="flex items-center gap-3">
         <span className="flex h-12 w-12 flex-none items-center justify-center overflow-hidden rounded-full border border-pengu-blue/15 bg-white">
-          <AgentMascot color={agentColorById(agent.id)} className="h-[68%] w-auto" />
+          <AgentMascot variant={variantForAgentId(agent.id)} live className="h-[68%] w-auto" />
         </span>
         <div className="min-w-0 flex-1">
           <div className="font-bubble text-base uppercase text-pengu-dark">{agentDisplayName(agent)}</div>

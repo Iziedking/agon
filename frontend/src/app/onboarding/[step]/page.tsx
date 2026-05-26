@@ -6,7 +6,7 @@ import { useAccount } from "wagmi";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/pengu/Footer";
 import { Bubble3D, SectionLabel } from "@/components/pengu/atoms";
-import { AgentMascot } from "@/components/pengu/AgentMascot";
+import { AgentMascot, type AgentVariant } from "@/components/pengu/AgentMascot";
 import { ArenaCard, type ArenaState } from "@/components/pengu/ArenaCard";
 import { ClaimAgentButton } from "@/components/pengu/ClaimAgentButton";
 import { Confetti } from "@/components/pengu/Confetti";
@@ -197,6 +197,12 @@ export default function OnboardingPage() {
 // ----- Step bodies -----
 
 function WelcomeStep() {
+  const variants: Array<{ v: AgentVariant; name: string }> = [
+    { v: "crimson", name: "crimson" },
+    { v: "cyan", name: "cyan" },
+    { v: "gold", name: "gold" },
+    { v: "violet", name: "violet" },
+  ];
   return (
     <>
       <p className="text-pengu-dark/70">
@@ -211,8 +217,21 @@ function WelcomeStep() {
         <Bullet n="04">if it places, the chain pays you in usdc. claim it from the panel.</Bullet>
       </ul>
 
-      <div className="mt-8 flex justify-center">
-        <AgentMascot color="#7c4dff" className="h-32 w-auto" />
+      <div className="relative mt-8 overflow-hidden rounded-2xl border border-pengu-blue/10 bg-pengu-bg/60 px-3 py-5">
+        <div className="arena-grid absolute inset-0 opacity-40" aria-hidden />
+        <div className="relative flex items-end justify-center gap-3 sm:gap-5">
+          {variants.map((s, i) => (
+            <div key={s.v} className={`flex flex-col items-center drift-${i + 1}`}>
+              <AgentMascot variant={s.v} live className="h-20 w-auto sm:h-24" />
+              <span className="mt-2 font-display text-[10px] uppercase tracking-wide text-pengu-dark/55">
+                {s.name}
+              </span>
+            </div>
+          ))}
+        </div>
+        <p className="relative mt-3 text-center font-mono text-[11px] text-pengu-dark/50">
+          four syndicates · pick your side after you claim your agent
+        </p>
       </div>
     </>
   );
@@ -345,14 +364,32 @@ function DoneStep({ address }: { address?: `0x${string}` }) {
   return (
     <>
       <Confetti />
-      <div className="flex flex-col items-center gap-4">
-        {address ? (
-          <span className="flex h-24 w-24 items-center justify-center rounded-full border border-pengu-blue/15 bg-white shadow-[0_8px_24px_rgba(70,45,150,0.06)]">
-            <AgentMascot color={operatorColor(address)} className="h-20 w-auto" />
+      <div className="relative flex flex-col items-center gap-4">
+        <div className="relative">
+          <span
+            className="pointer-events-none absolute inset-0 -m-6 rounded-full opacity-40 glow-pulse"
+            style={{ background: "#7c4dff", filter: "blur(36px)", color: "#7c4dff" }}
+            aria-hidden
+          />
+          {address ? (
+            <span className="relative flex h-32 w-32 items-center justify-center rounded-full border border-pengu-blue/15 bg-white shadow-[0_12px_30px_rgba(70,45,150,0.18)]">
+              <AgentMascot color={operatorColor(address)} live className="drift h-24 w-auto" />
+            </span>
+          ) : (
+            <AgentMascot color="#7c4dff" live className="drift h-32 w-auto" />
+          )}
+        </div>
+        <div className="relative flex flex-wrap items-center justify-center gap-2 font-display text-[10px] uppercase tracking-wide">
+          <span className="inline-flex items-center gap-1 rounded-pill bg-[#22c55e]/15 px-2.5 py-1 text-[#22c55e]">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#22c55e]" /> wallet connected
           </span>
-        ) : (
-          <AgentMascot color="#7c4dff" className="h-24 w-auto" />
-        )}
+          <span className="inline-flex items-center gap-1 rounded-pill bg-pengu-blue/15 px-2.5 py-1 text-pengu-blue">
+            <span className="h-1.5 w-1.5 rounded-full bg-pengu-blue" /> agent claimed
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-pill bg-[#D97706]/15 px-2.5 py-1 text-[#D97706]">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#D97706]" /> arena ready
+          </span>
+        </div>
         <p className="max-w-[44ch] text-center text-pengu-dark/70">
           you have a wallet, an agent, and the arena. enter a contest, watch the live race, and claim usdc when your
           agent places.

@@ -25,6 +25,16 @@ const VARIANT_COLOR: Record<AgentVariant, string> = {
   violet: "#7C3AED",
 };
 
+/// Pick a stable variant + its accent color from an agentId. So the same agent
+/// always reads in the same color across the app (dashboard, stage, picker).
+const SYNDICATE_VARIANTS: AgentVariant[] = ["violet", "crimson", "cyan", "gold"];
+export function variantForAgentId(id: number): AgentVariant {
+  return SYNDICATE_VARIANTS[id % SYNDICATE_VARIANTS.length]!;
+}
+export function variantColor(v: AgentVariant): string {
+  return VARIANT_COLOR[v];
+}
+
 interface MascotProps {
   color?: string;
   variant?: AgentVariant;

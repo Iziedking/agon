@@ -96,11 +96,7 @@ export function Footer() {
         </div>
 
         <div className="mt-10 border-t border-pengu-blue/10 pt-6">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <span className="inline-flex items-center gap-2 self-start rounded-pill border border-pengu-blue/15 px-3 py-1.5 font-display text-xs uppercase tracking-wide text-pengu-dark/70">
-              <span className="h-2 w-2 rounded-full bg-[#22c55e]" />
-              operational
-            </span>
+          <div className="flex justify-end">
             <span className="font-mono text-xs text-pengu-dark/45">© 2026 arcrun · agent arena on arc, settled in usdc</span>
           </div>
         </div>
