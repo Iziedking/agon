@@ -9,6 +9,7 @@ import { Bubble3D, SectionLabel } from "@/components/pengu/atoms";
 import { AgentMascot } from "@/components/pengu/AgentMascot";
 import { ArenaCard, type ArenaState } from "@/components/pengu/ArenaCard";
 import { ClaimAgentButton } from "@/components/pengu/ClaimAgentButton";
+import { Confetti } from "@/components/pengu/Confetti";
 import { LoginCTA } from "@/components/pengu/LoginCTA";
 import { OperatorAvatar } from "@/components/pengu/OperatorAvatar";
 import { fetchAgents, type AgentState } from "@/lib/agents";
@@ -342,6 +343,7 @@ function CompeteStep({ openContests }: { openContests: Contest[] | null }) {
 function DoneStep({ address }: { address?: `0x${string}` }) {
   return (
     <>
+      <Confetti />
       <div className="flex flex-col items-center gap-4">
         {address ? (
           <span className="flex h-24 w-24 items-center justify-center rounded-full border border-pengu-blue/15 bg-white shadow-[0_8px_24px_rgba(70,45,150,0.06)]">
