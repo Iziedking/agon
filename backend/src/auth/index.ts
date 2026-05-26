@@ -13,6 +13,7 @@ import { logEvent } from "../events.js";
 import { merkleProof, payoutLeaf } from "../coordinator/merkle.js";
 import { redis } from "../redis.js";
 import { issueToken, requireAuth, SESSION_COOKIE } from "./jwt.js";
+import { COOLDOWN_MS, pickWeighted, TRAITS, traitById, type Trait } from "./traits.js";
 
 const SESSION_MAX_AGE = 7 * 24 * 60 * 60; // 7 days, matches issueToken expiry
 
@@ -239,6 +240,121 @@ app.get("/challenges/:id/results", async (c) => {
     entrants: entrants.rows.map((r) => ({ agentId: Number(r.agent_id), operator: r.operator })),
     winners: winners.rows.map((r) => ({ rank: r.rank, operator: r.operator, amount: r.amount })),
   });
+});
+
+// ----- Traits and mystery claims -----
+
+// The pool of awardable traits, public read so the UI can render chip labels
+// without duplicating the source of truth. The legendary entries are visible
+// here even when no agent owns one yet (rarity is part of the pitch).
+app.get("/traits/pool", (c) => c.json({ traits: TRAITS }));
+
+// Traits an agent currently owns, in award order (oldest first). Public read.
+app.get("/agents/:id/traits", async (c) => {
+  const agentId = Number(c.req.param("id"));
+  if (!Number.isFinite(agentId)) return c.json({ traits: [] });
+  const { rows } = await query<{ trait_id: string; source: string; source_ref: string | null; awarded_at: Date }>(
+    "select trait_id, source, source_ref, awarded_at from agent_traits where agent_id = $1 order by awarded_at",
+    [agentId],
+  );
+  return c.json({
+    traits: rows.map((r) => {
+      const def = traitById(r.trait_id);
+      return {
+        id: r.trait_id,
+        name: def?.name ?? r.trait_id,
+        rarity: def?.rarity ?? "common",
+        body: def?.body ?? "",
+        source: r.source,
+        sourceRef: r.source_ref,
+        awardedAt: r.awarded_at,
+      };
+    }),
+  });
+});
+
+// How long until the connected operator can roll the mystery again. Returns
+// `ready: true` when the cooldown has elapsed (or there's no prior claim).
+app.get("/mystery/cooldown", requireAuth, async (c) => {
+  const operator = c.get("address");
+  const { rows } = await query<{ last_claim: Date; total_claims: string }>(
+    "select last_claim, total_claims from mystery_claims where operator = $1",
+    [operator],
+  );
+  const last = rows[0]?.last_claim;
+  const nextAvailable = last ? new Date(last).getTime() + COOLDOWN_MS : 0;
+  const ready = !last || Date.now() >= nextAvailable;
+  return c.json({
+    ready,
+    lastClaim: last ? new Date(last).toISOString() : null,
+    nextAvailable,
+    totalClaims: Number(rows[0]?.total_claims ?? 0),
+  });
+});
+
+// Roll the mystery. Picks a random trait weighted by rarity that the agent
+// doesn't already own, binds it to the agent, and updates the cooldown row.
+app.post("/mystery/claim", requireAuth, async (c) => {
+  const operator = c.get("address");
+
+  let agentId: number;
+  try {
+    const body = await c.req.json<{ agentId?: number }>();
+    agentId = Number(body.agentId);
+  } catch {
+    return c.json({ error: "agentId required" }, 400);
+  }
+  if (!Number.isFinite(agentId) || agentId <= 0) return c.json({ error: "agentId required" }, 400);
+
+  // Ownership check via the indexer's agents table. The indexer writes the
+  // owner on AgentCreated, so any agent the operator owns is recorded.
+  const ownerRow = await query<{ owner: string }>(
+    "select owner from agents where id = $1",
+    [String(agentId)],
+  );
+  const owner = ownerRow.rows[0]?.owner?.toLowerCase();
+  if (!owner || owner !== operator.toLowerCase()) {
+    return c.json({ error: "you don't own that agent" }, 403);
+  }
+
+  // Cooldown check.
+  const cd = await query<{ last_claim: Date }>(
+    "select last_claim from mystery_claims where operator = $1",
+    [operator],
+  );
+  const last = cd.rows[0]?.last_claim;
+  if (last && Date.now() < new Date(last).getTime() + COOLDOWN_MS) {
+    const nextAvailable = new Date(last).getTime() + COOLDOWN_MS;
+    return c.json({ error: "still on cooldown", nextAvailable }, 429);
+  }
+
+  // Filter out traits the agent already owns.
+  const ownedRows = await query<{ trait_id: string }>(
+    "select trait_id from agent_traits where agent_id = $1",
+    [agentId],
+  );
+  const owned = new Set(ownedRows.rows.map((r) => r.trait_id));
+  const available = TRAITS.filter((t) => !owned.has(t.id));
+  if (available.length === 0) {
+    return c.json({ error: "this agent has collected every trait" }, 409);
+  }
+
+  const trait: Trait | null = pickWeighted(available);
+  if (!trait) return c.json({ error: "could not pick a trait" }, 500);
+
+  // Persist the award and bump the operator's claim counter atomically-ish.
+  await query(
+    "insert into agent_traits (agent_id, trait_id, source) values ($1, $2, 'mystery') on conflict (agent_id, trait_id) do nothing",
+    [agentId, trait.id],
+  );
+  await query(
+    `insert into mystery_claims (operator, last_claim, total_claims) values ($1, now(), 1)
+       on conflict (operator) do update set last_claim = now(), total_claims = mystery_claims.total_claims + 1`,
+    [operator],
+  );
+  void logEvent({ kind: "mystery_claim", address: operator, context: { agentId, traitId: trait.id, rarity: trait.rarity }, source: "auth" });
+
+  return c.json({ trait, agentId });
 });
 
 // ----- Activity feed -----

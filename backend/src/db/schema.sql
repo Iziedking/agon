@@ -142,3 +142,25 @@ create table if not exists challenge_payouts (
   primary key (challenge_id, rank)
 );
 create index if not exists challenge_payouts_lookup_idx on challenge_payouts(challenge_id, operator);
+
+-- Per-agent traits earned over time. Source records where the trait came from:
+-- 'mystery' for daily mystery claims, 'contest' for top-N placements, 'challenge'
+-- for challenge wins. The (agent_id, trait_id) pair is unique so each agent owns
+-- each trait at most once.
+create table if not exists agent_traits (
+  agent_id     bigint not null,
+  trait_id     text not null,
+  source       text not null,
+  source_ref   text,
+  awarded_at   timestamptz not null default now(),
+  primary key (agent_id, trait_id)
+);
+create index if not exists agent_traits_agent_idx on agent_traits(agent_id);
+
+-- Per-operator mystery-claim cooldown. One row per operator, updated on every
+-- claim. The 24h cooldown is enforced by the auth service.
+create table if not exists mystery_claims (
+  operator     text primary key,
+  last_claim   timestamptz not null,
+  total_claims bigint not null default 0
+);
