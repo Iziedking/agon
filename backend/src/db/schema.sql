@@ -158,9 +158,18 @@ create table if not exists agent_traits (
 create index if not exists agent_traits_agent_idx on agent_traits(agent_id);
 
 -- Per-operator mystery-claim cooldown. One row per operator, updated on every
--- claim. The 24h cooldown is enforced by the auth service.
+-- claim. The "one per UTC day" rule is enforced by the auth service.
 create table if not exists mystery_claims (
   operator     text primary key,
   last_claim   timestamptz not null,
   total_claims bigint not null default 0
+);
+
+-- Global daily pool counter. One row per UTC day. Each successful claim
+-- increments `claimed`; the auth service refuses to award once `claimed`
+-- reaches the configured `MYSTERY_DAILY_POOL`. Resets implicitly at midnight
+-- UTC because a new day key creates a fresh row.
+create table if not exists mystery_pool_daily (
+  day      date primary key,
+  claimed  bigint not null default 0
 );

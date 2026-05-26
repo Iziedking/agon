@@ -13,7 +13,16 @@ import { logEvent } from "../events.js";
 import { merkleProof, payoutLeaf } from "../coordinator/merkle.js";
 import { redis } from "../redis.js";
 import { issueToken, requireAuth, SESSION_COOKIE } from "./jwt.js";
-import { COOLDOWN_MS, rollMystery, RUG_CHANCE, TRAITS, traitById, type Trait } from "./traits.js";
+import {
+  DAILY_POOL_MAX,
+  nextResetMs,
+  rollMystery,
+  RUG_CHANCE,
+  sameUtcDay,
+  TRAITS,
+  traitById,
+  type Trait,
+} from "./traits.js";
 
 const SESSION_MAX_AGE = 7 * 24 * 60 * 60; // 7 days, matches issueToken expiry
 
@@ -250,6 +259,22 @@ app.get("/challenges/:id/results", async (c) => {
 // `rugChance` is surfaced too so the UI can show the odds.
 app.get("/traits/pool", (c) => c.json({ traits: TRAITS, rugChance: RUG_CHANCE }));
 
+// How many mystery boxes are left in today's global pool and when the next
+// batch opens. Public read so the dashboard card can show the live count.
+app.get("/mystery/pool", async (c) => {
+  const { rows } = await query<{ claimed: string | null }>(
+    "select claimed::text from mystery_pool_daily where day = (now() at time zone 'utc')::date",
+  );
+  const claimed = Number(rows[0]?.claimed ?? 0);
+  const remaining = Math.max(0, DAILY_POOL_MAX - claimed);
+  return c.json({
+    max: DAILY_POOL_MAX,
+    claimed,
+    remaining,
+    resetsAt: nextResetMs(),
+  });
+});
+
 // Traits an agent currently owns, in award order (oldest first). Public read.
 app.get("/agents/:id/traits", async (c) => {
   const agentId = Number(c.req.param("id"));
@@ -274,21 +299,20 @@ app.get("/agents/:id/traits", async (c) => {
   });
 });
 
-// How long until the connected operator can roll the mystery again. Returns
-// `ready: true` when the cooldown has elapsed (or there's no prior claim).
+// Whether the connected operator can roll the mystery in the current UTC cycle.
+// Returns `ready: true` when they haven't claimed today.
 app.get("/mystery/cooldown", requireAuth, async (c) => {
   const operator = c.get("address");
   const { rows } = await query<{ last_claim: Date; total_claims: string }>(
     "select last_claim, total_claims from mystery_claims where operator = $1",
     [operator],
   );
-  const last = rows[0]?.last_claim;
-  const nextAvailable = last ? new Date(last).getTime() + COOLDOWN_MS : 0;
-  const ready = !last || Date.now() >= nextAvailable;
+  const last = rows[0]?.last_claim ? new Date(rows[0].last_claim) : null;
+  const ready = !last || !sameUtcDay(last);
   return c.json({
     ready,
-    lastClaim: last ? new Date(last).toISOString() : null,
-    nextAvailable,
+    lastClaim: last ? last.toISOString() : null,
+    nextAvailable: nextResetMs(),
     totalClaims: Number(rows[0]?.total_claims ?? 0),
   });
 });
@@ -318,15 +342,14 @@ app.post("/mystery/claim", requireAuth, async (c) => {
     return c.json({ error: "you don't own that agent" }, 403);
   }
 
-  // Cooldown check.
+  // Per-operator daily cap: one box per UTC day.
   const cd = await query<{ last_claim: Date }>(
     "select last_claim from mystery_claims where operator = $1",
     [operator],
   );
-  const last = cd.rows[0]?.last_claim;
-  if (last && Date.now() < new Date(last).getTime() + COOLDOWN_MS) {
-    const nextAvailable = new Date(last).getTime() + COOLDOWN_MS;
-    return c.json({ error: "still on cooldown", nextAvailable }, 429);
+  const last = cd.rows[0]?.last_claim ? new Date(cd.rows[0].last_claim) : null;
+  if (last && sameUtcDay(last)) {
+    return c.json({ error: "already claimed today", nextAvailable: nextResetMs() }, 429);
   }
 
   // Filter out traits the agent already owns.
@@ -340,8 +363,25 @@ app.post("/mystery/claim", requireAuth, async (c) => {
     return c.json({ error: "this agent has collected every trait" }, 409);
   }
 
-  // Always bump the cooldown counter, even on a rug. A rugged roll burns the
-  // daily attempt; that's the whole point of the rugged outcome.
+  // Reserve a slot in today's global pool atomically. The insert/upsert returns
+  // the new `claimed` value; if it exceeds the cap, the pool is full and we
+  // roll the count back so the next claimer doesn't see a false drain.
+  const poolRes = await query<{ claimed: number }>(
+    `insert into mystery_pool_daily (day, claimed)
+       values ((now() at time zone 'utc')::date, 1)
+       on conflict (day) do update set claimed = mystery_pool_daily.claimed + 1
+       returning claimed`,
+  );
+  const newClaimed = Number(poolRes.rows[0]?.claimed ?? 0);
+  if (newClaimed > DAILY_POOL_MAX) {
+    await query(
+      "update mystery_pool_daily set claimed = claimed - 1 where day = (now() at time zone 'utc')::date",
+    );
+    return c.json({ error: "today's pool is exhausted", nextAvailable: nextResetMs() }, 429);
+  }
+
+  // The operator burns their daily attempt as soon as the pool slot is taken,
+  // even on a rug.
   await query(
     `insert into mystery_claims (operator, last_claim, total_claims) values ($1, now(), 1)
        on conflict (operator) do update set last_claim = now(), total_claims = mystery_claims.total_claims + 1`,

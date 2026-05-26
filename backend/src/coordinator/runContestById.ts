@@ -13,6 +13,7 @@ import { fundHotWallets } from "./contestOps.js";
 import { applyReputation, creditPoints, postValidatorFeedback, qualifiedField } from "./reputation.js";
 import { merkleRoot, payoutLeaf } from "./merkle.js";
 import { computePayouts } from "./payouts.js";
+import { applyTraitMultipliers, fetchAgentMultipliers } from "./traits.js";
 
 /// Step 3 and 4 of the multi-user loop: take a real, open contest, assemble the
 /// field of every operator who entered (from the indexer's entries table, with
@@ -103,11 +104,15 @@ export async function runContestById(contestId: number, broadcast: (message: unk
   const endsAtMs = Number(c.endTime) * 1000;
   console.log(`running contest ${contestId} (type ${cType}); entries close at ${new Date(endsAtMs).toISOString()}`);
 
-  // Stream standings of the real field while the entry window is open.
+  // Stream standings of the real field while the entry window is open. Each
+  // frame applies trait multipliers so the live race visibly reflects the
+  // traits each entrant brings to the table.
   while (Date.now() < endsAtMs) {
     const field = await fetchField(contestId, cType);
     const preview = field.length > 0 ? await previewScores(cType, contestId, field) : [];
-    broadcast({ type: "standings", contestId, endsAt: endsAtMs, entries: standings(preview) });
+    const mult = await fetchAgentMultipliers(field.map((e) => e.agentId));
+    const boosted = applyTraitMultipliers(preview, mult);
+    broadcast({ type: "standings", contestId, endsAt: endsAtMs, entries: standings(boosted) });
     await sleep(2500);
   }
 
@@ -128,7 +133,11 @@ export async function runContestById(contestId: number, broadcast: (message: unk
     await fundHotWallets(field.map((e) => e.agentId), fundUsdc);
   }
 
-  const results = await finalScores(cType, contestId, field);
+  const baseResults = await finalScores(cType, contestId, field);
+  // Authoritative scoring also picks up trait multipliers so the on-chain
+  // payout reflects the same boosts viewers saw on the live race.
+  const traitMult = await fetchAgentMultipliers(field.map((e) => e.agentId));
+  const results = applyTraitMultipliers(baseResults, traitMult);
 
   const platformFee = (c.prizePool * BigInt(c.platformFeeBps)) / 10_000n;
   const claimable = c.prizePool - platformFee;

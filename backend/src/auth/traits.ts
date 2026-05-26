@@ -6,6 +6,18 @@
 
 export type Rarity = "common" | "rare" | "epic" | "legendary";
 
+/// Score-bonus multiplier per rarity. Combined as 1 + sum(traits.multiplier),
+/// capped at MAX_AGENT_MULTIPLIER. A maxed agent with every trait in the pool
+/// caps out near +100%; a single common is +3%. The coordinator reads these
+/// from `agent_traits` and applies them after final scoring.
+export const RARITY_MULTIPLIER: Record<Rarity, number> = {
+  common: 0.03,
+  rare: 0.06,
+  epic: 0.12,
+  legendary: 0.25,
+};
+export const MAX_AGENT_MULTIPLIER = 2.0;
+
 export interface Trait {
   id: string;
   name: string;
@@ -67,7 +79,30 @@ export function rollMystery(pool: Trait[]): { rugged: boolean; trait: Trait | nu
   return { rugged: false, trait: pickWeighted(pool) };
 }
 
-export const COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours
+export const COOLDOWN_MS = 24 * 60 * 60 * 1000; // legacy reference; daily UTC reset is the active rule
+
+/// Total mystery boxes available globally per UTC day. First-come, first-served.
+/// Configurable via env so the demo can be tuned.
+export const DAILY_POOL_MAX: number = (() => {
+  const raw = Number(process.env.MYSTERY_DAILY_POOL);
+  if (!Number.isFinite(raw) || raw <= 0) return 100;
+  return Math.floor(raw);
+})();
+
+/// Epoch milliseconds for the next midnight UTC. The cooldown and pool both
+/// roll over at that boundary, so this is the single timestamp the UI needs.
+export function nextResetMs(now: Date = new Date()): number {
+  return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
+}
+
+/// True if the given timestamp falls on the same UTC day as `now`.
+export function sameUtcDay(prev: Date, now: Date = new Date()): boolean {
+  return (
+    prev.getUTCFullYear() === now.getUTCFullYear() &&
+    prev.getUTCMonth() === now.getUTCMonth() &&
+    prev.getUTCDate() === now.getUTCDate()
+  );
+}
 
 export function traitById(id: string): Trait | undefined {
   return TRAITS.find((t) => t.id === id);

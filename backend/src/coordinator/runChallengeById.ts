@@ -12,6 +12,7 @@ import type { AgentResult, ContestEntryInput } from "../runners/types.js";
 import { fundHotWallets } from "./contestOps.js";
 import { merkleRoot, payoutLeaf } from "./merkle.js";
 import { computePayouts } from "./payouts.js";
+import { applyTraitMultipliers, fetchAgentMultipliers } from "./traits.js";
 
 /// Peer-challenge counterpart to runContestById. Locks a full or expired
 /// challenge, scores its entrants with the runner matching the challenge kind,
@@ -186,6 +187,10 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
     // and the final scoring rolls once for the authoritative winner.
     const factor = kindRandomness(Number(ch.kind));
 
+    // Trait multipliers are stable across the locked field, so fetch once and
+    // reuse for every preview frame and the authoritative scoring.
+    const traitMult = await fetchAgentMultipliers(field.map((e) => e.agentId));
+
     // Stream a preview race so the challenge detail board animates before the
     // winner root posts. Only on the first sweep that sees this challenge
     // locked in this process, and only when there is enough resolve window
@@ -200,13 +205,15 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
       );
       while (Date.now() < previewUntil) {
         const preview = await previewScores(cType, challengeId, field);
-        broadcast({ type: "challenge_standings", challengeId, entries: standings(applyRandomness(preview, factor)) });
+        const boosted = applyTraitMultipliers(preview, traitMult);
+        broadcast({ type: "challenge_standings", challengeId, entries: standings(applyRandomness(boosted, factor)) });
         await sleep(2500);
       }
     }
 
     const baseResults = await scoreField(cType, challengeId, field);
-    const results = applyRandomness(baseResults, factor);
+    const withTraits = applyTraitMultipliers(baseResults, traitMult);
+    const results = applyRandomness(withTraits, factor);
 
     const pot = ch.stake * BigInt(entrants);
     const fee = (pot * BigInt(ch.platformFeeBps)) / 10_000n;
