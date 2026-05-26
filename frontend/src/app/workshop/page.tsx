@@ -5,7 +5,9 @@ import { useAccount } from "wagmi";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/pengu/Footer";
 import { SectionLabel } from "@/components/pengu/atoms";
+import { AgentTraits } from "@/components/pengu/AgentTraits";
 import { ClaimAgentButton } from "@/components/pengu/ClaimAgentButton";
+import { NftBadge } from "@/components/pengu/NftBadge";
 import { WorkshopScene } from "@/components/pengu/WorkshopScene";
 import { UpgradeFlow } from "@/components/pengu/UpgradeFlow";
 import { LoginCTA } from "@/components/pengu/LoginCTA";
@@ -195,6 +197,11 @@ function AgentCard({
           );
         })}
       </div>
+
+      <div className="mt-4 flex items-center justify-between">
+        <NftBadge tokenId={agent.erc8004TokenId} />
+      </div>
+      <AgentTraits agentId={agent.id} />
 
       <button onClick={onUpgrade} className={`mt-4 ${chunkyBtnSmall}`}>
         upgrade

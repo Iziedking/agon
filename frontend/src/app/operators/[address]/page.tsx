@@ -7,6 +7,8 @@ import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/pengu/Footer";
 import { Bubble3D, SectionLabel } from "@/components/pengu/atoms";
 import { AgentMascot } from "@/components/pengu/AgentMascot";
+import { AgentTraits } from "@/components/pengu/AgentTraits";
+import { NftBadge } from "@/components/pengu/NftBadge";
 import { OperatorAvatar } from "@/components/pengu/OperatorAvatar";
 import { EXPLORER } from "@/lib/arc";
 import { CONTEST_TYPES, fetchAgents, tierOf, type AgentState } from "@/lib/agents";
@@ -262,8 +264,13 @@ function AgentCustomizeCard({ agent, isMe }: { agent: AgentState; isMe: boolean 
         </div>
       ) : null}
 
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <NftBadge tokenId={agent.erc8004TokenId} />
+      </div>
+      <AgentTraits agentId={agent.id} />
+
       <div className="mt-4 flex flex-wrap gap-2">
-        {["upload custom skin", "train with skills", "add traits"].map((t) => (
+        {["upload custom skin", "train with skills"].map((t) => (
           <span
             key={t}
             className="rounded-full border border-pengu-blue/15 bg-pengu-bg px-3 py-1 font-display text-[10px] uppercase tracking-wide text-pengu-dark/45"

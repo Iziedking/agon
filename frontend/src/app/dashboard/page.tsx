@@ -6,10 +6,13 @@ import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/pengu/Footer";
 import { Bubble3D, SectionLabel } from "@/components/pengu/atoms";
 import { AgentMascot } from "@/components/pengu/AgentMascot";
+import { AgentTraits } from "@/components/pengu/AgentTraits";
 import { ClaimAgentButton } from "@/components/pengu/ClaimAgentButton";
 import { CreateChallengeModal } from "@/components/pengu/CreateChallengeModal";
 import { HostCampaignButton } from "@/components/pengu/HostCampaignButton";
 import { LoginCTA } from "@/components/pengu/LoginCTA";
+import { MysteryClaimCard } from "@/components/pengu/MysteryClaimCard";
+import { NftBadge } from "@/components/pengu/NftBadge";
 import { OperatorAvatar } from "@/components/pengu/OperatorAvatar";
 import {
   CONTEST_TYPES,
@@ -45,6 +48,7 @@ export default function DashboardPage() {
   const [agents, setAgents] = useState<AgentState[] | undefined>(undefined);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [showChallenge, setShowChallenge] = useState(false);
+  const [traitsRefresh, setTraitsRefresh] = useState(0);
 
   useEffect(() => {
     if (!address) return;
@@ -151,6 +155,18 @@ export default function DashboardPage() {
         </div>
       </section>
 
+      {agents.length > 0 ? (
+        <section className="mx-auto max-w-[1200px] px-6 pb-8">
+          <SectionLabel>mystery event</SectionLabel>
+          <div className="mt-5">
+            <MysteryClaimCard
+              activeAgentId={active?.id ?? null}
+              onClaimed={() => setTraitsRefresh((n) => n + 1)}
+            />
+          </div>
+        </section>
+      ) : null}
+
       {(claimable.length > 0 || inFlight.length > 0) && (
         <section className="mx-auto max-w-[1200px] px-6 pb-8">
           <SectionLabel>action items</SectionLabel>
@@ -215,6 +231,7 @@ export default function DashboardPage() {
                 agent={a}
                 isActive={a.id === active?.id}
                 onSetActive={() => pickAgent(a.id)}
+                traitsRefresh={traitsRefresh}
               />
             ))}
           </div>
@@ -316,10 +333,12 @@ function AgentTile({
   agent,
   isActive,
   onSetActive,
+  traitsRefresh,
 }: {
   agent: AgentState;
   isActive: boolean;
   onSetActive: () => void;
+  traitsRefresh?: number;
 }) {
   return (
     <div
@@ -350,6 +369,11 @@ function AgentTile({
           </button>
         )}
       </div>
+
+      <div className="mt-3">
+        <NftBadge tokenId={agent.erc8004TokenId} />
+      </div>
+      <AgentTraits agentId={agent.id} refreshKey={traitsRefresh} />
     </div>
   );
 }

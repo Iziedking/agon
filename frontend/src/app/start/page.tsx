@@ -9,6 +9,8 @@ import { SectionLabel, Bubble3D } from "@/components/pengu/atoms";
 import { LoginCTA } from "@/components/pengu/LoginCTA";
 import { ClaimAgentButton } from "@/components/pengu/ClaimAgentButton";
 import { AgentMascot } from "@/components/pengu/AgentMascot";
+import { AgentTraits } from "@/components/pengu/AgentTraits";
+import { NftBadge } from "@/components/pengu/NftBadge";
 import { OperatorAvatar } from "@/components/pengu/OperatorAvatar";
 import {
   CONTEST_TYPES,
@@ -184,19 +186,25 @@ export default function StartPage() {
               <p className="font-mono text-xs text-pengu-dark/55">checking your agents on arc…</p>
             ) : agents.length > 0 && active ? (
               <>
-                <div className="flex items-center gap-4 rounded-2xl border border-pengu-blue/15 bg-pengu-bg px-4 py-3">
-                  <span className="flex h-14 w-14 flex-none items-center justify-center overflow-hidden rounded-full border border-pengu-blue/15 bg-white">
-                    <AgentMascot color={agentColorById(active.id)} className="h-[68%] w-auto" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="font-bubble text-base uppercase text-pengu-dark">agent #{active.id}</div>
-                    <div className="mt-0.5 font-mono text-xs text-pengu-dark/60">
-                      {CONTEST_TYPES.map((t) => `${t} t${tierOf(active, t)}`).join(" · ")}
+                <div className="rounded-2xl border border-pengu-blue/15 bg-pengu-bg px-4 py-3">
+                  <div className="flex items-center gap-4">
+                    <span className="flex h-14 w-14 flex-none items-center justify-center overflow-hidden rounded-full border border-pengu-blue/15 bg-white">
+                      <AgentMascot color={agentColorById(active.id)} className="h-[68%] w-auto" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="font-bubble text-base uppercase text-pengu-dark">agent #{active.id}</div>
+                      <div className="mt-0.5 font-mono text-xs text-pengu-dark/60">
+                        {CONTEST_TYPES.map((t) => `${t} t${tierOf(active, t)}`).join(" · ")}
+                      </div>
                     </div>
+                    <a href="/workshop" className="font-mono text-xs text-pengu-blue hover:underline">
+                      workshop →
+                    </a>
                   </div>
-                  <a href="/workshop" className="font-mono text-xs text-pengu-blue hover:underline">
-                    workshop →
-                  </a>
+                  <div className="mt-3">
+                    <NftBadge tokenId={active.erc8004TokenId} />
+                  </div>
+                  <AgentTraits agentId={active.id} />
                 </div>
 
                 {agents.length > 1 ? (
