@@ -31,7 +31,8 @@ export interface CooldownStatus {
 }
 
 export interface ClaimResult {
-  trait: Trait;
+  trait: Trait | null;
+  rugged: boolean;
   agentId: number;
 }
 
@@ -74,7 +75,13 @@ export async function fetchMysteryCooldown(): Promise<CooldownStatus | null> {
   }
 }
 
-export async function claimMystery(agentId: number): Promise<ClaimResult | { error: string; nextAvailable?: number }> {
+export type ClaimResponse = ClaimResult | { error: string; nextAvailable?: number };
+
+export function isClaimError(res: ClaimResponse): res is { error: string; nextAvailable?: number } {
+  return "error" in res;
+}
+
+export async function claimMystery(agentId: number): Promise<ClaimResponse> {
   try {
     const res = await fetch(`${AUTH_URL}/mystery/claim`, {
       method: "POST",

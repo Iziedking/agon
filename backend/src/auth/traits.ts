@@ -37,6 +37,15 @@ const RARITY_WEIGHT: Record<Rarity, number> = {
   legendary: 3,
 };
 
+/// Chance of a rugged outcome (nothing awarded) on any given claim. Cooldown
+/// still ticks so a rug burns the daily roll. Tunable via env so it's easy to
+/// dial during the demo.
+export const RUG_CHANCE: number = (() => {
+  const raw = Number(process.env.MYSTERY_RUG_CHANCE);
+  if (!Number.isFinite(raw) || raw < 0 || raw > 1) return 0.25;
+  return raw;
+})();
+
 /// Pick one trait at random, weighted by rarity. Returns null if the list is
 /// empty (e.g., the agent already owns every trait).
 export function pickWeighted(pool: Trait[]): Trait | null {
@@ -48,6 +57,14 @@ export function pickWeighted(pool: Trait[]): Trait | null {
     if (r <= 0) return t;
   }
   return pool[pool.length - 1] ?? null;
+}
+
+/// One mystery roll. First flips for the rugged outcome (returns {rugged:true,
+/// trait:null}). If not rugged, picks a trait from the supplied pool. Caller is
+/// expected to have already filtered the pool to traits the agent doesn't own.
+export function rollMystery(pool: Trait[]): { rugged: boolean; trait: Trait | null } {
+  if (Math.random() < RUG_CHANCE) return { rugged: true, trait: null };
+  return { rugged: false, trait: pickWeighted(pool) };
 }
 
 export const COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours

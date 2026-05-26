@@ -5,6 +5,7 @@ import { AgentMascot } from "@/components/pengu/AgentMascot";
 import {
   claimMystery,
   fetchMysteryCooldown,
+  isClaimError,
   RARITY_COLOR,
   type CooldownStatus,
   type Trait,
@@ -37,6 +38,7 @@ export function MysteryClaimCard({
   const [cd, setCd] = useState<CooldownStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [awarded, setAwarded] = useState<Trait | null>(null);
+  const [rugged, setRugged] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [, tick] = useState(0);
 
@@ -60,16 +62,20 @@ export function MysteryClaimCard({
     setBusy(true);
     setError(null);
     setAwarded(null);
+    setRugged(false);
     const res = await claimMystery(activeAgentId);
-    if ("trait" in res) {
-      setAwarded(res.trait);
-      await onClaimed?.(res.trait);
-      await refresh();
-    } else {
+    if (isClaimError(res)) {
       setError(res.error);
       if (res.nextAvailable) {
         setCd({ ready: false, lastClaim: null, nextAvailable: res.nextAvailable, totalClaims: cd?.totalClaims ?? 0 });
       }
+    } else if (res.rugged) {
+      setRugged(true);
+      await refresh();
+    } else if (res.trait) {
+      setAwarded(res.trait);
+      await onClaimed?.(res.trait);
+      await refresh();
     }
     setBusy(false);
   }
@@ -87,8 +93,8 @@ export function MysteryClaimCard({
           <div className="font-display text-xs uppercase tracking-wide text-pengu-blue">mystery event</div>
           <h3 className="mt-1 font-bubble text-xl uppercase text-pengu-dark">claim a trait</h3>
           <p className="mt-1 max-w-[44ch] text-sm text-pengu-dark/65">
-            once a day, roll for a random trait and bind it to your active agent. rarity is weighted; legendaries are
-            rare. traits stick forever.
+            once a day, roll the box for your active agent. roughly one in four boxes is empty (rugged), rarity is
+            weighted, legendaries are rare. anything you win sticks forever.
           </p>
         </div>
         <div className="flex flex-col items-end gap-2">
@@ -131,6 +137,24 @@ export function MysteryClaimCard({
               {awarded.name}
             </div>
             <div className="mt-0.5 font-mono text-xs text-pengu-dark/65">{awarded.body}</div>
+          </div>
+        </div>
+      ) : null}
+
+      {rugged ? (
+        <div
+          className="mt-5 flex items-center gap-4 rounded-2xl border border-[#e0466e]/30 bg-[#e0466e]/8 px-4 py-3 animate-stagger-in"
+          style={{ animationFillMode: "both" }}
+        >
+          <span className="font-display text-[28px]" aria-hidden style={{ color: "#e0466e" }}>
+            ✕
+          </span>
+          <div className="min-w-0">
+            <div className="font-display text-[10px] uppercase tracking-wide text-[#e0466e]">rugged</div>
+            <div className="mt-0.5 font-bubble text-lg uppercase text-[#e0466e]">nothing this time</div>
+            <div className="mt-0.5 font-mono text-xs text-pengu-dark/65">
+              the box was empty. cooldown still ticks; try again tomorrow.
+            </div>
           </div>
         </div>
       ) : null}

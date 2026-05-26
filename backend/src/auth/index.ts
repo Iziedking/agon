@@ -13,7 +13,7 @@ import { logEvent } from "../events.js";
 import { merkleProof, payoutLeaf } from "../coordinator/merkle.js";
 import { redis } from "../redis.js";
 import { issueToken, requireAuth, SESSION_COOKIE } from "./jwt.js";
-import { COOLDOWN_MS, pickWeighted, TRAITS, traitById, type Trait } from "./traits.js";
+import { COOLDOWN_MS, rollMystery, RUG_CHANCE, TRAITS, traitById, type Trait } from "./traits.js";
 
 const SESSION_MAX_AGE = 7 * 24 * 60 * 60; // 7 days, matches issueToken expiry
 
@@ -246,8 +246,9 @@ app.get("/challenges/:id/results", async (c) => {
 
 // The pool of awardable traits, public read so the UI can render chip labels
 // without duplicating the source of truth. The legendary entries are visible
-// here even when no agent owns one yet (rarity is part of the pitch).
-app.get("/traits/pool", (c) => c.json({ traits: TRAITS }));
+// here even when no agent owns one yet (rarity is part of the pitch). The
+// `rugChance` is surfaced too so the UI can show the odds.
+app.get("/traits/pool", (c) => c.json({ traits: TRAITS, rugChance: RUG_CHANCE }));
 
 // Traits an agent currently owns, in award order (oldest first). Public read.
 app.get("/agents/:id/traits", async (c) => {
@@ -339,22 +340,28 @@ app.post("/mystery/claim", requireAuth, async (c) => {
     return c.json({ error: "this agent has collected every trait" }, 409);
   }
 
-  const trait: Trait | null = pickWeighted(available);
-  if (!trait) return c.json({ error: "could not pick a trait" }, 500);
-
-  // Persist the award and bump the operator's claim counter atomically-ish.
-  await query(
-    "insert into agent_traits (agent_id, trait_id, source) values ($1, $2, 'mystery') on conflict (agent_id, trait_id) do nothing",
-    [agentId, trait.id],
-  );
+  // Always bump the cooldown counter, even on a rug. A rugged roll burns the
+  // daily attempt; that's the whole point of the rugged outcome.
   await query(
     `insert into mystery_claims (operator, last_claim, total_claims) values ($1, now(), 1)
        on conflict (operator) do update set last_claim = now(), total_claims = mystery_claims.total_claims + 1`,
     [operator],
   );
+
+  const result = rollMystery(available);
+  if (result.rugged || !result.trait) {
+    void logEvent({ kind: "mystery_claim", address: operator, context: { agentId, rugged: true }, source: "auth" });
+    return c.json({ rugged: true, trait: null, agentId });
+  }
+
+  const trait: Trait = result.trait;
+  await query(
+    "insert into agent_traits (agent_id, trait_id, source) values ($1, $2, 'mystery') on conflict (agent_id, trait_id) do nothing",
+    [agentId, trait.id],
+  );
   void logEvent({ kind: "mystery_claim", address: operator, context: { agentId, traitId: trait.id, rarity: trait.rarity }, source: "auth" });
 
-  return c.json({ trait, agentId });
+  return c.json({ rugged: false, trait, agentId });
 });
 
 // ----- Activity feed -----
