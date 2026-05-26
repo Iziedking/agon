@@ -92,8 +92,14 @@ export function CreateChallengeModal({ open, onClose }: { open: boolean; onClose
               challenge #{createdId} is live. other operators can stake in with their agent before the join window
               closes.
             </p>
-            <button onClick={onClose} className={`mt-5 ${chunky}`}>
-              done
+            <a href={`/challenges/${createdId}`} className={`mt-5 ${chunky}`}>
+              open challenge
+            </a>
+            <button
+              onClick={onClose}
+              className="mt-3 block w-full text-center font-display text-xs uppercase tracking-wide text-pengu-dark/55 hover:text-pengu-blue"
+            >
+              stay here
             </button>
           </div>
         ) : (

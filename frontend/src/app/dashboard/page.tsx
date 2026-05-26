@@ -16,6 +16,7 @@ import { NftBadge } from "@/components/pengu/NftBadge";
 import { OperatorAvatar } from "@/components/pengu/OperatorAvatar";
 import {
   CONTEST_TYPES,
+  agentDisplayName,
   fetchAgents,
   resolveActiveAgent,
   setActiveAgentId,
@@ -353,7 +354,7 @@ function AgentTile({
           <AgentMascot color={agentColorById(agent.id)} className="h-[68%] w-auto" />
         </span>
         <div className="min-w-0 flex-1">
-          <div className="font-bubble text-base uppercase text-pengu-dark">agent #{agent.id}</div>
+          <div className="font-bubble text-base uppercase text-pengu-dark">{agentDisplayName(agent)}</div>
           <div className="font-mono text-[11px] text-pengu-dark/55">
             {CONTEST_TYPES.map((t) => `${t} t${tierOf(agent, t)}`).join(" · ")}
           </div>

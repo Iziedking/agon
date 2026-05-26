@@ -13,6 +13,7 @@ import { UpgradeFlow } from "@/components/pengu/UpgradeFlow";
 import { LoginCTA } from "@/components/pengu/LoginCTA";
 import {
   ABILITIES,
+  agentDisplayName,
   CONTEST_TYPES,
   fetchAgents,
   resolveActiveAgent,
@@ -167,7 +168,7 @@ function AgentCard({
       }`}
     >
       <div className="flex items-center justify-between">
-        <span className="font-bubble text-lg uppercase text-pengu-dark">agent #{agent.id}</span>
+        <span className="font-bubble text-lg uppercase text-pengu-dark">{agentDisplayName(agent)}</span>
         {isActive ? (
           <span className="rounded-full bg-pengu-blue px-2.5 py-0.5 font-display text-[10px] uppercase tracking-wide text-white">
             active

@@ -15,9 +15,8 @@ import { CONTEST_TYPES, fetchAgents, tierOf, type AgentState } from "@/lib/agent
 import {
   agentColorById,
   fetchOperator,
-  getAgentNickname,
   getSetting,
-  setAgentNickname,
+  saveAgentName,
   setSetting,
   short,
   type OperatorProfile,
@@ -210,18 +209,32 @@ export default function OperatorPage() {
 }
 
 function AgentCustomizeCard({ agent, isMe }: { agent: AgentState; isMe: boolean }) {
-  const [name, setName] = useState<string>("");
+  const [name, setName] = useState<string>(agent.nickname ?? "");
+  const [busy, setBusy] = useState(false);
   const [savedNote, setSavedNote] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
+  // Sync the input from incoming agent prop so the field reflects whatever the
+  // server returned after the last fetchAgents call.
   useEffect(() => {
-    setName(getAgentNickname(agent.id));
-  }, [agent.id]);
+    setName(agent.nickname ?? "");
+  }, [agent.id, agent.nickname]);
 
-  function save() {
-    setAgentNickname(agent.id, name);
-    setSavedNote(true);
-    setTimeout(() => setSavedNote(false), 1500);
+  async function save() {
+    setBusy(true);
+    setError(null);
+    const res = await saveAgentName(agent.id, name);
+    setBusy(false);
+    if (res.ok) {
+      setName(res.nickname ?? "");
+      setSavedNote(true);
+      setTimeout(() => setSavedNote(false), 1500);
+    } else {
+      setError(res.error);
+    }
   }
+
+  const display = (name || agent.nickname || "").trim();
 
   return (
     <div className="rounded-card border border-pengu-blue/15 bg-white p-5 shadow-[0_8px_24px_rgba(70,45,150,0.06)]">
@@ -231,7 +244,7 @@ function AgentCustomizeCard({ agent, isMe }: { agent: AgentState; isMe: boolean 
         </span>
         <div className="min-w-0 flex-1">
           <div className="font-bubble text-lg uppercase text-pengu-dark">
-            {name ? name : `agent #${agent.id}`}
+            {display ? display : `agent #${agent.id}`}
             <span className="ml-2 font-mono text-xs text-pengu-dark/45">#{agent.id}</span>
           </div>
           <div className="mt-0.5 font-mono text-xs text-pengu-dark/55">
@@ -247,11 +260,14 @@ function AgentCustomizeCard({ agent, isMe }: { agent: AgentState; isMe: boolean 
             onChange={(e) => setName(e.target.value)}
             placeholder={`name agent #${agent.id}`}
             className="w-full max-w-[280px] rounded-pill border border-pengu-blue/20 bg-white px-4 py-2 font-mono text-sm text-pengu-dark outline-none transition-colors focus:border-pengu-blue"
+            disabled={busy}
+            maxLength={24}
           />
-          <button onClick={save} className={chunkyBtn}>
-            save name
+          <button onClick={save} disabled={busy} className={`${chunkyBtn} disabled:opacity-60`}>
+            {busy ? "saving…" : "save name"}
           </button>
           {savedNote ? <span className="font-mono text-xs text-[#22c55e]">saved</span> : null}
+          {error ? <span className="font-mono text-xs text-[#e0466e]">{error}</span> : null}
         </div>
       ) : null}
 

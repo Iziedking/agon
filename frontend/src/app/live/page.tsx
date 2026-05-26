@@ -1,51 +1,62 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/pengu/Footer";
 import { SectionLabel } from "@/components/pengu/atoms";
-import { LiveContestPanel } from "@/components/LiveContestPanel";
 import { ActivityFeed } from "@/components/pengu/ActivityFeed";
-import { BetweenRoundsPanel } from "@/components/pengu/BetweenRoundsPanel";
+import { LiveDirectory } from "@/components/pengu/LiveDirectory";
 import { RecentlySettledStrip } from "@/components/pengu/RecentlySettledStrip";
-import { useContestSocket } from "@/hooks/useContestSocket";
+import { fetchChallenges, type Challenge } from "@/lib/challenges";
+import { fetchContests, type Contest } from "@/lib/contests";
 
-/// The live arena page. Two columns:
-/// - Left: the live contest panel when something is scoring, the between-rounds
-///   panel otherwise. Below either, a strip of recently settled contests so the
-///   page always carries weight, not just a "waiting" line when nothing is live.
-/// - Right: the global arena activity feed.
-/// The site-wide WinWatcher in the root layout handles "you won" celebrations.
+/// /live is the broadcast lobby. Every contest and every challenge currently
+/// open or scoring shows up as a card. Anyone can watch; auth is not required.
+/// Clicking a card opens the detail page where the full stage and standings
+/// stream. The page polls chain reads every 15s and listens on the coordinator
+/// socket so the card whose id is mid-stream pulses.
 export default function LivePage() {
-  const { connected, standings } = useContestSocket();
+  const [contests, setContests] = useState<Contest[]>([]);
+  const [challenges, setChallenges] = useState<Challenge[]>([]);
+
+  useEffect(() => {
+    let stopped = false;
+    async function load() {
+      try {
+        const [cs, chs] = await Promise.all([fetchContests(), fetchChallenges()]);
+        if (stopped) return;
+        setContests(cs);
+        setChallenges(chs);
+      } catch {
+        // chain blip; next refresh tries again
+      }
+    }
+    void load();
+    return () => {
+      stopped = true;
+    };
+  }, []);
 
   return (
     <div className="min-h-screen text-pengu-dark" style={{ background: "#f3effb" }}>
       <AppHeader />
 
-      <section className="mx-auto max-w-[1200px] px-6 pb-16 pt-12">
-        <div className="flex flex-wrap items-center gap-3">
-          <SectionLabel>live</SectionLabel>
-          <span className="inline-flex items-center gap-2 font-mono text-xs text-pengu-dark/55">
-            <span className={`h-2 w-2 rounded-full ${connected ? "animate-pulse-live bg-[#22c55e]" : "bg-pengu-dark/30"}`} />
-            {connected ? "feed connected" : "feed offline"}
-          </span>
-        </div>
+      <section className="mx-auto max-w-[1200px] px-6 pb-12 pt-12">
+        <SectionLabel>live</SectionLabel>
         <h1 className="mt-5 font-bubble text-[clamp(36px,5vw,64px)] uppercase leading-tight text-pengu-dark">
-          live arena
+          the broadcast lobby
         </h1>
         <p className="mt-3 max-w-[60ch] text-pengu-dark/65">
-          watch agents compete in real time and the chain settle. between rounds, host one or browse recent results.
+          every contest and challenge currently running, in one place. click any card to watch agents compete in real
+          time. you do not need a wallet to watch.
         </p>
 
-        <div className="mt-8 grid gap-6 lg:grid-cols-[1.6fr_1fr]">
-          <div className="flex flex-col gap-6">
-            {standings && standings.entries.length > 0 ? (
-              <LiveContestPanel standings={standings} connected={connected} />
-            ) : (
-              <BetweenRoundsPanel connected={connected} />
-            )}
-            <RecentlySettledStrip />
-          </div>
+        <LiveDirectory initialContests={contests} initialChallenges={challenges} />
+      </section>
+
+      <section className="mx-auto max-w-[1200px] px-6 pb-16">
+        <div className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
+          <RecentlySettledStrip />
           <ActivityFeed />
         </div>
       </section>

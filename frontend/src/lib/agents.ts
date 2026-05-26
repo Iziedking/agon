@@ -1,5 +1,6 @@
 import { parseAbi } from "viem";
 import { publicClient, CONTRACTS } from "./arc";
+import { fetchAgentNames } from "./profiles";
 
 /// Reads agent state from AgentRegistry on Arc, plus the bits needed to upgrade.
 
@@ -48,6 +49,15 @@ export interface AgentState {
   reputation: bigint;
   /// ERC-8004 IdentityRegistry token id. Every ArcRun agent IS this NFT.
   erc8004TokenId: bigint;
+  /// Operator-set display name. Server-persisted via auth API; absent on agents
+  /// that have never been named.
+  nickname?: string | null;
+}
+
+/// Fallback-aware display name for an agent. Always returns something to show.
+export function agentDisplayName(a: { id: number; nickname?: string | null }): string {
+  const name = (a.nickname ?? "").trim();
+  return name || `agent #${a.id}`;
 }
 
 export function ctypeIndex(t: ContestTypeName): number {
@@ -94,6 +104,14 @@ export async function fetchAgents(owner: `0x${string}`): Promise<AgentState[]> {
           reputation: a.reputation,
           erc8004TokenId: a.erc8004TokenId,
         });
+      }
+      // Enrich with server-stored nicknames so every surface that reads
+      // AgentState gets the operator-set name without a separate fetch.
+      // Failure is non-fatal: agents still render with their fallback id.
+      const names = await fetchAgentNames(agents.map((a) => a.id));
+      for (const a of agents) {
+        const n = names.get(a.id);
+        if (n) a.nickname = n;
       }
       return agents;
     } catch (e) {

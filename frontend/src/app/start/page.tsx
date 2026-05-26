@@ -13,6 +13,7 @@ import { AgentTraits } from "@/components/pengu/AgentTraits";
 import { NftBadge } from "@/components/pengu/NftBadge";
 import { OperatorAvatar } from "@/components/pengu/OperatorAvatar";
 import {
+  agentDisplayName,
   CONTEST_TYPES,
   fetchAgents,
   resolveActiveAgent,
@@ -193,7 +194,7 @@ export default function StartPage() {
                       <AgentMascot color={agentColorById(active.id)} className="h-[68%] w-auto" />
                     </span>
                     <div className="min-w-0 flex-1">
-                      <div className="font-bubble text-base uppercase text-pengu-dark">agent #{active.id}</div>
+                      <div className="font-bubble text-base uppercase text-pengu-dark">{agentDisplayName(active)}</div>
                       <div className="mt-0.5 font-mono text-xs text-pengu-dark/60">
                         {CONTEST_TYPES.map((t) => `${t} t${tierOf(active, t)}`).join(" · ")}
                       </div>
@@ -220,7 +221,7 @@ export default function StartPage() {
                             : "bg-pengu-blue/10 text-pengu-blue hover:bg-pengu-blue/20"
                         }`}
                       >
-                        agent #{a.id}
+                        {agentDisplayName(a)}
                       </button>
                     ))}
                   </div>

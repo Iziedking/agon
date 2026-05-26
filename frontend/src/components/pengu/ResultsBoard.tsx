@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useAccount } from "wagmi";
 import { useContestSocket } from "@/hooks/useContestSocket";
+import { useAgentNames, nameFor } from "@/hooks/useAgentNames";
 import { OperatorAvatar } from "@/components/pengu/OperatorAvatar";
 import { ContestStage } from "@/components/pengu/ContestStage";
 import { fetchResults, type ArenaResults, type ResultEntrant } from "@/lib/results";
@@ -176,6 +177,7 @@ function LiveStandings({
   }
 
   const max = Math.max(...entries.map((e) => e.score), 1);
+  const names = useAgentNames(entries.map((e) => e.agentId));
   return (
     <div className="mt-4 flex flex-col gap-4">
       {/* visible competition stage above the standings bars, so the surface
@@ -207,7 +209,7 @@ function LiveStandings({
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 font-mono text-xs text-pengu-dark/60">
                 <span className="truncate">
-                  agent {e.agentId} · {short(e.operator)}
+                  {nameFor(names, e.agentId)} · {short(e.operator)}
                 </span>
                 {mine ? <YouTag /> : null}
               </div>

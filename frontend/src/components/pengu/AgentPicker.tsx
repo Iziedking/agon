@@ -1,6 +1,6 @@
 "use client";
 
-import type { AgentState } from "@/lib/agents";
+import { agentDisplayName, type AgentState } from "@/lib/agents";
 
 /// A chip row for picking which of the operator's agents enters a contest or
 /// joins a challenge. Hidden when there is only one agent (no choice to make).
@@ -29,7 +29,7 @@ export function AgentPicker({
                 : "bg-pengu-blue/10 text-pengu-blue hover:bg-pengu-blue/20"
             }`}
           >
-            agent #{a.id}
+            {agentDisplayName(a)}
           </button>
         ))}
       </div>

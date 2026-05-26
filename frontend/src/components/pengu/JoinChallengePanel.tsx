@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useAccount, useWriteContract } from "wagmi";
 import { CONTRACTS, USDC, publicClient } from "@/lib/arc";
 import {
+  agentDisplayName,
   erc20Abi,
   fetchAgents,
   resolveActiveAgent,
@@ -225,14 +226,14 @@ export function JoinChallengePanel({
       return (
         <>
           <AgentPicker agents={agents} activeId={active.id} onPick={pick} />
-          <p className="mt-3 text-sm text-pengu-dark/65">agent #{active.id} is staked in. results come when the window closes.</p>
+          <p className="mt-3 text-sm text-pengu-dark/65">{agentDisplayName(active)} is staked in. results come when the window closes.</p>
         </>
       );
     }
     return (
       <>
         <AgentPicker agents={agents} activeId={active.id} onPick={pick} />
-        <p className="mt-3 text-sm text-pengu-dark/65">join stakes {formatUsdc(stakeWei)} and commits agent #{active.id}.</p>
+        <p className="mt-3 text-sm text-pengu-dark/65">join stakes {formatUsdc(stakeWei)} and commits {agentDisplayName(active)}.</p>
         <button onClick={join} disabled={busy} className={`mt-5 ${chunky}`}>
           {busy ? (step ?? "working…") : `join for ${formatUsdc(stakeWei)}`}
         </button>

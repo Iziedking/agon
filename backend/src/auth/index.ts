@@ -276,6 +276,61 @@ app.get("/mystery/pool", async (c) => {
 });
 
 // Traits an agent currently owns, in award order (oldest first). Public read.
+// ----- Agent nicknames -----
+//
+// Names are stored on `agents.nickname` and shown to everyone, so renaming an
+// agent in one place propagates to every surface that reads agents (live
+// standings, contest stages, leaderboards, the picker, the profile pages).
+// The localStorage path that used to back the rename UI is dead.
+
+const NICK_RE = /^[\w .\-]{1,24}$/;
+
+/// Set or clear the nickname for an agent. Requires a SIWE session and that
+/// the connected wallet owns the agent on chain (we use the indexer's `agents`
+/// table; if the agent isn't there yet, the rename is refused so we never
+/// claim a name we couldn't verify).
+app.post("/agents/:id/name", requireAuth, async (c) => {
+  const operator = c.get("address");
+  const agentId = Number(c.req.param("id"));
+  if (!Number.isFinite(agentId)) return c.json({ error: "invalid agent id" }, 400);
+
+  const { name } = await c.req.json<{ name?: string }>();
+  const trimmed = (name ?? "").trim();
+  if (trimmed && !NICK_RE.test(trimmed)) {
+    return c.json({ error: "name must be 1-24 chars: letters, numbers, space, dot, dash, underscore" }, 400);
+  }
+
+  const { rows } = await query<{ owner: string }>("select owner from agents where id = $1", [agentId]);
+  const owner = rows[0]?.owner;
+  if (!owner) return c.json({ error: "agent not found" }, 404);
+  if (owner.toLowerCase() !== operator.toLowerCase()) {
+    return c.json({ error: "you do not own this agent" }, 403);
+  }
+
+  await query("update agents set nickname = $2 where id = $1", [agentId, trimmed || null]);
+  return c.json({ id: agentId, nickname: trimmed || null });
+});
+
+/// Bulk name lookup for surfaces that only know agent ids (live standings,
+/// contest stages, anywhere a broadcast frame lacks names). Pass a comma-
+/// separated id list; returns a name map (missing entries are simply absent).
+app.get("/agents/names", async (c) => {
+  const ids = (c.req.query("ids") ?? "")
+    .split(",")
+    .map((s) => Number(s.trim()))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  if (ids.length === 0) return c.json({ names: {} });
+  const { rows } = await query<{ id: string; nickname: string | null }>(
+    "select id, nickname from agents where id = any($1::bigint[]) and nickname is not null",
+    [ids],
+  );
+  const names: Record<string, string> = {};
+  for (const r of rows) {
+    if (r.nickname) names[r.id] = r.nickname;
+  }
+  return c.json({ names });
+});
+
 app.get("/agents/:id/traits", async (c) => {
   const agentId = Number(c.req.param("id"));
   if (!Number.isFinite(agentId)) return c.json({ traits: [] });
@@ -501,8 +556,8 @@ app.get("/operators/:address", async (c) => {
     "select address, x_handle, current_syndicate_id, cycles from operators where address = $1",
     [address],
   );
-  const agents = await query<{ id: string; scout_tier: number; analyst_tier: number; solver_tier: number; reputation: string }>(
-    "select id, scout_tier, analyst_tier, solver_tier, reputation from agents where owner = $1 order by id",
+  const agents = await query<{ id: string; scout_tier: number; analyst_tier: number; solver_tier: number; reputation: string; nickname: string | null }>(
+    "select id, scout_tier, analyst_tier, solver_tier, reputation, nickname from agents where owner = $1 order by id",
     [address],
   );
   const stats = await query<{ entered: string; wins: string; earned: string }>(
@@ -540,6 +595,7 @@ app.get("/operators/:address", async (c) => {
       analystTier: r.analyst_tier,
       solverTier: r.solver_tier,
       reputation: r.reputation,
+      nickname: r.nickname,
     })),
     contests: contests.rows.map((r) => ({
       contestId: Number(r.contest_id),

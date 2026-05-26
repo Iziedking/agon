@@ -90,28 +90,62 @@ export function agentColorById(id: number): string {
   return `hsl(${hue}, 70%, 62%)`;
 }
 
+// --- Agent names: server-persisted ---
+//
+// Names live on `agents.nickname` so a rename in one place propagates to every
+// surface that reads agents. The auth API requires SIWE and verifies ownership
+// against the agents table before writing. Telegram/Discord social handles and
+// local settings (theme, lang, muted) still live in localStorage below.
+
+/// POST a new nickname for an agent. Returns the trimmed name the server stored
+/// or an `error` string the caller can render inline. Empty/whitespace clears
+/// the name. Requires an active SIWE session cookie.
+export async function saveAgentName(
+  agentId: number,
+  name: string,
+): Promise<{ ok: true; nickname: string | null } | { ok: false; error: string }> {
+  try {
+    const res = await fetch(`${AUTH_URL}/agents/${agentId}/name`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    const data = (await res.json().catch(() => ({}))) as { nickname?: string | null; error?: string };
+    if (!res.ok) return { ok: false, error: data.error ?? "could not save the name" };
+    return { ok: true, nickname: data.nickname ?? null };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "network error" };
+  }
+}
+
+/// Bulk-fetch nicknames for a list of agent ids. Missing entries are simply
+/// absent from the returned map. No auth required: names are public, anyone
+/// watching a contest sees them.
+export async function fetchAgentNames(ids: number[]): Promise<Map<number, string>> {
+  const out = new Map<number, string>();
+  if (ids.length === 0) return out;
+  try {
+    const qs = ids.join(",");
+    const res = await fetch(`${AUTH_URL}/agents/names?ids=${qs}`, { cache: "no-store" });
+    if (!res.ok) return out;
+    const data = (await res.json()) as { names?: Record<string, string> };
+    for (const [k, v] of Object.entries(data.names ?? {})) {
+      if (v) out.set(Number(k), v);
+    }
+  } catch {
+    // network blip, return what we have
+  }
+  return out;
+}
+
 // --- Local user preferences (browser-scoped) ---
 //
-// Nicknames for agents and the operator's telegram/discord handles live in
-// localStorage for now. They're shown to the owner on their own profile so the
-// page reads as personal even before we wire a shared backend store. X is
-// already persisted server-side via OAuth, so that stays on the wallet's row
-// in the operators table.
+// Social handles and personal settings stay in localStorage; they don't need
+// to be visible to other users the way agent names do.
 
-const NICK_KEY = (agentId: number) => `arcrun:agentName:${agentId}`;
 const SOCIAL_KEY = (kind: string) => `arcrun:social:${kind}`;
 const SETTING_KEY = (k: string) => `arcrun:setting:${k}`;
-
-export function getAgentNickname(agentId: number): string {
-  if (typeof window === "undefined") return "";
-  return window.localStorage.getItem(NICK_KEY(agentId)) ?? "";
-}
-export function setAgentNickname(agentId: number, name: string): void {
-  if (typeof window === "undefined") return;
-  const trimmed = name.trim();
-  if (trimmed) window.localStorage.setItem(NICK_KEY(agentId), trimmed);
-  else window.localStorage.removeItem(NICK_KEY(agentId));
-}
 
 export type SocialKind = "telegram" | "discord";
 

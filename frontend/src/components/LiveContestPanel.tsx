@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { StandingsMessage } from "@/lib/live";
 import { ContestStage } from "@/components/pengu/ContestStage";
+import { useAgentNames, nameFor } from "@/hooks/useAgentNames";
 
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
@@ -42,6 +43,7 @@ export function LiveContestPanel({
 
   const max = Math.max(...standings.entries.map((e) => e.score), 1);
   const empty = standings.entries.length === 0;
+  const names = useAgentNames(standings.entries.map((e) => e.agentId));
 
   return (
     <div className="rounded-card border border-pengu-blue/15 bg-white p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
@@ -82,7 +84,7 @@ export function LiveContestPanel({
               </span>
               <div className="min-w-0 flex-1">
                 <div className="font-mono text-xs text-pengu-dark/60">
-                  agent {e.agentId} · {short(e.operator)}
+                  {nameFor(names, e.agentId)} · {short(e.operator)}
                 </div>
                 <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-pengu-blue/10">
                   <div

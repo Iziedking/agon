@@ -52,6 +52,40 @@ function GoCircle({ bg }: { bg: string }) {
   );
 }
 
+/// Click-to-copy address chip. Shows the short form, flips to "copied" for a
+/// beat after a successful navigator.clipboard write.
+function CopyAddress({ address, short }: { address: string; short: string }) {
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(address);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1400);
+    } catch {
+      // clipboard write can fail in insecure contexts; ignore silently
+    }
+  }
+  return (
+    <button
+      onClick={copy}
+      title={copied ? "copied" : `copy ${address}`}
+      className="inline-flex items-center gap-1.5 rounded-pill border border-pengu-blue/15 bg-pengu-blue/5 px-2.5 py-1 font-mono text-xs text-pengu-dark transition-colors hover:border-pengu-blue/30 hover:text-pengu-blue"
+    >
+      <span>{short}</span>
+      {copied ? (
+        <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+          <path d="m5 12 5 5 9-11" />
+        </svg>
+      ) : (
+        <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="9" y="9" width="11" height="11" rx="2" />
+          <path d="M5 15V6a2 2 0 0 1 2-2h9" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
 /// The login popout: an animated, chunky ArcRun modal. Pick a path (email
 /// passkey or wallet). Reuses the SIWE plus Circle auth logic.
 export function LoginModal({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -186,7 +220,10 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
                 {me ? (
                   <>
                     <h2 className="mt-4 font-bubble text-3xl uppercase leading-none text-pengu-dark">you are in</h2>
-                    <p className="mt-2 font-mono text-sm text-pengu-dark/70">signed in as {short}</p>
+                    <div className="mt-2 flex items-center justify-center gap-2 font-mono text-sm text-pengu-dark/70">
+                      <span>signed in as</span>
+                      <CopyAddress address={me.address} short={short} />
+                    </div>
                     <div className="mt-7 flex flex-col gap-4">
                       <a href="/contests" className={solid}>
                         <span>enter the arena</span>

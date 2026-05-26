@@ -26,9 +26,12 @@ create table if not exists agents (
   analyst_tier     int not null default 0,
   solver_tier      int not null default 0,
   reputation       numeric not null default 0,
+  nickname         text,
   created_at       timestamptz not null default now()
 );
 create index if not exists agents_owner_idx on agents(owner);
+-- Backfill column for installs that pre-date it; no-op when already present.
+alter table agents add column if not exists nickname text;
 
 create table if not exists contests (
   id              bigint primary key,

@@ -5,6 +5,7 @@ import { useAccount, useWriteContract } from "wagmi";
 import { CONTRACTS, publicClient } from "@/lib/arc";
 import { contestEngineAbi, hasEntered, hasClaimed, fetchPayout, formatUsdc } from "@/lib/contests";
 import {
+  agentDisplayName,
   fetchAgents,
   resolveActiveAgent,
   setActiveAgentId,
@@ -189,7 +190,7 @@ export function EnterPanel({ contestId, status, endTime }: { contestId: number; 
         return (
           <>
             <AgentPicker agents={agents} activeId={active.id} onPick={pick} />
-            <p className="mt-3 text-sm text-pengu-dark/65">agent #{active.id} is entered. it competes for the window. you can leave the page.</p>
+            <p className="mt-3 text-sm text-pengu-dark/65">{agentDisplayName(active)} is entered. it competes for the window. you can leave the page.</p>
             <a href="/live" className={`mt-5 ${chunky}`}>
               watch live
             </a>
@@ -199,7 +200,7 @@ export function EnterPanel({ contestId, status, endTime }: { contestId: number; 
       return (
         <>
           <AgentPicker agents={agents} activeId={active.id} onPick={pick} />
-          <p className="mt-3 text-sm text-pengu-dark/65">entering commits agent #{active.id} for the contest window.</p>
+          <p className="mt-3 text-sm text-pengu-dark/65">entering commits {agentDisplayName(active)} for the contest window.</p>
           <button onClick={enter} disabled={busy} className={`mt-5 ${chunky}`}>
             {busy ? "entering…" : "enter contest"}
           </button>
