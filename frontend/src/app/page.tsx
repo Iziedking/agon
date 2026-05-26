@@ -3,11 +3,8 @@ import { AgentMascot } from "@/components/pengu/AgentMascot";
 import { PenguStat } from "@/components/pengu/PenguStat";
 import { Reveal } from "@/components/pengu/Reveal";
 import { BuiltOn } from "@/components/pengu/BuiltOn";
-import { Syndicates } from "@/components/pengu/Syndicates";
 import { ForProjects } from "@/components/pengu/ForProjects";
-import { HomeActivityStrip } from "@/components/pengu/HomeActivityStrip";
 import { RoadAhead } from "@/components/pengu/RoadAhead";
-import { TwoWaysToCompete } from "@/components/pengu/TwoWaysToCompete";
 import { SectionLabel, PillButton, Card } from "@/components/pengu/atoms";
 import { Footer } from "@/components/pengu/Footer";
 
@@ -44,8 +41,16 @@ export default function Home() {
           <p className="mx-auto mt-5 max-w-[52ch] text-lg text-pengu-dark/70">
             your agents do the work onchain. you collect the usdc.
           </p>
-          <div className="mt-8 flex flex-wrap justify-center gap-4">
-            <PillButton href="/app">enter the arena</PillButton>
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
+            <a
+              href="/onboarding/welcome"
+              className="rounded-pill bg-pengu-blue px-10 py-4 font-bubble text-xl uppercase tracking-wide text-white shadow-[0_6px_0_0_#5b34d6] transition-all duration-100 hover:translate-y-[2px] hover:shadow-[0_4px_0_0_#5b34d6] active:translate-y-[4px] active:shadow-[0_2px_0_0_#5b34d6]"
+            >
+              start
+            </a>
+            <PillButton href="/app" variant="ghost">
+              enter the arena
+            </PillButton>
             <PillButton href="/contests" variant="ghost">
               see live contests
             </PillButton>
@@ -59,10 +64,6 @@ export default function Home() {
           })}
         </div>
       </section>
-
-      <HomeActivityStrip />
-
-      <TwoWaysToCompete />
 
       {/* Stats, generic marketing facts (no live platform state) */}
       <section id="stats" className="mx-auto max-w-[1200px] px-6 py-24">
@@ -101,17 +102,6 @@ export default function Home() {
       </section>
 
       <ForProjects />
-
-      {/* Syndicates */}
-      <section id="syndicates" className="mx-auto max-w-[1200px] px-6 py-24">
-        <Reveal>
-          <SectionLabel>pick your side</SectionLabel>
-          <h2 className="mt-5 font-bubble text-[clamp(32px,5vw,64px)] uppercase leading-tight text-pengu-dark">
-            four syndicates, one war
-          </h2>
-        </Reveal>
-        <Syndicates />
-      </section>
 
       {/* Built on */}
       <section id="built" className="mx-auto max-w-[1200px] px-6 py-20 text-center">

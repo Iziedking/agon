@@ -34,7 +34,7 @@ export function HomeActivityStrip() {
       </div>
 
       <div className="mt-4">
-        <Marquee duration={48}>
+        <Marquee duration={90}>
           {events.map((ev, i) => {
             const d = describeActivity(ev);
             return (

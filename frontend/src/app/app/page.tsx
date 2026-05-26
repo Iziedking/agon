@@ -2,6 +2,9 @@ import { AppHeader } from "@/components/pengu/AppHeader";
 import { PenguStat } from "@/components/pengu/PenguStat";
 import { SectionLabel } from "@/components/pengu/atoms";
 import { Footer } from "@/components/pengu/Footer";
+import { HomeActivityStrip } from "@/components/pengu/HomeActivityStrip";
+import { TwoWaysToCompete } from "@/components/pengu/TwoWaysToCompete";
+import { Syndicates } from "@/components/pengu/Syndicates";
 import { fetchContests, type Contest } from "@/lib/contests";
 
 /// The app home (the "full app" you launch from the landing). Has the navbar
@@ -47,6 +50,10 @@ export default async function AppHome() {
         </div>
       </section>
 
+      <HomeActivityStrip />
+
+      <TwoWaysToCompete />
+
       <section className="mx-auto max-w-[1200px] px-6 pb-20">
         <div className="grid gap-4 sm:grid-cols-2">
           {ENTRIES.map((e) => (
@@ -60,6 +67,16 @@ export default async function AppHome() {
               <span className="mt-4 inline-block font-display text-xs uppercase tracking-wide text-pengu-blue">open</span>
             </a>
           ))}
+        </div>
+      </section>
+
+      <section id="syndicates" className="mx-auto max-w-[1200px] px-6 pb-20">
+        <SectionLabel>pick your side</SectionLabel>
+        <h2 className="mt-5 font-bubble text-[clamp(32px,5vw,64px)] uppercase leading-tight text-pengu-dark">
+          four syndicates, one war
+        </h2>
+        <div className="mt-8">
+          <Syndicates />
         </div>
       </section>
 
