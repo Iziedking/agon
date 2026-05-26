@@ -2,6 +2,7 @@ import "dotenv/config";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { deleteCookie, setCookie } from "hono/cookie";
 import { createHash, randomBytes } from "node:crypto";
 import { generateSiweNonce, parseSiweMessage } from "viem/siwe";
 
@@ -11,7 +12,9 @@ import { query } from "../db/pool.js";
 import { logEvent } from "../events.js";
 import { merkleProof, payoutLeaf } from "../coordinator/merkle.js";
 import { redis } from "../redis.js";
-import { issueToken, requireAuth } from "./jwt.js";
+import { issueToken, requireAuth, SESSION_COOKIE } from "./jwt.js";
+
+const SESSION_MAX_AGE = 7 * 24 * 60 * 60; // 7 days, matches issueToken expiry
 
 /// Auth service: SIWE wallet login plus optional X (Twitter) OAuth2 linking.
 /// The wallet is the identity, so X is not required to enter contests; it is a
@@ -20,11 +23,14 @@ import { issueToken, requireAuth } from "./jwt.js";
 
 const app = new Hono<{ Variables: { address: string } }>();
 
-// Allow the frontend origin to call the auth API from the browser.
+// Allow the frontend origin to call the auth API from the browser. Credentials
+// are on so the httpOnly session cookie is sent on cross-origin fetches from
+// the Next.js app to this service.
 app.use(
   "*",
   cors({
     origin: config.auth.appUrl,
+    credentials: true,
     allowHeaders: ["Content-Type", "Authorization"],
     allowMethods: ["GET", "POST", "OPTIONS"],
   }),
@@ -74,8 +80,27 @@ app.post("/auth/wallet/verify", async (c) => {
   const address = fields.address.toLowerCase();
   await query("insert into operators (address) values ($1) on conflict (address) do nothing", [address]);
   const token = await issueToken(address);
+
+  // Persist the session in an httpOnly cookie so XSS cannot lift it. The token
+  // is also returned in the JSON body for back-compat with any non-browser
+  // caller (scripts, server-to-server), but the frontend should ignore it.
+  setCookie(c, SESSION_COOKIE, token, {
+    httpOnly: true,
+    sameSite: "Lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: SESSION_MAX_AGE,
+  });
+
   void logEvent({ kind: "login", address, source: "auth" });
   return c.json({ token, address });
+});
+
+// Sign out: clears the server-side session cookie. The frontend has no token to
+// clear because it never stored one. Returns 200 even when no session exists.
+app.post("/auth/logout", (c) => {
+  deleteCookie(c, SESSION_COOKIE, { path: "/" });
+  return c.json({ ok: true });
 });
 
 app.get("/auth/me", requireAuth, async (c) => {
