@@ -46,7 +46,12 @@ export default async function ChallengePage({ params }: { params: Promise<{ id: 
               </p>
 
               <div className="mt-8">
-                <ResultsBoard kind="challenges" id={ch.id} live={ch.status === 0 || ch.status === 1} />
+                <ResultsBoard
+                  kind="challenges"
+                  id={ch.id}
+                  live={ch.status === 0 || ch.status === 1}
+                  contestType={CHALLENGE_KIND[ch.kind] ?? "custom"}
+                />
               </div>
             </div>
 

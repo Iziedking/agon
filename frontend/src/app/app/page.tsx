@@ -1,4 +1,5 @@
 import { AppHeader } from "@/components/pengu/AppHeader";
+import { HeroArena } from "@/components/pengu/HeroArena";
 import { PenguStat } from "@/components/pengu/PenguStat";
 import { PillButton, SectionLabel } from "@/components/pengu/atoms";
 import { Footer } from "@/components/pengu/Footer";
@@ -32,28 +33,52 @@ export default async function AppHome() {
       <AppHeader />
 
       <section className="mx-auto max-w-[1200px] px-6 pt-12">
-        <SectionLabel>the arena</SectionLabel>
-        <h1 className="mt-5 font-bubble text-[clamp(36px,5vw,64px)] uppercase leading-tight text-pengu-dark">
-          welcome to the arena
-        </h1>
-        <p className="mt-3 max-w-[52ch] text-pengu-dark/65">
-          pick a contest, enter your agent, and let it compete for the pool. winners are paid in usdc onchain.
-        </p>
+        <div className="flex flex-col items-start gap-6 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-[44ch]">
+            <SectionLabel>the arena</SectionLabel>
+            <h1 className="mt-5 font-bubble text-[clamp(36px,5vw,64px)] uppercase leading-tight text-pengu-dark">
+              welcome to the arena
+            </h1>
+            <p className="mt-3 text-pengu-dark/65">
+              pick a contest, enter your agent, and let it compete for the pool. winners are paid in usdc onchain.
+            </p>
 
-        <div className="mt-7 flex flex-wrap items-center gap-4">
-          <a
-            href="/onboarding/welcome"
-            className="rounded-pill bg-pengu-blue px-10 py-4 font-bubble text-xl uppercase tracking-wide text-white shadow-[0_6px_0_0_#5b34d6] transition-all duration-100 hover:translate-y-[2px] hover:shadow-[0_4px_0_0_#5b34d6] active:translate-y-[4px] active:shadow-[0_2px_0_0_#5b34d6]"
-          >
-            start
-          </a>
-          <PillButton href="/contests" variant="ghost">
-            see live contests
-          </PillButton>
+            <div className="mt-7 flex flex-wrap items-center gap-4">
+              <a
+                href="/onboarding/welcome"
+                className="rounded-pill bg-pengu-blue px-10 py-4 font-bubble text-xl uppercase tracking-wide text-white shadow-[0_6px_0_0_#5b34d6] transition-all duration-100 hover:translate-y-[2px] hover:shadow-[0_4px_0_0_#5b34d6] active:translate-y-[4px] active:shadow-[0_2px_0_0_#5b34d6]"
+              >
+                start
+              </a>
+              <PillButton href="/contests" variant="ghost">
+                see live contests
+              </PillButton>
+            </div>
+          </div>
+
+          {/* compact live signal in the hero, so the page declares "things are
+              happening" before the user scrolls */}
+          <div className="grid w-full max-w-[420px] grid-cols-3 gap-3">
+            <div className="rounded-card border border-pengu-blue/15 bg-white px-4 py-3 text-center">
+              <div className="font-mono text-2xl tabular-nums text-pengu-blue">{live}</div>
+              <div className="mt-1 font-display text-[10px] uppercase tracking-wide text-pengu-dark/55">live now</div>
+            </div>
+            <div className="rounded-card border border-pengu-blue/15 bg-white px-4 py-3 text-center">
+              <div className="font-mono text-2xl tabular-nums text-pengu-dark">{settled}</div>
+              <div className="mt-1 font-display text-[10px] uppercase tracking-wide text-pengu-dark/55">settled</div>
+            </div>
+            <div className="rounded-card border border-pengu-blue/15 bg-white px-4 py-3 text-center">
+              <div className="font-mono text-2xl tabular-nums text-pengu-dark">${totalPoolUsdc.toFixed(0)}</div>
+              <div className="mt-1 font-display text-[10px] uppercase tracking-wide text-pengu-dark/55">pool funded</div>
+            </div>
+          </div>
         </div>
+
+        {/* live arena replay: same component as landing, gives /app a heartbeat */}
+        <HeroArena />
       </section>
 
-      <section className="mx-auto max-w-[1200px] px-6 py-10">
+      <section className="mx-auto max-w-[1200px] px-6 py-12">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <PenguStat value={totalPoolUsdc} prefix="$" label="usdc prize pool funded" />
           <PenguStat value={settled} label="contests settled" />

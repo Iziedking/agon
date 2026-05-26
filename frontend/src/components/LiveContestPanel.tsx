@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { StandingsMessage } from "@/lib/live";
+import { ContestStage } from "@/components/pengu/ContestStage";
 
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
@@ -61,6 +62,14 @@ export function LiveContestPanel({
         <p className="mt-5 font-mono text-sm text-pengu-dark/55">
           just opened · waiting for operators to enter…
         </p>
+      )}
+
+      {/* the visible competition surface, so the page stops feeling like a
+          countdown waiting on a name reveal */}
+      {!empty && (
+        <div className="mt-5">
+          <ContestStage contestType={standings.contestType} entries={standings.entries} />
+        </div>
       )}
 
       <div className="mt-5 flex flex-col gap-2">

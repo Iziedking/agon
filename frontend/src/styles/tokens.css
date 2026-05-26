@@ -170,10 +170,146 @@ html, body {
   animation: settle-sweep var(--duration-reveal) var(--ease-out) forwards;
 }
 
+/* ---------- ambient motion primitives ---------- */
+
+/* drift, the slow vertical bob that gives any element a sense of being alive */
+@keyframes drift {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+.drift { animation: drift 4s ease-in-out infinite; }
+.drift-slow { animation: drift 6s ease-in-out infinite; }
+.drift-1 { animation: drift 4s ease-in-out infinite; }
+.drift-2 { animation: drift 4s ease-in-out infinite; animation-delay: -0.8s; }
+.drift-3 { animation: drift 4s ease-in-out infinite; animation-delay: -1.6s; }
+.drift-4 { animation: drift 4s ease-in-out infinite; animation-delay: -2.4s; }
+
+/* breath, the gentle scale pulse for cards, mascots, anything that should feel
+   like it's powered on rather than printed */
+@keyframes breath {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+}
+.breath { animation: breath 3.2s ease-in-out infinite; transform-origin: center; }
+
+/* blink, the agent's left eye giving the occasional sign of life */
+@keyframes blink {
+  0%, 92%, 100% { transform: scaleY(1); }
+  94%, 97% { transform: scaleY(0.1); }
+}
+.blink { animation: blink 4.5s ease-in-out infinite; transform-origin: center; }
+
+/* sparkle, the small flashes that surround a winning agent */
+@keyframes sparkle {
+  0%, 100% { opacity: 0; transform: scale(0.5); }
+  50% { opacity: 1; transform: scale(1); }
+}
+.sparkle { animation: sparkle 1.2s ease-in-out infinite; transform-origin: center; }
+
+/* shimmer, the diagonal sweep of light across a surface, used on buttons and
+   trait reveals to mark something rare just happened */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.shimmer {
+  background: linear-gradient(
+    100deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.55) 50%,
+    transparent 70%
+  );
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: shimmer 2.4s ease-in-out infinite;
+  pointer-events: none;
+  mix-blend-mode: overlay;
+}
+
+/* scan, the vertical line that travels across a stage so it feels like a
+   broadcast surface rather than a static image */
+@keyframes scan {
+  0% { transform: translateY(-110%); opacity: 0; }
+  20%, 80% { opacity: 0.5; }
+  100% { transform: translateY(110%); opacity: 0; }
+}
+.scan {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(124, 77, 255, 0.18) 45%,
+    rgba(124, 77, 255, 0.45) 50%,
+    rgba(124, 77, 255, 0.18) 55%,
+    transparent 100%
+  );
+  animation: scan 5s linear infinite;
+}
+
+/* glow-pulse, the colored halo that intensifies and fades. used on live dots,
+   winning bars, and trait chips of higher rarity */
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 currentColor; opacity: 0.9; }
+  50% { box-shadow: 0 0 16px 2px currentColor; opacity: 1; }
+}
+.glow-pulse { animation: glow-pulse 2s ease-in-out infinite; }
+
+/* tick-up, the slot-machine roll used on score numbers as they climb */
+@keyframes tick-up {
+  0% { transform: translateY(8px); opacity: 0; }
+  60% { transform: translateY(-1px); opacity: 1; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+.tick-up { animation: tick-up 280ms var(--ease-out); }
+
+/* climb, the bar-fill animation used on the live race */
+@keyframes climb {
+  0% { transform: scaleX(0); }
+  100% { transform: scaleX(var(--climb, 1)); }
+}
+.climb { transform-origin: left center; animation: climb 5.5s linear forwards; }
+
+/* arena-grid, the faint moving lattice in the back of the stage so the surface
+   feels like a play field rather than a flat panel */
+@keyframes arena-grid {
+  0% { background-position: 0 0; }
+  100% { background-position: 80px 80px; }
+}
+.arena-grid {
+  background-image:
+    linear-gradient(to right, rgba(124, 77, 255, 0.08) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(124, 77, 255, 0.08) 1px, transparent 1px);
+  background-size: 40px 40px;
+  animation: arena-grid 20s linear infinite;
+}
+
+/* ---------- syndicate accents ---------- */
+/* Used wherever a card or section wants to declare which syndicate's color
+   leads it. Solid swatches first, then a 12% tint and a 25% halo. */
+:root {
+  --syn-crimson: #DC2626;
+  --syn-crimson-tint: rgba(220, 38, 38, 0.12);
+  --syn-crimson-halo: rgba(220, 38, 38, 0.25);
+  --syn-cyan: #0891B2;
+  --syn-cyan-tint: rgba(8, 145, 178, 0.12);
+  --syn-cyan-halo: rgba(8, 145, 178, 0.25);
+  --syn-gold: #D97706;
+  --syn-gold-tint: rgba(217, 119, 6, 0.12);
+  --syn-gold-halo: rgba(217, 119, 6, 0.25);
+  --syn-violet: #7C3AED;
+  --syn-violet-tint: rgba(124, 58, 237, 0.12);
+  --syn-violet-halo: rgba(124, 58, 237, 0.25);
+}
+
 /* Reduced motion respect */
 @media (prefers-reduced-motion: reduce) {
-  .live-dot { animation: none; }
-  .score-tick { animation: none; }
+  .live-dot,
+  .score-tick,
+  .drift, .drift-slow, .drift-2, .drift-3, .drift-4,
+  .breath, .blink, .sparkle, .shimmer, .scan, .glow-pulse,
+  .climb, .tick-up, .arena-grid { animation: none; }
   .settle-sweep { animation: none; opacity: 0.08; }
   * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }

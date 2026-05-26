@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useAccount } from "wagmi";
 import { useContestSocket } from "@/hooks/useContestSocket";
 import { OperatorAvatar } from "@/components/pengu/OperatorAvatar";
+import { ContestStage } from "@/components/pengu/ContestStage";
 import { fetchResults, type ArenaResults, type ResultEntrant } from "@/lib/results";
 import { formatUsdcString, short } from "@/lib/profiles";
 
@@ -29,10 +30,15 @@ export function ResultsBoard({
   kind,
   id,
   live,
+  contestType,
 }: {
   kind: "contests" | "challenges";
   id: number;
   live: boolean;
+  /// Optional stage hint. Contests carry their type on the broadcast; challenges
+  /// don't, so the parent page passes the challenge kind label here so the stage
+  /// can pick the right visualization.
+  contestType?: string;
 }) {
   const { address } = useAccount();
   const me = address?.toLowerCase();
@@ -125,7 +131,7 @@ export function ResultsBoard({
           })}
         </div>
       ) : live ? (
-        <LiveStandings id={id} entrants={entrants} me={me} kind={kind} />
+        <LiveStandings id={id} entrants={entrants} me={me} kind={kind} contestType={contestType} />
       ) : entrants.length > 0 ? (
         <Field entrants={entrants} me={me} />
       ) : (
@@ -145,17 +151,20 @@ function LiveStandings({
   entrants,
   me,
   kind,
+  contestType,
 }: {
   id: number;
   entrants: ResultEntrant[];
   me?: string;
   kind: "contests" | "challenges";
+  contestType?: string;
 }) {
   const { standings, challengeStandings } = useContestSocket();
+  const matchingStandings = standings && standings.contestId === id ? standings : null;
   const entries =
     kind === "contests"
-      ? standings && standings.contestId === id
-        ? standings.entries
+      ? matchingStandings
+        ? matchingStandings.entries
         : []
       : challengeStandings && challengeStandings.challengeId === id
         ? challengeStandings.entries
@@ -168,7 +177,18 @@ function LiveStandings({
 
   const max = Math.max(...entries.map((e) => e.score), 1);
   return (
-    <div className="mt-4 flex flex-col gap-2">
+    <div className="mt-4 flex flex-col gap-4">
+      {/* visible competition stage above the standings bars, so the surface
+          declares what the agents are actually doing. Contests get the type
+          from the broadcast; challenges get it from the parent page (the
+          challenge kind label like "PUZZLE" or "VOLUME"). */}
+      <ContestStage
+        contestType={matchingStandings?.contestType ?? contestType}
+        entries={entries}
+      />
+
+
+      <div className="flex flex-col gap-2">
       {entries.map((e) => {
         const leader = e.rank === 1;
         const mine = me && e.operator.toLowerCase() === me;
@@ -204,6 +224,7 @@ function LiveStandings({
           </a>
         );
       })}
+      </div>
     </div>
   );
 }

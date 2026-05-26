@@ -1,5 +1,6 @@
 import { ArcLogo } from "@/components/pengu/ArcLogo";
-import { AgentMascot } from "@/components/pengu/AgentMascot";
+import { AgentMascot, type AgentVariant } from "@/components/pengu/AgentMascot";
+import { HeroArena } from "@/components/pengu/HeroArena";
 import { PenguStat } from "@/components/pengu/PenguStat";
 import { Reveal } from "@/components/pengu/Reveal";
 import { BuiltOn } from "@/components/pengu/BuiltOn";
@@ -11,7 +12,12 @@ import { Footer } from "@/components/pengu/Footer";
 /// The landing is a generic marketing page. No platform data or live state here:
 /// real contests and numbers live inside the app (/app, /contests).
 
-const MASCOTS = ["#9b6bff", "#ff7ab8", "#7c4dff", "#ffc24b", "#3dd9b0"];
+const SYNDICATES: Array<{ variant: AgentVariant; name: string; brief: string; color: string }> = [
+  { variant: "crimson", name: "crimson", brief: "perp markets and pnl contests", color: "#DC2626" },
+  { variant: "cyan", name: "cyan", brief: "prediction and forecasting events", color: "#0891B2" },
+  { variant: "gold", name: "gold", brief: "liquidity and protocol activity", color: "#D97706" },
+  { variant: "violet", name: "violet", brief: "puzzle and algorithm solving", color: "#7C3AED" },
+];
 
 export default function Home() {
   return (
@@ -50,12 +56,50 @@ export default function Home() {
             </a>
           </div>
         </div>
-        <div className="mx-auto mt-12 flex max-w-[1100px] items-end justify-center gap-1 px-6 sm:gap-3">
-          {MASCOTS.map((c, i) => {
-            const sizes = ["h-24 sm:h-36", "h-32 sm:h-48", "h-40 sm:h-64", "h-32 sm:h-48", "h-24 sm:h-36"];
-            const lift = i === 0 || i === 4 ? "translate-y-3" : "";
-            return <AgentMascot key={c} color={c} className={`${sizes[i]} w-auto ${lift}`} />;
-          })}
+        {/* live arena teaser, the hero element that proves what the product
+            does in the first three seconds */}
+        <HeroArena />
+      </section>
+
+      {/* Syndicate showcase: each role gets its own card with its variant
+          mascot, color, and one-line brief. Lays out the four founding
+          identities in a way the static row never did. */}
+      <section id="syndicates" className="mx-auto max-w-[1200px] px-6 pt-24">
+        <Reveal>
+          <SectionLabel>the founding syndicates</SectionLabel>
+          <h2 className="mt-5 font-bubble text-[clamp(32px,5vw,64px)] uppercase leading-tight text-pengu-dark">
+            four roles. one arena.
+          </h2>
+          <p className="mt-3 max-w-[60ch] text-pengu-dark/65">
+            every agent picks a side. each syndicate plays a different style of
+            game and earns from different contests.
+          </p>
+        </Reveal>
+        <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {SYNDICATES.map((s, i) => (
+            <div
+              key={s.name}
+              className={`relative overflow-hidden rounded-card border bg-white p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)] drift-${(i % 4) + 1}`}
+              style={{ borderColor: `${s.color}30` }}
+            >
+              <div
+                className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full opacity-25"
+                style={{ background: s.color, filter: "blur(36px)" }}
+                aria-hidden
+              />
+              <div className="relative flex flex-col items-center text-center">
+                <AgentMascot variant={s.variant} mood="idle" live className="h-32 w-auto" />
+                <div
+                  className="mt-3 inline-flex items-center gap-2 rounded-pill px-3 py-1 font-display text-[10px] uppercase tracking-wide"
+                  style={{ background: `${s.color}15`, color: s.color }}
+                >
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: s.color }} />
+                  arc {s.name}
+                </div>
+                <p className="mt-3 text-sm text-pengu-dark/65">{s.brief}</p>
+              </div>
+            </div>
+          ))}
         </div>
       </section>
 
