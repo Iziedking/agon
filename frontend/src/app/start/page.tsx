@@ -95,8 +95,9 @@ export default function StartPage() {
   const refreshAgents = useCallback(async () => {
     // While wagmi is still hydrating, `address` flashes undefined before the
     // real value arrives. Treat that as "not yet known" and leave agents at
-    // its current state (undefined on first paint), so the UI shows
-    // "checking your agents on arc…" instead of falsely flipping to claim.
+    // its current state (undefined on first paint). On a fetch failure (after
+    // the retry inside fetchAgents), keep agents undefined too so we don't
+    // falsely flip the UI to claim for a wallet that already has agents.
     if (!address) return;
     try {
       const list = await fetchAgents(address);
@@ -104,7 +105,7 @@ export default function StartPage() {
       const resolved = resolveActiveAgent(list, address);
       setActiveId(resolved?.id ?? null);
     } catch {
-      setAgents([]);
+      // Stays undefined -> "checking your agents on arc…"
     }
   }, [address]);
 

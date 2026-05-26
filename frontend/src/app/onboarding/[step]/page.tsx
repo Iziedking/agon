@@ -81,13 +81,14 @@ export default function OnboardingPage() {
   const [agents, setAgents] = useState<AgentState[] | undefined>(undefined);
   const refreshAgents = useCallback(async () => {
     // Wagmi flashes address=undefined while hydrating; don't pre-empt that
-    // with an empty list (would briefly show the "claim your agent" branch
-    // for someone who already has one).
+    // with an empty list. On a fetch error (already retried inside
+    // fetchAgents), leave agents undefined too: a transient RPC failure must
+    // not flip the UI to "claim your agent" for a wallet that already has one.
     if (!address) return;
     try {
       setAgents(await fetchAgents(address));
     } catch {
-      setAgents([]);
+      // Keep agents undefined -> step body stays on "checking your agents".
     }
   }, [address]);
   useEffect(() => {
@@ -163,8 +164,8 @@ export default function OnboardingPage() {
           )}
 
           <div className="flex items-center gap-3">
-            {slug !== "done" ? (
-              <a href="/" className={ghostSmall}>
+            {next ? (
+              <a href={`/onboarding/${next}`} className={ghostSmall}>
                 skip
               </a>
             ) : null}

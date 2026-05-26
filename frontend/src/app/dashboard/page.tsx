@@ -68,7 +68,9 @@ export default function DashboardPage() {
         setActiveId(resolved?.id ?? null);
       })
       .catch(() => {
-        if (live) setAgents([]);
+        // On a fetch failure (already retried inside fetchAgents) leave agents
+        // undefined so the dashboard keeps showing "loading" rather than
+        // falsely rendering the "no agents" claim card.
       });
     return () => {
       live = false;

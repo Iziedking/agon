@@ -40,8 +40,10 @@ export default function WorkshopPage() {
 
   const refresh = useCallback(async () => {
     // Wagmi flashes address=undefined while hydrating; don't pre-empt that
-    // with an empty list (would briefly show the "claim your first agent"
-    // card for someone who already has one).
+    // with an empty list. On a fetch failure (after the retry inside
+    // fetchAgents), leave agents undefined so the workshop stays on the
+    // "reading your agents from arc" line rather than showing the claim card
+    // to someone who already owns agents.
     if (!address) return;
     try {
       const list = await fetchAgents(address);
@@ -49,8 +51,7 @@ export default function WorkshopPage() {
       const resolved = resolveActiveAgent(list, address);
       setActiveId(resolved?.id ?? null);
     } catch {
-      setAgents([]);
-      setActiveId(null);
+      // Stays undefined -> "reading your agents from arc…"
     }
   }, [address]);
 

@@ -62,34 +62,46 @@ export function usdc(amount6: bigint): string {
   return `${(Number(amount6) / 1e6).toLocaleString(undefined, { maximumFractionDigits: 2 })} USDC`;
 }
 
-/// All agents owned by this wallet, in creation order.
+/// All agents owned by this wallet, in creation order. Retries the chain reads
+/// up to three times with exponential backoff so a transient RPC blip on the
+/// first hit doesn't collapse to an empty list (which used to falsely flip the
+/// UI into "claim your agent" for wallets that already had one).
 export async function fetchAgents(owner: `0x${string}`): Promise<AgentState[]> {
-  const ids = (await publicClient.readContract({
-    address: CONTRACTS.AgentRegistry,
-    abi: agentRegistryAbi,
-    functionName: "agentsOf",
-    args: [owner],
-  })) as readonly bigint[];
-  if (ids.length === 0) return [];
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const ids = (await publicClient.readContract({
+        address: CONTRACTS.AgentRegistry,
+        abi: agentRegistryAbi,
+        functionName: "agentsOf",
+        args: [owner],
+      })) as readonly bigint[];
+      if (ids.length === 0) return [];
 
-  const agents: AgentState[] = [];
-  for (const id of ids) {
-    const a = await publicClient.readContract({
-      address: CONTRACTS.AgentRegistry,
-      abi: agentRegistryAbi,
-      functionName: "getAgent",
-      args: [id],
-    });
-    agents.push({
-      id: Number(id),
-      scoutTier: Number(a.scoutTier),
-      analystTier: Number(a.analystTier),
-      solverTier: Number(a.solverTier),
-      reputation: a.reputation,
-      erc8004TokenId: a.erc8004TokenId,
-    });
+      const agents: AgentState[] = [];
+      for (const id of ids) {
+        const a = await publicClient.readContract({
+          address: CONTRACTS.AgentRegistry,
+          abi: agentRegistryAbi,
+          functionName: "getAgent",
+          args: [id],
+        });
+        agents.push({
+          id: Number(id),
+          scoutTier: Number(a.scoutTier),
+          analystTier: Number(a.analystTier),
+          solverTier: Number(a.solverTier),
+          reputation: a.reputation,
+          erc8004TokenId: a.erc8004TokenId,
+        });
+      }
+      return agents;
+    } catch (e) {
+      lastError = e;
+      await new Promise((r) => setTimeout(r, 400 * Math.pow(2, attempt)));
+    }
   }
-  return agents;
+  throw lastError;
 }
 
 /// The operator's first agent, kept for callers that still want a single-agent
