@@ -1,15 +1,23 @@
 "use client";
 
 import { useState } from "react";
+import { useAccount } from "wagmi";
 import { useAuth } from "@/hooks/useAuth";
 import { LoginModal } from "@/components/pengu/LoginModal";
 
-/// The navbar LOGIN entry. Opens the login popout. Once signed in, it shows the
-/// short address (clicking reopens the popout to view the account or sign out).
+/// The navbar LOGIN entry. Two states share the button:
+/// - Connected wallet (wagmi) OR active SIWE session: shows the short address
+///   so the header reflects reality even before the SIWE round-trip completes.
+///   The SIWE session address wins if both exist (e.g., right after the JWT
+///   issues), so a wallet swap in MetaMask without a fresh SIWE doesn't make
+///   the header lie about who's signed in to the backend.
+/// - Neither: shows the chunky "sign in" CTA that opens the login popout.
 export function LoginButton() {
   const [open, setOpen] = useState(false);
   const { me } = useAuth();
-  const short = me ? `${me.address.slice(0, 6)}…${me.address.slice(-4)}` : null;
+  const { address: wallet, isConnected } = useAccount();
+  const display = me?.address ?? (isConnected ? wallet : null);
+  const short = display ? `${display.slice(0, 6)}…${display.slice(-4)}` : null;
 
   return (
     <>
