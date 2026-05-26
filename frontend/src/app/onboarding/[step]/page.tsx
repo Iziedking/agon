@@ -370,15 +370,6 @@ function DoneStep({ address }: { address?: `0x${string}` }) {
         </a>
       </div>
 
-      {address ? (
-        <p className="mt-6 text-center font-mono text-xs text-pengu-dark/45">
-          your profile lives at{" "}
-          <a className="text-pengu-blue hover:underline" href={`/operators/${address}`}>
-            /operators/{address.slice(0, 6)}…{address.slice(-4)}
-          </a>
-          .
-        </p>
-      ) : null}
     </>
   );
 }
