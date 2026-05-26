@@ -44,10 +44,10 @@ export function AppHeader() {
             leaderboard
           </a>
           <a
-            href="/workshop"
+            href="/syndicates"
             className="rounded-pill px-4 py-1.5 font-display text-xs uppercase tracking-wide text-pengu-blue2 hover:text-pengu-dark"
           >
-            workshop
+            syndicates
           </a>
           <ProfileLink />
         </nav>
