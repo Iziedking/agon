@@ -1,28 +1,23 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useAccount, useWriteContract } from "wagmi";
+import { useAccount } from "wagmi";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/pengu/Footer";
 import { SectionLabel } from "@/components/pengu/atoms";
+import { ClaimAgentButton } from "@/components/pengu/ClaimAgentButton";
 import { WorkshopScene } from "@/components/pengu/WorkshopScene";
 import { UpgradeFlow } from "@/components/pengu/UpgradeFlow";
 import { LoginCTA } from "@/components/pengu/LoginCTA";
-import { CONTRACTS, publicClient } from "@/lib/arc";
-import { ABILITIES, CONTEST_TYPES, agentRegistryAbi, fetchFirstAgent, tierOf, type AgentState } from "@/lib/agents";
-import { friendlyError } from "@/lib/errors";
-import { reportEvent } from "@/lib/report";
+import { ABILITIES, CONTEST_TYPES, fetchFirstAgent, tierOf, type AgentState } from "@/lib/agents";
 
 const chunkyBtn =
   "rounded-pill bg-pengu-blue px-6 py-3 font-display text-sm uppercase tracking-wide text-white shadow-[0_4px_0_0_#5b34d6] transition-all duration-100 hover:translate-y-[2px] hover:shadow-[0_2px_0_0_#5b34d6] active:translate-y-[3px] disabled:opacity-60";
 
 export default function WorkshopPage() {
   const { address, isConnected } = useAccount();
-  const { writeContractAsync } = useWriteContract();
   const [agent, setAgent] = useState<AgentState | null | undefined>(undefined);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
-  const [claiming, setClaiming] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!address) {
@@ -39,28 +34,6 @@ export default function WorkshopPage() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
-
-  async function claimAgent() {
-    if (!address) return;
-    setClaiming(true);
-    setError(null);
-    try {
-      const hash = await writeContractAsync({
-        address: CONTRACTS.AgentRegistry,
-        abi: agentRegistryAbi,
-        functionName: "createAgent",
-        args: ["arcrun://agent/v1"],
-      });
-      await publicClient.waitForTransactionReceipt({ hash });
-      reportEvent("agent_created", { address });
-      await refresh();
-    } catch (e) {
-      setError(friendlyError(e, "could not claim your agent."));
-      reportEvent("agent_create_error", { level: "error", message: e instanceof Error ? e.message : String(e), address });
-    } finally {
-      setClaiming(false);
-    }
-  }
 
   const level = agent ? Math.max(agent.scoutTier, agent.analystTier, agent.solverTier) : 0;
 
@@ -90,10 +63,9 @@ export default function WorkshopPage() {
             <p className="mx-auto mt-2 max-w-[44ch] text-pengu-dark/65">
               you do not have an agent yet. claim a free default agent to start competing. this mints your onchain identity.
             </p>
-            <button onClick={claimAgent} disabled={claiming} className={`mt-5 ${chunkyBtn}`}>
-              {claiming ? "claiming…" : "claim agent"}
-            </button>
-            {error ? <p className="mt-4 font-mono text-xs text-[#e0466e]">{error}</p> : null}
+            <div className="mt-5 flex justify-center">
+              <ClaimAgentButton className={chunkyBtn} onClaimed={refresh} />
+            </div>
           </div>
         ) : (
           <div className="mt-10 grid gap-6 lg:grid-cols-3">

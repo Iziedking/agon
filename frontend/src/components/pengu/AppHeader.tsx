@@ -14,6 +14,12 @@ export function AppHeader() {
         </a>
         <nav className="hidden items-center gap-2 md:flex">
           <a
+            href="/start"
+            className="rounded-pill px-4 py-1.5 font-display text-xs uppercase tracking-wide text-pengu-blue2 hover:text-pengu-dark"
+          >
+            start
+          </a>
+          <a
             href="/contests"
             className="rounded-pill px-4 py-1.5 font-display text-xs uppercase tracking-wide text-pengu-blue2 hover:text-pengu-dark"
           >
