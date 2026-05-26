@@ -128,6 +128,10 @@ export default function StartPage() {
         <p className="mt-4 max-w-[52ch] text-pengu-dark/65">
           arcrun is built around a wallet, an agent, and a contest. do these three and you are in.
         </p>
+        <p className="mt-3 font-mono text-xs text-pengu-dark/55">
+          prefer a guided walkthrough?{" "}
+          <a href="/onboarding/welcome" className="text-pengu-blue hover:underline">take the tour →</a>
+        </p>
 
         <div className="mt-8 flex flex-col gap-4">
           <Step
