@@ -32,6 +32,35 @@ const registryAbi = parseAbi(["function getTier(uint256 agentId, uint8 cType) vi
 // PREDICTION to ANALYST, PUZZLE to SOLVER, VOLUME to SCOUT, CUSTOM to SOLVER.
 const KIND_TO_CTYPE = [1, 2, 0, 2];
 
+// Per-kind score randomness, applied AFTER the runner's scoring so a low-tier
+// agent can sometimes upset a high-tier one in noisy kinds. The runner's own
+// ±3% (the global gaming guard from PLAN §2) is layered with this. Defaults:
+// PREDICTION is markets and noisy, PUZZLE is skill-heavy, VOLUME is moderately
+// noisy, CUSTOM splits the difference. Override per kind via env, e.g.
+// `CHALLENGE_RANDOMNESS_PREDICTION=0.30`.
+const KIND_NAMES = ["PREDICTION", "PUZZLE", "VOLUME", "CUSTOM"] as const;
+const KIND_DEFAULTS = [0.25, 0.05, 0.1, 0.2];
+
+function kindRandomness(kind: number): number {
+  const name = KIND_NAMES[kind];
+  if (name) {
+    const env = process.env[`CHALLENGE_RANDOMNESS_${name}`];
+    if (env) {
+      const n = Number(env);
+      if (Number.isFinite(n) && n >= 0) return n;
+    }
+  }
+  return KIND_DEFAULTS[kind] ?? 0;
+}
+
+function applyRandomness(results: AgentResult[], factor: number): AgentResult[] {
+  if (factor <= 0) return results;
+  return results.map((r) => ({
+    ...r,
+    score: Math.max(0, r.score * (1 + (Math.random() * 2 - 1) * factor)),
+  }));
+}
+
 function coordinatorWallet() {
   if (!config.coordinator.privateKey) throw new Error("COORDINATOR_PRIVATE_KEY required to resolve challenges");
   const pk = config.coordinator.privateKey.startsWith("0x")
@@ -153,6 +182,10 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
       await fundHotWallets(field.map((e) => e.agentId), Number(process.env.SCOUT_FUND_USDC ?? "1"));
     }
 
+    // Per-kind randomness; preview frames re-roll so the race visibly shuffles,
+    // and the final scoring rolls once for the authoritative winner.
+    const factor = kindRandomness(Number(ch.kind));
+
     // Stream a preview race so the challenge detail board animates before the
     // winner root posts. Only on the first sweep that sees this challenge
     // locked in this process, and only when there is enough resolve window
@@ -162,15 +195,18 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
     if (!previewed.has(challengeId) && field.length >= 2 && haveTime) {
       previewed.add(challengeId);
       const previewUntil = Date.now() + previewSecs * 1000;
-      console.log(`challenge ${challengeId}: streaming ${previewSecs}s preview to ${field.length} entrant(s)`);
+      console.log(
+        `challenge ${challengeId}: streaming ${previewSecs}s preview to ${field.length} entrant(s) (kind ${ch.kind}, randomness ±${(factor * 100).toFixed(0)}%)`,
+      );
       while (Date.now() < previewUntil) {
         const preview = await previewScores(cType, challengeId, field);
-        broadcast({ type: "challenge_standings", challengeId, entries: standings(preview) });
+        broadcast({ type: "challenge_standings", challengeId, entries: standings(applyRandomness(preview, factor)) });
         await sleep(2500);
       }
     }
 
-    const results = await scoreField(cType, challengeId, field);
+    const baseResults = await scoreField(cType, challengeId, field);
+    const results = applyRandomness(baseResults, factor);
 
     const pot = ch.stake * BigInt(entrants);
     const fee = (pot * BigInt(ch.platformFeeBps)) / 10_000n;
