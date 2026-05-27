@@ -7,3 +7,5 @@ export { StatBlock } from "./StatBlock";
 export { StatusChip } from "./StatusChip";
 export { ActivityRow, ActivityLedger } from "./ActivityRow";
 export { SectionHeader } from "./SectionHeader";
+export { ArcRunMark } from "./ArcRunMark";
+export { SyndicateTile, SYNDICATE_CONF, type SyndicateKey } from "./SyndicateTile";

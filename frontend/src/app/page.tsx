@@ -7,6 +7,7 @@ import {
   StatusChip,
   TagButton,
 } from "@/components/redesign";
+import { ArcRunMark } from "@/components/redesign/ArcRunMark";
 import { Footer } from "@/components/redesign/Footer";
 
 /// Landing page. Marketing only; live state lives at /app and /contests.
@@ -47,9 +48,8 @@ export default function Home() {
       {/* slim marketing header. the full app nav lives at /app */}
       <header className="border-b border-[color:var(--hairline)]">
         <div className="mx-auto flex h-16 max-w-[1280px] items-center justify-between px-6">
-          <a href="/" className="inline-flex items-center gap-2 font-mono text-[15px] uppercase tracking-[0.18em] text-ink">
-            <span aria-hidden className="inline-block h-2.5 w-2.5 bg-accent" />
-            ARCRUN
+          <a href="/" className="inline-flex items-center text-ink">
+            <ArcRunMark />
           </a>
           <TagButton href="/app" size="sm">ENTER THE ARENA</TagButton>
         </div>

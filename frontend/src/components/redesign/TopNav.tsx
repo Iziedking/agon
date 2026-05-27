@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import { LoginButton } from "@/components/pengu/LoginButton";
 import { ProfileLink } from "@/components/pengu/ProfileLink";
+import { ArcRunMark } from "@/components/redesign/ArcRunMark";
 
 /// The product nav. Left: ■ ARCRUN mono wordmark with the pink square mark.
 /// Center: mono caps route links separated by 32px. Right: the login button
@@ -24,9 +25,8 @@ export function TopNav() {
   return (
     <header className="sticky top-0 z-20 border-b border-[color:var(--hairline)] bg-canvas/95 backdrop-blur-[2px]">
       <div className="mx-auto flex h-16 max-w-[1280px] items-center justify-between px-6">
-        <a href="/" className="inline-flex items-center gap-2 font-mono text-[15px] uppercase tracking-[0.18em] text-ink">
-          <span aria-hidden className="inline-block h-2.5 w-2.5 bg-accent" />
-          ARCRUN
+        <a href="/" className="inline-flex items-center text-ink">
+          <ArcRunMark />
         </a>
 
         <nav className="hidden items-center gap-8 md:flex">

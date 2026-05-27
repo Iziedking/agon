@@ -21,15 +21,19 @@
   --ink-3: #847C70;
   --hairline: rgba(26, 22, 18, 0.12);
   --hairline-strong: rgba(26, 22, 18, 0.22);
-  /* Accent: pink, used sparingly */
-  --accent: #FF3D8A;
-  --accent-press: #E83278;
-  --accent-ink: #1A0E14;
-  /* Syndicate identity colors */
+  /* Accent: flat rose pink, used sparingly. Pulled back from the prior
+     #FF3D8A neon: less saturation, more grounded, no longer glows. */
+  --accent: #D6336C;
+  --accent-press: #B82A5C;
+  --accent-ink: #FFFFFF;
+  /* Syndicate identity colors. The robot fill (decorative) and the tile
+     accent (chrome/halo/ring) are tracked separately for the cyan
+     syndicate, which has a mint robot inside a cyan tube per §10. */
   --syn-violet: #7C5CFF;
-  --syn-pink: #FF3D8A;
-  --syn-gold: #FFC93A;
+  --syn-pink: #D6336C;
+  --syn-gold: #D78A2B;
   --syn-mint: #2BD4A3;
+  --syn-cyan: #0FA3B1;
   --syn-crimson: #E0345A;
   /* Status */
   --ok: #2BD4A3;
@@ -345,6 +349,44 @@ html.dark {
   animation: arena-grid 20s linear infinite;
 }
 
+/* ---------- syndicate tube motion (§10) ---------- */
+
+@keyframes synBob {
+  from { transform: translate(var(--mx,0), -6px) rotate(var(--sway-from, -2deg)); }
+  to   { transform: translate(var(--mx,0), 6px)  rotate(var(--sway-to,    2deg)); }
+}
+@keyframes synHaloPulse {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1; }
+}
+@keyframes synRingBreathe {
+  0%, 100% { box-shadow: 0 0 8px var(--syn, var(--accent)); }
+  50%      { box-shadow: 0 0 18px var(--syn, var(--accent)); }
+}
+@keyframes synParticle {
+  0%   { transform: translateY(100%); opacity: 0; }
+  20%  { opacity: 1; }
+  80%  { opacity: 1; }
+  100% { transform: translateY(-10%); opacity: 0; }
+}
+
+.syn-mascot {
+  animation: synBob 3.6s cubic-bezier(.4,0,.2,1) infinite alternate;
+  transition: transform 350ms cubic-bezier(.4,0,.2,1);
+  transform-origin: center;
+}
+.syn-halo { animation: synHaloPulse 2.8s ease-in-out infinite; }
+.syn-ring { animation: synRingBreathe 2.2s ease-in-out infinite; }
+.syn-particle {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--syn, var(--accent));
+  opacity: 0;
+  animation: synParticle 6s linear infinite;
+}
+
 /* ---------- syndicate accents ---------- */
 /* Used wherever a card or section wants to declare which syndicate's color
    leads it. Solid swatches first, then a 12% tint and a 25% halo. */
@@ -369,7 +411,8 @@ html.dark {
   .score-tick,
   .drift, .drift-slow, .drift-2, .drift-3, .drift-4,
   .breath, .blink, .sparkle, .shimmer, .scan, .glow-pulse,
-  .climb, .tick-up, .arena-grid { animation: none; }
+  .climb, .tick-up, .arena-grid,
+  .syn-mascot, .syn-halo, .syn-ring, .syn-particle { animation: none; }
   .settle-sweep { animation: none; opacity: 0.08; }
   * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }

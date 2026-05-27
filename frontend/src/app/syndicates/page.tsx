@@ -3,12 +3,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAccount, useWriteContract } from "wagmi";
 import { AppHeader } from "@/components/pengu/AppHeader";
-import { Footer } from "@/components/pengu/Footer";
-import { Bubble3D, SectionLabel } from "@/components/pengu/atoms";
+import { Footer } from "@/components/redesign/Footer";
+import { SectionHeader, SyndicateTile, type SyndicateKey } from "@/components/redesign";
 import { CONTRACTS, publicClient } from "@/lib/arc";
 import { friendlyError } from "@/lib/errors";
 import { reportEvent } from "@/lib/report";
-import { SyndicateCrest, syndicateTheme } from "@/lib/syndicateTheme";
 import {
   fetchCurrentSyndicate,
   fetchSyndicates,
@@ -17,15 +16,18 @@ import {
   type Syndicate,
 } from "@/lib/syndicates";
 
-/// The syndicates board. Lists every founding (and custom) syndicate with its
-/// member count and total contributed reputation, and lets the connected wallet
-/// pick a side, switch, or leave. Pick rolls up to the weekly war the
-/// coordinator settles.
+/// /syndicates per arcrun-redesign §10. Four tube tiles, no emoji icon
+/// chips, no page-level "you are in" pill (leaving is handled by the
+/// active tile's CTA which flips to LEAVE).
 
-const chunkyBtn =
-  "rounded-pill bg-pengu-blue px-5 py-2 font-display text-xs uppercase tracking-wide text-white shadow-[0_4px_0_0_#5b34d6] transition-all duration-100 hover:translate-y-[2px] hover:shadow-[0_2px_0_0_#5b34d6]";
-const ghostBtn =
-  "rounded-pill border border-pengu-blue/30 bg-pengu-card px-5 py-2 font-display text-xs uppercase tracking-wide text-pengu-blue hover:border-pengu-blue";
+function syndicateKey(name: string): SyndicateKey | null {
+  const n = name.toLowerCase();
+  if (n.includes("crimson")) return "crimson";
+  if (n.includes("cyan")) return "cyan";
+  if (n.includes("gold")) return "gold";
+  if (n.includes("violet")) return "violet";
+  return null;
+}
 
 export default function SyndicatesPage() {
   const { address, isConnected } = useAccount();
@@ -37,25 +39,19 @@ export default function SyndicatesPage() {
 
   const refresh = useCallback(async () => {
     try {
-      const list = await fetchSyndicates();
-      setSyndicates(list);
+      setSyndicates(await fetchSyndicates());
     } catch {
       setSyndicates([]);
     }
     if (address) {
-      try {
-        setCurrent(await fetchCurrentSyndicate(address));
-      } catch {
-        setCurrent(0);
-      }
+      try { setCurrent(await fetchCurrentSyndicate(address)); }
+      catch { setCurrent(0); }
     } else {
       setCurrent(0);
     }
   }, [address]);
 
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  useEffect(() => { void refresh(); }, [refresh]);
 
   async function join(id: number) {
     if (!address) return;
@@ -98,122 +94,90 @@ export default function SyndicatesPage() {
     }
   }
 
-  const currentName = syndicates?.find((s) => s.id === current)?.name;
+  // Only the four canonical founding syndicates render in the tube grid.
+  // Custom/community syndicates land below in the table.
+  const founding = (syndicates ?? [])
+    .map((s) => ({ s, key: syndicateKey(s.name) }))
+    .filter((x): x is { s: Syndicate; key: SyndicateKey } => x.key !== null);
+  const totalFounding = founding.length || 4;
 
   return (
-    <div className="min-h-screen text-pengu-dark">
+    <div className="min-h-screen bg-canvas text-ink">
       <AppHeader />
 
-      <section className="mx-auto max-w-[1200px] px-6 pt-12">
-        <SectionLabel>syndicates</SectionLabel>
-        <div className="mt-5">
-          <Bubble3D className="text-[clamp(36px,5vw,64px)]">pick your side</Bubble3D>
-        </div>
-        <p className="mt-3 max-w-[60ch] text-pengu-dark/65">
-          four founding syndicates compete every week. when your agent earns reputation, your share rolls up to your
-          syndicate's total. the coordinator settles the war on a weekly cadence.
-        </p>
+      <section className="mx-auto max-w-[1280px] px-6 pt-16">
+        <SectionHeader
+          eyebrow="SYNDICATES"
+          heading="PICK YOUR SIDE"
+          subDeck={
+            <>
+              four founding syndicates compete every week. when your agent earns reputation, your share rolls up to
+              your syndicate's total. the coordinator settles the war on a weekly cadence.
+            </>
+          }
+        />
 
-        {isConnected && currentName ? (
-          <div
-            className="mt-6 inline-flex items-center gap-3 rounded-full px-4 py-2 font-display text-xs uppercase tracking-wide"
-            style={{
-              backgroundColor: `${syndicateTheme(currentName).color}1A`,
-              color: syndicateTheme(currentName).color,
-            }}
-          >
-            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: syndicateTheme(currentName).color }} />
-            you are in {currentName}
-            <button
-              onClick={leave}
-              disabled={busy === "leave"}
-              className="ml-2 rounded-full bg-pengu-card px-3 py-0.5 font-mono text-[10px] text-pengu-dark/65 hover:text-pengu-dark"
-            >
-              {busy === "leave" ? "leaving…" : "leave"}
-            </button>
-          </div>
-        ) : null}
-
-        {error ? <p className="mt-4 font-mono text-xs text-[#e0466e]">{error}</p> : null}
+        {error ? <p className="mt-4 font-mono text-xs text-[var(--err)]">{error}</p> : null}
       </section>
 
-      <section className="mx-auto max-w-[1200px] px-6 py-10">
+      <section className="mx-auto max-w-[1280px] px-6 py-10">
         {syndicates === null ? (
-          <p className="font-mono text-sm text-pengu-dark/55">reading syndicates from arc…</p>
-        ) : syndicates.length === 0 ? (
-          <p className="text-pengu-dark/60">no syndicates yet.</p>
+          <p className="font-mono text-sm text-ink-2">reading syndicates from arc…</p>
+        ) : founding.length === 0 ? (
+          <p className="font-mono text-sm text-ink-2">no syndicates yet.</p>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {syndicates.map((s) => {
-              const theme = syndicateTheme(s.name);
+          <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
+            {founding.map(({ s, key }, i) => {
               const isCurrent = current === s.id;
-              const inAnother = isConnected && current !== 0 && !isCurrent;
-              const label = !isConnected
-                ? "connect to pick"
-                : isCurrent
-                  ? "active"
-                  : inAnother
-                    ? "switch here"
-                    : "pick this side";
               return (
-                <div
+                <SyndicateTile
                   key={s.id}
-                  className={`flex flex-col rounded-card border bg-pengu-card p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)] transition-transform duration-150 hover:-translate-y-1 ${
-                    isCurrent ? "ring-2" : "border-pengu-blue/15"
-                  }`}
-                  style={isCurrent ? { borderColor: `${theme.color}66`, boxShadow: `0 0 0 2px ${theme.color}33` } : undefined}
-                >
-                  <SyndicateCrest name={s.name} size="h-14 w-14" />
-
-                  <a
-                    href={`/syndicates/${s.id}`}
-                    className="mt-4 font-bubble text-xl uppercase hover:underline"
-                    style={{ color: theme.color }}
-                  >
-                    {s.name}
-                  </a>
-                  <p className="mt-1 text-sm text-pengu-dark/60">{s.theme || theme.role}</p>
-
-                  <div className="mt-5 flex items-center gap-4 text-xs">
-                    <div>
-                      <div className="font-display uppercase tracking-wide text-pengu-dark/45">members</div>
-                      <div className="mt-0.5 font-mono text-sm text-pengu-dark">{s.memberCount}</div>
-                    </div>
-                    <div>
-                      <div className="font-display uppercase tracking-wide text-pengu-dark/45">reputation</div>
-                      <div className="mt-0.5 font-mono text-sm text-pengu-dark">{formatReputationBig(s.totalReputation)}</div>
-                    </div>
-                  </div>
-
-                  <div className="mt-auto pt-5">
-                    {!isConnected ? (
-                      <span className="font-display text-xs uppercase tracking-wide text-pengu-dark/45">
-                        {label}
-                      </span>
-                    ) : isCurrent ? (
-                      <span
-                        className="inline-flex items-center gap-1.5 font-display text-xs uppercase tracking-wide"
-                        style={{ color: theme.color }}
-                      >
-                        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: theme.color }} />
-                        {label}
-                      </span>
-                    ) : (
-                      <button
-                        onClick={() => join(s.id)}
-                        disabled={busy === s.id}
-                        className={inAnother ? ghostBtn : chunkyBtn}
-                      >
-                        {busy === s.id ? "working…" : label}
-                      </button>
-                    )}
-                  </div>
-                </div>
+                  syndicate={key}
+                  index={i + 1}
+                  total={totalFounding}
+                  active={isCurrent}
+                  members={s.memberCount}
+                  reputation={formatReputationBig(s.totalReputation)}
+                  busy={busy === s.id || (isCurrent && busy === "leave")}
+                  onSwitch={() => { if (isConnected) void join(s.id); }}
+                  onLeave={() => { if (isConnected) void leave(); }}
+                />
               );
             })}
           </div>
         )}
       </section>
+
+      {/* Community / custom syndicates table */}
+      {(syndicates?.length ?? 0) > founding.length ? (
+        <section className="mx-auto max-w-[1280px] px-6 pb-16">
+          <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">
+            ■ COMMUNITY SYNDICATES
+          </div>
+          <div className="mt-4 border-t border-[color:var(--hairline)]">
+            <div className="grid grid-cols-[auto_1fr_auto_auto] gap-6 border-b border-[color:var(--hairline)] py-3 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3">
+              <span>RANK</span>
+              <span>SYNDICATE</span>
+              <span>REPUTATION</span>
+              <span className="text-right">MEMBERS</span>
+            </div>
+            {(syndicates ?? [])
+              .filter((s) => syndicateKey(s.name) === null)
+              .map((s, idx) => (
+                <a
+                  key={s.id}
+                  href={`/syndicates/${s.id}`}
+                  className="grid grid-cols-[auto_1fr_auto_auto] gap-6 border-b border-[color:var(--hairline)] py-3 font-mono text-sm text-ink hover:bg-canvas-2"
+                >
+                  <span className="text-ink-3">#{idx + 1}</span>
+                  <span>{s.name}</span>
+                  <span>{formatReputationBig(s.totalReputation).toLocaleString()}</span>
+                  <span className="text-right">{s.memberCount}</span>
+                </a>
+              ))}
+          </div>
+        </section>
+      ) : null}
 
       <Footer />
     </div>

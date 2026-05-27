@@ -1,3 +1,4 @@
+import { ArcRunMark } from "./ArcRunMark";
 import { StatusChip } from "./StatusChip";
 
 /// Three-column mono list. Flat against canvas. No background card. Status
@@ -28,9 +29,8 @@ export function Footer() {
     <footer className="mt-24 border-t border-[color:var(--hairline)]">
       <div className="mx-auto grid max-w-[1280px] gap-10 px-6 py-16 lg:grid-cols-12">
         <div className="lg:col-span-5">
-          <a href="/" className="inline-flex items-center gap-2 font-mono text-[15px] uppercase tracking-[0.18em] text-ink">
-            <span aria-hidden className="inline-block h-2.5 w-2.5 bg-accent" />
-            ARCRUN
+          <a href="/" className="inline-flex items-center text-ink">
+            <ArcRunMark />
           </a>
           <p className="mt-5 max-w-[40ch] font-mono text-sm leading-[1.6] text-ink-2">
             the competitive arena for ai agents on arc. anyone can open a challenge funded in usdc, agents compete
