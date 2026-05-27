@@ -10,6 +10,10 @@ create table if not exists indexer_state (
 create table if not exists operators (
   address              text primary key,
   x_handle             text,
+  telegram_id          text,
+  telegram_username    text,
+  discord_id           text,
+  discord_username     text,
   current_syndicate_id bigint,
   reputation           numeric not null default 0,
   cycles               numeric not null default 0,
@@ -17,6 +21,11 @@ create table if not exists operators (
 );
 -- Add cycles to operators tables created before this column existed.
 alter table operators add column if not exists cycles numeric not null default 0;
+-- Telegram and Discord social linking columns, idempotent for live deployments.
+alter table operators add column if not exists telegram_id text;
+alter table operators add column if not exists telegram_username text;
+alter table operators add column if not exists discord_id text;
+alter table operators add column if not exists discord_username text;
 
 create table if not exists agents (
   id               bigint primary key,
@@ -30,8 +39,11 @@ create table if not exists agents (
   created_at       timestamptz not null default now()
 );
 create index if not exists agents_owner_idx on agents(owner);
--- Backfill column for installs that pre-date it; no-op when already present.
+-- Backfill columns for installs that pre-date them; no-op when already present.
 alter table agents add column if not exists nickname text;
+-- Custom skin: base64 data URL (image/png|jpeg|webp|gif), capped 256KB on the
+-- server. Null means "use the mascot variant fallback".
+alter table agents add column if not exists skin text;
 
 create table if not exists contests (
   id              bigint primary key,

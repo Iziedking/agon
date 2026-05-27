@@ -123,6 +123,63 @@ export async function saveAgentName(
   }
 }
 
+/// Save a custom skin (base64 data URL) for an agent. The client should
+/// downscale to <=256x256 PNG before calling so the payload stays well under
+/// the server's 256KB encoded cap. Empty / null clears the skin.
+export async function saveAgentSkin(
+  agentId: number,
+  dataUrl: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const res = await fetch(`${AUTH_URL}/agents/${agentId}/skin`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image: dataUrl }),
+    });
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    if (!res.ok) return { ok: false, error: data.error ?? "could not save the skin" };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "network error" };
+  }
+}
+
+export async function clearAgentSkin(agentId: number): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const res = await fetch(`${AUTH_URL}/agents/${agentId}/skin`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      return { ok: false, error: data.error ?? "could not clear the skin" };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "network error" };
+  }
+}
+
+/// Bulk-fetch skins for a list of agent ids. Missing entries are simply absent
+/// from the returned map. No auth required (skins are public, like names).
+export async function fetchAgentSkins(ids: number[]): Promise<Map<number, string>> {
+  const out = new Map<number, string>();
+  if (ids.length === 0) return out;
+  try {
+    const qs = ids.join(",");
+    const res = await fetch(`${AUTH_URL}/agents/skins?ids=${qs}`, { cache: "no-store" });
+    if (!res.ok) return out;
+    const data = (await res.json()) as { skins?: Record<string, string> };
+    for (const [k, v] of Object.entries(data.skins ?? {})) {
+      if (v) out.set(Number(k), v);
+    }
+  } catch {
+    // network blip, return what we have
+  }
+  return out;
+}
+
 /// Bulk-fetch nicknames for a list of agent ids. Missing entries are simply
 /// absent from the returned map. No auth required: names are public, anyone
 /// watching a contest sees them.

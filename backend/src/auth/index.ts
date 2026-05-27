@@ -3,7 +3,7 @@ import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { deleteCookie, setCookie } from "hono/cookie";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
 import { generateSiweNonce, parseSiweMessage } from "viem/siwe";
 
 import { config } from "../config/index.js";
@@ -311,6 +311,75 @@ app.post("/agents/:id/name", requireAuth, async (c) => {
   return c.json({ id: agentId, nickname: trimmed || null });
 });
 
+// ----- Agent skins -----
+//
+// Custom image per agent. Stored as a base64 data URL in agents.skin (capped
+// at 256KB encoded so a few rows don't bloat the operator profile response).
+// Client downscales to 256x256 before upload so the column stays small.
+
+const SKIN_MIME = /^data:image\/(png|jpeg|jpg|webp|gif);base64,/;
+const SKIN_MAX_LEN = 256 * 1024;
+
+app.post("/agents/:id/skin", requireAuth, async (c) => {
+  const operator = c.get("address");
+  const agentId = Number(c.req.param("id"));
+  if (!Number.isFinite(agentId)) return c.json({ error: "invalid agent id" }, 400);
+
+  const { image } = await c.req.json<{ image?: string }>();
+  if (!image || typeof image !== "string") return c.json({ error: "image required" }, 400);
+  if (!SKIN_MIME.test(image)) {
+    return c.json({ error: "image must be a base64 data URL: png, jpeg, webp, or gif" }, 400);
+  }
+  if (image.length > SKIN_MAX_LEN) {
+    return c.json({ error: `image too large (max ${SKIN_MAX_LEN / 1024}KB encoded)` }, 413);
+  }
+
+  const { rows } = await query<{ owner: string }>("select owner from agents where id = $1", [agentId]);
+  const owner = rows[0]?.owner;
+  if (!owner) return c.json({ error: "agent not found" }, 404);
+  if (owner.toLowerCase() !== operator.toLowerCase()) {
+    return c.json({ error: "you do not own this agent" }, 403);
+  }
+
+  await query("update agents set skin = $2 where id = $1", [agentId, image]);
+  return c.json({ id: agentId, ok: true });
+});
+
+app.delete("/agents/:id/skin", requireAuth, async (c) => {
+  const operator = c.get("address");
+  const agentId = Number(c.req.param("id"));
+  if (!Number.isFinite(agentId)) return c.json({ error: "invalid agent id" }, 400);
+
+  const { rows } = await query<{ owner: string }>("select owner from agents where id = $1", [agentId]);
+  const owner = rows[0]?.owner;
+  if (!owner) return c.json({ error: "agent not found" }, 404);
+  if (owner.toLowerCase() !== operator.toLowerCase()) {
+    return c.json({ error: "you do not own this agent" }, 403);
+  }
+
+  await query("update agents set skin = null where id = $1", [agentId]);
+  return c.json({ id: agentId, ok: true });
+});
+
+/// Bulk skin lookup. Public, like /agents/names. Returns a map of id to data
+/// URL for the agents in the query that have a skin set.
+app.get("/agents/skins", async (c) => {
+  const ids = (c.req.query("ids") ?? "")
+    .split(",")
+    .map((s) => Number(s.trim()))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  if (ids.length === 0) return c.json({ skins: {} });
+  const { rows } = await query<{ id: string; skin: string | null }>(
+    "select id, skin from agents where id = any($1::bigint[]) and skin is not null",
+    [ids],
+  );
+  const skins: Record<string, string> = {};
+  for (const r of rows) {
+    if (r.skin) skins[r.id] = r.skin;
+  }
+  return c.json({ skins });
+});
+
 /// Bulk name lookup for surfaces that only know agent ids (live standings,
 /// contest stages, anywhere a broadcast frame lacks names). Pass a comma-
 /// separated id list; returns a name map (missing entries are simply absent).
@@ -552,8 +621,17 @@ app.get("/operators/:address", async (c) => {
   const address = (c.req.param("address") ?? "").toLowerCase();
   if (!/^0x[a-f0-9]{40}$/.test(address)) return c.json({ error: "invalid address" }, 400);
 
-  const op = await query<{ address: string; x_handle: string | null; current_syndicate_id: string | null; cycles: string }>(
-    "select address, x_handle, current_syndicate_id, cycles from operators where address = $1",
+  const op = await query<{
+    address: string;
+    x_handle: string | null;
+    telegram_id: string | null;
+    telegram_username: string | null;
+    discord_id: string | null;
+    discord_username: string | null;
+    current_syndicate_id: string | null;
+    cycles: string;
+  }>(
+    "select address, x_handle, telegram_id, telegram_username, discord_id, discord_username, current_syndicate_id, cycles from operators where address = $1",
     [address],
   );
   const agents = await query<{ id: string; scout_tier: number; analyst_tier: number; solver_tier: number; reputation: string; nickname: string | null }>(
@@ -585,6 +663,10 @@ app.get("/operators/:address", async (c) => {
   return c.json({
     operator: op.rows[0]?.address ?? address,
     xHandle: op.rows[0]?.x_handle ?? null,
+    telegramId: op.rows[0]?.telegram_id ?? null,
+    telegramUsername: op.rows[0]?.telegram_username ?? null,
+    discordId: op.rows[0]?.discord_id ?? null,
+    discordUsername: op.rows[0]?.discord_username ?? null,
     syndicateId: op.rows[0]?.current_syndicate_id ?? null,
     cycles: Number(op.rows[0]?.cycles ?? "0"),
     reputation,
@@ -672,6 +754,157 @@ app.get("/auth/x/callback", async (c) => {
 app.post("/auth/x/unbind", requireAuth, async (c) => {
   const address = c.get("address");
   await query("update operators set x_handle = null where address = $1", [address]);
+  return c.json({ ok: true });
+});
+
+// ----- Telegram Login Widget -----
+//
+// The widget runs client-side, opens Telegram for auth, and redirects to the
+// callback below with id, first_name, last_name, username, photo_url, auth_date
+// and hash query params. The hash is HMAC-SHA256 of the sorted data string,
+// keyed by SHA256(bot_token). We verify the hash and a freshness window before
+// linking the telegram_id and telegram_username onto the operator's row.
+
+function telegramConfigured() {
+  return Boolean(config.auth.telegram.botToken && config.auth.telegram.botUsername);
+}
+
+function verifyTelegramHash(data: Record<string, string>, botToken: string): boolean {
+  const { hash, ...rest } = data;
+  if (!hash) return false;
+  const dataCheck = Object.keys(rest)
+    .sort()
+    .map((k) => `${k}=${rest[k]}`)
+    .join("\n");
+  const secret = createHash("sha256").update(botToken).digest();
+  const hmac = createHmac("sha256", secret).update(dataCheck).digest("hex");
+  return hmac === hash;
+}
+
+app.get("/auth/telegram/config", (c) =>
+  c.json({ configured: telegramConfigured(), botUsername: config.auth.telegram.botUsername ?? null }),
+);
+
+app.get("/auth/telegram/callback", requireAuth, async (c) => {
+  if (!telegramConfigured()) return c.json({ error: "Telegram OAuth not configured" }, 501);
+  const address = c.get("address");
+  const q = c.req.query() as Record<string, string>;
+
+  if (!q.id || !q.auth_date || !q.hash) {
+    return c.json({ error: "missing telegram fields" }, 400);
+  }
+
+  // Replay protection: the widget signs auth_date; reject anything older than
+  // a day or sitting in the future (clock skew).
+  const age = Math.floor(Date.now() / 1000) - Number(q.auth_date);
+  if (!Number.isFinite(age) || age < -60 || age > 86400) {
+    return c.json({ error: "telegram data outside acceptable freshness" }, 401);
+  }
+
+  if (!verifyTelegramHash(q, config.auth.telegram.botToken!)) {
+    return c.json({ error: "invalid telegram signature" }, 401);
+  }
+
+  const username = q.username ?? null;
+  await query(
+    "update operators set telegram_id = $2, telegram_username = $3 where address = $1",
+    [address, q.id, username],
+  );
+
+  const redirectTo = new URL(config.auth.appUrl);
+  redirectTo.pathname = `/operators/${address}`;
+  redirectTo.searchParams.set("telegram_bound", username ?? q.id);
+  return c.redirect(redirectTo.toString());
+});
+
+app.post("/auth/telegram/unbind", requireAuth, async (c) => {
+  const address = c.get("address");
+  await query(
+    "update operators set telegram_id = null, telegram_username = null where address = $1",
+    [address],
+  );
+  return c.json({ ok: true });
+});
+
+// ----- Discord OAuth2 -----
+//
+// Mirrors the X flow with Discord's authorize/token/users endpoints. Confidential
+// client (we hold a client secret) plus PKCE so the code exchange is double-bound
+// to the original session. Scope is `identify` only; we don't ask for email.
+
+function discordConfigured() {
+  return Boolean(
+    config.auth.discord.clientId && config.auth.discord.clientSecret && config.auth.discord.callbackUrl,
+  );
+}
+
+app.get("/auth/discord/start", requireAuth, async (c) => {
+  if (!discordConfigured()) return c.json({ error: "Discord OAuth not configured" }, 501);
+  const address = c.get("address");
+  const verifier = b64url(randomBytes(32));
+  const challenge = b64url(createHash("sha256").update(verifier).digest());
+  const state = b64url(randomBytes(16));
+  await redis.set(`discordoauth:${state}`, JSON.stringify({ address, verifier }), "EX", STATE_TTL);
+
+  const url = new URL("https://discord.com/api/oauth2/authorize");
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("client_id", config.auth.discord.clientId!);
+  url.searchParams.set("redirect_uri", config.auth.discord.callbackUrl!);
+  url.searchParams.set("scope", "identify");
+  url.searchParams.set("state", state);
+  url.searchParams.set("code_challenge", challenge);
+  url.searchParams.set("code_challenge_method", "S256");
+  return c.redirect(url.toString());
+});
+
+app.get("/auth/discord/callback", async (c) => {
+  if (!discordConfigured()) return c.json({ error: "Discord OAuth not configured" }, 501);
+  const code = c.req.query("code");
+  const state = c.req.query("state");
+  if (!code || !state) return c.json({ error: "missing code or state" }, 400);
+
+  const stored = await redis.getdel(`discordoauth:${state}`);
+  if (!stored) return c.json({ error: "invalid or expired state" }, 401);
+  const { address, verifier } = JSON.parse(stored) as { address: string; verifier: string };
+
+  const tokenRes = await fetch("https://discord.com/api/oauth2/token", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: config.auth.discord.clientId!,
+      client_secret: config.auth.discord.clientSecret!,
+      grant_type: "authorization_code",
+      code,
+      redirect_uri: config.auth.discord.callbackUrl!,
+      code_verifier: verifier,
+    }),
+  });
+  if (!tokenRes.ok) return c.json({ error: "discord token exchange failed" }, 502);
+  const { access_token } = (await tokenRes.json()) as { access_token: string };
+
+  const meRes = await fetch("https://discord.com/api/users/@me", {
+    headers: { authorization: `Bearer ${access_token}` },
+  });
+  if (!meRes.ok) return c.json({ error: "could not fetch discord profile" }, 502);
+  const me = (await meRes.json()) as { id: string; username: string };
+
+  await query(
+    "update operators set discord_id = $2, discord_username = $3 where address = $1",
+    [address, me.id, me.username],
+  );
+
+  const redirectTo = new URL(config.auth.appUrl);
+  redirectTo.pathname = `/operators/${address}`;
+  redirectTo.searchParams.set("discord_bound", me.username);
+  return c.redirect(redirectTo.toString());
+});
+
+app.post("/auth/discord/unbind", requireAuth, async (c) => {
+  const address = c.get("address");
+  await query(
+    "update operators set discord_id = null, discord_username = null where address = $1",
+    [address],
+  );
   return c.json({ ok: true });
 });
 

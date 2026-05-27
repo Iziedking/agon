@@ -1,6 +1,6 @@
 import { parseAbi } from "viem";
 import { publicClient, CONTRACTS } from "./arc";
-import { fetchAgentNames } from "./profiles";
+import { fetchAgentNames, fetchAgentSkins } from "./profiles";
 
 /// Reads agent state from AgentRegistry on Arc, plus the bits needed to upgrade.
 
@@ -52,6 +52,9 @@ export interface AgentState {
   /// Operator-set display name. Server-persisted via auth API; absent on agents
   /// that have never been named.
   nickname?: string | null;
+  /// Operator-uploaded skin (base64 data URL). When present, render this image
+  /// instead of the variant mascot. Server-persisted, owner-only write.
+  skin?: string | null;
 }
 
 /// Fallback-aware display name for an agent. Always returns something to show.
@@ -105,13 +108,20 @@ export async function fetchAgents(owner: `0x${string}`): Promise<AgentState[]> {
           erc8004TokenId: a.erc8004TokenId,
         });
       }
-      // Enrich with server-stored nicknames so every surface that reads
-      // AgentState gets the operator-set name without a separate fetch.
-      // Failure is non-fatal: agents still render with their fallback id.
-      const names = await fetchAgentNames(agents.map((a) => a.id));
+      // Enrich with server-stored nicknames and skins so every surface that
+      // reads AgentState gets the operator-set identity without separate
+      // fetches. Both failures are non-fatal: agents still render with their
+      // fallback id and the variant mascot.
+      const agentIds = agents.map((a) => a.id);
+      const [names, skins] = await Promise.all([
+        fetchAgentNames(agentIds),
+        fetchAgentSkins(agentIds),
+      ]);
       for (const a of agents) {
         const n = names.get(a.id);
+        const s = skins.get(a.id);
         if (n) a.nickname = n;
+        if (s) a.skin = s;
       }
       return agents;
     } catch (e) {

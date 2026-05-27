@@ -14,9 +14,11 @@ import { EXPLORER } from "@/lib/arc";
 import { CONTEST_TYPES, fetchAgents, tierOf, type AgentState } from "@/lib/agents";
 import {
   agentColorById,
+  clearAgentSkin,
   fetchOperator,
   getSetting,
   saveAgentName,
+  saveAgentSkin,
   setSetting,
   short,
   type OperatorProfile,
@@ -235,17 +237,49 @@ export default function OperatorPage() {
   );
 }
 
+/// Read a File, downscale to fit 256x256, return a PNG data URL. Keeps the
+/// payload tiny regardless of source resolution and forces a single output
+/// format the server can validate.
+async function downscaleToDataUrl(file: File, max = 256): Promise<string> {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise<HTMLImageElement>((res, rej) => {
+      const im = new Image();
+      im.onload = () => res(im);
+      im.onerror = (e) => rej(e);
+      im.src = url;
+    });
+    const scale = Math.min(1, max / Math.max(img.width, img.height));
+    const w = Math.max(1, Math.round(img.width * scale));
+    const h = Math.max(1, Math.round(img.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("canvas 2d context unavailable");
+    ctx.drawImage(img, 0, 0, w, h);
+    return canvas.toDataURL("image/png");
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 function AgentCustomizeCard({ agent, isMe }: { agent: AgentState; isMe: boolean }) {
   const [name, setName] = useState<string>(agent.nickname ?? "");
+  const [skin, setSkin] = useState<string | null>(agent.skin ?? null);
   const [busy, setBusy] = useState(false);
+  const [skinBusy, setSkinBusy] = useState(false);
   const [savedNote, setSavedNote] = useState(false);
+  const [skinNote, setSkinNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
 
   // Sync the input from incoming agent prop so the field reflects whatever the
   // server returned after the last fetchAgents call.
   useEffect(() => {
     setName(agent.nickname ?? "");
-  }, [agent.id, agent.nickname]);
+    setSkin(agent.skin ?? null);
+  }, [agent.id, agent.nickname, agent.skin]);
 
   async function save() {
     setBusy(true);
@@ -261,13 +295,61 @@ function AgentCustomizeCard({ agent, isMe }: { agent: AgentState; isMe: boolean 
     }
   }
 
+  async function onPickSkin(file: File) {
+    if (!file.type.startsWith("image/")) {
+      setError("file must be an image");
+      return;
+    }
+    setSkinBusy(true);
+    setError(null);
+    setSkinNote(null);
+    try {
+      const dataUrl = await downscaleToDataUrl(file, 256);
+      const res = await saveAgentSkin(agent.id, dataUrl);
+      if (res.ok) {
+        setSkin(dataUrl);
+        setSkinNote("skin saved");
+        setTimeout(() => setSkinNote(null), 1500);
+      } else {
+        setError(res.error);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "could not process image");
+    } finally {
+      setSkinBusy(false);
+      if (fileInput.current) fileInput.current.value = "";
+    }
+  }
+
+  async function onClearSkin() {
+    setSkinBusy(true);
+    setError(null);
+    const res = await clearAgentSkin(agent.id);
+    setSkinBusy(false);
+    if (res.ok) {
+      setSkin(null);
+      setSkinNote("skin cleared");
+      setTimeout(() => setSkinNote(null), 1500);
+    } else {
+      setError(res.error);
+    }
+  }
+
   const display = (name || agent.nickname || "").trim();
 
   return (
     <div className="rounded-card border border-pengu-blue/15 bg-pengu-card p-5 shadow-[0_8px_24px_rgba(70,45,150,0.06)]">
       <div className="flex flex-wrap items-center gap-4">
         <span className="flex h-14 w-14 flex-none items-center justify-center overflow-hidden rounded-full border border-pengu-blue/15 bg-pengu-card">
-          <AgentMascot color={agentColorById(agent.id)} className="h-[68%] w-auto" />
+          {skin ? (
+            <img
+              src={skin}
+              alt={display || `agent #${agent.id}`}
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <AgentMascot color={agentColorById(agent.id)} className="h-[68%] w-auto" />
+          )}
         </span>
         <div className="min-w-0 flex-1">
           <div className="font-bubble text-lg uppercase text-pengu-dark">
@@ -281,21 +363,58 @@ function AgentCustomizeCard({ agent, isMe }: { agent: AgentState; isMe: boolean 
       </div>
 
       {isMe ? (
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder={`name agent #${agent.id}`}
-            className="w-full max-w-[280px] rounded-pill border border-pengu-blue/20 bg-pengu-card px-4 py-2 font-mono text-sm text-pengu-dark outline-none transition-colors focus:border-pengu-blue"
-            disabled={busy}
-            maxLength={24}
-          />
-          <button onClick={save} disabled={busy} className={`${chunkyBtn} disabled:opacity-60`}>
-            {busy ? "saving…" : "save name"}
-          </button>
-          {savedNote ? <span className="font-mono text-xs text-[#22c55e]">saved</span> : null}
-          {error ? <span className="font-mono text-xs text-[#e0466e]">{error}</span> : null}
-        </div>
+        <>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={`name agent #${agent.id}`}
+              className="w-full max-w-[280px] rounded-pill border border-pengu-blue/20 bg-pengu-card px-4 py-2 font-mono text-sm text-pengu-dark outline-none transition-colors focus:border-pengu-blue"
+              disabled={busy}
+              maxLength={24}
+            />
+            <button onClick={save} disabled={busy} className={`${chunkyBtn} disabled:opacity-60`}>
+              {busy ? "saving…" : "save name"}
+            </button>
+            {savedNote ? <span className="font-mono text-xs text-[#22c55e]">saved</span> : null}
+          </div>
+
+          {/* Skin upload row */}
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <input
+              ref={fileInput}
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void onPickSkin(f);
+              }}
+            />
+            <button
+              onClick={() => fileInput.current?.click()}
+              disabled={skinBusy}
+              className={`${ghostBtn} disabled:opacity-60`}
+            >
+              {skinBusy ? "uploading…" : skin ? "replace skin" : "upload custom skin"}
+            </button>
+            {skin ? (
+              <button
+                onClick={onClearSkin}
+                disabled={skinBusy}
+                className="rounded-pill border border-[#e0466e]/40 px-5 py-2.5 font-display text-xs uppercase tracking-wide text-[#e0466e] hover:border-[#e0466e] disabled:opacity-60"
+              >
+                clear skin
+              </button>
+            ) : null}
+            <span className="font-mono text-[10px] text-pengu-dark/45">
+              auto-resized to 256×256 png · &lt;200kb
+            </span>
+            {skinNote ? <span className="font-mono text-xs text-[#22c55e]">{skinNote}</span> : null}
+          </div>
+
+          {error ? <p className="mt-2 font-mono text-xs text-[#e0466e]">{error}</p> : null}
+        </>
       ) : null}
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -304,14 +423,9 @@ function AgentCustomizeCard({ agent, isMe }: { agent: AgentState; isMe: boolean 
       <AgentTraits agentId={agent.id} />
 
       <div className="mt-4 flex flex-wrap gap-2">
-        {["upload custom skin", "train with skills"].map((t) => (
-          <span
-            key={t}
-            className="rounded-full border border-pengu-blue/15 bg-pengu-bg px-3 py-1 font-display text-[10px] uppercase tracking-wide text-pengu-dark/45"
-          >
-            {t} · soon
-          </span>
-        ))}
+        <span className="rounded-full border border-pengu-blue/15 bg-pengu-bg px-3 py-1 font-display text-[10px] uppercase tracking-wide text-pengu-dark/45">
+          train with skills · soon
+        </span>
       </div>
     </div>
   );

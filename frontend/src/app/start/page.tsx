@@ -8,7 +8,7 @@ import { Footer } from "@/components/pengu/Footer";
 import { SectionLabel, Bubble3D } from "@/components/pengu/atoms";
 import { LoginCTA } from "@/components/pengu/LoginCTA";
 import { ClaimAgentButton } from "@/components/pengu/ClaimAgentButton";
-import { AgentMascot } from "@/components/pengu/AgentMascot";
+import { AgentAvatar } from "@/components/pengu/AgentAvatar";
 import { AgentTraits } from "@/components/pengu/AgentTraits";
 import { NftBadge } from "@/components/pengu/NftBadge";
 import { OperatorAvatar } from "@/components/pengu/OperatorAvatar";
@@ -21,7 +21,6 @@ import {
   tierOf,
   type AgentState,
 } from "@/lib/agents";
-import { agentColorById } from "@/lib/profiles";
 import { fetchContests } from "@/lib/contests";
 
 /// A judge-friendly walkthrough: connect, claim, enter. Mirrors the real flow,
@@ -191,7 +190,7 @@ export default function StartPage() {
                 <div className="rounded-2xl border border-pengu-blue/15 bg-pengu-bg px-4 py-3">
                   <div className="flex items-center gap-4">
                     <span className="flex h-14 w-14 flex-none items-center justify-center overflow-hidden rounded-full border border-pengu-blue/15 bg-pengu-card">
-                      <AgentMascot color={agentColorById(active.id)} className="h-[68%] w-auto" />
+                      <AgentAvatar agent={active} className={active.skin ? "h-full w-full" : "h-[68%] w-auto"} />
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="font-bubble text-base uppercase text-pengu-dark">{agentDisplayName(active)}</div>

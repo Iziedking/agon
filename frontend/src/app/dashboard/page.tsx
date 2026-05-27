@@ -6,6 +6,7 @@ import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/pengu/Footer";
 import { Bubble3D, SectionLabel } from "@/components/pengu/atoms";
 import { AgentMascot, variantColor, variantForAgentId } from "@/components/pengu/AgentMascot";
+import { AgentAvatar } from "@/components/pengu/AgentAvatar";
 import { AgentTraits } from "@/components/pengu/AgentTraits";
 import { ClaimAgentButton } from "@/components/pengu/ClaimAgentButton";
 import { CreateChallengeModal } from "@/components/pengu/CreateChallengeModal";
@@ -352,7 +353,15 @@ function CommandBand({
 
       <div className="relative grid items-center gap-6 p-6 sm:grid-cols-[auto_1fr_auto]">
         <div className="flex justify-center sm:justify-start">
-          <AgentMascot variant={variant} mood="focus" live className="drift h-28 w-auto sm:h-32" />
+          {agent.skin ? (
+            <img
+              src={agent.skin}
+              alt={agent.nickname ?? `agent #${agent.id}`}
+              className="drift h-28 w-28 rounded-2xl border border-pengu-blue/15 object-cover sm:h-32 sm:w-32"
+            />
+          ) : (
+            <AgentMascot variant={variant} mood="focus" live className="drift h-28 w-auto sm:h-32" />
+          )}
         </div>
 
         <div className="min-w-0">
@@ -459,7 +468,7 @@ function AgentTile({
     >
       <div className="flex items-center gap-3">
         <span className="flex h-12 w-12 flex-none items-center justify-center overflow-hidden rounded-full border border-pengu-blue/15 bg-pengu-card">
-          <AgentMascot variant={variantForAgentId(agent.id)} live className="h-[68%] w-auto" />
+          <AgentAvatar agent={agent} live className={agent.skin ? "h-full w-full" : "h-[68%] w-auto"} />
         </span>
         <div className="min-w-0 flex-1">
           <div className="font-bubble text-base uppercase text-pengu-dark">{agentDisplayName(agent)}</div>
