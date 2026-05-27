@@ -25,7 +25,7 @@ import { LoginCTA } from "@/components/pengu/LoginCTA";
 import { AgentPicker } from "@/components/pengu/AgentPicker";
 
 const card =
-  "rounded-card border border-pengu-blue/15 bg-pengu-card p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)] lg:sticky lg:top-20";
+  "relative border border-[color:var(--hairline)] bg-canvas p-6 lg:sticky lg:top-20";
 const chunky =
   "flex w-full items-center justify-center gap-2 bg-accent px-4 py-3 text-center font-mono text-[13px] uppercase tracking-[0.12em] text-accent-ink transition-colors duration-150 hover:bg-accent-press disabled:opacity-60";
 
@@ -177,12 +177,12 @@ export function JoinChallengePanel({
   function body() {
     if (status === 2) {
       if (!isConnected) return <LoginGate label="log in" />;
-      if (payout === undefined) return <p className="mt-3 font-mono text-sm text-pengu-dark/55">checking your result…</p>;
-      if (payout === null) return <p className="mt-3 text-sm text-pengu-dark/65">no prize this challenge. your agent is ready for the next one.</p>;
-      if (claimed) return <p className="mt-3 text-sm text-pengu-dark/65">claimed {formatUsdc(payout.amount)}. nicely done.</p>;
+      if (payout === undefined) return <p className="mt-3 font-mono text-sm text-ink-3">checking your result…</p>;
+      if (payout === null) return <p className="mt-3 text-sm text-ink-2">no prize this challenge. your agent is ready for the next one.</p>;
+      if (claimed) return <p className="mt-3 text-sm text-ink-2">claimed {formatUsdc(payout.amount)}. nicely done.</p>;
       return (
         <>
-          <p className="mt-2 text-sm text-pengu-dark/65">you won {formatUsdc(payout.amount)}. claim it to your wallet.</p>
+          <p className="mt-2 text-sm text-ink-2">you won {formatUsdc(payout.amount)}. claim it to your wallet.</p>
           <button onClick={claim} disabled={busy} className={`mt-5 ${chunky}`}>
             {busy ? "claiming…" : `claim ${formatUsdc(payout.amount)}`}
           </button>
@@ -191,12 +191,12 @@ export function JoinChallengePanel({
     }
 
     if (status === 3) {
-      if (!isConnected) return <p className="mt-3 text-sm text-pengu-dark/60">this challenge was cancelled. log in to pull your stake back.</p>;
-      if (!joined) return <p className="mt-3 text-sm text-pengu-dark/60">this challenge was cancelled. nothing staked from this wallet.</p>;
-      if (refunded) return <p className="mt-3 text-sm text-pengu-dark/65">stake refunded. agent ready for the next one.</p>;
+      if (!isConnected) return <p className="mt-3 text-sm text-ink-2">this challenge was cancelled. log in to pull your stake back.</p>;
+      if (!joined) return <p className="mt-3 text-sm text-ink-2">this challenge was cancelled. nothing staked from this wallet.</p>;
+      if (refunded) return <p className="mt-3 text-sm text-ink-2">stake refunded. agent ready for the next one.</p>;
       return (
         <>
-          <p className="mt-2 text-sm text-pengu-dark/65">this challenge was cancelled. pull your {formatUsdc(stakeWei)} stake back.</p>
+          <p className="mt-2 text-sm text-ink-2">this challenge was cancelled. pull your {formatUsdc(stakeWei)} stake back.</p>
           <button onClick={doRefund} disabled={busy} className={`mt-5 ${chunky}`}>
             {busy ? "refunding…" : "refund stake"}
           </button>
@@ -205,17 +205,17 @@ export function JoinChallengePanel({
     }
 
     if (status === 1) {
-      return <p className="mt-3 text-sm text-pengu-dark/60">challenge locked. the coordinator is scoring the field.</p>;
+      return <p className="mt-3 text-sm text-ink-2">challenge locked. the coordinator is scoring the field.</p>;
     }
 
     // OPEN
     if (!isConnected) return <LoginGate label="log in to join" />;
-    if (!joinOpen) return <p className="mt-3 text-sm text-pengu-dark/60">the join window has closed. scoring is next.</p>;
-    if (agents === undefined) return <p className="mt-3 font-mono text-sm text-pengu-dark/55">reading your agents…</p>;
+    if (!joinOpen) return <p className="mt-3 text-sm text-ink-2">the join window has closed. scoring is next.</p>;
+    if (agents === undefined) return <p className="mt-3 font-mono text-sm text-ink-3">reading your agents…</p>;
     if (agents.length === 0 || !active) {
       return (
         <>
-          <p className="mt-2 text-sm text-pengu-dark/65">you need an agent first. claim one in the workshop.</p>
+          <p className="mt-2 text-sm text-ink-2">you need an agent first. claim one in the workshop.</p>
           <a href="/workshop" className={`mt-5 ${chunky}`}>
             go to workshop
           </a>
@@ -226,14 +226,14 @@ export function JoinChallengePanel({
       return (
         <>
           <AgentPicker agents={agents} activeId={active.id} onPick={pick} />
-          <p className="mt-3 text-sm text-pengu-dark/65">{agentDisplayName(active)} is staked in. results come when the window closes.</p>
+          <p className="mt-3 text-sm text-ink-2">{agentDisplayName(active)} is staked in. results come when the window closes.</p>
         </>
       );
     }
     return (
       <>
         <AgentPicker agents={agents} activeId={active.id} onPick={pick} />
-        <p className="mt-3 text-sm text-pengu-dark/65">join stakes {formatUsdc(stakeWei)} and commits {agentDisplayName(active)}.</p>
+        <p className="mt-3 text-sm text-ink-2">join stakes {formatUsdc(stakeWei)} and commits {agentDisplayName(active)}.</p>
         <button onClick={join} disabled={busy} className={`mt-5 ${chunky}`}>
           {busy ? (step ?? "working…") : `join for ${formatUsdc(stakeWei)}`}
         </button>
@@ -243,8 +243,8 @@ export function JoinChallengePanel({
 
   return (
     <div className={card}>
-      <h2 className="font-bubble text-xl uppercase text-pengu-dark">
-        {status === 2 ? "your winnings" : status === 3 ? "refund" : "join this challenge"}
+      <h2 className="font-stencil uppercase text-ink" style={{ fontSize: 22, lineHeight: 1, letterSpacing: "-0.01em" }}>
+        {status === 2 ? "YOUR WINNINGS" : status === 3 ? "REFUND" : "JOIN THIS CHALLENGE"}
       </h2>
       {body()}
       {error ? <p className="mt-4 font-mono text-xs text-[#e0466e]">{error}</p> : null}
@@ -254,7 +254,7 @@ export function JoinChallengePanel({
   function LoginGate({ label }: { label: string }) {
     return (
       <>
-        <p className="mt-2 text-sm text-pengu-dark/65">log in, then join with your agent.</p>
+        <p className="mt-2 text-sm text-ink-2">log in, then join with your agent.</p>
         <div className="mt-5">
           <LoginCTA label={label} className={chunky} />
         </div>

@@ -24,16 +24,17 @@ export function LoginButton() {
       {short ? (
         <button
           onClick={() => setOpen(true)}
-          className="rounded-pill border border-pengu-blue/30 bg-pengu-card px-4 py-2 font-mono text-xs text-pengu-dark transition-colors hover:bg-pengu-blue/5"
+          className="border border-ink bg-canvas px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-ink transition-colors hover:bg-canvas-3"
         >
           {short}
         </button>
       ) : (
         <button
           onClick={() => setOpen(true)}
-          className="rounded-pill bg-pengu-blue px-6 py-2 font-display text-xs uppercase tracking-wide text-white transition-transform duration-150 hover:-translate-y-0.5"
+          className="inline-flex items-center gap-2 bg-accent px-4 py-2 font-mono text-[12px] uppercase tracking-[0.12em] text-accent-ink transition-colors hover:bg-accent-press"
+          style={{ clipPath: "polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%)" }}
         >
-          sign in
+          SIGN IN <span aria-hidden>→</span>
         </button>
       )}
       <LoginModal open={open} onClose={() => setOpen(false)} />

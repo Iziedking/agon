@@ -17,7 +17,7 @@ import { LoginCTA } from "@/components/pengu/LoginCTA";
 import { AgentPicker } from "@/components/pengu/AgentPicker";
 
 const card =
-  "rounded-card border border-pengu-blue/15 bg-pengu-card p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)] lg:sticky lg:top-20";
+  "relative border border-[color:var(--hairline)] bg-canvas p-6 lg:sticky lg:top-20";
 const chunky =
   "flex w-full items-center justify-center gap-2 bg-accent px-4 py-3 text-center font-mono text-[13px] uppercase tracking-[0.12em] text-accent-ink transition-colors duration-150 hover:bg-accent-press disabled:opacity-60";
 
@@ -139,23 +139,23 @@ export function EnterPanel({ contestId, status, endTime }: { contestId: number; 
       if (!isConnected) {
         return (
           <>
-            <p className="mt-2 text-sm text-pengu-dark/65">log in to check your winnings.</p>
+            <p className="mt-2 text-sm text-ink-2">log in to check your winnings.</p>
             <div className="mt-5">
               <LoginCTA label="log in" className={chunky} />
             </div>
           </>
         );
       }
-      if (payout === undefined) return <p className="mt-3 font-mono text-sm text-pengu-dark/55">checking your result…</p>;
+      if (payout === undefined) return <p className="mt-3 font-mono text-sm text-ink-3">checking your result…</p>;
       if (payout === null) {
-        return <p className="mt-3 text-sm text-pengu-dark/65">no prize this contest. your agent is ready for the next one.</p>;
+        return <p className="mt-3 text-sm text-ink-2">no prize this contest. your agent is ready for the next one.</p>;
       }
       if (claimed) {
-        return <p className="mt-3 text-sm text-pengu-dark/65">claimed {formatUsdc(payout.amount)}. nicely done.</p>;
+        return <p className="mt-3 text-sm text-ink-2">claimed {formatUsdc(payout.amount)}. nicely done.</p>;
       }
       return (
         <>
-          <p className="mt-2 text-sm text-pengu-dark/65">you won {formatUsdc(payout.amount)}. claim it to your wallet.</p>
+          <p className="mt-2 text-sm text-ink-2">you won {formatUsdc(payout.amount)}. claim it to your wallet.</p>
           <button onClick={claim} disabled={busy} className={`mt-5 ${chunky}`}>
             {busy ? "claiming…" : `claim ${formatUsdc(payout.amount)}`}
           </button>
@@ -168,18 +168,18 @@ export function EnterPanel({ contestId, status, endTime }: { contestId: number; 
       if (!isConnected) {
         return (
           <>
-            <p className="mt-2 text-sm text-pengu-dark/65">log in, then enter your agent to compete for the pool.</p>
+            <p className="mt-2 text-sm text-ink-2">log in, then enter your agent to compete for the pool.</p>
             <div className="mt-5">
               <LoginCTA label="log in to enter" className={chunky} />
             </div>
           </>
         );
       }
-      if (agents === undefined) return <p className="mt-3 font-mono text-sm text-pengu-dark/55">reading your agents…</p>;
+      if (agents === undefined) return <p className="mt-3 font-mono text-sm text-ink-3">reading your agents…</p>;
       if (agents.length === 0 || !active) {
         return (
           <>
-            <p className="mt-2 text-sm text-pengu-dark/65">you need an agent first. claim one in the workshop.</p>
+            <p className="mt-2 text-sm text-ink-2">you need an agent first. claim one in the workshop.</p>
             <a href="/workshop" className={`mt-5 ${chunky}`}>
               go to workshop
             </a>
@@ -190,7 +190,7 @@ export function EnterPanel({ contestId, status, endTime }: { contestId: number; 
         return (
           <>
             <AgentPicker agents={agents} activeId={active.id} onPick={pick} />
-            <p className="mt-3 text-sm text-pengu-dark/65">{agentDisplayName(active)} is entered. it competes for the window. you can leave the page.</p>
+            <p className="mt-3 text-sm text-ink-2">{agentDisplayName(active)} is entered. it competes for the window. you can leave the page.</p>
             <a href="/live" className={`mt-5 ${chunky}`}>
               watch live
             </a>
@@ -200,7 +200,7 @@ export function EnterPanel({ contestId, status, endTime }: { contestId: number; 
       return (
         <>
           <AgentPicker agents={agents} activeId={active.id} onPick={pick} />
-          <p className="mt-3 text-sm text-pengu-dark/65">entering commits {agentDisplayName(active)} for the contest window.</p>
+          <p className="mt-3 text-sm text-ink-2">entering commits {agentDisplayName(active)} for the contest window.</p>
           <button onClick={enter} disabled={busy} className={`mt-5 ${chunky}`}>
             {busy ? "entering…" : "enter contest"}
           </button>
@@ -210,17 +210,17 @@ export function EnterPanel({ contestId, status, endTime }: { contestId: number; 
 
     // Closed but not settled yet (scoring, or window just passed).
     if (status === 2 || status === 1) {
-      return <p className="mt-3 text-sm text-pengu-dark/60">entries closed. results are coming.</p>;
+      return <p className="mt-3 text-sm text-ink-2">entries closed. results are coming.</p>;
     }
     if (status === 4) {
-      return <p className="mt-3 text-sm text-pengu-dark/60">this contest was cancelled and the pool refunded.</p>;
+      return <p className="mt-3 text-sm text-ink-2">this contest was cancelled and the pool refunded.</p>;
     }
-    return <p className="mt-3 text-sm text-pengu-dark/60">entries are closed for this contest.</p>;
+    return <p className="mt-3 text-sm text-ink-2">entries are closed for this contest.</p>;
   }
 
   return (
     <div className={card}>
-      <h2 className="font-bubble text-xl uppercase text-pengu-dark">{status === 3 ? "your winnings" : "enter this contest"}</h2>
+      <h2 className="font-stencil uppercase text-ink" style={{ fontSize: 22, lineHeight: 1, letterSpacing: "-0.01em" }}>{status === 3 ? "YOUR WINNINGS" : "ENTER THIS CONTEST"}</h2>
       {body()}
       {error ? <p className="mt-4 font-mono text-xs text-[#e0466e]">{error}</p> : null}
     </div>

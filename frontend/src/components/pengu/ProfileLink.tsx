@@ -10,9 +10,9 @@ export function ProfileLink() {
   return (
     <a
       href={`/operators/${address}`}
-      className="rounded-pill px-4 py-1.5 font-display text-xs uppercase tracking-wide text-pengu-blue2 hover:text-pengu-dark"
+      className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3 transition-colors hover:text-ink"
     >
-      profile
+      PROFILE
     </a>
   );
 }

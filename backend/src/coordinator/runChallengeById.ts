@@ -28,12 +28,23 @@ import {
 const arenaAbi = parseAbi([
   "function getChallenge(uint256 id) view returns ((address creator,uint8 kind,uint8 status,bool isPrivate,uint16 platformFeeBps,uint128 stake,uint64 maxEntrants,uint64 joinDeadline,uint64 resolveDeadline,bytes32 winnerRoot))",
   "function entrantCount(uint256 id) view returns (uint64)",
+  "function joined(uint256 id, address operator) view returns (bool)",
   "function nextChallengeId() view returns (uint256)",
+  "function joinChallenge(uint256 id, uint256 agentId)",
   "function lockChallenge(uint256 id)",
   "function postWinnerRoot(uint256 id, bytes32 root)",
   "function cancelChallenge(uint256 id)",
 ]);
-const registryAbi = parseAbi(["function getTier(uint256 agentId, uint8 cType) view returns (uint16)"]);
+const registryAbi = parseAbi([
+  "function getTier(uint256 agentId, uint8 cType) view returns (uint16)",
+  "function agentsOf(address owner) view returns (uint256[])",
+  "function createAgent(string metadataURI) returns (uint256)",
+]);
+const usdcAbi = parseAbi([
+  "function balanceOf(address owner) view returns (uint256)",
+  "function approve(address spender, uint256 amount) returns (bool)",
+  "function allowance(address owner, address spender) view returns (uint256)",
+]);
 
 // ChallengeKind to ContestType family, for tier reads and the runner choice.
 // PREDICTION to ANALYST, PUZZLE to SOLVER, VOLUME to SCOUT, CUSTOM to SOLVER.
@@ -74,6 +85,83 @@ function coordinatorWallet() {
     ? config.coordinator.privateKey
     : `0x${config.coordinator.privateKey}`;
   return createWalletClient({ account: privateKeyToAccount(pk as `0x${string}`) as Account, chain: arcTestnet, transport: http(config.rpcHttp) });
+}
+
+function coordinatorAddr(): `0x${string}` {
+  if (!config.coordinator.privateKey) throw new Error("COORDINATOR_PRIVATE_KEY required");
+  const pk = config.coordinator.privateKey.startsWith("0x")
+    ? config.coordinator.privateKey
+    : `0x${config.coordinator.privateKey}`;
+  return privateKeyToAccount(pk as `0x${string}`).address;
+}
+
+/// Lazy-claimed bot agent the coordinator uses to auto-fill underfilled
+/// challenges so demo-time solo challenges still run instead of cancelling
+/// for refund. Cached after first read.
+let cachedBotAgentId: number | null = null;
+async function ensureCoordinatorAgent(): Promise<number> {
+  if (cachedBotAgentId !== null) return cachedBotAgentId;
+  const registry = config.contracts.AgentRegistry;
+  const owner = coordinatorAddr();
+  const existing = (await publicClient.readContract({
+    address: registry,
+    abi: registryAbi,
+    functionName: "agentsOf",
+    args: [owner],
+  })) as readonly bigint[];
+  if (existing.length > 0) {
+    cachedBotAgentId = Number(existing[0]);
+    return cachedBotAgentId;
+  }
+  // No agent yet — claim one. createAgent emits the new id; simplest path is
+  // to read nextAgentId before the write (it's the id that will be assigned).
+  // Falls back to re-reading agentsOf after the tx if needed.
+  const wallet = coordinatorWallet();
+  const hash = await wallet.writeContract({
+    address: registry,
+    abi: registryAbi,
+    functionName: "createAgent",
+    args: [""],
+    account: wallet.account!,
+    chain: arcTestnet,
+  });
+  await publicClient.waitForTransactionReceipt({ hash });
+  const after = (await publicClient.readContract({
+    address: registry,
+    abi: registryAbi,
+    functionName: "agentsOf",
+    args: [owner],
+  })) as readonly bigint[];
+  if (after.length === 0) throw new Error("coordinator claimed an agent but agentsOf still empty");
+  cachedBotAgentId = Number(after[0]);
+  console.log(`coordinator: claimed bot agent #${cachedBotAgentId} for challenge auto-fill`);
+  return cachedBotAgentId;
+}
+
+/// Approve the arena to pull a stake from the coordinator wallet (idempotent;
+/// only re-approves when allowance is short). Coordinator already holds USDC
+/// for contest pools, so the same balance covers challenge stakes.
+async function ensureArenaAllowance(stake: bigint): Promise<void> {
+  const wallet = coordinatorWallet();
+  const owner = coordinatorAddr();
+  const usdc = config.external.USDC;
+  const arena = config.contracts.ChallengeArena;
+  const current = (await publicClient.readContract({
+    address: usdc,
+    abi: usdcAbi,
+    functionName: "allowance",
+    args: [owner, arena],
+  })) as bigint;
+  if (current >= stake) return;
+  const hash = await wallet.writeContract({
+    address: usdc,
+    abi: usdcAbi,
+    functionName: "approve",
+    args: [arena, (1n << 96n)],
+    account: wallet.account!,
+    chain: arcTestnet,
+  });
+  await publicClient.waitForTransactionReceipt({ hash });
 }
 
 async function fetchField(challengeId: number, cType: number): Promise<ContestEntryInput[]> {
@@ -172,14 +260,60 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
 
   if (status === 0) {
     // OPEN: lock once full or the join window has closed, with 2+ entrants.
-    const full = entrants >= Number(ch.maxEntrants);
+    let liveEntrants = entrants;
+    const full = liveEntrants >= Number(ch.maxEntrants);
     const joinEnded = nowSec >= Number(ch.joinDeadline);
-    if (!full && !joinEnded) return; // still filling
-    if (entrants < 2) {
-      await cancel(`underfilled (${entrants} entrants)`);
+
+    // Demo auto-fill: any time a non-coordinator-created challenge sits at 1
+    // entrant, the coordinator joins it with a bot agent so it actually runs
+    // instead of cancelling for refund at the join deadline. Default ON; set
+    // AUTOPILOT_FILL_CHALLENGES=0 to disable. Only runs while the window is
+    // still open and the coordinator isn't the creator (no self-join loop).
+    const fillOn = (process.env.AUTOPILOT_FILL_CHALLENGES ?? "1") !== "0";
+    if (
+      fillOn &&
+      liveEntrants === 1 &&
+      !joinEnded &&
+      ch.creator.toLowerCase() !== coordinatorAddr().toLowerCase()
+    ) {
+      try {
+        const already = (await publicClient.readContract({
+          address: arena,
+          abi: arenaAbi,
+          functionName: "joined",
+          args: [BigInt(challengeId), coordinatorAddr()],
+        })) as boolean;
+        if (!already) {
+          const botAgentId = await ensureCoordinatorAgent();
+          await ensureArenaAllowance(ch.stake);
+          console.log(`challenge ${challengeId}: auto-filling with bot agent #${botAgentId} (stake ${ch.stake})`);
+          await send({
+            address: arena,
+            abi: arenaAbi,
+            functionName: "joinChallenge",
+            args: [BigInt(challengeId), BigInt(botAgentId)],
+          });
+          liveEntrants = Number(
+            (await publicClient.readContract({
+              address: arena,
+              abi: arenaAbi,
+              functionName: "entrantCount",
+              args: [BigInt(challengeId)],
+            })) as bigint,
+          );
+        }
+      } catch (err) {
+        console.error(`challenge ${challengeId}: auto-fill failed:`, err instanceof Error ? err.message : err);
+        // Fall through to the standard wait/cancel path.
+      }
+    }
+
+    if (!full && !joinEnded) return; // still filling (or waiting for the join window to close)
+    if (liveEntrants < 2) {
+      await cancel(`underfilled (${liveEntrants} entrants)`);
       return;
     }
-    console.log(`challenge ${challengeId}: locking with ${entrants} entrants`);
+    console.log(`challenge ${challengeId}: locking with ${liveEntrants} entrants`);
     await send({ address: arena, abi: arenaAbi, functionName: "lockChallenge", args: [BigInt(challengeId)] });
     status = 1;
   }

@@ -95,7 +95,7 @@ export default function ContestsPage() {
         </div>
         <SectionHeader
           eyebrow="CONTESTS"
-          heading="LIVE CONTESTS"
+          heading="CONTESTS"
           subDeck={
             <>
               campaigns are project-funded usdc contests. anyone can host one. agents compete for the pool. looking
