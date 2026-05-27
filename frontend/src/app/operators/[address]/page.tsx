@@ -75,8 +75,8 @@ export default function OperatorPage() {
               <span aria-hidden className="text-accent">■</span> OPERATOR
             </div>
             <h1
-              className="mt-2 break-all font-stencil uppercase text-ink"
-              style={{ fontSize: "clamp(56px, 10vw, 132px)", lineHeight: 0.92, letterSpacing: "-0.03em" }}
+              className="mt-2 font-stencil uppercase text-ink"
+              style={{ fontSize: "clamp(36px, 5vw, 64px)", lineHeight: 0.95, letterSpacing: "-0.02em" }}
             >
               {short(address)}
             </h1>
@@ -494,9 +494,14 @@ function AgentCustomizeCard({ agent, isMe }: { agent: AgentState; isMe: boolean 
       </div>
 
       <div>
-        <span className="border border-[color:var(--hairline-strong)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
-          TRAIN WITH SKILLS · SOON
-        </span>
+        {isMe ? (
+          <a
+            href={`/workshop?agent=${agent.id}#train-${agent.id}`}
+            className="inline-block border border-ink px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-ink transition-colors hover:bg-canvas-3"
+          >
+            TRAIN WITH SKILLS →
+          </a>
+        ) : null}
       </div>
     </BracketedCell>
   );

@@ -369,6 +369,52 @@ app.delete("/agents/:id/skin", requireAuth, async (c) => {
   return c.json({ id: agentId, ok: true });
 });
 
+// ----- Admin: soft burn (delist) -----
+//
+// Hide an agent id from every public listing without touching the chain. The
+// on-chain ERC-8004 NFT keeps existing on Arc; we just stop returning it from
+// /agents/delisted (the frontend filter set) and every surface that calls
+// fetchAgents drops it. Users see nothing. Reversible by DELETE on the same id.
+
+app.post("/admin/agents/:id/delist", async (c) => {
+  const adminToken = config.adminToken;
+  if (!adminToken) return c.json({ error: "admin disabled (set ADMIN_TOKEN)" }, 503);
+  if (c.req.header("x-admin-token") !== adminToken) return c.json({ error: "unauthorized" }, 401);
+
+  const agentId = Number(c.req.param("id"));
+  if (!Number.isFinite(agentId)) return c.json({ error: "invalid agent id" }, 400);
+  const body = await c.req.json<{ reason?: string }>().catch(() => ({} as { reason?: string }));
+  const reason = typeof body.reason === "string" ? body.reason.slice(0, 200) : null;
+
+  await query(
+    `insert into delisted_agents (agent_id, reason) values ($1, $2)
+       on conflict (agent_id) do update set delisted_at = now(), reason = excluded.reason`,
+    [agentId, reason],
+  );
+  return c.json({ id: agentId, delisted: true });
+});
+
+app.delete("/admin/agents/:id/delist", async (c) => {
+  const adminToken = config.adminToken;
+  if (!adminToken) return c.json({ error: "admin disabled (set ADMIN_TOKEN)" }, 503);
+  if (c.req.header("x-admin-token") !== adminToken) return c.json({ error: "unauthorized" }, 401);
+
+  const agentId = Number(c.req.param("id"));
+  if (!Number.isFinite(agentId)) return c.json({ error: "invalid agent id" }, 400);
+  await query("delete from delisted_agents where agent_id = $1", [agentId]);
+  return c.json({ id: agentId, delisted: false });
+});
+
+/// Public read of the delist set. The frontend caches this and filters
+/// fetchAgents results before returning. Returns an id array, ordered for
+/// deterministic etag-friendly responses. No leak of reason or timestamp.
+app.get("/agents/delisted", async (c) => {
+  const { rows } = await query<{ agent_id: string }>(
+    "select agent_id from delisted_agents order by agent_id asc",
+  );
+  return c.json({ ids: rows.map((r) => Number(r.agent_id)) });
+});
+
 /// Bulk skin lookup. Public, like /agents/names. Returns a map of id to data
 /// URL for the agents in the query that have a skin set.
 app.get("/agents/skins", async (c) => {

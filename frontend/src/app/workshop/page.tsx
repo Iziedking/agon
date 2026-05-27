@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useAccount } from "wagmi";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/redesign/Footer";
@@ -36,23 +37,45 @@ import {
 
 export default function WorkshopPage() {
   const { address, isConnected } = useAccount();
+  const searchParams = useSearchParams();
   const [agents, setAgents] = useState<AgentState[] | undefined>(undefined);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [upgradingId, setUpgradingId] = useState<number | null>(null);
+
+  /// Deep-link target: /workshop?agent=14 selects agent #14 as active so the
+  /// training panel below renders for that agent. Used by the operator profile
+  /// "TRAIN WITH SKILLS" link.
+  const requestedAgentId = (() => {
+    const raw = searchParams?.get("agent");
+    const n = raw ? Number(raw) : NaN;
+    return Number.isFinite(n) ? n : null;
+  })();
 
   const refresh = useCallback(async () => {
     if (!address) return;
     try {
       const list = await fetchAgents(address);
       setAgents(list);
-      const resolved = resolveActiveAgent(list, address);
+      const requested = requestedAgentId && list.some((a) => a.id === requestedAgentId)
+        ? list.find((a) => a.id === requestedAgentId)
+        : null;
+      const resolved = requested ?? resolveActiveAgent(list, address);
       setActiveId(resolved?.id ?? null);
+      if (requested) setActiveAgentId(address, requested.id);
     } catch {
       // Leave undefined -> "reading your agents from arc…"
     }
-  }, [address]);
+  }, [address, requestedAgentId]);
 
   useEffect(() => { void refresh(); }, [refresh]);
+
+  /// After the training section mounts for the requested agent, scroll it
+  /// into view. One shot per requested-id change.
+  useEffect(() => {
+    if (!requestedAgentId || activeId !== requestedAgentId) return;
+    const el = document.getElementById(`train-${requestedAgentId}`);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [requestedAgentId, activeId]);
 
   const active = agents?.find((a) => a.id === activeId) ?? null;
   const upgrading = agents?.find((a) => a.id === upgradingId) ?? null;
@@ -180,7 +203,7 @@ export default function WorkshopPage() {
             so the six bars have horizontal room. Owner-only — read by
             the auth API which gates writes by SIWE ownership. */}
         {active ? (
-          <div className="mt-10">
+          <div id={`train-${active.id}`} className="mt-10 scroll-mt-24">
             <div className="mb-3 flex items-center justify-between">
               <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
                 <span aria-hidden className="text-accent">■</span> TRAINING ·{" "}

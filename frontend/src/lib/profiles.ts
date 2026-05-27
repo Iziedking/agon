@@ -187,6 +187,34 @@ export async function fetchAgentSkins(ids: number[]): Promise<Map<number, string
   return out;
 }
 
+/// Admin-delisted agent ids. The frontend filters fetchAgents through this
+/// set before returning. Failures fall through to an empty set so a backend
+/// blip never causes the operator's agent list to inflate. Cached for the
+/// current page life via the module-level promise.
+let delistedPromise: Promise<Set<number>> | null = null;
+export function fetchDelistedAgents(): Promise<Set<number>> {
+  if (!delistedPromise) {
+    delistedPromise = (async () => {
+      try {
+        const res = await fetch(`${AUTH_URL}/agents/delisted`, { cache: "no-store" });
+        if (!res.ok) return new Set<number>();
+        const data = (await res.json()) as { ids?: number[] };
+        return new Set(data.ids ?? []);
+      } catch {
+        return new Set<number>();
+      }
+    })();
+  }
+  return delistedPromise;
+}
+
+/// Reset the cached delist set. Called by the workshop after a successful
+/// admin write so the next fetchAgents picks up the change. No-op in
+/// production paths where the admin endpoint is not exercised.
+export function invalidateDelistedAgents() {
+  delistedPromise = null;
+}
+
 /// Bulk-fetch nicknames for a list of agent ids. Missing entries are simply
 /// absent from the returned map. No auth required: names are public, anyone
 /// watching a contest sees them.

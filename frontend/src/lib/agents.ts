@@ -1,6 +1,6 @@
 import { parseAbi } from "viem";
 import { publicClient, CONTRACTS } from "./arc";
-import { fetchAgentNames, fetchAgentSkins } from "./profiles";
+import { fetchAgentNames, fetchAgentSkins, fetchDelistedAgents } from "./profiles";
 
 /// Reads agent state from AgentRegistry on Arc, plus the bits needed to upgrade.
 
@@ -91,12 +91,18 @@ export async function fetchAgents(owner: `0x${string}`): Promise<AgentState[]> {
   let lastError: unknown = null;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      const ids = (await publicClient.readContract({
+      const rawIds = (await publicClient.readContract({
         address: CONTRACTS.AgentRegistry,
         abi: agentRegistryAbi,
         functionName: "agentsOf",
         args: [owner],
       })) as readonly bigint[];
+      if (rawIds.length === 0) return [];
+
+      // Filter out admin-delisted ids before doing any per-id chain reads.
+      // The agent NFT still exists on Arc; ArcRun just doesn't render it.
+      const delisted = await fetchDelistedAgents();
+      const ids = rawIds.filter((id) => !delisted.has(Number(id)));
       if (ids.length === 0) return [];
 
       const agents: AgentState[] = [];
