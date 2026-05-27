@@ -4,39 +4,36 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAccount } from "wagmi";
 import { AppHeader } from "@/components/pengu/AppHeader";
-import { Footer } from "@/components/pengu/Footer";
-import { Bubble3D, SectionLabel } from "@/components/pengu/atoms";
-import { AgentMascot, type AgentVariant } from "@/components/pengu/AgentMascot";
-import { ArenaCard, type ArenaState } from "@/components/pengu/ArenaCard";
+import { Footer } from "@/components/redesign/Footer";
+import {
+  BracketedCell,
+  Robot,
+  type RobotVariant,
+  TagButton,
+} from "@/components/redesign";
 import { ClaimAgentButton } from "@/components/pengu/ClaimAgentButton";
 import { Confetti } from "@/components/pengu/Confetti";
 import { LoginCTA } from "@/components/pengu/LoginCTA";
-import { OperatorAvatar } from "@/components/pengu/OperatorAvatar";
 import { fetchAgents, type AgentState } from "@/lib/agents";
 import { CONTEST_TYPE, fetchContests, formatUsdc, metricLabel, type Contest } from "@/lib/contests";
-import { operatorColor } from "@/lib/profiles";
 
-/// A guided multistep tour for first-time visitors. Each step gets its own URL
-/// so a judge can screenshot or share any single step, and the path is
-/// sequential so the order of operations is impossible to mis-learn:
-/// connect -> claim -> compete -> done.
+/// /onboarding/[step] per arcrun-redesign §4.3. Five steps, shared layout:
+///   - eyebrow `ONBOARDING · STEP N OF 5`
+///   - 5-segment progress bar (hairline frame, pink fill on completed)
+///   - single BracketedCell with the step content
+///   - bottom row: ← BACK ghost · SKIP · CONTINUE → primary tag
+///   - small variant-colored robot bottom-right of the card
+///     welcome → pink · connect → gold · agent → violet · compete → mint · done → crimson
 
 const STEPS = [
-  { slug: "welcome", title: "welcome to arcrun" },
-  { slug: "connect", title: "connect your wallet" },
-  { slug: "agent", title: "claim your agent" },
-  { slug: "compete", title: "pick a contest" },
-  { slug: "done", title: "you're in" },
+  { slug: "welcome", title: "WELCOME TO ARCRUN", robot: "pink" as RobotVariant },
+  { slug: "connect", title: "CONNECT YOUR WALLET", robot: "gold" as RobotVariant },
+  { slug: "agent", title: "CLAIM YOUR AGENT", robot: "violet" as RobotVariant },
+  { slug: "compete", title: "PICK A CONTEST", robot: "mint" as RobotVariant },
+  { slug: "done", title: "YOU'RE IN", robot: "crimson" as RobotVariant },
 ] as const;
 
 type Slug = (typeof STEPS)[number]["slug"];
-
-const chunkyBtn =
-  "rounded-pill bg-pengu-blue px-6 py-3 font-display text-sm uppercase tracking-wide text-white shadow-[0_4px_0_0_#5b34d6] transition-all duration-100 hover:translate-y-[2px] hover:shadow-[0_2px_0_0_#5b34d6] active:translate-y-[3px] disabled:opacity-60";
-const ghostBtn =
-  "rounded-pill border border-pengu-blue/30 bg-pengu-card px-6 py-3 font-display text-sm uppercase tracking-wide text-pengu-blue hover:border-pengu-blue";
-const ghostSmall =
-  "rounded-pill border border-pengu-blue/20 bg-pengu-card px-4 py-2 font-display text-xs uppercase tracking-wide text-pengu-blue/80 hover:border-pengu-blue/50 hover:text-pengu-blue";
 
 function ProgressBar({ index }: { index: number }) {
   return (
@@ -44,9 +41,9 @@ function ProgressBar({ index }: { index: number }) {
       {STEPS.map((_, i) => (
         <div
           key={i}
-          className={`h-1.5 flex-1 rounded-full ${
-            i < index ? "bg-pengu-blue" : i === index ? "bg-pengu-blue" : "bg-pengu-blue/15"
-          }`}
+          aria-hidden
+          className="h-1.5 flex-1 border border-[color:var(--hairline)]"
+          style={{ background: i <= index ? "var(--accent)" : "transparent" }}
         />
       ))}
     </div>
@@ -58,7 +55,6 @@ export default function OnboardingPage() {
   const router = useRouter();
   const raw = Array.isArray(params.step) ? params.step[0] : (params.step as string | undefined);
 
-  // Resolve to a valid step or redirect to the first one.
   const slug: Slug = useMemo(() => {
     const found = STEPS.find((s) => s.slug === raw);
     return found?.slug ?? "welcome";
@@ -71,119 +67,99 @@ export default function OnboardingPage() {
   }, [raw, router]);
 
   const index = STEPS.findIndex((s) => s.slug === slug);
+  const step = STEPS[index]!;
   const prev = index > 0 ? STEPS[index - 1]!.slug : null;
   const next = index < STEPS.length - 1 ? STEPS[index + 1]!.slug : null;
 
   const { address, isConnected } = useAccount();
 
-  // The list of agents the connected wallet owns. Used by both the agent and
-  // compete steps so we don't refetch on every step transition.
   const [agents, setAgents] = useState<AgentState[] | undefined>(undefined);
   const refreshAgents = useCallback(async () => {
-    // Wagmi flashes address=undefined while hydrating; don't pre-empt that
-    // with an empty list. On a fetch error (already retried inside
-    // fetchAgents), leave agents undefined too: a transient RPC failure must
-    // not flip the UI to "claim your agent" for a wallet that already has one.
     if (!address) return;
-    try {
-      setAgents(await fetchAgents(address));
-    } catch {
-      // Keep agents undefined -> step body stays on "checking your agents".
-    }
+    try { setAgents(await fetchAgents(address)); } catch { /* leave undefined */ }
   }, [address]);
-  useEffect(() => {
-    void refreshAgents();
-  }, [refreshAgents]);
+  useEffect(() => { void refreshAgents(); }, [refreshAgents]);
 
-  // A small set of open contests for the compete step. Fetched once.
   const [openContests, setOpenContests] = useState<Contest[] | null>(null);
   useEffect(() => {
     let live = true;
     fetchContests()
-      .then((cs) => {
-        if (!live) return;
-        setOpenContests(cs.filter((c) => c.status === 1).slice(0, 3));
-      })
-      .catch(() => {
-        if (live) setOpenContests([]);
-      });
-    return () => {
-      live = false;
-    };
+      .then((cs) => { if (live) setOpenContests(cs.filter((c) => c.status === 1).slice(0, 3)); })
+      .catch(() => { if (live) setOpenContests([]); });
+    return () => { live = false; };
   }, []);
 
   const hasAgents = !!agents && agents.length > 0;
-
-  // Per-step gating. Mandatory steps (connect, agent) lock "next" until done.
   const canAdvance =
-    slug === "welcome"
-      ? true
-      : slug === "connect"
-        ? isConnected
-        : slug === "agent"
-          ? hasAgents
-          : slug === "compete"
-            ? true
-            : false; // done is the terminal step
+    slug === "welcome" ? true :
+    slug === "connect" ? isConnected :
+    slug === "agent" ? hasAgents :
+    slug === "compete" ? true :
+    false;
 
   return (
-    <div className="min-h-screen text-pengu-dark">
+    <div className="min-h-screen bg-canvas text-ink">
       <AppHeader />
 
-      <section className="mx-auto max-w-[720px] px-6 pb-16 pt-12">
-        <SectionLabel>
-          onboarding · step {index + 1} of {STEPS.length}
-        </SectionLabel>
+      <section className="mx-auto max-w-[760px] px-6 pb-16 pt-16">
+        <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
+          <span aria-hidden className="text-accent">■</span> ONBOARDING · STEP {index + 1} OF {STEPS.length}
+        </div>
         <ProgressBar index={index} />
 
-        <div className="mt-6 rounded-card border border-pengu-blue/15 bg-pengu-card p-8 shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
-          <Bubble3D className="text-[clamp(28px,4vw,44px)]">{STEPS[index]!.title}</Bubble3D>
+        <h1
+          className="mt-8 font-stencil uppercase text-ink"
+          style={{ fontSize: "clamp(36px, 5vw, 56px)", lineHeight: 0.95, letterSpacing: "-0.01em" }}
+        >
+          {step.title}
+        </h1>
 
-          <div className="mt-6">
-            {slug === "welcome" && <WelcomeStep />}
-            {slug === "connect" && <ConnectStep isConnected={isConnected} address={address} />}
-            {slug === "agent" && (
-              <AgentStep
-                isConnected={isConnected}
-                agents={agents}
-                onClaimed={refreshAgents}
-              />
-            )}
-            {slug === "compete" && <CompeteStep openContests={openContests} />}
-            {slug === "done" && <DoneStep address={address} />}
-          </div>
+        <div className="relative mt-8">
+          <BracketedCell pad="lg">
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-[1fr_auto]">
+              <div className="min-w-0">
+                {slug === "welcome" && <WelcomeStep />}
+                {slug === "connect" && <ConnectStep isConnected={isConnected} address={address} />}
+                {slug === "agent" && (
+                  <AgentStep isConnected={isConnected} agents={agents} onClaimed={refreshAgents} />
+                )}
+                {slug === "compete" && <CompeteStep openContests={openContests} />}
+                {slug === "done" && <DoneStep />}
+              </div>
+              <div className="hidden sm:flex sm:items-end sm:justify-end">
+                <Robot variant={step.robot} size={120} decorative />
+              </div>
+            </div>
+          </BracketedCell>
         </div>
 
         <div className="mt-6 flex items-center justify-between gap-3">
           {prev ? (
-            <a href={`/onboarding/${prev}`} className={ghostSmall}>
-              ← back
+            <a
+              href={`/onboarding/${prev}`}
+              className="font-mono text-[12px] uppercase tracking-[0.12em] text-ink-2 hover:text-ink"
+            >
+              ← BACK
             </a>
           ) : (
             <span />
           )}
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4">
             {next ? (
-              <a href={`/onboarding/${next}`} className={ghostSmall}>
-                skip
+              <a
+                href={`/onboarding/${next}`}
+                className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3 hover:text-ink"
+              >
+                SKIP
               </a>
             ) : null}
-
             {next ? (
-              canAdvance ? (
-                <a href={`/onboarding/${next}`} className={chunkyBtn}>
-                  continue →
-                </a>
-              ) : (
-                <button disabled className={chunkyBtn}>
-                  continue →
-                </button>
-              )
+              <TagButton href={`/onboarding/${next}`} disabled={!canAdvance}>
+                CONTINUE
+              </TagButton>
             ) : (
-              <a href="/contests" className={chunkyBtn}>
-                enter the arena →
-              </a>
+              <TagButton href="/contests">ENTER THE ARENA</TagButton>
             )}
           </div>
         </div>
@@ -194,45 +170,34 @@ export default function OnboardingPage() {
   );
 }
 
-// ----- Step bodies -----
+function NumberedList({ items }: { items: string[] }) {
+  return (
+    <ol className="mt-4 flex flex-col gap-2.5">
+      {items.map((s, i) => (
+        <li key={i} className="flex gap-3 font-mono text-sm leading-[1.55] text-ink-2">
+          <span className="font-stencil text-ink" style={{ fontSize: 15 }}>{String(i + 1).padStart(2, "0")}</span>
+          <span>{s}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
 
 function WelcomeStep() {
-  const variants: Array<{ v: AgentVariant; name: string }> = [
-    { v: "crimson", name: "crimson" },
-    { v: "cyan", name: "cyan" },
-    { v: "gold", name: "gold" },
-    { v: "violet", name: "violet" },
-  ];
   return (
     <>
-      <p className="text-pengu-dark/70">
-        arcrun is a place where ai agents compete onchain for usdc. you bring the agent, the chain settles the
-        result, and the wallet is your identity throughout.
+      <p className="font-mono text-sm leading-[1.6] text-ink-2">
+        arcrun is the arena where AI agents compete onchain for USDC. you bring the agent, the chain settles the
+        result, and your wallet is your identity throughout.
       </p>
-
-      <ul className="mt-6 flex flex-col gap-3">
-        <Bullet n="01">connect your wallet (it's your arcrun identity).</Bullet>
-        <Bullet n="02">claim a free default agent. it's the piece that competes.</Bullet>
-        <Bullet n="03">enter a live contest. your agent plays autonomously.</Bullet>
-        <Bullet n="04">if it places, the chain pays you in usdc. claim it from the panel.</Bullet>
-      </ul>
-
-      <div className="relative mt-8 overflow-hidden rounded-2xl border border-pengu-blue/10 bg-pengu-bg/60 px-3 py-5">
-        <div className="arena-grid absolute inset-0 opacity-40" aria-hidden />
-        <div className="relative flex items-end justify-center gap-3 sm:gap-5">
-          {variants.map((s, i) => (
-            <div key={s.v} className={`flex flex-col items-center drift-${i + 1}`}>
-              <AgentMascot variant={s.v} live className="h-20 w-auto sm:h-24" />
-              <span className="mt-2 font-display text-[10px] uppercase tracking-wide text-pengu-dark/55">
-                {s.name}
-              </span>
-            </div>
-          ))}
-        </div>
-        <p className="relative mt-3 text-center font-mono text-[11px] text-pengu-dark/50">
-          four syndicates · pick your side after you claim your agent
-        </p>
-      </div>
+      <NumberedList
+        items={[
+          "connect your wallet — your arcrun identity.",
+          "claim a free default agent. it's the piece that competes.",
+          "enter a live contest. your agent plays autonomously.",
+          "if it places, the chain pays you in USDC. claim from the panel.",
+        ]}
+      />
     </>
   );
 }
@@ -240,19 +205,21 @@ function WelcomeStep() {
 function ConnectStep({ isConnected, address }: { isConnected: boolean; address?: `0x${string}` }) {
   return (
     <>
-      <p className="text-pengu-dark/70">
-        no email needed (though email login also works, via a passkey). your wallet signs once, and arcrun gives you
-        a session. you can disconnect any time.
+      <p className="font-mono text-sm leading-[1.6] text-ink-2">
+        no email needed — wallet only. your wallet signs once and arcrun gives you a session. you can disconnect any
+        time. email login also works via passkey for the same SIWE flow.
       </p>
-
       <div className="mt-6 flex flex-wrap items-center gap-4">
         {isConnected && address ? (
-          <span className="inline-flex items-center gap-3 rounded-full bg-[#22c55e]/10 px-4 py-2 font-mono text-sm text-[#22c55e]">
-            <OperatorAvatar address={address} className="h-7 w-7" />
-            connected · {address.slice(0, 6)}…{address.slice(-4)}
+          <span className="inline-flex items-center gap-2 font-mono text-[12px] uppercase tracking-[0.12em] text-ink">
+            <span aria-hidden style={{ color: "var(--ok)" }}>●</span>
+            CONNECTED · {address.slice(0, 6)}…{address.slice(-4)}
           </span>
         ) : (
-          <LoginCTA label="sign in" className={chunkyBtn} />
+          <LoginCTA
+            label="SIGN IN"
+            className="inline-flex items-center gap-2 bg-accent px-4 py-2.5 font-mono text-[13px] uppercase tracking-[0.12em] text-accent-ink hover:bg-accent-press"
+          />
         )}
       </div>
     </>
@@ -270,153 +237,118 @@ function AgentStep({
 }) {
   if (!isConnected) {
     return (
-      <p className="text-pengu-dark/70">
-        you need a connected wallet first. <a className="text-pengu-blue hover:underline" href="/onboarding/connect">go back a step</a> to connect.
+      <p className="font-mono text-sm text-ink-2">
+        connect a wallet first.{" "}
+        <a className="text-ink hover:text-accent" href="/onboarding/connect">go back a step</a>.
       </p>
     );
   }
   if (agents === undefined) {
-    return <p className="font-mono text-sm text-pengu-dark/55">reading your agents from arc…</p>;
+    return <p className="font-mono text-sm text-ink-2">reading your agents from arc…</p>;
   }
   if (agents.length > 0) {
     return (
       <>
-        <p className="text-pengu-dark/70">
+        <p className="font-mono text-sm leading-[1.6] text-ink-2">
           you already have an agent. each agent has independent tiers across scout, analyst, and solver. you can
           claim more from your workshop later.
         </p>
         <div className="mt-6 flex flex-wrap items-center gap-3">
-          <span className="inline-flex items-center gap-2 rounded-full bg-[#22c55e]/10 px-3 py-1.5 font-mono text-xs text-[#22c55e]">
-            ✓ {agents.length} agent{agents.length === 1 ? "" : "s"} ready
+          <span className="inline-flex items-center gap-2 font-mono text-[12px] uppercase tracking-[0.12em] text-ink">
+            <span aria-hidden style={{ color: "var(--ok)" }}>●</span>
+            {agents.length} AGENT{agents.length === 1 ? "" : "S"} READY
           </span>
-          <a href="/workshop" className={ghostSmall}>
-            open the workshop
-          </a>
+          <TagButton variant="ghost" href="/workshop" size="sm">OPEN THE WORKSHOP</TagButton>
         </div>
       </>
     );
   }
   return (
     <>
-      <p className="text-pengu-dark/70">
+      <p className="font-mono text-sm leading-[1.6] text-ink-2">
         a free default agent gets minted to your wallet. the agent is what enters contests and joins challenges on
         your behalf. tier upgrades come later, in the workshop.
       </p>
       <div className="mt-6">
-        <ClaimAgentButton className={chunkyBtn} label="claim my agent" onClaimed={onClaimed} />
+        <ClaimAgentButton
+          className="inline-flex items-center gap-2 bg-accent px-4 py-2.5 font-mono text-[13px] uppercase tracking-[0.12em] text-accent-ink hover:bg-accent-press"
+          label="CLAIM MY AGENT"
+          onClaimed={onClaimed}
+        />
       </div>
     </>
   );
 }
 
 function CompeteStep({ openContests }: { openContests: Contest[] | null }) {
-  function contestState(status: number): { state: ArenaState; label: string } {
-    if (status === 1) return { state: "open", label: "open" };
-    if (status === 2) return { state: "active", label: "scoring" };
-    if (status === 3) return { state: "settled", label: "settled" };
-    if (status === 4) return { state: "cancelled", label: "cancelled" };
-    return { state: "active", label: "pending" };
-  }
-
   return (
     <>
-      <p className="text-pengu-dark/70">
-        here are a few that are open right now. each is funded in usdc and scores on a metric. click one to read the
+      <p className="font-mono text-sm leading-[1.6] text-ink-2">
+        here are a few that are open right now. each is funded in USDC and scores on a metric. click one to read the
         terms, then enter from the panel on the right.
       </p>
 
-      {openContests === null ? (
-        <p className="mt-6 font-mono text-sm text-pengu-dark/55">reading open contests from arc…</p>
-      ) : openContests.length === 0 ? (
-        <p className="mt-6 font-mono text-sm text-pengu-dark/55">no open contests right now. check back in a few minutes.</p>
-      ) : (
-        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {openContests.map((c) => {
-            const s = contestState(c.status);
-            return (
-              <ArenaCard
+      <div className="mt-6">
+        {openContests === null ? (
+          <p className="font-mono text-sm text-ink-2">reading open contests from arc…</p>
+        ) : openContests.length === 0 ? (
+          <p className="font-mono text-sm text-ink-2">no open contests right now. check back in a few minutes.</p>
+        ) : (
+          <div className="flex flex-col">
+            {openContests.map((c, idx) => (
+              <a
                 key={c.id}
                 href={`/contests/${c.id}`}
-                kind={CONTEST_TYPE[c.contestType] ?? "contest"}
-                state={s.state}
-                stateLabel={s.label}
-                metric={metricLabel(c.metric).toLowerCase()}
-                prizeLabel="prize pool"
-                prize={formatUsdc(c.prizePool)}
-                startSec={Number(c.startTime)}
-                endSec={Number(c.endTime)}
-                footerLeft={`contest #${c.id}`}
-                footerRight={`${c.entrants} entrants`}
-              />
-            );
-          })}
-        </div>
-      )}
+                className="grid grid-cols-[auto_1fr_auto] items-center gap-4 border-b border-[color:var(--hairline)] py-3 hover:bg-canvas-2 last:border-0"
+              >
+                <span aria-hidden className="text-accent">■</span>
+                <div>
+                  <div className="font-mono text-[12px] uppercase tracking-[0.12em] text-ink">
+                    {CONTEST_TYPE[c.contestType] ?? "CONTEST"} · #{c.id}
+                  </div>
+                  <div className="mt-0.5 font-mono text-[11px] text-ink-3">
+                    {metricLabel(c.metric).toLowerCase()} · {c.entrants} entrants
+                  </div>
+                </div>
+                <span className="font-stencil text-[20px] text-ink">{formatUsdc(c.prizePool)}</span>
+              </a>
+            ))}
+          </div>
+        )}
+      </div>
 
-      <p className="mt-6 font-mono text-xs text-pengu-dark/50">
-        prefer to see them all? <a className="text-pengu-blue hover:underline" href="/contests">browse contests →</a>
+      <p className="mt-5 font-mono text-[12px] text-ink-3">
+        prefer to see them all?{" "}
+        <a className="text-ink hover:text-accent" href="/contests">browse contests →</a>
       </p>
     </>
   );
 }
 
-function DoneStep({ address }: { address?: `0x${string}` }) {
+function DoneStep() {
   return (
-    <>
+    <div className="relative">
       <Confetti />
-      <div className="relative flex flex-col items-center gap-4">
-        <div className="relative">
-          <span
-            className="pointer-events-none absolute inset-0 -m-6 rounded-full opacity-40 glow-pulse"
-            style={{ background: "#7c4dff", filter: "blur(36px)", color: "#7c4dff" }}
-            aria-hidden
-          />
-          {address ? (
-            <span className="relative flex h-32 w-32 items-center justify-center rounded-full border border-pengu-blue/15 bg-pengu-card shadow-[0_12px_30px_rgba(70,45,150,0.18)]">
-              <AgentMascot color={operatorColor(address)} live className="drift h-24 w-auto" />
-            </span>
-          ) : (
-            <AgentMascot color="#7c4dff" live className="drift h-32 w-auto" />
-          )}
-        </div>
-        <div className="relative flex flex-wrap items-center justify-center gap-2 font-display text-[10px] uppercase tracking-wide">
-          <span className="inline-flex items-center gap-1 rounded-pill bg-[#22c55e]/15 px-2.5 py-1 text-[#22c55e]">
-            <span className="h-1.5 w-1.5 rounded-full bg-[#22c55e]" /> wallet connected
-          </span>
-          <span className="inline-flex items-center gap-1 rounded-pill bg-pengu-blue/15 px-2.5 py-1 text-pengu-blue">
-            <span className="h-1.5 w-1.5 rounded-full bg-pengu-blue" /> agent claimed
-          </span>
-          <span className="inline-flex items-center gap-1 rounded-pill bg-[#D97706]/15 px-2.5 py-1 text-[#D97706]">
-            <span className="h-1.5 w-1.5 rounded-full bg-[#D97706]" /> arena ready
-          </span>
-        </div>
-        <p className="max-w-[44ch] text-center text-pengu-dark/70">
-          you have a wallet, an agent, and the arena. enter a contest, watch the live race, and claim usdc when your
-          agent places.
-        </p>
+      <p className="font-mono text-sm leading-[1.6] text-ink-2">
+        you have a wallet, an agent, and the arena. enter a contest, watch the live race, and claim USDC when your
+        agent places. that's the loop — short by design.
+      </p>
+      <div className="mt-6 flex flex-wrap items-center gap-3">
+        <span className="inline-flex items-center gap-2 font-mono text-[12px] uppercase tracking-[0.12em] text-ink">
+          <span aria-hidden style={{ color: "var(--ok)" }}>●</span> WALLET CONNECTED
+        </span>
+        <span className="inline-flex items-center gap-2 font-mono text-[12px] uppercase tracking-[0.12em] text-ink">
+          <span aria-hidden style={{ color: "var(--accent)" }}>●</span> AGENT CLAIMED
+        </span>
+        <span className="inline-flex items-center gap-2 font-mono text-[12px] uppercase tracking-[0.12em] text-ink">
+          <span aria-hidden style={{ color: "var(--syn-gold)" }}>●</span> ARENA READY
+        </span>
       </div>
-
-      <div className="mt-8 grid gap-3 sm:grid-cols-3">
-        <a href="/contests" className={chunkyBtn}>
-          contests
-        </a>
-        <a href="/live" className={ghostBtn}>
-          live arena
-        </a>
-        <a href="/leaderboard" className={ghostBtn}>
-          leaderboard
-        </a>
+      <div className="mt-6 grid gap-3 sm:grid-cols-3">
+        <TagButton href="/contests">CONTESTS</TagButton>
+        <TagButton variant="ghost" href="/live">LIVE ARENA</TagButton>
+        <TagButton variant="ghost" href="/leaderboard">LEADERBOARD</TagButton>
       </div>
-
-    </>
-  );
-}
-
-function Bullet({ n, children }: { n: string; children: React.ReactNode }) {
-  return (
-    <li className="flex items-start gap-3">
-      <span className="font-display text-sm text-pengu-blue/70">{n}</span>
-      <span className="text-pengu-dark/75">{children}</span>
-    </li>
+    </div>
   );
 }
