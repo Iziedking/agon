@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { ChallengeStandingsMessage, SettledMessage, StandingsMessage, WsMessage } from "@/lib/live";
+import type {
+  ChallengeSettledMessage,
+  ChallengeStandingsMessage,
+  SettledMessage,
+  StandingsMessage,
+  WsMessage,
+} from "@/lib/live";
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8788";
 
@@ -14,6 +20,7 @@ export function useContestSocket() {
   const [standings, setStandings] = useState<StandingsMessage | null>(null);
   const [challengeStandings, setChallengeStandings] = useState<ChallengeStandingsMessage | null>(null);
   const [settled, setSettled] = useState<SettledMessage | null>(null);
+  const [challengeSettled, setChallengeSettled] = useState<ChallengeSettledMessage | null>(null);
 
   useEffect(() => {
     let ws: WebSocket | null = null;
@@ -53,6 +60,8 @@ export function useContestSocket() {
             setChallengeStandings(msg);
           } else if (msg.type === "settled") {
             setSettled(msg);
+          } else if (msg.type === "challenge_settled") {
+            setChallengeSettled(msg);
           }
         } catch {
           // ignore malformed frames
@@ -68,5 +77,5 @@ export function useContestSocket() {
     };
   }, []);
 
-  return { connected, standings, challengeStandings, settled };
+  return { connected, standings, challengeStandings, settled, challengeSettled };
 }

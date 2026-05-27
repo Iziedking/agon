@@ -58,9 +58,18 @@ export interface SettledMessage {
   winners: SettledWinner[];
 }
 
+/// Matches the contest `settled` shape but for peer challenges. The backend
+/// broadcasts this when `postWinnerRoot` lands.
+export interface ChallengeSettledMessage {
+  type: "challenge_settled";
+  challengeId: number;
+  winners: SettledWinner[];
+}
+
 export type WsMessage =
   | { type: "hello"; service?: string }
   | ContestOpenMessage
   | StandingsMessage
   | ChallengeStandingsMessage
-  | SettledMessage;
+  | SettledMessage
+  | ChallengeSettledMessage;
