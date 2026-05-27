@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { useAccount } from "wagmi";
+import { useOperatorAddress } from "@/hooks/useAuth";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/redesign/Footer";
 import {
@@ -71,7 +71,7 @@ export default function OnboardingPage() {
   const prev = index > 0 ? STEPS[index - 1]!.slug : null;
   const next = index < STEPS.length - 1 ? STEPS[index + 1]!.slug : null;
 
-  const { address, isConnected } = useAccount();
+  const { address, isSignedIn: isConnected } = useOperatorAddress();
 
   const [agents, setAgents] = useState<AgentState[] | undefined>(undefined);
   const refreshAgents = useCallback(async () => {

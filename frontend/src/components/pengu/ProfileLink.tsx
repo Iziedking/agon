@@ -1,12 +1,12 @@
 "use client";
 
-import { useAccount } from "wagmi";
+import { useOperatorAddress } from "@/hooks/useAuth";
 
-/// Header link to the connected operator's own profile. Hidden until a wallet is
-/// connected, since there is no profile without an address.
+/// Header link to the operator's own profile. Hidden until signed in via
+/// either an injected wallet or a SIWE session (Circle passkey).
 export function ProfileLink() {
-  const { address, isConnected } = useAccount();
-  if (!isConnected || !address) return null;
+  const { address, isSignedIn } = useOperatorAddress();
+  if (!isSignedIn || !address) return null;
   return (
     <a
       href={`/operators/${address}`}

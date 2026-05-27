@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useAccount } from "wagmi";
+import { useOperatorAddress } from "@/hooks/useAuth";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/redesign/Footer";
 import {
@@ -35,7 +35,7 @@ function statusChip(status: number) {
 }
 
 export default function ChallengesPage() {
-  const { isConnected } = useAccount();
+  const { isSignedIn: isConnected } = useOperatorAddress();
   const [challenges, setChallenges] = useState<Challenge[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [page, setPage] = useState(1);

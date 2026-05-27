@@ -3,6 +3,7 @@
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useAccount } from "wagmi";
+import { useAuth } from "@/hooks/useAuth";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/redesign/Footer";
 import {
@@ -51,7 +52,13 @@ export default function WorkshopPage() {
 }
 
 function WorkshopPageBody() {
-  const { address, isConnected } = useAccount();
+  const { address: walletAddress, isConnected: walletConnected } = useAccount();
+  const { me } = useAuth();
+  // Accept either an injected-wallet connection or a SIWE session address.
+  // Circle passkey users have me.address but no wagmi connection — gating
+  // on isConnected alone locked them out of the workshop.
+  const address = (walletAddress ?? me?.address) as `0x${string}` | undefined;
+  const isConnected = walletConnected || !!me?.address;
   const searchParams = useSearchParams();
   const [agents, setAgents] = useState<AgentState[] | undefined>(undefined);
   const [activeId, setActiveId] = useState<number | null>(null);

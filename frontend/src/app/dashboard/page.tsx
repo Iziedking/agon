@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useAccount } from "wagmi";
+import { useOperatorAddress } from "@/hooks/useAuth";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/redesign/Footer";
 import {
@@ -46,7 +46,7 @@ import {
 /// stays as a bracketed sidecar.
 
 export default function DashboardPage() {
-  const { address, isConnected } = useAccount();
+  const { address, isSignedIn: isConnected } = useOperatorAddress();
   const [profile, setProfile] = useState<OperatorProfile | null | undefined>(undefined);
   const [agents, setAgents] = useState<AgentState[] | undefined>(undefined);
   const [activeId, setActiveId] = useState<number | null>(null);

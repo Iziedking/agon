@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useAccount, useWriteContract } from "wagmi";
+import { useOperatorAddress } from "@/hooks/useAuth";
 import { CONTRACTS, USDC, publicClient } from "@/lib/arc";
 import {
   agentDisplayName,
@@ -46,7 +47,7 @@ export function JoinChallengePanel({
   stake: string; // USDC wei, as a string (bigint is not serializable across the boundary)
   joinDeadline: number; // epoch seconds
 }) {
-  const { address, isConnected } = useAccount();
+  const { address, isSignedIn: isConnected } = useOperatorAddress();
   const { writeContractAsync } = useWriteContract();
   const stakeWei = BigInt(stake);
   const [agents, setAgents] = useState<AgentState[] | undefined>(undefined);

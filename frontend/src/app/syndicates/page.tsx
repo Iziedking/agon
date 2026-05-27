@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useAccount, useWriteContract } from "wagmi";
+import { useOperatorAddress } from "@/hooks/useAuth";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/redesign/Footer";
 import { CornerMarkers, MicroLabel, SectionHeader, SyndicateTile, type SyndicateKey } from "@/components/redesign";
@@ -30,7 +31,7 @@ function syndicateKey(name: string): SyndicateKey | null {
 }
 
 export default function SyndicatesPage() {
-  const { address, isConnected } = useAccount();
+  const { address, isSignedIn: isConnected } = useOperatorAddress();
   const { writeContractAsync } = useWriteContract();
   const [syndicates, setSyndicates] = useState<Syndicate[] | null>(null);
   const [current, setCurrent] = useState<number>(0);
