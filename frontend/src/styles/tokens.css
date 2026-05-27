@@ -10,17 +10,43 @@
    changes. */
 
 :root {
-  /* Pengu palette as RGB triplets */
-  --pengu-bg: 243 239 251;
-  --pengu-bg-2: 255 255 255;
-  --pengu-card: 255 255 255;
-  --pengu-card-2: 255 255 255;
-  --pengu-blue: 124 77 255;
-  --pengu-blue-2: 106 53 240;
-  --pengu-soft: 217 204 255;
-  --pengu-text: 255 255 255;
-  --pengu-dim: 185 198 234;
-  --pengu-dark: 27 17 64;
+  /* === arcrun-redesign palette (current source of truth) === */
+  /* Canvas: warm paper, never lavender, never pure white */
+  --canvas: #F4F1ED;
+  --canvas-2: #EDE8E1;
+  --canvas-3: #E4DED5;
+  /* Ink: three weights of near-black warm */
+  --ink: #1A1612;
+  --ink-2: #4A453E;
+  --ink-3: #847C70;
+  --hairline: rgba(26, 22, 18, 0.12);
+  --hairline-strong: rgba(26, 22, 18, 0.22);
+  /* Accent: pink, used sparingly */
+  --accent: #FF3D8A;
+  --accent-press: #E83278;
+  --accent-ink: #1A0E14;
+  /* Syndicate identity colors */
+  --syn-violet: #7C5CFF;
+  --syn-pink: #FF3D8A;
+  --syn-gold: #FFC93A;
+  --syn-mint: #2BD4A3;
+  --syn-crimson: #E0345A;
+  /* Status */
+  --ok: #2BD4A3;
+  --warn: #FFC93A;
+  --err: #E0345A;
+
+  /* === legacy pengu palette (kept while pages transition) === */
+  --pengu-bg: 244 241 237;
+  --pengu-bg-2: 237 232 225;
+  --pengu-card: 244 241 237;
+  --pengu-card-2: 237 232 225;
+  --pengu-blue: 255 61 138;
+  --pengu-blue-2: 232 50 120;
+  --pengu-soft: 228 222 213;
+  --pengu-text: 26 14 20;
+  --pengu-dim: 132 124 112;
+  --pengu-dark: 26 22 18;
 
   /* Arena grid line color (used by the scan-grid pattern on stage surfaces) */
   --pengu-grid: 124 77 255;
@@ -136,38 +162,22 @@
   --z-toast: 50;
 }
 
-/* Base body, uses the pengu palette so toggling html.dark flips the page. */
+/* Base body: arcrun-redesign canvas. Light only. */
 html, body {
-  background-color: rgb(var(--pengu-bg));
-  color: rgb(var(--pengu-dark));
-  font-family: var(--font-body);
+  background-color: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-mono);
   font-size: var(--text-body);
   line-height: var(--leading-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  transition: background-color 200ms ease, color 200ms ease;
 }
 
-/* Dark mode: swap the pengu palette only. Every surface that reads from
-   pengu-* tokens flips automatically. */
+/* Dark mode toggle is dead per arcrun-redesign §0. The class is ignored;
+   keep the rule as a no-op so any stale localStorage value doesn't shift
+   the palette. The toggle UI will be removed in the secondary-pages pass. */
 html.dark {
-  --pengu-bg: 14 10 26;          /* deep night-lavender base */
-  --pengu-bg-2: 26 21 48;
-  --pengu-card: 31 26 53;        /* raised surface */
-  --pengu-card-2: 42 35 72;
-  --pengu-blue: 157 109 255;     /* slightly brighter purple for contrast */
-  --pengu-blue-2: 180 151 255;
-  --pengu-soft: 61 47 94;
-  --pengu-text: 255 255 255;     /* unchanged: text on solid blue buttons */
-  --pengu-dim: 139 136 168;
-  --pengu-dark: 244 241 255;     /* body/text color, now light */
-
-  --pengu-grid: 157 109 255;
-  --pengu-grid-strength: 0.18;
-
-  --pengu-card-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
-  --pengu-card-shadow-soft: 0 8px 24px rgba(0, 0, 0, 0.25);
-  --pengu-card-shadow-hero: 0 18px 50px rgba(0, 0, 0, 0.45);
+  /* no overrides */
 }
 
 /* Pill label, the small uppercase tag above every major section */

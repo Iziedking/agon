@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { GeistSans } from "geist/font/sans";
-import { JetBrains_Mono, Lilita_One, Bagel_Fat_One } from "next/font/google";
+import { JetBrains_Mono, Black_Ops_One } from "next/font/google";
 import "../styles/tokens.css";
 import "./globals.css";
 import { Providers } from "@/components/Providers";
@@ -8,25 +8,19 @@ import { ErrorReporter } from "@/components/ErrorReporter";
 import { ChainGuard } from "@/components/ChainGuard";
 import { WinWatcher } from "@/components/WinWatcher";
 
+// Mono body. Every label, eyebrow, numeral, and table cell reads from this.
 const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
   variable: "--font-jetbrains-mono",
   display: "swap",
 });
 
-// Pengu-style chunky rounded display face (free stand-in for Pudgy's custom font).
-const lilita = Lilita_One({
+// Stencil display. Hard, blocky, ChainGPT-style. The product's only heading
+// face. Replaces the prior Bagel Fat One / Lilita One bubble.
+const blackOps = Black_Ops_One({
   subsets: ["latin"],
   weight: "400",
-  variable: "--font-lilita",
-  display: "swap",
-});
-
-// Puffy bubble display face for the wordmark and big headlines.
-const bagel = Bagel_Fat_One({
-  subsets: ["latin"],
-  weight: "400",
-  variable: "--font-bagel",
+  variable: "--font-stencil",
   display: "swap",
 });
 
@@ -35,22 +29,9 @@ export const metadata: Metadata = {
   description: "Projects fund USDC prize pools. AI agents compete. Winners get paid, on Arc.",
 };
 
-// Tiny inline script that runs before React hydrates so the saved theme is
-// applied to <html> before the first paint. Avoids a light flash for users
-// who picked dark mode on a previous visit.
-const themeBootstrap = `
-try {
-  var t = localStorage.getItem("arcrun:setting:theme");
-  if (t === "dark") document.documentElement.classList.add("dark");
-} catch (e) {}
-`;
-
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${GeistSans.variable} ${jetbrainsMono.variable} ${lilita.variable} ${bagel.variable}`}>
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />
-      </head>
+    <html lang="en" className={`${GeistSans.variable} ${jetbrainsMono.variable} ${blackOps.variable}`}>
       <body>
         <Providers>
           <ChainGuard />

@@ -17,7 +17,9 @@ const config: Config = {
           DEFAULT: "var(--color-border)",
           strong: "var(--color-border-strong)",
         },
-        accent: {
+        /* Legacy accent palette (dark-theme cyan/pink) — superseded by the
+           redesign `accent` block below. Renamed so the new accent wins. */
+        accentLegacy: {
           pink: "var(--color-accent-pink)",
           "pink-dim": "var(--color-accent-pink-dim)",
           cyan: "var(--color-accent-cyan)",
@@ -64,10 +66,25 @@ const config: Config = {
           dim: "rgb(var(--pengu-dim) / <alpha-value>)",
           dark: "rgb(var(--pengu-dark) / <alpha-value>)",
         },
+        /* arcrun-redesign palette */
+        canvas: { DEFAULT: "var(--canvas)", 2: "var(--canvas-2)", 3: "var(--canvas-3)" },
+        ink: { DEFAULT: "var(--ink)", 2: "var(--ink-2)", 3: "var(--ink-3)" },
+        accent: { DEFAULT: "var(--accent)", press: "var(--accent-press)", ink: "var(--accent-ink)" },
+        syn: {
+          violet: "var(--syn-violet)",
+          pink: "var(--syn-pink)",
+          gold: "var(--syn-gold)",
+          mint: "var(--syn-mint)",
+          crimson: "var(--syn-crimson)",
+        },
       },
       fontFamily: {
-        display: ["var(--font-lilita)", "system-ui", "sans-serif"],
-        bubble: ["var(--font-bagel)", "var(--font-lilita)", "system-ui", "cursive"],
+        /* Stencil display. The `display` and `bubble` names are kept as
+           aliases so existing call sites continue to compile while pages
+           transition; new code should use `font-stencil`. */
+        stencil: ["var(--font-stencil)", "Impact", "system-ui", "sans-serif"],
+        display: ["var(--font-stencil)", "Impact", "system-ui", "sans-serif"],
+        bubble: ["var(--font-stencil)", "Impact", "system-ui", "sans-serif"],
         sans: ["var(--font-body)"],
         mono: ["var(--font-mono)"],
       },

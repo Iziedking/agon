@@ -1,21 +1,54 @@
 import { AppHeader } from "@/components/pengu/AppHeader";
-import { HeroArena } from "@/components/pengu/HeroArena";
-import { PenguStat } from "@/components/pengu/PenguStat";
-import { PillButton, SectionLabel } from "@/components/pengu/atoms";
-import { Footer } from "@/components/pengu/Footer";
-import { HomeActivityStrip } from "@/components/pengu/HomeActivityStrip";
-import { TwoWaysToCompete } from "@/components/pengu/TwoWaysToCompete";
-import { Syndicates } from "@/components/pengu/Syndicates";
-import { fetchContests, type Contest } from "@/lib/contests";
+import { Footer } from "@/components/redesign/Footer";
+import {
+  ActivityLedger,
+  ActivityRow,
+  BracketedCell,
+  Robot,
+  type RobotVariant,
+  SectionHeader,
+  StatBlock,
+  TagButton,
+} from "@/components/redesign";
+import { fetchContests, formatUsdc, type Contest } from "@/lib/contests";
 
-/// The app home (the "full app" you launch from the landing). Has the navbar
-/// and the live numbers, with cards into the real surfaces.
+/// /app is the signed-in lobby. arcrun-redesign §4.2: stencil display on
+/// canvas (no white card behind the title), bracketed stat cells, ledger-
+/// style activity feed (no pastel chips), two big bracketed cells for the
+/// "campaign or challenge" choice, and four syndicate tiles with the new
+/// flat robots.
+
 export const revalidate = 30;
 
-const ENTRIES = [
-  { href: "/contests", title: "contests", body: "browse live pools and enter your agent." },
-  { href: "/live", title: "live", body: "watch a contest score and settle in real time." },
+const SYNDICATES: Array<{ variant: RobotVariant; name: string; brief: string }> = [
+  { variant: "crimson", name: "ARC CRIMSON", brief: "perp markets and pnl contests" },
+  { variant: "mint", name: "ARC CYAN", brief: "prediction and forecasting events" },
+  { variant: "gold", name: "ARC GOLD", brief: "liquidity and protocol activity" },
+  { variant: "violet", name: "ARC VIOLET", brief: "puzzle and algorithm solving" },
 ];
+
+function contestKind(c: Contest): "ok" | "violet" | "gold" | "mint" | "accent" {
+  // 0 SCOUT volume, 1 ANALYST prediction, 2 SOLVER puzzle
+  if (c.contestType === 0) return "gold";
+  if (c.contestType === 1) return "mint";
+  if (c.contestType === 2) return "violet";
+  return "accent";
+}
+
+function contestLabel(c: Contest): string {
+  if (c.contestType === 0) return "VOLUME";
+  if (c.contestType === 1) return "PREDICTION";
+  if (c.contestType === 2) return "PUZZLE";
+  return "CUSTOM";
+}
+
+function contestStatus(c: Contest): string {
+  if (c.status === 1) return "OPEN";
+  if (c.status === 2) return "SCORING";
+  if (c.status === 3) return "SETTLED";
+  if (c.status === 4) return "CANCELLED";
+  return "PENDING";
+}
 
 export default async function AppHome() {
   let contests: Contest[] = [];
@@ -24,96 +57,134 @@ export default async function AppHome() {
   } catch {
     contests = [];
   }
-  const settled = contests.filter((c) => c.status === 3).length;
   const live = contests.filter((c) => c.status === 1).length;
+  const settled = contests.filter((c) => c.status === 3).length;
   const totalPoolUsdc = contests.reduce((sum, c) => sum + Number(c.prizePool) / 1e6, 0);
+  const recent = contests.slice(0, 12);
 
   return (
-    <div className="min-h-screen text-pengu-dark">
+    <div className="min-h-screen bg-canvas text-ink">
       <AppHeader />
 
-      <section className="mx-auto max-w-[1200px] px-6 pt-12">
-        <div className="flex flex-col items-start gap-6 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-[44ch]">
-            <SectionLabel>the arena</SectionLabel>
-            <h1 className="mt-5 font-bubble text-[clamp(36px,5vw,64px)] uppercase leading-tight text-pengu-dark">
-              welcome to the arena
-            </h1>
-            <p className="mt-3 text-pengu-dark/65">
-              pick a contest, enter your agent, and let it compete for the pool. winners are paid in usdc onchain.
-            </p>
+      {/* WELCOME + LIVE NUMBERS */}
+      <section className="mx-auto max-w-[1280px] px-6 pt-16">
+        <SectionHeader
+          eyebrow="THE ARENA"
+          heading="WELCOME TO THE ARENA"
+          subDeck={
+            <>
+              pick a contest, enter your agent, let it compete for the pool. winners are paid in usdc onchain — your
+              wallet is your identity throughout.
+            </>
+          }
+          right={
+            <>
+              <TagButton variant="ghost" href="/contests">SEE LIVE CONTESTS</TagButton>
+              <TagButton href="/onboarding/welcome">START</TagButton>
+            </>
+          }
+        />
 
-            <div className="mt-7 flex flex-wrap items-center gap-4">
+        <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatBlock label="POOL FUNDED" value={`$${totalPoolUsdc.toFixed(0)}`} accent />
+          <StatBlock label="CONTESTS LIVE" value={String(live)} />
+          <StatBlock label="CONTESTS SETTLED" value={String(settled)} />
+          <StatBlock label="SYNDICATES" value="4" caption="four founding factions" />
+        </div>
+      </section>
+
+      {/* LIVE ON THE ARENA — ledger, not pastel chips */}
+      <section className="mx-auto max-w-[1280px] px-6 py-20">
+        <SectionHeader
+          eyebrow="LIVE ON THE ARENA"
+          heading="THE LEDGER"
+          subDeck={<>every open and recently settled contest, in one feed. tap any row to watch.</>}
+          right={<TagButton variant="ghost" href="/live" size="sm">VIEW ALL</TagButton>}
+        />
+        <div className="mt-10">
+          <BracketedCell pad="sm">
+            {recent.length === 0 ? (
+              <p className="px-2 py-4 font-mono text-sm text-ink-2">no contests on arc yet. check back in a moment.</p>
+            ) : (
+              <ActivityLedger>
+                {recent.map((c) => (
+                  <ActivityRow
+                    key={c.id}
+                    tone={contestKind(c)}
+                    label={`CONTEST #${c.id}`}
+                    description={`${contestLabel(c)} · ${contestStatus(c)} · ${c.entrants} entrants`}
+                    right={formatUsdc(c.prizePool)}
+                  />
+                ))}
+              </ActivityLedger>
+            )}
+          </BracketedCell>
+        </div>
+      </section>
+
+      {/* CAMPAIGN OR CHALLENGE — two big bracketed cells */}
+      <section className="mx-auto max-w-[1280px] px-6 py-20">
+        <SectionHeader
+          eyebrow="HOW TO PLAY"
+          heading="CAMPAIGN OR CHALLENGE?"
+          subDeck={<>two paths into the arena. one funded by a project, one funded by you and your peers.</>}
+        />
+        <div className="mt-10 grid gap-4 lg:grid-cols-2">
+          <BracketedCell pad="lg" hover>
+            <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-accent">■ CAMPAIGNS</div>
+            <h3 className="mt-3 font-stencil uppercase text-ink" style={{ fontSize: 28 }}>
+              PROJECT-FUNDED POOLS
+            </h3>
+            <ul className="mt-4 flex flex-col gap-2 font-mono text-sm text-ink-2">
+              <li>01 — A protocol lists a contest and funds a USDC pool.</li>
+              <li>02 — Open entry: bring an agent that fits the contest type.</li>
+              <li>03 — Top tiers split the pool when the chain settles.</li>
+            </ul>
+            <div className="mt-6">
+              <TagButton variant="ghost" href="/contests">BROWSE CAMPAIGNS</TagButton>
+            </div>
+          </BracketedCell>
+
+          <BracketedCell pad="lg" hover>
+            <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-accent">■ CHALLENGES</div>
+            <h3 className="mt-3 font-stencil uppercase text-ink" style={{ fontSize: 28 }}>
+              PEER-STAKED DUELS
+            </h3>
+            <ul className="mt-4 flex flex-col gap-2 font-mono text-sm text-ink-2">
+              <li>01 — Stake equal USDC. Up to N operators per challenge.</li>
+              <li>02 — When the window closes, the coordinator scores the field.</li>
+              <li>03 — Winner takes the pot. Underfilled? Stake refunds.</li>
+            </ul>
+            <div className="mt-6">
+              <TagButton variant="ghost" href="/challenges">BROWSE CHALLENGES</TagButton>
+            </div>
+          </BracketedCell>
+        </div>
+      </section>
+
+      {/* SYNDICATES */}
+      <section className="mx-auto max-w-[1280px] px-6 py-20">
+        <SectionHeader
+          eyebrow="SYNDICATES"
+          heading="FOUR SYNDICATES, ONE WAR"
+          subDeck={<>each side plays a different style and earns from different contests. pick with intent.</>}
+        />
+        <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {SYNDICATES.map((s) => (
+            <BracketedCell key={s.name} hover>
+              <div className="flex justify-end">
+                <Robot variant={s.variant} size={96} decorative />
+              </div>
+              <div className="mt-2 font-mono text-[12px] uppercase tracking-[0.16em] text-ink">{s.name}</div>
+              <p className="mt-2 font-mono text-sm text-ink-2">{s.brief}</p>
               <a
-                href="/onboarding/welcome"
-                className="rounded-pill bg-pengu-blue px-10 py-4 font-bubble text-xl uppercase tracking-wide text-white shadow-[0_6px_0_0_#5b34d6] transition-all duration-100 hover:translate-y-[2px] hover:shadow-[0_4px_0_0_#5b34d6] active:translate-y-[4px] active:shadow-[0_2px_0_0_#5b34d6]"
+                href="/syndicates"
+                className="mt-4 inline-block font-mono text-[11px] uppercase tracking-[0.16em] text-ink hover:text-accent"
               >
-                start
+                PICK THIS SIDE →
               </a>
-              <PillButton href="/contests" variant="ghost">
-                see live contests
-              </PillButton>
-            </div>
-          </div>
-
-          {/* compact live signal in the hero, so the page declares "things are
-              happening" before the user scrolls */}
-          <div className="grid w-full max-w-[420px] grid-cols-3 gap-3">
-            <div className="rounded-card border border-pengu-blue/15 bg-pengu-card px-4 py-3 text-center">
-              <div className="font-mono text-2xl tabular-nums text-pengu-blue">{live}</div>
-              <div className="mt-1 font-display text-[10px] uppercase tracking-wide text-pengu-dark/55">live now</div>
-            </div>
-            <div className="rounded-card border border-pengu-blue/15 bg-pengu-card px-4 py-3 text-center">
-              <div className="font-mono text-2xl tabular-nums text-pengu-dark">{settled}</div>
-              <div className="mt-1 font-display text-[10px] uppercase tracking-wide text-pengu-dark/55">settled</div>
-            </div>
-            <div className="rounded-card border border-pengu-blue/15 bg-pengu-card px-4 py-3 text-center">
-              <div className="font-mono text-2xl tabular-nums text-pengu-dark">${totalPoolUsdc.toFixed(0)}</div>
-              <div className="mt-1 font-display text-[10px] uppercase tracking-wide text-pengu-dark/55">pool funded</div>
-            </div>
-          </div>
-        </div>
-
-        {/* live arena replay: same component as landing, gives /app a heartbeat */}
-        <HeroArena />
-      </section>
-
-      <section className="mx-auto max-w-[1200px] px-6 py-12">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <PenguStat value={totalPoolUsdc} prefix="$" label="usdc prize pool funded" />
-          <PenguStat value={settled} label="contests settled" />
-          <PenguStat value={live} label="contests live now" />
-          <PenguStat value={4} label="founding syndicates" />
-        </div>
-      </section>
-
-      <HomeActivityStrip />
-
-      <TwoWaysToCompete />
-
-      <section className="mx-auto max-w-[1200px] px-6 pb-20">
-        <div className="grid gap-4 sm:grid-cols-2">
-          {ENTRIES.map((e) => (
-            <a
-              key={e.href}
-              href={e.href}
-              className="rounded-card border border-pengu-blue/15 bg-pengu-card p-8 shadow-[0_10px_30px_rgba(70,45,150,0.08)] transition-transform duration-150 hover:-translate-y-1"
-            >
-              <h3 className="font-display text-2xl uppercase text-pengu-dark">{e.title}</h3>
-              <p className="mt-2 text-pengu-dark/65">{e.body}</p>
-              <span className="mt-4 inline-block font-display text-xs uppercase tracking-wide text-pengu-blue">open</span>
-            </a>
+            </BracketedCell>
           ))}
-        </div>
-      </section>
-
-      <section id="syndicates" className="mx-auto max-w-[1200px] px-6 pb-20">
-        <SectionLabel>pick your side</SectionLabel>
-        <h2 className="mt-5 font-bubble text-[clamp(32px,5vw,64px)] uppercase leading-tight text-pengu-dark">
-          four syndicates, one war
-        </h2>
-        <div className="mt-8">
-          <Syndicates />
         </div>
       </section>
 
