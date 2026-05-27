@@ -22,11 +22,14 @@ export function generateQuestions(seed: number, count: number): Question[] {
   });
 }
 
-const SKILL = [0.0, 0.4, 0.75];
+/// Information edge per tier. t0 has no edge (pure base-rate guessing); t4 is
+/// near-perfect with a model ensemble. The 5-tier curve mirrors the on-chain
+/// upgrade prices (t0..t4 = 5 tiers, 4 upgrade steps).
+const SKILL = [0.0, 0.25, 0.5, 0.7, 0.9];
 
 function simulatePredictions(questions: Question[], tier: number, seed: number) {
   const r = seededRng(seed);
-  const skill = SKILL[Math.min(Math.max(tier, 0), 2)]!;
+  const skill = SKILL[Math.min(Math.max(tier, 0), 4)]!;
   return questions.map((q) => {
     const p = clamp01(q.baseRate * (1 - skill) + q.outcome * skill + (r() - 0.5) * 0.2);
     return { p, outcome: q.outcome };
@@ -41,11 +44,19 @@ export class AnalystRunner implements Runner {
     const questions = generateQuestions(contestId, this.questionCount);
     return entries.map((e) => {
       const predictions = simulatePredictions(questions, e.tier, contestId * 1000 + e.agentId);
+      // Surface each call so the live prediction stage can plot the agent's
+      // probability against the actual outcome instead of inferring from score.
+      const calls = predictions.map((p) => ({
+        p: Number(p.p.toFixed(3)),
+        outcome: p.outcome,
+        correct: (p.p >= 0.5 ? 1 : 0) === p.outcome,
+      }));
       return {
         agentId: e.agentId,
         operator: e.operator,
         score: analystScore(predictions),
         detail: { questions: questions.length },
+        progress: { kind: "analyst" as const, calls },
       };
     });
   }

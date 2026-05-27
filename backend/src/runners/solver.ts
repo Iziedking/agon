@@ -32,22 +32,30 @@ export function generatePuzzles(seed: number, count: number): Puzzle[] {
   return puzzles;
 }
 
-const ACCURACY = [0.55, 0.78, 0.92];
-const MS_PER_PUZZLE = [1400, 900, 500];
+/// Five-tier solver curve. Accuracy climbs and per-puzzle wall-clock shrinks
+/// so a maxed t4 agent answers fast AND right. Tier 0 still beats random.
+const ACCURACY = [0.5, 0.6, 0.7, 0.8, 0.92];
+const MS_PER_PUZZLE = [1600, 1200, 900, 600, 350];
 
 function simulateSolve(puzzles: Puzzle[], tier: number, seed: number) {
   const r = seededRng(seed);
-  const idx = Math.min(Math.max(tier, 0), 2);
+  const idx = Math.min(Math.max(tier, 0), 4);
   const acc = ACCURACY[idx]!;
   const msPer = MS_PER_PUZZLE[idx]!;
   let correct = 0;
   let elapsedMs = 0;
+  // Per-puzzle outcome so the live stage can render a grid of cells, one per
+  // puzzle, lit when the agent got that puzzle right. Deterministic for a
+  // given (contestId, agentId) so every preview frame agrees with the final.
+  const perPuzzle: boolean[] = [];
   for (const p of puzzles) {
     const got = r() < acc ? p.answer : (p.answer + 1 + pick(r, p.choices - 1)) % p.choices;
-    if (got === p.answer) correct++;
+    const isCorrect = got === p.answer;
+    if (isCorrect) correct++;
+    perPuzzle.push(isCorrect);
     elapsedMs += Math.round(msPer * (0.7 + 0.6 * r()));
   }
-  return { correct, total: puzzles.length, elapsedMs };
+  return { correct, total: puzzles.length, elapsedMs, perPuzzle };
 }
 
 export class SolverRunner implements Runner {
@@ -58,11 +66,13 @@ export class SolverRunner implements Runner {
     const puzzles = generatePuzzles(contestId, this.puzzleCount);
     return entries.map((e) => {
       const res = simulateSolve(puzzles, e.tier, contestId * 1000 + e.agentId);
+      const { perPuzzle, ...detail } = res;
       return {
         agentId: e.agentId,
         operator: e.operator,
         score: solverScore(res),
-        detail: { ...res, puzzles: puzzles.length },
+        detail: { ...detail, puzzles: puzzles.length },
+        progress: { kind: "solver" as const, correct: perPuzzle, total: puzzles.length },
       };
     });
   }

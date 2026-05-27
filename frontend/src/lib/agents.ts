@@ -20,24 +20,32 @@ export const erc20Abi = parseAbi([
 
 export const CONTEST_TYPES = ["scout", "analyst", "solver"] as const;
 export type ContestTypeName = (typeof CONTEST_TYPES)[number];
-export const MAX_TIER = 2; // v0 ships tiers 0 to 2
+export const MAX_TIER = 4; // tiers 0..4, four sequential upgrade steps
 
-/// Abilities at each tier, by contest type. Index = tier.
+/// Abilities at each tier, by contest type. Index = tier. Five entries per
+/// type, matching AgentRegistry.MAX_TIER on chain. The strings show in the
+/// workshop upgrade flow and in tier hover cards.
 export const ABILITIES: Record<ContestTypeName, string[]> = {
   scout: [
     "5 swaps per contest, $10 max each, single dex",
-    "20 swaps, $100 max each, two dexs, basic liquidity",
-    "unlimited swaps, $1000 max, all dexs, cctp bridge",
+    "20 swaps, $100 max each, two dexs",
+    "100 swaps, $250 max each, basic liquidity provisioning",
+    "500 swaps, $500 max each, cross-pool routing",
+    "2000 swaps, $1000 max, all dexs, cctp bridge",
   ],
   analyst: [
-    "random predictions with a base-rate bias",
+    "base-rate predictions, no info edge",
     "market data feeds and sharper logic",
-    "advanced prediction models",
+    "live order-book signals, multi-source feeds",
+    "calibrated models, sentiment overlay",
+    "near-perfect information edge, model ensemble",
   ],
   solver: [
     "basic puzzle attempts, low compute",
     "more puzzle types, higher compute budget",
-    "the full puzzle suite, fast solves",
+    "the full puzzle suite, mid compute",
+    "deep search, fast convergence",
+    "instant solves, top of curve",
   ],
 };
 

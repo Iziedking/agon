@@ -24,15 +24,19 @@ interface TierLimit {
   maxPerOpUsdc6: bigint;
 }
 
-/// Plan section 5.3. Per-op cap is in USDC (6 decimals).
+/// Five-tier Scout caps. Per-op cap is in USDC (6 decimals). The progression
+/// is: small starter, busier mid, sustained throughput, near-uncapped, top of
+/// curve. Settle-time gas budget scales with maxOps.
 const TIER_LIMITS: TierLimit[] = [
   { maxOps: 5, maxPerOpUsdc6: 10_000_000n }, // tier 0: <=5 ops, <=$10 each
   { maxOps: 20, maxPerOpUsdc6: 100_000_000n }, // tier 1: <=20 ops, <=$100 each
-  { maxOps: 1000, maxPerOpUsdc6: 1_000_000_000n }, // tier 2: effectively unlimited, <=$1000 each
+  { maxOps: 100, maxPerOpUsdc6: 250_000_000n }, // tier 2: <=100 ops, <=$250 each
+  { maxOps: 500, maxPerOpUsdc6: 500_000_000n }, // tier 3: <=500 ops, <=$500 each
+  { maxOps: 2000, maxPerOpUsdc6: 1_000_000_000n }, // tier 4: <=2000 ops, <=$1000 each
 ];
 
 function tierLimit(tier: number): TierLimit {
-  return TIER_LIMITS[Math.min(Math.max(tier, 0), 2)]!;
+  return TIER_LIMITS[Math.min(Math.max(tier, 0), 4)]!;
 }
 
 export function deriveHotWallet(agentId: number): Account {
@@ -124,11 +128,15 @@ export class ScoutRunner implements Runner {
         opsCount: exec.opsCount,
         seed: contestId * 1000 + e.agentId,
       });
+      // Surface the real tx hashes (most recent first) so the volume stage on
+      // the live page renders the actual onchain activity.
+      const recent = exec.txHashes.slice(-6).reverse().map((h) => h as string);
       results.push({
         agentId: e.agentId,
         operator: e.operator,
         score,
         detail: { volumeUsdc6: exec.volumeUsdc6.toString(), opsCount: exec.opsCount, hot: account.address },
+        progress: { kind: "scout" as const, opsCount: exec.opsCount, recent },
       });
     }
     return results;

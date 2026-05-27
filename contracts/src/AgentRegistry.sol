@@ -35,8 +35,10 @@ contract AgentRegistry is AccessControl, IERC721Receiver, ReentrancyGuard {
 
     // ============ Constants ============
 
-    /// @notice Highest tier available in v0. Tier 3–4 land in v1.
-    uint16 public constant MAX_TIER = 2;
+    /// @notice Highest tier available. The progression is sequential 0..4 per
+    ///         contest type, so an agent has 5 reachable tiers (0 is the
+    ///         claim-and-play baseline; 4 is the maxed top-of-curve).
+    uint16 public constant MAX_TIER = 4;
 
     /// @notice Reputation values are stored at 1e6 precision.
     uint256 public constant REPUTATION_SCALE = 1e6;
@@ -134,20 +136,38 @@ contract AgentRegistry is AccessControl, IERC721Receiver, ReentrancyGuard {
     }
 
     function _seedUpgradePrices() private {
-        // USDC has 6 decimals on Arc. Plan §4.2 v0 ships Tier 0–2 only.
-        upgradePrice[ContestType.SCOUT][0] = 10_000_000;
-        upgradePrice[ContestType.SCOUT][1] = 50_000_000;
-        upgradePrice[ContestType.ANALYST][0] = 8_000_000;
-        upgradePrice[ContestType.ANALYST][1] = 40_000_000;
-        upgradePrice[ContestType.SOLVER][0] = 12_000_000;
-        upgradePrice[ContestType.SOLVER][1] = 60_000_000;
+        // USDC has 6 decimals on Arc. Five tiers means four upgrade steps per
+        // contest type (0->1, 1->2, 2->3, 3->4). Curve steepens so maxing an
+        // agent is a real spend; t3->t4 is the gatekeeper for the top of the
+        // leaderboard.
+        // SCOUT progression
+        upgradePrice[ContestType.SCOUT][0] = 10_000_000;     // 10 USDC
+        upgradePrice[ContestType.SCOUT][1] = 50_000_000;     // 50 USDC
+        upgradePrice[ContestType.SCOUT][2] = 200_000_000;    // 200 USDC
+        upgradePrice[ContestType.SCOUT][3] = 500_000_000;    // 500 USDC
+        // ANALYST progression
+        upgradePrice[ContestType.ANALYST][0] = 8_000_000;    // 8 USDC
+        upgradePrice[ContestType.ANALYST][1] = 40_000_000;   // 40 USDC
+        upgradePrice[ContestType.ANALYST][2] = 160_000_000;  // 160 USDC
+        upgradePrice[ContestType.ANALYST][3] = 400_000_000;  // 400 USDC
+        // SOLVER progression
+        upgradePrice[ContestType.SOLVER][0] = 12_000_000;    // 12 USDC
+        upgradePrice[ContestType.SOLVER][1] = 60_000_000;    // 60 USDC
+        upgradePrice[ContestType.SOLVER][2] = 240_000_000;   // 240 USDC
+        upgradePrice[ContestType.SOLVER][3] = 600_000_000;   // 600 USDC
 
         emit UpgradePriceSet(ContestType.SCOUT, 0, 10_000_000);
         emit UpgradePriceSet(ContestType.SCOUT, 1, 50_000_000);
+        emit UpgradePriceSet(ContestType.SCOUT, 2, 200_000_000);
+        emit UpgradePriceSet(ContestType.SCOUT, 3, 500_000_000);
         emit UpgradePriceSet(ContestType.ANALYST, 0, 8_000_000);
         emit UpgradePriceSet(ContestType.ANALYST, 1, 40_000_000);
+        emit UpgradePriceSet(ContestType.ANALYST, 2, 160_000_000);
+        emit UpgradePriceSet(ContestType.ANALYST, 3, 400_000_000);
         emit UpgradePriceSet(ContestType.SOLVER, 0, 12_000_000);
         emit UpgradePriceSet(ContestType.SOLVER, 1, 60_000_000);
+        emit UpgradePriceSet(ContestType.SOLVER, 2, 240_000_000);
+        emit UpgradePriceSet(ContestType.SOLVER, 3, 600_000_000);
     }
 
     // ============ Player paths ============
