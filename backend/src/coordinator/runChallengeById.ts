@@ -13,6 +13,12 @@ import { fundHotWallets } from "./contestOps.js";
 import { merkleRoot, payoutLeaf } from "./merkle.js";
 import { computePayouts } from "./payouts.js";
 import { applyTraitMultipliers, awardPlacementTraits, fetchAgentMultipliers } from "./traits.js";
+import {
+  applyTrainingMultipliers,
+  clampCombinedMultiplier,
+  fetchTrainingMultipliers,
+  flushTrainingQueue,
+} from "./training.js";
 
 /// Peer-challenge counterpart to runContestById. Locks a full or expired
 /// challenge, scores its entrants with the runner matching the challenge kind,
@@ -221,9 +227,15 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
       // shuffles, the final scoring rolls once for the authoritative winner.
       const factor = kindRandomness(Number(ch.kind));
 
-      // Trait multipliers are stable across the locked field, so fetch once
-      // and reuse for every preview frame and the authoritative scoring.
-      const traitMult = await fetchAgentMultipliers(field.map((e) => e.agentId));
+      // Trait + training multipliers are stable across the locked field, so
+      // fetch once and reuse for every preview frame and the authoritative
+      // scoring. Combined multiplier capped at 3.5x.
+      const ids = field.map((e) => e.agentId);
+      await flushTrainingQueue().catch(() => 0);
+      const [traitMult, trainMult] = await Promise.all([
+        fetchAgentMultipliers(ids),
+        fetchTrainingMultipliers(ids),
+      ]);
 
       // Stream a preview race so the challenge detail board animates before
       // the winner root posts. Only on the first sweep that sees this
@@ -239,15 +251,21 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
         );
         while (Date.now() < previewUntil) {
           const preview = await previewScores(cType, challengeId, field);
-          const boosted = applyTraitMultipliers(preview, traitMult);
-          broadcast({ type: "challenge_standings", challengeId, entries: standings(applyRandomness(boosted, factor)) });
+          const baselines = new Map(preview.map((r) => [r.agentId, r.score] as const));
+          const withTraits = applyTraitMultipliers(preview, traitMult);
+          const withTraining = applyTrainingMultipliers(withTraits, trainMult);
+          const clamped = clampCombinedMultiplier(withTraining, baselines);
+          broadcast({ type: "challenge_standings", challengeId, entries: standings(applyRandomness(clamped, factor)) });
           await sleep(2500);
         }
       }
 
       const baseResults = await scoreField(cType, challengeId, field);
+      const baselines = new Map(baseResults.map((r) => [r.agentId, r.score] as const));
       const withTraits = applyTraitMultipliers(baseResults, traitMult);
-      const results = applyRandomness(withTraits, factor);
+      const withTraining = applyTrainingMultipliers(withTraits, trainMult);
+      const clamped = clampCombinedMultiplier(withTraining, baselines);
+      const results = applyRandomness(clamped, factor);
 
       // Final standings frame with the authoritative progress so the live
       // stage gets the real per-agent state (Scout tx hashes especially)

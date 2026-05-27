@@ -188,3 +188,40 @@ create table if not exists mystery_pool_daily (
   day      date primary key,
   claimed  bigint not null default 0
 );
+
+-- Per-agent skill training. Six stats (POWER, PRECISION, SPEED, ENDURANCE,
+-- LUCK, FOCUS) each 0..20. Each level adds 1% to the relevant scoring
+-- component in the coordinator pipeline. Funded by Cycles, time-gated.
+create table if not exists agent_stats (
+  agent_id bigint not null,
+  stat     text not null,
+  level    int not null default 0,
+  primary key (agent_id, stat)
+);
+create index if not exists agent_stats_agent_idx on agent_stats(agent_id);
+
+-- Active training slot. One row per agent at a time. When `completes_at` is
+-- in the past, the next read promotes the row: bumps agent_stats.level and
+-- writes a row to training_log, then deletes from this table.
+create table if not exists training_queue (
+  agent_id     bigint primary key,
+  stat         text not null,
+  from_level   int not null,
+  to_level     int not null,
+  cycles_spent bigint not null,
+  started_at   timestamptz not null default now(),
+  completes_at timestamptz not null
+);
+
+-- Append-only log of every completed training step. Used for history on the
+-- workshop card and for the future training_log feed on the dashboard.
+create table if not exists training_log (
+  id           bigserial primary key,
+  agent_id     bigint not null,
+  stat         text not null,
+  from_level   int not null,
+  to_level     int not null,
+  cycles_spent bigint not null,
+  completed_at timestamptz not null default now()
+);
+create index if not exists training_log_agent_idx on training_log(agent_id, completed_at desc);

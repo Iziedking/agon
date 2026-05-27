@@ -23,6 +23,14 @@ import {
   traitById,
   type Trait,
 } from "./traits.js";
+import {
+  STATS,
+  MAX_STAT_LEVEL,
+  cyclesCost,
+  secondsCost,
+  flushTrainingQueue,
+  type Stat,
+} from "../coordinator/training.js";
 
 const SESSION_MAX_AGE = 7 * 24 * 60 * 60; // 7 days, matches issueToken expiry
 
@@ -378,6 +386,206 @@ app.get("/agents/skins", async (c) => {
     if (r.skin) skins[r.id] = r.skin;
   }
   return c.json({ skins });
+});
+
+// ----- Agent training -----
+//
+// Six numeric stats per agent, each 0..20, each level adds 1% to scoring
+// through the coordinator's training multiplier pipeline. Funded by Cycles,
+// time-gated. One active training slot per agent. See coordinator/training.ts
+// for the multiplier math and combined cap.
+
+async function ensureAgentOwnership(operator: string, agentId: number): Promise<string | null> {
+  const { rows } = await query<{ owner: string }>("select owner from agents where id = $1", [agentId]);
+  const owner = rows[0]?.owner;
+  if (!owner) return "agent not found";
+  if (owner.toLowerCase() !== operator.toLowerCase()) return "you do not own this agent";
+  return null;
+}
+
+async function readAgentStats(agentId: number): Promise<Record<Stat, number>> {
+  const { rows } = await query<{ stat: string; level: number }>(
+    "select stat, level from agent_stats where agent_id = $1",
+    [agentId],
+  );
+  const out: Record<string, number> = {};
+  for (const s of STATS) out[s] = 0;
+  for (const r of rows) {
+    if (STATS.includes(r.stat as Stat)) out[r.stat] = r.level;
+  }
+  return out as Record<Stat, number>;
+}
+
+/// Read the agent's current training state: all six stat levels, plus the
+/// active queue row if any. Lazy-promotes any expired queue row first so
+/// reads always reflect the truth.
+app.get("/agents/:id/training", async (c) => {
+  const agentId = Number(c.req.param("id"));
+  if (!Number.isFinite(agentId)) return c.json({ error: "invalid agent id" }, 400);
+
+  await flushTrainingQueue(agentId).catch(() => 0);
+
+  const stats = await readAgentStats(agentId);
+
+  const queue = await query<{
+    stat: string;
+    from_level: number;
+    to_level: number;
+    cycles_spent: string;
+    started_at: Date;
+    completes_at: Date;
+  }>(
+    `select stat, from_level, to_level, cycles_spent::text, started_at, completes_at
+       from training_queue where agent_id = $1`,
+    [agentId],
+  );
+
+  const active = queue.rows[0]
+    ? {
+        stat: queue.rows[0].stat,
+        fromLevel: queue.rows[0].from_level,
+        toLevel: queue.rows[0].to_level,
+        cyclesSpent: queue.rows[0].cycles_spent,
+        startedAt: queue.rows[0].started_at.toISOString(),
+        completesAt: queue.rows[0].completes_at.toISOString(),
+      }
+    : null;
+
+  return c.json({ id: agentId, stats, active, maxLevel: MAX_STAT_LEVEL });
+});
+
+/// Start training a stat. Atomically: validate, debit Cycles from the
+/// operator's row (refused if balance is short), insert into the queue.
+app.post("/agents/:id/training/start", requireAuth, async (c) => {
+  const operator = c.get("address");
+  const agentId = Number(c.req.param("id"));
+  if (!Number.isFinite(agentId)) return c.json({ error: "invalid agent id" }, 400);
+
+  const { stat } = await c.req.json<{ stat?: string }>();
+  if (!stat || !STATS.includes(stat as Stat)) {
+    return c.json({ error: `stat must be one of: ${STATS.join(", ")}` }, 400);
+  }
+
+  const ownerErr = await ensureAgentOwnership(operator, agentId);
+  if (ownerErr) return c.json({ error: ownerErr }, ownerErr === "agent not found" ? 404 : 403);
+
+  // Promote any expired queue row first so the next checks are consistent.
+  await flushTrainingQueue(agentId).catch(() => 0);
+
+  // Reject if already training.
+  const existing = await query("select 1 from training_queue where agent_id = $1", [agentId]);
+  if (existing.rows.length > 0) {
+    return c.json({ error: "agent is already training; cancel or finish-early first" }, 409);
+  }
+
+  const stats = await readAgentStats(agentId);
+  const fromLevel = stats[stat as Stat];
+  if (fromLevel >= MAX_STAT_LEVEL) {
+    return c.json({ error: `${stat} is already at max level (${MAX_STAT_LEVEL})` }, 400);
+  }
+
+  const cost = cyclesCost(fromLevel);
+  const secs = secondsCost(fromLevel);
+
+  // Atomic conditional decrement of Cycles. Refused if balance < cost.
+  const debit = await query<{ cycles: string }>(
+    `update operators
+       set cycles = cycles - $1
+       where address = $2 and cycles >= $1
+       returning cycles::text`,
+    [cost.toString(), operator],
+  );
+  if (debit.rows.length === 0) {
+    return c.json({ error: `not enough cycles (need ${cost.toString()})` }, 402);
+  }
+
+  await query(
+    `insert into training_queue (agent_id, stat, from_level, to_level, cycles_spent, completes_at)
+       values ($1, $2, $3, $4, $5, now() + ($6 || ' seconds')::interval)`,
+    [agentId, stat, fromLevel, fromLevel + 1, cost.toString(), secs],
+  );
+
+  return c.json({
+    id: agentId,
+    stat,
+    fromLevel,
+    toLevel: fromLevel + 1,
+    cyclesSpent: cost.toString(),
+    cyclesBalance: debit.rows[0]!.cycles,
+    secondsTotal: secs,
+  });
+});
+
+/// Cancel an active training. Refunds 50% of Cycles (rounded down).
+app.post("/agents/:id/training/cancel", requireAuth, async (c) => {
+  const operator = c.get("address");
+  const agentId = Number(c.req.param("id"));
+  if (!Number.isFinite(agentId)) return c.json({ error: "invalid agent id" }, 400);
+
+  const ownerErr = await ensureAgentOwnership(operator, agentId);
+  if (ownerErr) return c.json({ error: ownerErr }, ownerErr === "agent not found" ? 404 : 403);
+
+  const { rows } = await query<{ cycles_spent: string }>(
+    "delete from training_queue where agent_id = $1 returning cycles_spent::text",
+    [agentId],
+  );
+  if (rows.length === 0) return c.json({ error: "no active training to cancel" }, 404);
+
+  const spent = BigInt(rows[0]!.cycles_spent);
+  const refund = spent / 2n;
+  await query("update operators set cycles = cycles + $1 where address = $2", [refund.toString(), operator]);
+  return c.json({ id: agentId, refunded: refund.toString() });
+});
+
+/// Finish the active training immediately. Charges 2x the remaining time
+/// fraction of the original cost.
+app.post("/agents/:id/training/finish-early", requireAuth, async (c) => {
+  const operator = c.get("address");
+  const agentId = Number(c.req.param("id"));
+  if (!Number.isFinite(agentId)) return c.json({ error: "invalid agent id" }, 400);
+
+  const ownerErr = await ensureAgentOwnership(operator, agentId);
+  if (ownerErr) return c.json({ error: ownerErr }, ownerErr === "agent not found" ? 404 : 403);
+
+  const { rows } = await query<{
+    stat: string;
+    from_level: number;
+    to_level: number;
+    cycles_spent: string;
+    started_at: Date;
+    completes_at: Date;
+  }>(
+    `select stat, from_level, to_level, cycles_spent::text, started_at, completes_at
+       from training_queue where agent_id = $1`,
+    [agentId],
+  );
+  if (rows.length === 0) return c.json({ error: "no active training to finish" }, 404);
+  const row = rows[0]!;
+
+  const now = Date.now();
+  const started = row.started_at.getTime();
+  const ends = row.completes_at.getTime();
+  const remainingFrac = Math.max(0, Math.min(1, (ends - now) / Math.max(1, ends - started)));
+  const original = BigInt(row.cycles_spent);
+  // 2x the un-served fraction. Round up so we never charge less than 1.
+  const surchargeNum = original * BigInt(Math.ceil(remainingFrac * 200));
+  const surcharge = surchargeNum / 100n;
+
+  if (surcharge > 0n) {
+    const debit = await query<{ cycles: string }>(
+      `update operators set cycles = cycles - $1 where address = $2 and cycles >= $1 returning cycles::text`,
+      [surcharge.toString(), operator],
+    );
+    if (debit.rows.length === 0) {
+      return c.json({ error: `not enough cycles for early finish (need ${surcharge.toString()})` }, 402);
+    }
+  }
+
+  // Force completes_at into the past then flush.
+  await query("update training_queue set completes_at = now() - interval '1 second' where agent_id = $1", [agentId]);
+  await flushTrainingQueue(agentId);
+
+  return c.json({ id: agentId, surcharge: surcharge.toString(), newLevel: row.to_level, stat: row.stat });
 });
 
 /// Bulk name lookup for surfaces that only know agent ids (live standings,

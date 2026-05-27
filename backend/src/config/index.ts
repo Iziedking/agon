@@ -30,6 +30,12 @@ const envSchema = z.object({
   DISCORD_CLIENT_SECRET: z.string().optional(),
   DISCORD_CALLBACK_URL: z.string().optional(),
 
+  // Agent training. Cost to go from level N to N+1 is (N+1) × 50 Cycles and
+  // (N+1) × this many real seconds. Default 1800 = 30 minutes per level base
+  // (so level 5 takes 2.5h). Set to 30 in the demo environment so a judge
+  // can watch a training cycle finish during the walkthrough.
+  TRAINING_BASE_SECONDS_PER_LEVEL: z.coerce.number().int().positive().default(1800),
+
   // Coordinator service
   COORDINATOR_PRIVATE_KEY: z.string().optional(),
   WS_PORT: z.coerce.number().int().positive().default(8788),
@@ -147,6 +153,9 @@ export const config = {
       clientSecret: env.DISCORD_CLIENT_SECRET,
       callbackUrl: env.DISCORD_CALLBACK_URL,
     },
+  },
+  training: {
+    baseSecondsPerLevel: env.TRAINING_BASE_SECONDS_PER_LEVEL,
   },
   coordinator: {
     privateKey: normalizePrivateKey(env.COORDINATOR_PRIVATE_KEY),

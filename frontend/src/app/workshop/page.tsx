@@ -12,6 +12,7 @@ import {
   StatBlock,
   TagButton,
 } from "@/components/redesign";
+import { TrainingPanel } from "@/components/redesign/TrainingPanel";
 import { AgentAvatar } from "@/components/pengu/AgentAvatar";
 import { AgentTraits } from "@/components/pengu/AgentTraits";
 import { ClaimAgentButton } from "@/components/pengu/ClaimAgentButton";
@@ -174,6 +175,22 @@ export default function WorkshopPage() {
             </div>
           </div>
         )}
+
+        {/* Training panel: six stats per agent. Full-width below the grid
+            so the six bars have horizontal room. Owner-only — read by
+            the auth API which gates writes by SIWE ownership. */}
+        {active ? (
+          <div className="mt-10">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
+                <span aria-hidden className="text-accent">■</span> TRAINING ·{" "}
+                <span className="text-ink-3">{agentDisplayName(active)}</span>
+              </span>
+              <span className="font-mono text-[11px] text-ink-3">EACH LEVEL +1% TO SCORE</span>
+            </div>
+            <TrainingPanel agentId={active.id} />
+          </div>
+        ) : null}
       </section>
 
       <Footer />

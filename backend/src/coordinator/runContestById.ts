@@ -14,6 +14,12 @@ import { applyReputation, creditPoints, postValidatorFeedback, qualifiedField } 
 import { merkleRoot, payoutLeaf } from "./merkle.js";
 import { computePayouts } from "./payouts.js";
 import { applyTraitMultipliers, awardPlacementTraits, fetchAgentMultipliers } from "./traits.js";
+import {
+  applyTrainingMultipliers,
+  clampCombinedMultiplier,
+  fetchTrainingMultipliers,
+  flushTrainingQueue,
+} from "./training.js";
 
 /// Step 3 and 4 of the multi-user loop: take a real, open contest, assemble the
 /// field of every operator who entered (from the indexer's entries table, with
@@ -114,13 +120,23 @@ export async function runContestById(contestId: number, broadcast: (message: unk
   console.log(`running contest ${contestId} (type ${cType}); entries close at ${new Date(endsAtMs).toISOString()}`);
 
   // Stream standings of the real field while the entry window is open. Each
-  // frame applies trait multipliers so the live race visibly reflects the
-  // traits each entrant brings to the table.
+  // frame applies trait + training multipliers so the live race visibly
+  // reflects everything the agent brings to the table. Combined multiplier
+  // is capped at 3.5x (MAX_COMBINED_MULTIPLIER).
   while (Date.now() < endsAtMs) {
     const field = await fetchField(contestId, cType);
+    const ids = field.map((e) => e.agentId);
+    // Promote any expired training queue rows before reading multipliers.
+    await flushTrainingQueue().catch(() => 0);
     const preview = field.length > 0 ? await previewScores(cType, contestId, field) : [];
-    const mult = await fetchAgentMultipliers(field.map((e) => e.agentId));
-    const boosted = applyTraitMultipliers(preview, mult);
+    const baselines = new Map(preview.map((r) => [r.agentId, r.score] as const));
+    const [traitMult, trainMult] = await Promise.all([
+      fetchAgentMultipliers(ids),
+      fetchTrainingMultipliers(ids),
+    ]);
+    const withTraits = applyTraitMultipliers(preview, traitMult);
+    const withTraining = applyTrainingMultipliers(withTraits, trainMult);
+    const boosted = clampCombinedMultiplier(withTraining, baselines);
     broadcast({ type: "standings", contestId, endsAt: endsAtMs, entries: standings(boosted) });
     await sleep(2500);
   }
@@ -143,10 +159,19 @@ export async function runContestById(contestId: number, broadcast: (message: unk
   }
 
   const baseResults = await finalScores(cType, contestId, field);
-  // Authoritative scoring also picks up trait multipliers so the on-chain
-  // payout reflects the same boosts viewers saw on the live race.
-  const traitMult = await fetchAgentMultipliers(field.map((e) => e.agentId));
-  const results = applyTraitMultipliers(baseResults, traitMult);
+  // Authoritative scoring picks up trait + training multipliers so the
+  // on-chain payout reflects the same boosts viewers saw on the live race.
+  // Combined multiplier capped at 3.5x.
+  await flushTrainingQueue().catch(() => 0);
+  const ids = field.map((e) => e.agentId);
+  const baselines = new Map(baseResults.map((r) => [r.agentId, r.score] as const));
+  const [traitMult, trainMult] = await Promise.all([
+    fetchAgentMultipliers(ids),
+    fetchTrainingMultipliers(ids),
+  ]);
+  const withTraits = applyTraitMultipliers(baseResults, traitMult);
+  const withTraining = applyTrainingMultipliers(withTraits, trainMult);
+  const results = clampCombinedMultiplier(withTraining, baselines);
 
   // One final standings frame with the authoritative progress, so Scout's real
   // tx hashes land on the live stage just before the settled banner takes
