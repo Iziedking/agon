@@ -183,7 +183,7 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
     <AnimatePresence>
       {open && (
         <motion.div
-          className="fixed inset-0 z-modal flex items-start justify-center overflow-y-auto px-4 pb-10 pt-16 sm:pt-24"
+          className="fixed inset-0 z-modal overflow-y-auto"
           style={{ backgroundColor: "rgba(27,17,64,0.55)" }}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -191,8 +191,9 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
           transition={{ duration: reduce ? 0 : 0.2 }}
           onClick={onClose}
         >
+          <div className="flex min-h-full items-center justify-center px-4 py-12 sm:py-16" onClick={onClose}>
           <motion.div
-            className="relative w-full max-w-[420px] rounded-[28px] border-2 border-pengu-dark/5 bg-pengu-card p-8 text-center shadow-[0_30px_80px_rgba(27,17,64,0.35)]"
+            className="relative my-auto w-full max-w-[420px] rounded-[28px] border-2 border-pengu-dark/5 bg-pengu-card p-8 text-center shadow-[0_30px_80px_rgba(27,17,64,0.35)]"
             initial={{ opacity: 0, y: 18, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 12, scale: 0.98 }}
@@ -297,6 +298,7 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
 
             {error ? <p className="mt-4 font-mono text-xs text-[#e0466e]">{error}</p> : null}
           </motion.div>
+          </div>
         </motion.div>
       )}
     </AnimatePresence>

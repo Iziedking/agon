@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { maxUint256 } from "viem";
 import { useAccount, useWriteContract } from "wagmi";
 import { CONTRACTS, USDC, publicClient } from "@/lib/arc";
@@ -21,8 +20,12 @@ import {
 import { friendlyError } from "@/lib/errors";
 import { reportEvent } from "@/lib/report";
 
-/// Upgrade modal: the three contest types side by side with cost and the next
-/// ability. Approve USDC once, then each upgrade is a single transaction.
+/// Upgrade modal reskinned to arcrun-redesign. Three flat ink-on-canvas
+/// columns inside a bracketed shell, stencil headings, mono tier readouts,
+/// flat pink tag CTA. No rounded pills, no shadows.
+
+const NOTCH = "polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%)";
+
 export function UpgradeFlow({
   open,
   onClose,
@@ -34,7 +37,6 @@ export function UpgradeFlow({
   agent: AgentState;
   onUpgraded: () => Promise<void> | void;
 }) {
-  const reduce = useReducedMotion();
   const { address } = useAccount();
   const { writeContractAsync } = useWriteContract();
   const [prices, setPrices] = useState<Record<ContestTypeName, bigint | null>>({ scout: null, analyst: null, solver: null });
@@ -57,9 +59,7 @@ export function UpgradeFlow({
       }
       if (!cancelled) setPrices(next);
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [open, agent]);
 
   async function doUpgrade(t: ContestTypeName) {
@@ -107,70 +107,105 @@ export function UpgradeFlow({
     }
   }
 
+  if (!open) return null;
+
   return (
-    <AnimatePresence>
-      {open && (
-        <motion.div
-          className="fixed inset-0 z-modal flex items-center justify-center p-4"
-          style={{ backgroundColor: "rgba(27,17,64,0.55)" }}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: reduce ? 0 : 0.2 }}
-          onClick={onClose}
+    <div
+      className="fixed inset-0 z-modal overflow-y-auto"
+      style={{ backgroundColor: "rgba(27,17,18,0.55)" }}
+      onClick={onClose}
+    >
+      <div className="flex min-h-full items-center justify-center px-4 py-12 sm:py-16">
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="relative my-auto w-full max-w-[820px] border border-ink bg-canvas p-6"
         >
-          <motion.div
-            className="relative w-full max-w-[760px] rounded-[28px] border-2 border-pengu-dark/5 bg-pengu-card p-8 shadow-[0_30px_80px_rgba(27,17,64,0.35)]"
-            initial={{ opacity: 0, y: 18, scale: 0.96 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 12, scale: 0.98 }}
-            transition={{ duration: reduce ? 0 : 0.28, ease: [0.16, 1, 0.3, 1] }}
-            onClick={(e) => e.stopPropagation()}
+          <Bracket pos="tl" /><Bracket pos="tr" /><Bracket pos="bl" /><Bracket pos="br" />
+
+          <button
+            onClick={onClose}
+            aria-label="close"
+            className="absolute right-4 top-4 font-mono text-base text-ink-3 hover:text-ink"
           >
-            <button onClick={onClose} aria-label="close" className="absolute right-5 top-5 text-xl leading-none text-pengu-dark/30 hover:text-pengu-dark">
-              ✕
-            </button>
-            <h2 className="font-bubble text-3xl uppercase leading-none text-pengu-dark">upgrade your agent</h2>
-            <p className="mt-2 text-sm text-pengu-dark/65">
-              pay usdc to raise a tier. you approve usdc once, then each upgrade is a single transaction.
-            </p>
+            ✕
+          </button>
 
-            <div className="mt-6 grid gap-4 sm:grid-cols-3">
-              {CONTEST_TYPES.map((t) => {
-                const cur = tierOf(agent, t);
-                const maxed = cur >= MAX_TIER;
-                const price = prices[t];
-                return (
-                  <div key={t} className="rounded-card border border-pengu-blue/15 bg-pengu-card p-5 shadow-[0_8px_24px_rgba(70,45,150,0.06)]">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bubble text-lg uppercase text-pengu-dark">{t}</span>
-                      <span className="rounded-pill bg-pengu-blue/10 px-2.5 py-1 font-mono text-xs text-pengu-blue">tier {cur}</span>
-                    </div>
-                    {maxed ? (
-                      <p className="mt-4 text-sm text-pengu-dark/55">maxed for v0. {ABILITIES[t][cur]}.</p>
-                    ) : (
-                      <>
-                        <p className="mt-3 font-display text-[11px] uppercase tracking-wide text-pengu-dark/40">next, tier {cur + 1}</p>
-                        <p className="mt-1 text-sm text-pengu-dark/70">{ABILITIES[t][cur + 1]}</p>
-                        <div className="mt-4 font-mono text-lg text-pengu-blue">{price !== null ? usdc(price) : "…"}</div>
-                        <button
-                          onClick={() => doUpgrade(t)}
-                          disabled={busy !== null}
-                          className="mt-4 w-full rounded-pill bg-pengu-blue px-5 py-3 font-display text-sm uppercase tracking-wide text-white shadow-[0_4px_0_0_#5b34d6] transition-all duration-100 hover:translate-y-[2px] hover:shadow-[0_2px_0_0_#5b34d6] active:translate-y-[3px] disabled:opacity-60"
-                        >
-                          {busy === t ? "upgrading…" : `upgrade to tier ${cur + 1}`}
-                        </button>
-                      </>
-                    )}
+          <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
+            <span aria-hidden className="text-accent">■</span> UPGRADE
+          </div>
+          <h2
+            className="mt-3 font-stencil uppercase text-ink"
+            style={{ fontSize: 28, lineHeight: 1, letterSpacing: "-0.01em" }}
+          >
+            UPGRADE YOUR AGENT
+          </h2>
+          <p className="mt-3 font-mono text-sm leading-[1.55] text-ink-2">
+            pay USDC to raise a tier. you approve USDC once, then each upgrade is a single transaction.
+          </p>
+
+          <div className="mt-6 grid gap-4 sm:grid-cols-3">
+            {CONTEST_TYPES.map((t) => {
+              const cur = tierOf(agent, t);
+              const maxed = cur >= MAX_TIER;
+              const price = prices[t];
+              return (
+                <div key={t} className="relative border border-[color:var(--hairline-strong)] bg-canvas p-5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-stencil text-lg uppercase text-ink" style={{ letterSpacing: "-0.01em" }}>
+                      {t.toUpperCase()}
+                    </span>
+                    <span className="border border-ink-3 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink">
+                      TIER {cur}
+                    </span>
                   </div>
-                );
-              })}
-            </div>
+                  {maxed ? (
+                    <p className="mt-4 font-mono text-sm text-ink-2">
+                      MAXED. {ABILITIES[t][cur]}
+                    </p>
+                  ) : (
+                    <>
+                      <div className="mt-4 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">
+                        NEXT, TIER {cur + 1}
+                      </div>
+                      <p className="mt-2 font-mono text-sm leading-[1.55] text-ink-2">{ABILITIES[t][cur + 1]}</p>
+                      <div className="mt-4 font-stencil text-accent" style={{ fontSize: 24, lineHeight: 1 }}>
+                        {price !== null ? usdc(price) : "…"}
+                      </div>
+                      <button
+                        onClick={() => doUpgrade(t)}
+                        disabled={busy !== null}
+                        className="mt-4 inline-flex w-full items-center justify-center gap-2 bg-accent px-4 py-2.5 font-mono text-[12px] uppercase tracking-[0.12em] text-accent-ink hover:bg-accent-press disabled:opacity-60"
+                        style={{ clipPath: NOTCH }}
+                      >
+                        {busy === t ? "UPGRADING…" : `UPGRADE TO TIER ${cur + 1}`} <span aria-hidden>→</span>
+                      </button>
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
 
-            {error ? <p className="mt-4 font-mono text-xs text-[#e0466e]">{error}</p> : null}
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+          {error ? <p className="mt-4 font-mono text-xs text-[color:var(--err)]">{error}</p> : null}
+        </div>
+      </div>
+    </div>
   );
+}
+
+function Bracket({ pos }: { pos: "tl" | "tr" | "bl" | "br" }) {
+  const base = {
+    position: "absolute" as const,
+    width: 14,
+    height: 14,
+    pointerEvents: "none" as const,
+  };
+  const ink = "var(--ink)";
+  const styles = {
+    tl: { ...base, top: -1, left: -1, borderTop: `1.5px solid ${ink}`, borderLeft: `1.5px solid ${ink}` },
+    tr: { ...base, top: -1, right: -1, borderTop: `1.5px solid ${ink}`, borderRight: `1.5px solid ${ink}` },
+    bl: { ...base, bottom: -1, left: -1, borderBottom: `1.5px solid ${ink}`, borderLeft: `1.5px solid ${ink}` },
+    br: { ...base, bottom: -1, right: -1, borderBottom: `1.5px solid ${ink}`, borderRight: `1.5px solid ${ink}` },
+  };
+  return <span aria-hidden style={styles[pos]} />;
 }

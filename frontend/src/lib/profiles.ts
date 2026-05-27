@@ -116,7 +116,10 @@ export async function saveAgentName(
       body: JSON.stringify({ name }),
     });
     const data = (await res.json().catch(() => ({}))) as { nickname?: string | null; error?: string };
-    if (!res.ok) return { ok: false, error: data.error ?? "could not save the name" };
+    if (!res.ok) {
+      if (res.status === 401) return { ok: false, error: "sign in first — open the login modal" };
+      return { ok: false, error: data.error ?? "could not save the name" };
+    }
     return { ok: true, nickname: data.nickname ?? null };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "network error" };
@@ -138,7 +141,10 @@ export async function saveAgentSkin(
       body: JSON.stringify({ image: dataUrl }),
     });
     const data = (await res.json().catch(() => ({}))) as { error?: string };
-    if (!res.ok) return { ok: false, error: data.error ?? "could not save the skin" };
+    if (!res.ok) {
+      if (res.status === 401) return { ok: false, error: "sign in first — open the login modal" };
+      return { ok: false, error: data.error ?? "could not save the skin" };
+    }
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "network error" };
@@ -153,6 +159,7 @@ export async function clearAgentSkin(agentId: number): Promise<{ ok: true } | { 
     });
     if (!res.ok) {
       const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (res.status === 401) return { ok: false, error: "sign in first — open the login modal" };
       return { ok: false, error: data.error ?? "could not clear the skin" };
     }
     return { ok: true };
