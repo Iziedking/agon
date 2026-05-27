@@ -120,51 +120,61 @@ export default function OperatorPage() {
           <p className="font-mono text-sm text-ink-2">no agents claimed yet.</p>
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {agents.map((a) => (
-              <AgentCustomizeCard key={a.id} agent={a} isMe={isMe} />
-            ))}
+            {agents.map((a) =>
+              isMe ? (
+                <AgentCustomizeCard key={a.id} agent={a} isMe />
+              ) : (
+                <PublicAgentCard key={a.id} agent={a} />
+              ),
+            )}
           </div>
         )}
       </section>
 
-      {/* SOCIALS */}
-      <section className="mx-auto max-w-[1080px] px-6 pt-12">
-        <div className="mb-4 font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
-          <span aria-hidden className="text-accent">■</span> SOCIALS
-        </div>
-        <BracketedCell pad="sm">
-          <div className="flex flex-col">
-            {/* X */}
-            <SocialRow
-              label="X"
-              handle={profile !== "loading" && profile?.xHandle ? `@${profile.xHandle}` : null}
-              hint="oauth2"
-              isMe={isMe}
-              connectHref={`${AUTH_URL}/auth/x/start`}
-              onUnbind={unbindX}
-            />
-            {/* Telegram */}
-            <TelegramRow
-              isMe={isMe}
-              handle={profile !== "loading" ? profile?.telegramUsername ?? null : null}
-              telegramId={profile !== "loading" ? profile?.telegramId ?? null : null}
-              onUnbind={async () => {
-                await fetch(`${AUTH_URL}/auth/telegram/unbind`, { method: "POST", credentials: "include" });
-                setProfile(await fetchOperator(address));
-              }}
-            />
-            {/* Discord */}
-            <DiscordRow
-              isMe={isMe}
-              handle={profile !== "loading" ? profile?.discordUsername ?? null : null}
-              onUnbind={async () => {
-                await fetch(`${AUTH_URL}/auth/discord/unbind`, { method: "POST", credentials: "include" });
-                setProfile(await fetchOperator(address));
-              }}
-            />
+      {/* SOCIALS. Public viewers only see what's linked — owner sees the full
+          card with link / unbind actions and unlinked rows. */}
+      {isMe ? (
+        <section className="mx-auto max-w-[1080px] px-6 pt-12">
+          <div className="mb-4 font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
+            <span aria-hidden className="text-accent">■</span> SOCIALS
           </div>
-        </BracketedCell>
-      </section>
+          <BracketedCell pad="sm">
+            <div className="flex flex-col">
+              <SocialRow
+                label="X"
+                handle={profile !== "loading" && profile?.xHandle ? `@${profile.xHandle}` : null}
+                hint="oauth2"
+                isMe={isMe}
+                connectHref={`${AUTH_URL}/auth/x/start`}
+                onUnbind={unbindX}
+              />
+              <TelegramRow
+                isMe={isMe}
+                handle={profile !== "loading" ? profile?.telegramUsername ?? null : null}
+                telegramId={profile !== "loading" ? profile?.telegramId ?? null : null}
+                onUnbind={async () => {
+                  await fetch(`${AUTH_URL}/auth/telegram/unbind`, { method: "POST", credentials: "include" });
+                  setProfile(await fetchOperator(address));
+                }}
+              />
+              <DiscordRow
+                isMe={isMe}
+                handle={profile !== "loading" ? profile?.discordUsername ?? null : null}
+                onUnbind={async () => {
+                  await fetch(`${AUTH_URL}/auth/discord/unbind`, { method: "POST", credentials: "include" });
+                  setProfile(await fetchOperator(address));
+                }}
+              />
+            </div>
+          </BracketedCell>
+        </section>
+      ) : (
+        <PublicSocialStrip
+          xHandle={profile !== "loading" ? profile?.xHandle ?? null : null}
+          telegramUsername={profile !== "loading" ? profile?.telegramUsername ?? null : null}
+          discordUsername={profile !== "loading" ? profile?.discordUsername ?? null : null}
+        />
+      )}
 
       {/* SETTINGS — isMe only. Dark mode is gone per the redesign. */}
       {isMe ? (
@@ -242,6 +252,84 @@ function SocialRow({
         )
       ) : null}
     </div>
+  );
+}
+
+/// Slim agent card for the public view. No NFT badge, no train-soon chip,
+/// no inputs — just identity (avatar + name + tiers) and traits, which read
+/// as the agent's earned status. Matches the AgentCustomizeCard shell so
+/// the grid looks consistent.
+function PublicAgentCard({ agent }: { agent: AgentState }) {
+  const display = (agent.nickname ?? "").trim();
+  return (
+    <BracketedCell className="flex flex-col gap-3">
+      <div className="flex items-center gap-3">
+        <span className="flex h-14 w-14 flex-none items-center justify-center overflow-hidden bg-canvas-3">
+          {agent.skin ? (
+            <img
+              src={agent.skin}
+              alt={display || `agent #${agent.id}`}
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <Robot variant="pink" size={42} decorative />
+          )}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="font-stencil uppercase text-ink" style={{ fontSize: 18, letterSpacing: "-0.01em" }}>
+            {display ? display : `AGENT #${agent.id}`}
+          </div>
+          <div className="mt-1 font-mono text-[11px] text-ink-3">
+            {CONTEST_TYPES.map((t) => `${t.toUpperCase()} T${tierOf(agent, t)}`).join(" · ")}
+          </div>
+        </div>
+      </div>
+      <div className="border-t border-[color:var(--hairline)] pt-3">
+        <AgentTraits agentId={agent.id} />
+      </div>
+    </BracketedCell>
+  );
+}
+
+/// Read-only socials strip rendered on the public view. Only shows accounts
+/// that are actually linked — no placeholder "NOT LINKED" rows.
+function PublicSocialStrip({
+  xHandle,
+  telegramUsername,
+  discordUsername,
+}: {
+  xHandle: string | null;
+  telegramUsername: string | null;
+  discordUsername: string | null;
+}) {
+  const linked: Array<{ label: string; handle: string; href?: string }> = [];
+  if (xHandle) linked.push({ label: "X", handle: `@${xHandle}`, href: `https://x.com/${xHandle}` });
+  if (telegramUsername) linked.push({ label: "TELEGRAM", handle: `@${telegramUsername}`, href: `https://t.me/${telegramUsername}` });
+  if (discordUsername) linked.push({ label: "DISCORD", handle: discordUsername });
+  if (linked.length === 0) return null;
+
+  return (
+    <section className="mx-auto max-w-[1080px] px-6 pt-10">
+      <div className="flex flex-wrap items-center gap-x-8 gap-y-2 border-t border-[color:var(--hairline)] pt-6">
+        {linked.map((l) => (
+          <div key={l.label} className="flex items-center gap-2">
+            <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">{l.label}</span>
+            {l.href ? (
+              <a
+                href={l.href}
+                target="_blank"
+                rel="noreferrer"
+                className="font-mono text-[12px] text-ink hover:text-accent"
+              >
+                {l.handle} ↗
+              </a>
+            ) : (
+              <span className="font-mono text-[12px] text-ink">{l.handle}</span>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
