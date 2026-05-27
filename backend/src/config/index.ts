@@ -24,6 +24,11 @@ const envSchema = z.object({
   X_CLIENT_ID: z.string().optional(),
   X_CLIENT_SECRET: z.string().optional(),
   X_CALLBACK_URL: z.string().optional(),
+  TELEGRAM_BOT_TOKEN: z.string().optional(),
+  TELEGRAM_BOT_USERNAME: z.string().optional(),
+  DISCORD_CLIENT_ID: z.string().optional(),
+  DISCORD_CLIENT_SECRET: z.string().optional(),
+  DISCORD_CALLBACK_URL: z.string().optional(),
 
   // Coordinator service
   COORDINATOR_PRIVATE_KEY: z.string().optional(),
@@ -132,6 +137,15 @@ export const config = {
       clientId: env.X_CLIENT_ID,
       clientSecret: env.X_CLIENT_SECRET,
       callbackUrl: env.X_CALLBACK_URL,
+    },
+    telegram: {
+      botToken: env.TELEGRAM_BOT_TOKEN,
+      botUsername: env.TELEGRAM_BOT_USERNAME,
+    },
+    discord: {
+      clientId: env.DISCORD_CLIENT_ID,
+      clientSecret: env.DISCORD_CLIENT_SECRET,
+      callbackUrl: env.DISCORD_CALLBACK_URL,
     },
   },
   coordinator: {

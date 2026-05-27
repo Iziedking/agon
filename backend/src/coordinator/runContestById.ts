@@ -80,7 +80,16 @@ function standings(results: AgentResult[]) {
   return results
     .slice()
     .sort((a, b) => b.score - a.score)
-    .map((r, i) => ({ rank: i + 1, agentId: r.agentId, operator: r.operator, score: Math.round(r.score) }));
+    .map((r, i) => ({
+      rank: i + 1,
+      agentId: r.agentId,
+      operator: r.operator,
+      score: Math.round(r.score),
+      // Carry the runner's progress through to the wire so the frontend stage
+      // renders real per-agent state (solver cells, analyst calls, scout tx
+      // hashes) instead of deriving visible state from the score.
+      progress: r.progress,
+    }));
 }
 
 export async function runContestById(contestId: number, broadcast: (message: unknown) => void): Promise<void> {
@@ -138,6 +147,12 @@ export async function runContestById(contestId: number, broadcast: (message: unk
   // payout reflects the same boosts viewers saw on the live race.
   const traitMult = await fetchAgentMultipliers(field.map((e) => e.agentId));
   const results = applyTraitMultipliers(baseResults, traitMult);
+
+  // One final standings frame with the authoritative progress, so Scout's real
+  // tx hashes land on the live stage just before the settled banner takes
+  // over. Analyst/Solver progress is deterministic per agent, so this frame
+  // just confirms what viewers already saw.
+  broadcast({ type: "standings", contestId, endsAt: endsAtMs, entries: standings(results) });
 
   const platformFee = (c.prizePool * BigInt(c.platformFeeBps)) / 10_000n;
   const claimable = c.prizePool - platformFee;

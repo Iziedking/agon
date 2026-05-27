@@ -1,11 +1,24 @@
 /// Message shapes for the coordinator WebSocket fanout that drives the live
 /// contest panel and the win modal.
 
+/// Per-agent progress detail that the runner emits alongside the score, so
+/// the live stage renders real activity (cells solved, calls placed, tx
+/// hashes shipped) instead of deriving visuals from the score number. Mirrors
+/// the AgentProgress union in `backend/src/runners/types.ts`.
+export type AgentProgress =
+  | { kind: "solver"; correct: boolean[]; total: number }
+  | { kind: "analyst"; calls: Array<{ p: number; outcome: 0 | 1; correct: boolean }> }
+  | { kind: "scout"; opsCount: number; recent: string[] };
+
 export interface StandingsEntry {
   rank: number;
   agentId: number;
   operator: string;
   score: number;
+  /// Optional. Present for runners that have something visible to stream;
+  /// scout's preview pass is a tier-proxy and arrives without progress, the
+  /// final standings frame carries the real tx hashes.
+  progress?: AgentProgress;
 }
 
 export interface StandingsMessage {

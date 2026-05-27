@@ -206,8 +206,7 @@ function ConnectStep({ isConnected, address }: { isConnected: boolean; address?:
   return (
     <>
       <p className="font-mono text-sm leading-[1.6] text-ink-2">
-        no email needed — wallet only. your wallet signs once and arcrun gives you a session. you can disconnect any
-        time. email login also works via passkey for the same SIWE flow.
+        sign in with your wallet or email. one signature, one session. you can disconnect any time.
       </p>
       <div className="mt-6 flex flex-wrap items-center gap-4">
         {isConnected && address ? (
