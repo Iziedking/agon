@@ -1,31 +1,35 @@
 import type { ReactNode } from "react";
 import { AppHeader } from "@/components/pengu/AppHeader";
-import { Footer } from "@/components/pengu/Footer";
-import { SectionLabel } from "@/components/pengu/atoms";
+import { Footer } from "@/components/redesign/Footer";
+import { BracketedCell, StatusChip, TagButton } from "@/components/redesign";
 import { Countdown } from "@/components/pengu/Countdown";
 import { EnterPanel } from "@/components/pengu/EnterPanel";
 import { ResultsBoard } from "@/components/pengu/ResultsBoard";
 import { CONTRACTS, EXPLORER } from "@/lib/arc";
 import { CONTEST_TYPE, fetchContest, formatUsdc, metricLabel, type Contest } from "@/lib/contests";
 
+/// Contest detail page reskinned to arcrun-redesign. Eyebrow + stencil
+/// pool size as the hero number, BracketedCell info panel with mono
+/// key/value rows, sticky EnterPanel on the right rail.
+
 export const revalidate = 30;
 
 const ZERO = "0x0000000000000000000000000000000000000000";
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
-function statusMeta(status: number): { label: string; cls: string } {
-  if (status === 1) return { label: "open", cls: "text-pengu-blue" };
-  if (status === 2) return { label: "scoring", cls: "text-pengu-dark" };
-  if (status === 3) return { label: "settled", cls: "text-pengu-dark/50" };
-  if (status === 4) return { label: "cancelled", cls: "text-pengu-dark/50" };
-  return { label: "pending", cls: "text-pengu-dark/50" };
+function statusMeta(status: number): { tone: "ok" | "warn" | "ink" | "err"; label: string } {
+  if (status === 1) return { tone: "ok", label: "OPEN" };
+  if (status === 2) return { tone: "warn", label: "SCORING" };
+  if (status === 3) return { tone: "ink", label: "SETTLED" };
+  if (status === 4) return { tone: "err", label: "CANCELLED" };
+  return { tone: "ink", label: "PENDING" };
 }
 
 function Row({ k, children }: { k: string; children: ReactNode }) {
   return (
-    <div className="flex items-center justify-between border-b border-pengu-blue/10 py-3 last:border-0">
-      <span className="font-display text-xs uppercase tracking-wide text-pengu-dark/45">{k}</span>
-      <span className="font-mono text-sm text-pengu-dark">{children}</span>
+    <div className="flex items-center justify-between border-b border-[color:var(--hairline)] py-3 last:border-0">
+      <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3">{k}</span>
+      <span className="font-mono text-sm text-ink">{children}</span>
     </div>
   );
 }
@@ -35,91 +39,134 @@ export default async function ContestDetail({ params }: { params: Promise<{ id: 
   const nid = Number(id);
   let c: Contest | null = null;
   if (Number.isFinite(nid)) {
-    try {
-      c = await fetchContest(nid);
-    } catch {
-      c = null;
-    }
+    try { c = await fetchContest(nid); } catch { c = null; }
   }
-  const s = c ? statusMeta(c.status) : null;
+
+  if (!c) {
+    return (
+      <div className="min-h-screen bg-canvas text-ink">
+        <AppHeader />
+        <section className="mx-auto max-w-[1280px] px-6 pb-16 pt-16">
+          <a href="/contests" className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:text-ink">
+            ← ALL CONTESTS
+          </a>
+          <div className="mt-8 max-w-[560px]">
+            <BracketedCell pad="lg">
+              <h1 className="font-stencil uppercase text-ink" style={{ fontSize: 28 }}>CONTEST NOT FOUND</h1>
+              <p className="mt-3 font-mono text-sm text-ink-2">contest #{id} is not on arc yet.</p>
+            </BracketedCell>
+          </div>
+        </section>
+        <Footer />
+      </div>
+    );
+  }
+
+  const meta = statusMeta(c.status);
+  const type = CONTEST_TYPE[c.contestType] ?? "CONTEST";
+  const isLive = c.status === 1 || c.status === 2;
 
   return (
-    <div className="min-h-screen text-pengu-dark">
+    <div className="min-h-screen bg-canvas text-ink">
       <AppHeader />
 
-      <section className="mx-auto max-w-[1200px] px-6 pb-16 pt-12">
-        <a href="/contests" className="font-display text-xs uppercase tracking-wide text-pengu-blue">
-          all contests
-        </a>
+      <section className="mx-auto max-w-[1280px] px-6 pb-16 pt-12">
+        <div className="mb-8 flex items-center justify-between">
+          <a href="/contests" className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:text-ink">
+            ← ALL CONTESTS
+          </a>
+          <a
+            href={`${EXPLORER}/address/${CONTRACTS.ContestEngine}`}
+            target="_blank"
+            rel="noreferrer"
+            className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3 hover:text-ink"
+          >
+            CONTESTENGINE ON ARCSCAN ↗
+          </a>
+        </div>
 
-        {!c || !s ? (
-          <div className="mt-8 rounded-card border border-pengu-blue/15 bg-pengu-card p-8 shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
-            <h1 className="font-bubble text-2xl uppercase text-pengu-dark">contest not found</h1>
-            <p className="mt-2 text-pengu-dark/65">contest #{id} is not on arc yet.</p>
-          </div>
-        ) : (
-          <div className="mt-6 grid gap-6 lg:grid-cols-3">
-            <div className="lg:col-span-2">
-              <div className="flex flex-wrap items-center gap-3">
-                <SectionLabel>
-                  {CONTEST_TYPE[c.contestType] ?? "contest"} · #{c.id}
-                </SectionLabel>
-                <span className={`font-display text-xs uppercase ${s.cls}`}>{s.label}</span>
+        <div className="grid gap-8 lg:grid-cols-12">
+          {/* LEFT: hero + meta + leaderboard */}
+          <div className="lg:col-span-8">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
+                <span aria-hidden className="text-accent">■</span>
+                {type} · #{c.id}
+              </span>
+              <StatusChip tone={meta.tone}>{meta.label}</StatusChip>
+            </div>
+
+            <h1
+              className="mt-6 font-stencil uppercase text-ink"
+              style={{ fontSize: "clamp(56px, 9vw, 112px)", lineHeight: 0.95, letterSpacing: "-0.02em" }}
+            >
+              {formatUsdc(c.prizePool)}
+            </h1>
+            <p className="mt-3 font-mono text-sm leading-[1.55] text-ink-2">
+              prize pool ·{" "}
+              <span className="text-ink">
+                <Countdown endTime={Number(c.endTime)} status={c.status} />
+              </span>
+            </p>
+
+            <div className="mt-8">
+              <div className="mb-3 font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
+                <span aria-hidden className="text-accent">■</span> TERMS
               </div>
-
-              <div className="mt-5 font-bubble text-[clamp(48px,8vw,92px)] leading-none text-pengu-blue">
-                {formatUsdc(c.prizePool)}
-              </div>
-              <p className="mt-3 font-mono text-sm text-pengu-dark/55">
-                prize pool · <Countdown endTime={Number(c.endTime)} status={c.status} />
-              </p>
-
-              <div className="mt-8 rounded-card border border-pengu-blue/15 bg-pengu-card p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
-                <Row k="metric">{metricLabel(c.metric).toLowerCase()}</Row>
-                <Row k="entrants">{c.entrants}</Row>
-                <Row k="headline winners">{c.topN}</Row>
-                <Row k="winner cut">{(c.winnerCutBps / 100).toFixed(0)}%</Row>
-                <Row k="platform fee">{(c.platformFeeBps / 100).toFixed(1)}%</Row>
-                <Row k="sponsor">
-                  <a href={`${EXPLORER}/address/${c.sponsor}`} target="_blank" rel="noreferrer" className="text-pengu-blue">
-                    {short(c.sponsor)}
+              <BracketedCell pad="md">
+                <Row k="METRIC">{metricLabel(c.metric).toLowerCase()}</Row>
+                <Row k="ENTRANTS">{c.entrants}</Row>
+                <Row k="HEADLINE WINNERS">{c.topN}</Row>
+                <Row k="WINNER CUT">{(c.winnerCutBps / 100).toFixed(0)}%</Row>
+                <Row k="PLATFORM FEE">{(c.platformFeeBps / 100).toFixed(1)}%</Row>
+                <Row k="SPONSOR">
+                  <a
+                    href={`${EXPLORER}/address/${c.sponsor}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-ink hover:text-accent"
+                  >
+                    {short(c.sponsor)} ↗
                   </a>
                 </Row>
                 {c.protocolTarget !== ZERO ? (
-                  <Row k="protocol target">
+                  <Row k="PROTOCOL TARGET">
                     <a
                       href={`${EXPLORER}/address/${c.protocolTarget}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="text-pengu-blue"
+                      className="text-ink hover:text-accent"
                     >
-                      {short(c.protocolTarget)}
+                      {short(c.protocolTarget)} ↗
                     </a>
                   </Row>
                 ) : null}
-              </div>
-
-              <p className="mt-4">
-                <a
-                  href={`${EXPLORER}/address/${CONTRACTS.ContestEngine}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="font-mono text-xs text-pengu-dark/45 hover:text-pengu-blue"
-                >
-                  view contestengine on arcscan ↗
-                </a>
-              </p>
-
-              <div className="mt-6">
-                <ResultsBoard kind="contests" id={c.id} live={c.status === 1 || c.status === 2} />
-              </div>
+              </BracketedCell>
             </div>
 
-            <aside className="lg:col-span-1">
-              <EnterPanel contestId={c.id} status={c.status} endTime={Number(c.endTime)} />
-            </aside>
+            <div className="mt-8">
+              <div className="mb-3 flex items-center justify-between">
+                <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
+                  <span aria-hidden className="text-accent">■</span> {isLive ? "IN THE ARENA" : "RESULTS"}
+                </span>
+                {isLive ? (
+                  <TagButton variant="ghost" href="/live" size="sm">WATCH LIVE</TagButton>
+                ) : null}
+              </div>
+              <ResultsBoard kind="contests" id={c.id} live={isLive} />
+            </div>
           </div>
-        )}
+
+          {/* RIGHT: sticky entry panel */}
+          <aside className="lg:col-span-4">
+            <div className="mb-3 font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
+              <span aria-hidden className="text-accent">■</span> {c.status === 3 ? "CLAIM" : "ENTER"}
+            </div>
+            <div className="lg:sticky lg:top-20">
+              <EnterPanel contestId={c.id} status={c.status} endTime={Number(c.endTime)} />
+            </div>
+          </aside>
+        </div>
       </section>
 
       <Footer />

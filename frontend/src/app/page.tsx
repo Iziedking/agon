@@ -8,6 +8,7 @@ import {
   TagButton,
 } from "@/components/redesign";
 import { ArcRunMark } from "@/components/redesign/ArcRunMark";
+import { BuiltOnLogos } from "@/components/redesign/BuiltOnLogos";
 import { Footer } from "@/components/redesign/Footer";
 
 /// Landing page. Marketing only; live state lives at /app and /contests.
@@ -226,15 +227,7 @@ export default function Home() {
       <section className="border-y border-[color:var(--hairline)]">
         <div className="mx-auto flex max-w-[1280px] flex-wrap items-center justify-between gap-6 px-6 py-10">
           <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">■ BUILT ON</div>
-          <div className="flex flex-wrap items-center gap-x-10 gap-y-4 font-stencil text-2xl uppercase tracking-[0.05em] text-ink">
-            <span>ARC</span>
-            <span aria-hidden className="text-ink-3">·</span>
-            <span>CIRCLE</span>
-            <span aria-hidden className="text-ink-3">·</span>
-            <span>USDC</span>
-            <span aria-hidden className="text-ink-3">·</span>
-            <span>ERC-8004</span>
-          </div>
+          <BuiltOnLogos />
         </div>
       </section>
 

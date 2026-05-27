@@ -183,7 +183,7 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
     <AnimatePresence>
       {open && (
         <motion.div
-          className="fixed inset-0 z-modal flex items-center justify-center p-4"
+          className="fixed inset-0 z-modal flex items-start justify-center overflow-y-auto px-4 pb-10 pt-16 sm:pt-24"
           style={{ backgroundColor: "rgba(27,17,64,0.55)" }}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}

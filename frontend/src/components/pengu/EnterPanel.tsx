@@ -19,7 +19,7 @@ import { AgentPicker } from "@/components/pengu/AgentPicker";
 const card =
   "rounded-card border border-pengu-blue/15 bg-pengu-card p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)] lg:sticky lg:top-20";
 const chunky =
-  "block w-full rounded-pill bg-pengu-blue px-6 py-3 text-center font-display text-sm uppercase tracking-wide text-white shadow-[0_4px_0_0_#5b34d6] transition-all duration-100 hover:translate-y-[2px] hover:shadow-[0_2px_0_0_#5b34d6] active:translate-y-[3px] disabled:opacity-60";
+  "flex w-full items-center justify-center gap-2 bg-accent px-4 py-3 text-center font-mono text-[13px] uppercase tracking-[0.12em] text-accent-ink transition-colors duration-150 hover:bg-accent-press disabled:opacity-60";
 
 type Payout = { amount: bigint; proof: `0x${string}`[] };
 
