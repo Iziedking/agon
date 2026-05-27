@@ -3,12 +3,19 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAccount } from "wagmi";
 import { AppHeader } from "@/components/pengu/AppHeader";
-import { Footer } from "@/components/pengu/Footer";
-import { SectionLabel } from "@/components/pengu/atoms";
+import { Footer } from "@/components/redesign/Footer";
+import {
+  BracketedCell,
+  Robot,
+  robotVariantForId,
+  SectionHeader,
+  StatBlock,
+  TagButton,
+} from "@/components/redesign";
+import { AgentAvatar } from "@/components/pengu/AgentAvatar";
 import { AgentTraits } from "@/components/pengu/AgentTraits";
 import { ClaimAgentButton } from "@/components/pengu/ClaimAgentButton";
 import { NftBadge } from "@/components/pengu/NftBadge";
-import { WorkshopScene } from "@/components/pengu/WorkshopScene";
 import { UpgradeFlow } from "@/components/pengu/UpgradeFlow";
 import { LoginCTA } from "@/components/pengu/LoginCTA";
 import {
@@ -22,17 +29,10 @@ import {
   type AgentState,
 } from "@/lib/agents";
 
-const chunkyBtn =
-  "rounded-pill bg-pengu-blue px-6 py-3 font-display text-sm uppercase tracking-wide text-white shadow-[0_4px_0_0_#5b34d6] transition-all duration-100 hover:translate-y-[2px] hover:shadow-[0_2px_0_0_#5b34d6] active:translate-y-[3px] disabled:opacity-60";
-const chunkyBtnSmall =
-  "block w-full rounded-pill bg-pengu-blue px-4 py-2 text-center font-display text-xs uppercase tracking-wide text-white shadow-[0_3px_0_0_#5b34d6] transition-all duration-100 hover:translate-y-[2px] hover:shadow-[0_1px_0_0_#5b34d6] active:translate-y-[3px] disabled:opacity-60";
-const secondaryBtn =
-  "rounded-pill border border-pengu-blue/30 bg-pengu-card px-5 py-2.5 font-display text-xs uppercase tracking-wide text-pengu-blue hover:border-pengu-blue";
+/// /workshop per arcrun-redesign §4.4. Disconnected: one BracketedCell + a
+/// pink SIGN IN tag. Connected: two-column layout. Left = agent list as
+/// ledger rows. Right = the active agent's Robot + bracketed STATS block.
 
-/// The operator's workshop. Lists every agent owned by the connected wallet,
-/// marks one as active (used by EnterPanel and JoinChallengePanel by default),
-/// and exposes per-agent upgrade. A second "claim another agent" button at the
-/// bottom mints additional agents to the same wallet.
 export default function WorkshopPage() {
   const { address, isConnected } = useAccount();
   const [agents, setAgents] = useState<AgentState[] | undefined>(undefined);
@@ -40,11 +40,6 @@ export default function WorkshopPage() {
   const [upgradingId, setUpgradingId] = useState<number | null>(null);
 
   const refresh = useCallback(async () => {
-    // Wagmi flashes address=undefined while hydrating; don't pre-empt that
-    // with an empty list. On a fetch failure (after the retry inside
-    // fetchAgents), leave agents undefined so the workshop stays on the
-    // "reading your agents from arc" line rather than showing the claim card
-    // to someone who already owns agents.
     if (!address) return;
     try {
       const list = await fetchAgents(address);
@@ -52,13 +47,14 @@ export default function WorkshopPage() {
       const resolved = resolveActiveAgent(list, address);
       setActiveId(resolved?.id ?? null);
     } catch {
-      // Stays undefined -> "reading your agents from arc…"
+      // Leave undefined -> "reading your agents from arc…"
     }
   }, [address]);
 
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  const active = agents?.find((a) => a.id === activeId) ?? null;
+  const upgrading = agents?.find((a) => a.id === upgradingId) ?? null;
 
   function pickActive(id: number) {
     if (!address) return;
@@ -66,70 +62,117 @@ export default function WorkshopPage() {
     setActiveId(id);
   }
 
-  const active = agents?.find((a) => a.id === activeId) ?? null;
-  const upgrading = agents?.find((a) => a.id === upgradingId) ?? null;
-  const level = active ? Math.max(active.scoutTier, active.analystTier, active.solverTier) : 0;
-
   return (
-    <div className="min-h-screen text-pengu-dark">
+    <div className="min-h-screen bg-canvas text-ink">
       <AppHeader />
 
-      <section className="mx-auto max-w-[1200px] px-6 pb-16 pt-12">
-        <SectionLabel>workshop</SectionLabel>
-        <h1 className="mt-5 font-bubble text-[clamp(36px,5vw,64px)] uppercase leading-tight text-pengu-dark">your workshop</h1>
-        <p className="mt-3 max-w-[52ch] text-pengu-dark/65">
-          your agents and their skills. one is active and enters by default; you can switch any time. upgrade a tier to
-          compete harder.
-        </p>
+      <section className="mx-auto max-w-[1280px] px-6 pt-16">
+        <SectionHeader
+          eyebrow="WORKSHOP"
+          heading="YOUR WORKSHOP"
+          subDeck={
+            <>
+              your agents and their skills. one is active and enters contests by default. upgrade a tier to compete
+              harder.
+            </>
+          }
+          right={isConnected && agents && agents.length > 0 ? (
+            <ClaimAgentButton
+              className="inline-flex items-center gap-2 border border-ink bg-canvas px-4 py-2.5 font-mono text-[13px] uppercase tracking-[0.12em] text-ink hover:bg-canvas-3"
+              label="CLAIM ANOTHER AGENT"
+              onClaimed={refresh}
+            />
+          ) : null}
+        />
+      </section>
 
+      <section className="mx-auto max-w-[1280px] px-6 py-10 pb-16">
         {!isConnected ? (
-          <div className="mt-10 rounded-card border border-pengu-blue/15 bg-pengu-card p-8 text-center shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
-            <p className="text-pengu-dark/65">connect a wallet to open your workshop and manage your agents.</p>
-            <div className="mt-5 flex justify-center">
-              <LoginCTA label="log in" className={chunkyBtn} />
+          <BracketedCell className="max-w-[560px]" pad="lg">
+            <p className="font-mono text-sm leading-[1.6] text-ink-2">
+              connect a wallet to open your workshop and manage your agents.
+            </p>
+            <div className="mt-6">
+              <LoginCTA
+                label="SIGN IN"
+                className="inline-flex items-center gap-2 bg-accent px-4 py-2.5 font-mono text-[13px] uppercase tracking-[0.12em] text-accent-ink hover:bg-accent-press"
+              />
             </div>
-          </div>
+          </BracketedCell>
         ) : agents === undefined ? (
-          <p className="mt-10 font-mono text-sm text-pengu-dark/55">reading your agents from arc…</p>
+          <p className="font-mono text-sm text-ink-2">reading your agents from arc…</p>
         ) : agents.length === 0 ? (
-          <div className="mt-10 rounded-card border border-pengu-blue/15 bg-pengu-card p-8 text-center shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
-            <h2 className="font-bubble text-2xl uppercase text-pengu-dark">claim your first agent</h2>
-            <p className="mx-auto mt-2 max-w-[44ch] text-pengu-dark/65">
+          <BracketedCell className="max-w-[560px]" pad="lg">
+            <h2 className="font-stencil uppercase text-ink" style={{ fontSize: 28 }}>
+              CLAIM YOUR FIRST AGENT
+            </h2>
+            <p className="mt-3 font-mono text-sm leading-[1.6] text-ink-2">
               you do not have an agent yet. claim a free default agent to start competing. this mints your onchain
               identity.
             </p>
-            <div className="mt-5 flex justify-center">
-              <ClaimAgentButton className={chunkyBtn} onClaimed={refresh} />
+            <div className="mt-6">
+              <ClaimAgentButton
+                className="inline-flex items-center gap-2 bg-accent px-4 py-2.5 font-mono text-[13px] uppercase tracking-[0.12em] text-accent-ink hover:bg-accent-press"
+                label="CLAIM AGENT"
+                onClaimed={refresh}
+              />
+            </div>
+          </BracketedCell>
+        ) : (
+          <div className="grid gap-6 lg:grid-cols-12">
+            {/* Left: agents as ledger rows */}
+            <div className="lg:col-span-7">
+              <div className="mb-3 flex items-center justify-between">
+                <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
+                  <span aria-hidden className="text-accent">■</span> MY AGENTS
+                </span>
+                <span className="font-mono text-[11px] text-ink-3">{agents.length} TOTAL</span>
+              </div>
+              <BracketedCell pad="sm">
+                <div className="flex flex-col">
+                  {agents.map((a) => {
+                    const isActive = a.id === activeId;
+                    return (
+                      <button
+                        key={a.id}
+                        onClick={() => pickActive(a.id)}
+                        className={`flex w-full items-center gap-3 border-b border-[color:var(--hairline)] py-3 text-left transition-colors last:border-0 hover:bg-canvas-2 ${
+                          isActive ? "bg-canvas-2" : ""
+                        }`}
+                      >
+                        <span className="flex h-8 w-8 flex-none items-center justify-center overflow-hidden bg-canvas-3">
+                          <AgentAvatar agent={a} size={28} />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="font-mono text-[12px] uppercase tracking-[0.12em] text-ink">
+                            {agentDisplayName(a)}
+                          </div>
+                          <div className="font-mono text-[10px] text-ink-3">
+                            {CONTEST_TYPES.map((t) => `${t.toUpperCase()} T${tierOf(a, t)}`).join(" · ")}
+                          </div>
+                        </div>
+                        {isActive ? (
+                          <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">● ACTIVE</span>
+                        ) : (
+                          <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">SELECT</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </BracketedCell>
+            </div>
+
+            {/* Right: active agent + stats + upgrade */}
+            <div className="lg:col-span-5">
+              {active ? (
+                <ActiveAgentPanel
+                  agent={active}
+                  onUpgrade={() => setUpgradingId(active.id)}
+                />
+              ) : null}
             </div>
           </div>
-        ) : (
-          <>
-            <div className="mt-10">
-              <WorkshopScene level={level} />
-            </div>
-
-            <div className="mt-12 flex flex-wrap items-end justify-between gap-3">
-              <div>
-                <h2 className="font-bubble text-2xl uppercase text-pengu-dark">your agents</h2>
-                <p className="mt-1 text-sm text-pengu-dark/60">
-                  the active agent enters contests and joins challenges by default. switch it any time.
-                </p>
-              </div>
-              <ClaimAgentButton className={secondaryBtn} label="claim another agent" onClaimed={refresh} />
-            </div>
-
-            <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {agents.map((a) => (
-                <AgentCard
-                  key={a.id}
-                  agent={a}
-                  isActive={a.id === activeId}
-                  onSetActive={() => pickActive(a.id)}
-                  onUpgrade={() => setUpgradingId(a.id)}
-                />
-              ))}
-            </div>
-          </>
         )}
       </section>
 
@@ -150,64 +193,57 @@ export default function WorkshopPage() {
   );
 }
 
-function AgentCard({
-  agent,
-  isActive,
-  onSetActive,
-  onUpgrade,
-}: {
-  agent: AgentState;
-  isActive: boolean;
-  onSetActive: () => void;
-  onUpgrade: () => void;
-}) {
+function ActiveAgentPanel({ agent, onUpgrade }: { agent: AgentState; onUpgrade: () => void }) {
+  const maxTier = Math.max(agent.scoutTier, agent.analystTier, agent.solverTier);
   return (
-    <div
-      className={`rounded-card border bg-pengu-card p-5 shadow-[0_8px_24px_rgba(70,45,150,0.06)] ${
-        isActive ? "border-pengu-blue/40 ring-2 ring-pengu-blue/15" : "border-pengu-blue/15"
-      }`}
-    >
-      <div className="flex items-center justify-between">
-        <span className="font-bubble text-lg uppercase text-pengu-dark">{agentDisplayName(agent)}</span>
-        {isActive ? (
-          <span className="rounded-full bg-pengu-blue px-2.5 py-0.5 font-display text-[10px] uppercase tracking-wide text-white">
-            active
+    <>
+      <div className="mb-3 flex items-center justify-between">
+        <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
+          <span aria-hidden className="text-accent">■</span> ACTIVE AGENT
+        </span>
+        <span className="font-mono text-[11px] text-ink-3">MAX TIER {maxTier}</span>
+      </div>
+      <BracketedCell>
+        <div className="flex flex-col items-center text-center">
+          <span className="flex h-32 w-32 items-center justify-center overflow-hidden bg-canvas-3">
+            {agent.skin ? (
+              <img src={agent.skin} alt={agent.nickname ?? `agent #${agent.id}`} className="h-full w-full object-cover" />
+            ) : (
+              <Robot variant={robotVariantForId(agent.id)} size={108} decorative />
+            )}
           </span>
-        ) : (
-          <button
-            onClick={onSetActive}
-            className="rounded-full bg-pengu-blue/10 px-2.5 py-0.5 font-display text-[10px] uppercase tracking-wide text-pengu-blue hover:bg-pengu-blue/20"
-          >
-            set active
-          </button>
-        )}
-      </div>
+          <div className="mt-4 font-stencil uppercase text-ink" style={{ fontSize: 22, letterSpacing: "-0.01em" }}>
+            {agentDisplayName(agent)}
+          </div>
+          <div className="mt-2">
+            <NftBadge tokenId={agent.erc8004TokenId} />
+          </div>
+          <AgentTraits agentId={agent.id} />
+        </div>
 
-      <div className="mt-3 flex flex-col gap-2">
-        {CONTEST_TYPES.map((t) => {
-          const cur = tierOf(agent, t);
-          return (
-            <div key={t} className="rounded-xl border border-pengu-blue/10 p-2.5">
-              <div className="flex items-center justify-between">
-                <span className="font-display text-xs uppercase text-pengu-dark">{t}</span>
-                <span className="rounded-pill bg-pengu-blue/10 px-2 py-0.5 font-mono text-[11px] text-pengu-blue">
-                  tier {cur}
-                </span>
+        <div className="mt-5 grid grid-cols-1 gap-3">
+          {CONTEST_TYPES.map((t) => {
+            const cur = tierOf(agent, t);
+            return (
+              <div key={t} className="border-t border-[color:var(--hairline)] pt-3">
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">{t.toUpperCase()}</span>
+                  <span className="font-stencil text-[18px] text-ink">T{cur}</span>
+                </div>
+                <p className="mt-1 font-mono text-[11px] text-ink-2">{ABILITIES[t][cur]}</p>
               </div>
-              <p className="mt-1 text-[11px] text-pengu-dark/55">{ABILITIES[t][cur]}</p>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
 
-      <div className="mt-4 flex items-center justify-between">
-        <NftBadge tokenId={agent.erc8004TokenId} />
-      </div>
-      <AgentTraits agentId={agent.id} />
+        <div className="mt-6">
+          <TagButton onClick={onUpgrade} className="w-full justify-center">UPGRADE</TagButton>
+        </div>
+      </BracketedCell>
 
-      <button onClick={onUpgrade} className={`mt-4 ${chunkyBtnSmall}`}>
-        upgrade
-      </button>
-    </div>
+      <div className="mt-4">
+        <StatBlock label="ERC-8004 TOKEN" value={`#${agent.erc8004TokenId.toString()}`} caption="onchain identity" />
+      </div>
+    </>
   );
 }

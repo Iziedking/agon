@@ -1,39 +1,29 @@
 "use client";
 
 import type { CSSProperties } from "react";
-import {
-  AgentMascot,
-  variantForAgentId,
-  type AgentMood,
-  type AgentVariant,
-} from "@/components/pengu/AgentMascot";
+import { Robot, robotVariantForId, type RobotVariant } from "@/components/redesign/Robot";
 
 /// Renders an agent's visual. If the owner has uploaded a skin, the image is
-/// shown; otherwise falls back to the variant mascot. Same prop shape as the
-/// mascot so swap-in is mechanical.
-export function AgentAvatar({
-  agent,
-  variant,
-  mood,
-  live,
-  className = "",
-  style,
-  alt,
-}: {
+/// shown; otherwise falls back to the flat <Robot /> variant from the
+/// arcrun-redesign system. The legacy AgentMascot is no longer the fallback.
+
+interface Props {
   agent: { id: number; nickname?: string | null; skin?: string | null };
-  variant?: AgentVariant;
-  mood?: AgentMood;
+  variant?: RobotVariant;
+  size?: number;
   live?: boolean;
   className?: string;
   style?: CSSProperties;
   alt?: string;
-}) {
+}
+
+export function AgentAvatar({ agent, variant, size = 64, live, className = "", style, alt }: Props) {
   if (agent.skin) {
     return (
       <img
         src={agent.skin}
         alt={alt ?? agent.nickname ?? `agent #${agent.id}`}
-        className={`object-cover ${live ? "breath" : ""} ${className}`}
+        className={`object-cover ${className}`}
         style={style}
         loading="lazy"
         decoding="async"
@@ -41,12 +31,12 @@ export function AgentAvatar({
     );
   }
   return (
-    <AgentMascot
-      variant={variant ?? variantForAgentId(agent.id)}
-      mood={mood}
-      live={live}
+    <Robot
+      variant={variant ?? robotVariantForId(agent.id)}
+      size={size}
       className={className}
-      style={style}
+      decorative={!alt}
+      ariaLabel={alt ?? `agent #${agent.id}`}
     />
   );
 }

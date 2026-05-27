@@ -3,26 +3,33 @@
 import { useEffect, useState } from "react";
 import { useAccount } from "wagmi";
 import { AppHeader } from "@/components/pengu/AppHeader";
-import { Footer } from "@/components/pengu/Footer";
-import { SectionLabel } from "@/components/pengu/atoms";
-import { ArenaCard, type ArenaState } from "@/components/pengu/ArenaCard";
+import { Footer } from "@/components/redesign/Footer";
+import {
+  BracketedCell,
+  Robot,
+  SectionHeader,
+  StatusChip,
+  TagButton,
+  robotVariantForId,
+} from "@/components/redesign";
 import { CreateChallengeModal } from "@/components/pengu/CreateChallengeModal";
 import { Pagination } from "@/components/pengu/Pagination";
 import { fetchChallenges, CHALLENGE_KIND, type Challenge } from "@/lib/challenges";
 import { formatUsdc } from "@/lib/contests";
 
-/// Peer challenges, read straight from ChallengeArena on Arc. Operators create
-/// these from their profile; anyone can join an open one with an agent.
-/// Paginated client-side so "next" swaps the grid in place without changing
-/// the URL.
+/// /challenges per arcrun-redesign §4.9. SectionHeader + START A CHALLENGE
+/// in the right slot. Loading state is a pink hairline shimmer. 3-col
+/// BracketedCell grid: CHALLENGE #N caps + StatusChip, stake amount in
+/// stencil, two flat Robot avatars overlapping at 24px to represent the
+/// participants, JOIN → tag CTA at the bottom.
 
 const PER_PAGE = 12;
 
-function challengeState(status: number): { state: ArenaState; label: string } {
-  if (status === 0) return { state: "open", label: "open" };
-  if (status === 1) return { state: "active", label: "locked" };
-  if (status === 2) return { state: "settled", label: "settled" };
-  return { state: "cancelled", label: "cancelled" };
+function statusChip(status: number) {
+  if (status === 0) return { tone: "ok" as const, label: "OPEN" };
+  if (status === 1) return { tone: "warn" as const, label: "LOCKED" };
+  if (status === 2) return { tone: "ink" as const, label: "SETTLED" };
+  return { tone: "err" as const, label: "CANCELLED" };
 }
 
 export default function ChallengesPage() {
@@ -35,15 +42,9 @@ export default function ChallengesPage() {
   useEffect(() => {
     let live = true;
     fetchChallenges()
-      .then((cs) => {
-        if (live) setChallenges(cs);
-      })
-      .catch(() => {
-        if (live) setFailed(true);
-      });
-    return () => {
-      live = false;
-    };
+      .then((cs) => { if (live) setChallenges(cs); })
+      .catch(() => { if (live) setFailed(true); });
+    return () => { live = false; };
   }, []);
 
   const total = challenges?.length ?? 0;
@@ -51,76 +52,55 @@ export default function ChallengesPage() {
   const safePage = Math.min(page, totalPages);
   const pageItems = (challenges ?? []).slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE);
 
+  const startTag = (
+    <button
+      onClick={() => setCreateOpen(true)}
+      disabled={!isConnected}
+      title={isConnected ? "open a peer challenge" : "connect a wallet first"}
+      className="inline-flex items-center gap-2 bg-accent px-4 py-2.5 font-mono text-[13px] uppercase tracking-[0.12em] text-accent-ink transition-colors duration-150 hover:bg-accent-press disabled:opacity-50"
+    >
+      START A CHALLENGE <span aria-hidden>→</span>
+    </button>
+  );
+
   return (
-    <div className="min-h-screen text-pengu-dark">
+    <div className="min-h-screen bg-canvas text-ink">
       <AppHeader />
 
-      <section className="mx-auto max-w-[1200px] px-6 pt-12">
-        <div className="flex flex-wrap items-end justify-between gap-6">
-          <div className="max-w-[60ch]">
-            <SectionLabel>challenges</SectionLabel>
-            <h1 className="mt-5 font-bubble text-[clamp(36px,5vw,64px)] uppercase leading-tight text-pengu-dark">
-              peer challenges
-            </h1>
-            <p className="mt-3 text-pengu-dark/65">
-              challenges are peer-staked duels. operators stake equal usdc and take each other on. start one below or
-              join an open one. looking for project-funded campaigns instead?{" "}
-              <a href="/contests" className="text-pengu-blue hover:underline">try contests</a>.
-            </p>
-          </div>
-          <button
-            onClick={() => setCreateOpen(true)}
-            disabled={!isConnected}
-            className="rounded-pill bg-pengu-blue px-6 py-3 font-display text-sm uppercase tracking-wide text-white shadow-[0_4px_0_0_#5b34d6] transition-all duration-100 hover:translate-y-[2px] hover:shadow-[0_2px_0_0_#5b34d6] active:translate-y-[3px] disabled:opacity-50"
-            title={isConnected ? "open a peer challenge" : "connect a wallet first"}
-          >
-            start a challenge
-          </button>
-        </div>
+      <section className="mx-auto max-w-[1280px] px-6 pt-16">
+        <SectionHeader
+          eyebrow="CHALLENGES"
+          heading="PEER CHALLENGES"
+          subDeck={
+            <>
+              challenges are peer-staked duels. operators stake equal usdc and take each other on. start one or join
+              an open one. looking for project-funded campaigns instead?{" "}
+              <a href="/contests" className="text-ink hover:text-accent">try contests.</a>
+            </>
+          }
+          right={startTag}
+        />
       </section>
 
-      <section className="mx-auto max-w-[1200px] px-6 py-10">
+      <section className="mx-auto max-w-[1280px] px-6 py-10 pb-16">
         {failed ? (
-          <p className="text-pengu-dark/60">could not reach arc right now. refresh in a moment.</p>
+          <p className="font-mono text-sm text-ink-2">could not reach arc right now. refresh in a moment.</p>
         ) : challenges === null ? (
-          <p className="font-mono text-sm text-pengu-dark/55">reading challenges from arc…</p>
+          <ShimmerLine />
         ) : challenges.length === 0 ? (
-          <div className="rounded-card border border-pengu-blue/15 bg-pengu-card p-8 text-center shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
-            <p className="font-display text-sm uppercase tracking-wide text-pengu-dark/55">no challenges yet</p>
-            <p className="mt-2 max-w-[40ch] mx-auto font-mono text-xs text-pengu-dark/45">
+          <BracketedCell className="text-center">
+            <p className="font-mono text-[12px] uppercase tracking-[0.12em] text-ink-3">NO CHALLENGES YET</p>
+            <p className="mx-auto mt-2 max-w-[44ch] font-mono text-sm text-ink-2">
               be the first to stake usdc and put your agent on the line.
             </p>
-            <button
-              onClick={() => setCreateOpen(true)}
-              disabled={!isConnected}
-              className="mt-5 rounded-pill bg-pengu-blue px-6 py-3 font-display text-sm uppercase tracking-wide text-white shadow-[0_4px_0_0_#5b34d6] transition-all duration-100 hover:translate-y-[2px] hover:shadow-[0_2px_0_0_#5b34d6] active:translate-y-[3px] disabled:opacity-50"
-            >
-              start a challenge
-            </button>
-          </div>
+            <div className="mt-5 flex justify-center">{startTag}</div>
+          </BracketedCell>
         ) : (
           <>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {pageItems.map((ch) => {
-                const s = challengeState(ch.status);
-                const pot = ch.stake * BigInt(Math.max(ch.entrants, 1));
-                return (
-                  <ArenaCard
-                    key={ch.id}
-                    href={`/challenges/${ch.id}`}
-                    kind={CHALLENGE_KIND[ch.kind] ?? "challenge"}
-                    state={s.state}
-                    stateLabel={s.label}
-                    metric={`${formatUsdc(ch.stake)} stake to enter`}
-                    prizeLabel="pot"
-                    prize={formatUsdc(pot)}
-                    startSec={null}
-                    endSec={ch.status === 0 ? Number(ch.joinDeadline) : null}
-                    footerLeft={`challenge #${ch.id}`}
-                    footerRight={`${ch.entrants}/${ch.maxEntrants} in`}
-                  />
-                );
-              })}
+              {pageItems.map((ch) => (
+                <ChallengeCard key={ch.id} ch={ch} />
+              ))}
             </div>
             <Pagination page={safePage} totalPages={totalPages} onPage={setPage} />
           </>
@@ -130,6 +110,89 @@ export default function ChallengesPage() {
       <CreateChallengeModal open={createOpen} onClose={() => setCreateOpen(false)} />
 
       <Footer />
+    </div>
+  );
+}
+
+function ChallengeCard({ ch }: { ch: Challenge }) {
+  const s = statusChip(ch.status);
+  const kind = CHALLENGE_KIND[ch.kind] ?? "CHALLENGE";
+  const pot = ch.stake * BigInt(Math.max(ch.entrants, 1));
+  // Synthetic participant avatars from the challenge id so each card shows two
+  // distinct robot variants (the real entrant list is on the detail page).
+  const aVariant = robotVariantForId(ch.id);
+  const bVariant = robotVariantForId(ch.id + 1);
+
+  return (
+    <BracketedCell hover className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <span className="inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-ink">
+          <span aria-hidden className="text-accent">■</span>
+          CHALLENGE #{ch.id}
+        </span>
+        <StatusChip tone={s.tone}>{s.label}</StatusChip>
+      </div>
+
+      <div className="flex items-end justify-between gap-4">
+        <div>
+          <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">POT</div>
+          <div
+            className="mt-1 font-stencil text-ink"
+            style={{ fontSize: "clamp(28px, 4vw, 40px)", lineHeight: 1.0, letterSpacing: "-0.01em" }}
+          >
+            {formatUsdc(pot)}
+          </div>
+        </div>
+        <div className="flex shrink-0 items-end">
+          {/* Two overlapping 24px Robot avatars (per §4.9) */}
+          <span className="block">
+            <Robot variant={aVariant} size={24} decorative />
+          </span>
+          <span className="-ml-2 block">
+            <Robot variant={bVariant} size={24} decorative />
+          </span>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-1.5 font-mono text-[12px]">
+        <div className="flex items-center justify-between">
+          <span className="text-ink-3">KIND</span>
+          <span className="uppercase text-ink">{kind}</span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-ink-3">STAKE</span>
+          <span className="text-ink">{formatUsdc(ch.stake)}</span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-ink-3">FIELD</span>
+          <span className="text-ink">{ch.entrants}/{ch.maxEntrants} IN</span>
+        </div>
+      </div>
+
+      <div className="mt-auto flex items-center justify-between gap-3 border-t border-[color:var(--hairline)] pt-4">
+        <a
+          href={`/challenges/${ch.id}`}
+          className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:text-ink"
+        >
+          READ TERMS
+        </a>
+        <TagButton href={`/challenges/${ch.id}`} size="sm">JOIN</TagButton>
+      </div>
+    </BracketedCell>
+  );
+}
+
+function ShimmerLine() {
+  return (
+    <div>
+      <p className="font-mono text-sm text-ink-2">reading challenges from arc…</p>
+      <div className="relative mt-4 h-0.5 w-full overflow-hidden bg-canvas-2">
+        <div
+          className="absolute inset-y-0 left-0 w-1/3 bg-accent"
+          style={{ animation: "challengeShimmer 1.6s linear infinite" }}
+        />
+        <style>{`@keyframes challengeShimmer { 0% { transform: translateX(-100%);} 100% { transform: translateX(400%);} }`}</style>
+      </div>
     </div>
   );
 }
