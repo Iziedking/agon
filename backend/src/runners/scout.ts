@@ -59,6 +59,10 @@ export interface ScoutExecution {
   volumeUsdc6: bigint;
   opsCount: number;
   txHashes: Hash[];
+  /// Aligned 1:1 with txHashes. Each entry is the USDC amount (6-decimals)
+  /// transferred in that op, as a decimal string. Powers the live stage's
+  /// tx tape so each row shows its actual value.
+  txVolumesUsdc6: string[];
 }
 
 /// Runs tier-limited USDC operations from the agent's hot wallet. `ops` defaults
@@ -86,6 +90,7 @@ export async function executeScout(
   if (perOp > limit.maxPerOpUsdc6) perOp = limit.maxPerOpUsdc6;
 
   const txHashes: Hash[] = [];
+  const txVolumesUsdc6: string[] = [];
   let volume = 0n;
   if (perOp > 0n) {
     for (let i = 0; i < ops; i++) {
@@ -97,11 +102,18 @@ export async function executeScout(
       });
       await publicClient.waitForTransactionReceipt({ hash });
       txHashes.push(hash);
+      txVolumesUsdc6.push(perOp.toString());
       volume += perOp;
     }
   }
 
-  return { address: account.address, volumeUsdc6: volume, opsCount: txHashes.length, txHashes };
+  return {
+    address: account.address,
+    volumeUsdc6: volume,
+    opsCount: txHashes.length,
+    txHashes,
+    txVolumesUsdc6,
+  };
 }
 
 export class ScoutRunner implements Runner {
@@ -129,14 +141,16 @@ export class ScoutRunner implements Runner {
         seed: contestId * 1000 + e.agentId,
       });
       // Surface the real tx hashes (most recent first) so the volume stage on
-      // the live page renders the actual onchain activity.
+      // the live page renders the actual onchain activity. recentVolumes is
+      // aligned 1:1 so each tape row can show its own value.
       const recent = exec.txHashes.slice(-6).reverse().map((h) => h as string);
+      const recentVolumes = exec.txVolumesUsdc6.slice(-6).reverse();
       results.push({
         agentId: e.agentId,
         operator: e.operator,
         score,
         detail: { volumeUsdc6: exec.volumeUsdc6.toString(), opsCount: exec.opsCount, hot: account.address },
-        progress: { kind: "scout" as const, opsCount: exec.opsCount, recent },
+        progress: { kind: "scout" as const, opsCount: exec.opsCount, recent, recentVolumes },
       });
     }
     return results;

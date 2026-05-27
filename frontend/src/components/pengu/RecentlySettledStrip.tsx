@@ -45,7 +45,7 @@ export function RecentlySettledStrip() {
         {items.map((c) => (
           <a
             key={c.id}
-            href={`/contests/${c.id}`}
+            href={`/live/contest/${c.id}`}
             className="flex items-center justify-between gap-3 rounded-xl border border-pengu-blue/10 bg-pengu-bg px-3 py-3 transition-transform duration-150 hover:-translate-y-0.5"
           >
             <span className="min-w-0">

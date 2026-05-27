@@ -198,10 +198,10 @@ function ContestCard({ c }: { c: Contest }) {
 
       <div className="mt-auto flex items-center justify-between gap-3 border-t border-[color:var(--hairline)] pt-4">
         <a
-          href={`/contests/${c.id}`}
+          href={`/live/contest/${c.id}`}
           className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:text-ink"
         >
-          READ TERMS
+          WATCH LIVE →
         </a>
         <TagButton href={`/contests/${c.id}`} size="sm">ENTER</TagButton>
       </div>

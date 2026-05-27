@@ -42,23 +42,23 @@ export function describeActivity(ev: ActivityEvent): ActivityLine {
   const a = ev.args;
   switch (ev.type) {
     case "ContestListed":
-      return { label: "campaign", text: `contest #${str(a.id)} listed · ${usdc(a.prizePool)} pool`, href: `/contests/${str(a.id)}` };
+      return { label: "campaign", text: `contest #${str(a.id)} listed · ${usdc(a.prizePool)} pool`, href: `/live/contest/${str(a.id)}` };
     case "EntryRegistered":
-      return { label: "entered", text: `${who(a.operator)} entered contest #${str(a.contestId)}`, href: `/contests/${str(a.contestId)}` };
+      return { label: "entered", text: `${who(a.operator)} entered contest #${str(a.contestId)}`, href: `/live/contest/${str(a.contestId)}` };
     case "ContestSettled":
-      return { label: "settled", text: `contest #${str(a.contestId)} settled · ${usdc(a.paidOut)} paid out`, href: `/contests/${str(a.contestId)}` };
+      return { label: "settled", text: `contest #${str(a.contestId)} settled · ${usdc(a.paidOut)} paid out`, href: `/live/contest/${str(a.contestId)}` };
     case "ContestCancelled":
-      return { label: "cancelled", text: `contest #${str(a.contestId)} cancelled`, href: `/contests/${str(a.contestId)}` };
+      return { label: "cancelled", text: `contest #${str(a.contestId)} cancelled`, href: `/live/contest/${str(a.contestId)}` };
     case "PrizeClaimed":
       return { label: "claimed", text: `${who(a.operator)} claimed ${usdc(a.amount)} from contest #${str(a.contestId)}`, href: `/operators/${str(a.operator)}` };
     case "ChallengeCreated":
-      return { label: "challenge", text: `${who(a.creator)} opened challenge #${str(a.id)} · ${usdc(a.stake)} stake`, href: `/challenges/${str(a.id)}` };
+      return { label: "challenge", text: `${who(a.creator)} opened challenge #${str(a.id)} · ${usdc(a.stake)} stake`, href: `/live/challenge/${str(a.id)}` };
     case "ChallengeJoined":
-      return { label: "joined", text: `${who(a.operator)} joined challenge #${str(a.id)}`, href: `/challenges/${str(a.id)}` };
+      return { label: "joined", text: `${who(a.operator)} joined challenge #${str(a.id)}`, href: `/live/challenge/${str(a.id)}` };
     case "ChallengeSettled":
-      return { label: "settled", text: `challenge #${str(a.id)} settled`, href: `/challenges/${str(a.id)}` };
+      return { label: "settled", text: `challenge #${str(a.id)} settled`, href: `/live/challenge/${str(a.id)}` };
     case "ChallengeCancelled":
-      return { label: "cancelled", text: `challenge #${str(a.id)} cancelled`, href: `/challenges/${str(a.id)}` };
+      return { label: "cancelled", text: `challenge #${str(a.id)} cancelled`, href: `/live/challenge/${str(a.id)}` };
     case "AgentCreated":
       return { label: "agent", text: `${who(a.owner)} claimed agent #${str(a.agentId)}`, href: `/operators/${str(a.owner)}` };
     default:

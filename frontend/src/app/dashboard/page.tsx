@@ -266,7 +266,7 @@ export default function DashboardPage() {
                       label={`CONTEST #${c.contestId}`}
                       description={c.contestType != null ? (CONTEST_TYPE[c.contestType] ?? `type ${c.contestType}`) : ""}
                       right={c.won ? formatUsdcString(c.won) : ""}
-                      txHref={`/contests/${c.contestId}`}
+                      txHref={`/live/contest/${c.contestId}`}
                     />
                   ))}
                 </ActivityLedger>
@@ -366,7 +366,7 @@ function ContestActivityRow({ c }: { c: OperatorContest }) {
       label={`CONTEST #${c.contestId}`}
       description={`${typeName} · ${status}`}
       right={right}
-      txHref={`/contests/${c.contestId}`}
+      txHref={`/live/contest/${c.contestId}`}
     />
   );
 }

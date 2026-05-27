@@ -297,7 +297,7 @@ function CompeteStep({ openContests }: { openContests: Contest[] | null }) {
             {openContests.map((c, idx) => (
               <a
                 key={c.id}
-                href={`/contests/${c.id}`}
+                href={`/live/contest/${c.id}`}
                 className="grid grid-cols-[auto_1fr_auto] items-center gap-4 border-b border-[color:var(--hairline)] py-3 hover:bg-canvas-2 last:border-0"
               >
                 <span aria-hidden className="text-accent">■</span>

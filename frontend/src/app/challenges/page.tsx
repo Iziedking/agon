@@ -171,10 +171,10 @@ function ChallengeCard({ ch }: { ch: Challenge }) {
 
       <div className="mt-auto flex items-center justify-between gap-3 border-t border-[color:var(--hairline)] pt-4">
         <a
-          href={`/challenges/${ch.id}`}
+          href={`/live/challenge/${ch.id}`}
           className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:text-ink"
         >
-          READ TERMS
+          WATCH LIVE →
         </a>
         <TagButton href={`/challenges/${ch.id}`} size="sm">JOIN</TagButton>
       </div>

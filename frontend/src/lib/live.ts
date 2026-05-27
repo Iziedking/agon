@@ -6,9 +6,24 @@
 /// hashes shipped) instead of deriving visuals from the score number. Mirrors
 /// the AgentProgress union in `backend/src/runners/types.ts`.
 export type AgentProgress =
-  | { kind: "solver"; correct: boolean[]; total: number }
+  | {
+      kind: "solver";
+      correct: boolean[];
+      total: number;
+      /// Per-puzzle ms, aligned with `correct[]`. Drives the "fastest" leader.
+      perPuzzleMs?: number[];
+      /// Per-puzzle kind label ("gas" | "classify" | "route"). Drives the
+      /// "PUZZLE TYPES THIS ROUND" header on the stage.
+      puzzleKinds?: string[];
+    }
   | { kind: "analyst"; calls: Array<{ p: number; outcome: 0 | 1; correct: boolean }> }
-  | { kind: "scout"; opsCount: number; recent: string[] };
+  | {
+      kind: "scout";
+      opsCount: number;
+      recent: string[];
+      /// USDC amount (6-decimals string) per recent tx, aligned with `recent[]`.
+      recentVolumes?: string[];
+    };
 
 export interface StandingsEntry {
   rank: number;

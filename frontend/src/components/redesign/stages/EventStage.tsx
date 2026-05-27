@@ -1,0 +1,48 @@
+"use client";
+
+import { PuzzleStage } from "./PuzzleStage";
+import { VolumeStage } from "./VolumeStage";
+import { PredictionStage } from "./PredictionStage";
+import { CustomStage } from "./CustomStage";
+import type { StandingsEntry } from "@/lib/live";
+
+/// Dispatches to the right promoted stage by event kind. The kind name comes
+/// from either the contest's CONTEST_TYPE label (SCOUT / ANALYST / SOLVER)
+/// or the challenge's CHALLENGE_KIND label (PREDICTION / PUZZLE / VOLUME /
+/// CUSTOM). The two systems share four buckets:
+///   puzzle    — SOLVER, PUZZLE
+///   volume    — SCOUT,  VOLUME
+///   prediction — ANALYST, PREDICTION
+///   custom    — anything else
+
+export type StageKind = "puzzle" | "volume" | "prediction" | "custom";
+
+export function normalizeStageKind(raw: string | undefined): StageKind {
+  const k = (raw ?? "").toUpperCase();
+  if (k === "SCOUT" || k === "VOLUME") return "volume";
+  if (k === "ANALYST" || k === "PREDICTION") return "prediction";
+  if (k === "SOLVER" || k === "PUZZLE") return "puzzle";
+  return "custom";
+}
+
+export function EventStage({
+  kind,
+  entries,
+}: {
+  kind: StageKind;
+  entries: StandingsEntry[];
+}) {
+  if (entries.length === 0) {
+    return (
+      <div className="border border-[color:var(--hairline-strong)] bg-canvas-2 p-8 text-center">
+        <p className="font-mono text-sm text-ink-2">
+          stage initializing… the next standings frame fills this in.
+        </p>
+      </div>
+    );
+  }
+  if (kind === "puzzle") return <PuzzleStage entries={entries} />;
+  if (kind === "volume") return <VolumeStage entries={entries} />;
+  if (kind === "prediction") return <PredictionStage entries={entries} />;
+  return <CustomStage entries={entries} />;
+}

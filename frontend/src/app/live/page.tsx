@@ -1,111 +1,86 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/redesign/Footer";
 import {
-  ActivityLedger,
-  ActivityRow,
   BracketedCell,
   Robot,
+  robotVariantForId,
+  type RobotVariant,
   SectionHeader,
   StatusChip,
-  TagButton,
 } from "@/components/redesign";
-import { LiveContestPanel } from "@/components/LiveContestPanel";
 import { useContestSocket } from "@/hooks/useContestSocket";
-import { fetchContests, formatUsdc, type Contest, CONTEST_TYPE } from "@/lib/contests";
+import { fetchContests, CONTEST_TYPE, formatUsdc, type Contest } from "@/lib/contests";
 import { fetchChallenges, CHALLENGE_KIND, type Challenge } from "@/lib/challenges";
 
-/// /live per arcrun-redesign §4.8. Two-column body:
-///   left  BracketedCell — BETWEEN ROUNDS panel (violet robot + two tag CTAs)
-///                         OR the live contest panel when a contest is scoring.
-///   right BracketedCell — ARENA ACTIVITY ledger with both contests and
-///                         challenges. Public viewing, no auth required.
-///
-/// Fix for #43: prior version queried contests only, so a freshly opened
-/// challenge never surfaced here. Now we fetch both and merge into one
-/// time-ordered ledger, each row tagged with its source.
+/// /live lobby. A card grid of every active contest AND every active
+/// challenge. Click any card → /live/contest/[id] or /live/challenge/[id]
+/// for the focused stage view. A smaller "recently settled" strip below.
+/// No more two-column ledger; this page IS the directory.
 
-type EventRow =
-  | { source: "contest"; id: number; key: string; tone: Tone; label: string; desc: string; href: string; right: string; openedAt: number }
-  | { source: "challenge"; id: number; key: string; tone: Tone; label: string; desc: string; href: string; right: string; openedAt: number };
+type Source = "contest" | "challenge";
 
-type Tone = "ok" | "accent" | "gold" | "violet" | "mint" | "err" | "ink";
-
-function contestTone(c: Contest): Tone {
-  if (c.status === 3) return "ok";
-  if (c.status === 4) return "err";
-  if (c.contestType === 0) return "gold";
-  if (c.contestType === 1) return "mint";
-  if (c.contestType === 2) return "violet";
-  return "ink";
+interface EventCardData {
+  source: Source;
+  id: number;
+  key: string;
+  kindLabel: string;
+  statusLabel: string;
+  statusTone: "ok" | "warn" | "err" | "ink";
+  poolLabel: string;
+  pool: string;
+  entrantsLabel: string;
+  endSec: number | null;
+  mascotIds: number[]; // up to 3 agent ids for the mini-stage strip; synthetic if unknown
+  isActive: boolean;
 }
 
-function contestStatus(c: Contest): string {
-  if (c.status === 1) return "OPEN";
-  if (c.status === 2) return "SCORING";
-  if (c.status === 3) return "SETTLED";
-  if (c.status === 4) return "CANCELLED";
-  return "PENDING";
-}
-
-function challengeTone(ch: Challenge): Tone {
-  if (ch.status === 2) return "ok";
-  if (ch.status === 3) return "err";
-  // kind 0 PREDICTION, 1 PUZZLE, 2 VOLUME, 3 CUSTOM
-  if (ch.kind === 0) return "mint";
-  if (ch.kind === 1) return "violet";
-  if (ch.kind === 2) return "gold";
-  return "accent";
-}
-
-function challengeStatus(ch: Challenge): string {
-  if (ch.status === 0) return "OPEN";
-  if (ch.status === 1) return "LOCKED";
-  if (ch.status === 2) return "SETTLED";
-  if (ch.status === 3) return "CANCELLED";
-  return "PENDING";
-}
-
-function rowsForContest(c: Contest): EventRow {
+function contestCard(c: Contest): EventCardData {
   const type = (CONTEST_TYPE[c.contestType] ?? "—").toUpperCase();
+  const isActive = c.status === 1 || c.status === 2;
   return {
     source: "contest",
     id: c.id,
     key: `c-${c.id}`,
-    tone: contestTone(c),
-    label: `CONTEST #${c.id}`,
-    desc: `${type} · ${contestStatus(c)} · ${c.entrants} entrants`,
-    href: `/contests/${c.id}`,
-    right: formatUsdc(c.prizePool),
-    openedAt: Number(c.startTime) || 0,
+    kindLabel: type,
+    statusLabel: c.status === 1 ? "OPEN" : c.status === 2 ? "SCORING" : c.status === 3 ? "SETTLED" : c.status === 4 ? "CANCELLED" : "PENDING",
+    statusTone: c.status === 1 ? "ok" : c.status === 2 ? "warn" : c.status === 4 ? "err" : "ink",
+    poolLabel: "PRIZE POOL",
+    pool: formatUsdc(c.prizePool),
+    entrantsLabel: `${c.entrants} ENTRANTS`,
+    endSec: isActive ? Number(c.endTime) : null,
+    // Synthetic mascot ids derived from the contest id so each card's
+    // strip is stable + visually distinct.
+    mascotIds: [c.id * 3 + 1, c.id * 3 + 2, c.id * 3 + 3],
+    isActive,
   };
 }
-
-function rowsForChallenge(ch: Challenge): EventRow {
+function challengeCard(ch: Challenge): EventCardData {
   const kind = (CHALLENGE_KIND[ch.kind] ?? "CHALLENGE").toUpperCase();
+  const isActive = ch.status === 0 || ch.status === 1;
   const pot = ch.stake * BigInt(Math.max(ch.entrants, 1));
   return {
     source: "challenge",
     id: ch.id,
     key: `ch-${ch.id}`,
-    tone: challengeTone(ch),
-    label: `CHALLENGE #${ch.id}`,
-    desc: `${kind} · ${challengeStatus(ch)} · ${ch.entrants}/${ch.maxEntrants} in`,
-    href: `/challenges/${ch.id}`,
-    right: formatUsdc(pot),
-    // Challenges don't carry a startTime; the join deadline is close enough
-    // for "newer first" ordering on the lobby.
-    openedAt: Number(ch.joinDeadline) || 0,
+    kindLabel: kind,
+    statusLabel: ch.status === 0 ? "OPEN" : ch.status === 1 ? "LOCKED" : ch.status === 2 ? "SETTLED" : "CANCELLED",
+    statusTone: ch.status === 0 ? "ok" : ch.status === 1 ? "warn" : ch.status === 3 ? "err" : "ink",
+    poolLabel: "POT",
+    pool: formatUsdc(pot),
+    entrantsLabel: `${ch.entrants}/${ch.maxEntrants} IN`,
+    endSec: isActive ? Number(ch.status === 0 ? ch.joinDeadline : ch.resolveDeadline) : null,
+    mascotIds: [ch.id * 7 + 1, ch.id * 7 + 2, ch.id * 7 + 3],
+    isActive,
   };
 }
 
-export default function LivePage() {
-  const { connected, standings } = useContestSocket();
+export default function LiveLobby() {
+  const { connected, standings, challengeStandings } = useContestSocket();
   const [contests, setContests] = useState<Contest[]>([]);
   const [challenges, setChallenges] = useState<Challenge[]>([]);
-  const liveContest = standings && standings.entries.length > 0 ? standings : null;
 
   useEffect(() => {
     let stopped = false;
@@ -116,7 +91,7 @@ export default function LivePage() {
         setContests(cs);
         setChallenges(chs);
       } catch {
-        // chain blip; keep what we have, next poll retries
+        // chain blip; keep what we have
       }
     }
     void load();
@@ -124,28 +99,24 @@ export default function LivePage() {
     return () => { stopped = true; clearInterval(t); };
   }, []);
 
-  // Active first (open / scoring / locked) then settled. Newest first within
-  // each bucket. Cap the ledger at 30 rows so the modal stays light.
-  const merged: EventRow[] = [
-    ...contests.map(rowsForContest),
-    ...challenges.map(rowsForChallenge),
-  ];
-  const isActive = (r: EventRow): boolean => {
-    if (r.source === "contest") {
-      const c = contests.find((x) => x.id === r.id);
-      return !!c && (c.status === 1 || c.status === 2);
-    }
-    const ch = challenges.find((x) => x.id === r.id);
-    return !!ch && (ch.status === 0 || ch.status === 1);
-  };
-  merged.sort((a, b) => {
-    const aActive = isActive(a) ? 1 : 0;
-    const bActive = isActive(b) ? 1 : 0;
-    if (aActive !== bActive) return bActive - aActive;
-    return b.openedAt - a.openedAt;
-  });
-  const ledger = merged.slice(0, 30);
-  const activeCount = merged.filter(isActive).length;
+  const cards: EventCardData[] = useMemo(() => {
+    const list = [...contests.map(contestCard), ...challenges.map(challengeCard)];
+    // Active first (most recent end first), then settled (most recent first).
+    list.sort((a, b) => {
+      if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
+      const aT = a.endSec ?? 0;
+      const bT = b.endSec ?? 0;
+      return bT - aT;
+    });
+    return list;
+  }, [contests, challenges]);
+
+  const active = cards.filter((c) => c.isActive);
+  const settled = cards.filter((c) => !c.isActive).slice(0, 12);
+
+  // Which card the coordinator is mid-streaming right now (gets a pulse).
+  const liveContestId = standings && standings.entries.length > 0 ? standings.contestId : null;
+  const liveChallengeId = challengeStandings && challengeStandings.entries.length > 0 ? challengeStandings.challengeId : null;
 
   return (
     <div className="min-h-screen bg-canvas text-ink">
@@ -161,93 +132,189 @@ export default function LivePage() {
               <StatusChip tone={connected ? "ok" : "err"}>
                 {connected ? "FEED CONNECTED" : "FEED OFFLINE"}
               </StatusChip>
+              <span className="text-ink-3">· {active.length} ACTIVE</span>
             </span>
           }
-          heading="LIVE ARENA"
+          heading="THE BROADCAST LOBBY"
           subDeck={
             <>
-              watch agents compete in real time, then watch the chain settle. campaigns and peer challenges show up
-              together. anyone can watch, no wallet required.
+              every contest and every peer challenge that's running, in one place. click any card to drop into the
+              focused stage. no wallet required to watch.
             </>
           }
         />
       </section>
 
-      <section className="mx-auto max-w-[1280px] grid gap-6 px-6 py-10 lg:grid-cols-12">
-        {/* Left: between rounds OR live panel */}
-        <div className="lg:col-span-7">
-          {liveContest ? (
-            <LiveContestPanel standings={liveContest} connected={connected} />
-          ) : (
-            <BetweenRoundsCard />
-          )}
-        </div>
-
-        {/* Right: ARENA ACTIVITY ledger — now includes challenges */}
-        <div className="lg:col-span-5">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
-              <span aria-hidden className="text-accent">■</span> ARENA ACTIVITY
-              <span className="ml-2 text-ink-3">· {activeCount} ACTIVE</span>
-            </span>
-            <div className="flex items-center gap-4">
-              <a href="/contests" className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:text-accent">
-                ALL CONTESTS →
-              </a>
-              <a href="/challenges" className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:text-accent">
-                ALL CHALLENGES →
-              </a>
-            </div>
+      {active.length > 0 ? (
+        <section className="mx-auto max-w-[1280px] px-6 py-10">
+          <div className="mb-3 font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
+            <span aria-hidden className="text-accent">■</span> WATCH NOW
           </div>
-          <BracketedCell pad="sm">
-            <div className="max-h-[560px] overflow-y-auto pr-1">
-              {ledger.length === 0 ? (
-                <p className="px-2 py-5 font-mono text-sm text-ink-2">
-                  no events yet. the coordinator opens a contest every few minutes. host a challenge to add to the
-                  feed.
-                </p>
-              ) : (
-                <ActivityLedger>
-                  {ledger.map((r) => (
-                    <ActivityRow
-                      key={r.key}
-                      tone={r.tone}
-                      label={r.label}
-                      description={r.desc}
-                      right={r.right}
-                      txHref={r.href}
-                    />
-                  ))}
-                </ActivityLedger>
-              )}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {active.map((card) => {
+              const isLiveStream =
+                (card.source === "contest" && liveContestId === card.id) ||
+                (card.source === "challenge" && liveChallengeId === card.id);
+              return <LobbyCard key={card.key} card={card} streaming={isLiveStream} />;
+            })}
+          </div>
+        </section>
+      ) : (
+        <section className="mx-auto max-w-[1280px] px-6 py-10">
+          <BracketedCell pad="lg" className="text-center">
+            <div className="flex justify-center">
+              <Robot variant="violet" size={96} decorative />
+            </div>
+            <h3 className="mt-4 font-stencil uppercase text-ink" style={{ fontSize: 28 }}>
+              BETWEEN ROUNDS
+            </h3>
+            <p className="mx-auto mt-3 max-w-[44ch] font-mono text-sm text-ink-2">
+              the autopilot opens a fresh contest every few minutes. host a challenge of your own or browse the open
+              boards while you wait.
+            </p>
+            <div className="mt-5 flex flex-wrap justify-center gap-3">
+              <a
+                href="/contests"
+                className="border border-ink bg-canvas px-4 py-2 font-mono text-[12px] uppercase tracking-[0.12em] text-ink hover:bg-canvas-3"
+              >
+                BROWSE CONTESTS →
+              </a>
+              <a
+                href="/challenges"
+                className="border border-ink bg-canvas px-4 py-2 font-mono text-[12px] uppercase tracking-[0.12em] text-ink hover:bg-canvas-3"
+              >
+                BROWSE CHALLENGES →
+              </a>
             </div>
           </BracketedCell>
-        </div>
-      </section>
+        </section>
+      )}
+
+      {settled.length > 0 ? (
+        <section className="mx-auto max-w-[1280px] px-6 pb-16">
+          <div className="mb-3 flex items-center justify-between">
+            <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
+              <span aria-hidden className="text-ink-3">■</span> RECENTLY SETTLED
+            </span>
+            <a
+              href="/contests"
+              className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:text-ink"
+            >
+              ALL HISTORY →
+            </a>
+          </div>
+          <BracketedCell pad="sm">
+            <div className="flex flex-col">
+              {settled.map((s) => (
+                <a
+                  key={s.key}
+                  href={`/live/${s.source}/${s.id}`}
+                  className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-4 border-b border-[color:var(--hairline)] py-2.5 last:border-0 hover:bg-canvas-2"
+                >
+                  <span aria-hidden className="text-ink-3">■</span>
+                  <div className="min-w-0">
+                    <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink">
+                      {s.source.toUpperCase()} #{s.id} · {s.kindLabel}
+                    </div>
+                    <div className="font-mono text-[10px] text-ink-3">{s.entrantsLabel}</div>
+                  </div>
+                  <StatusChip tone={s.statusTone}>{s.statusLabel}</StatusChip>
+                  <span className="font-mono text-[12px] text-ink whitespace-nowrap">{s.pool}</span>
+                </a>
+              ))}
+            </div>
+          </BracketedCell>
+        </section>
+      ) : null}
 
       <Footer />
     </div>
   );
 }
 
-function BetweenRoundsCard() {
+function fmtCountdown(target: number): string {
+  const left = Math.max(0, target - Math.floor(Date.now() / 1000));
+  const h = Math.floor(left / 3600);
+  const m = Math.floor((left % 3600) / 60);
+  if (h > 0) return `${h}H ${m}M`;
+  return `${m}M`;
+}
+
+function LobbyCard({ card, streaming }: { card: EventCardData; streaming: boolean }) {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (!card.endSec) return;
+    const t = setInterval(() => tick((n) => n + 1), 30_000);
+    return () => clearInterval(t);
+  }, [card.endSec]);
+
   return (
-    <BracketedCell pad="lg" className="flex flex-col items-center text-center">
-      <Robot variant="violet" size={96} decorative />
-      <h3
-        className="mt-4 font-stencil uppercase text-ink"
-        style={{ fontSize: 28, letterSpacing: "-0.01em" }}
-      >
-        BETWEEN ROUNDS
-      </h3>
-      <p className="mt-3 max-w-[44ch] font-mono text-sm leading-[1.55] text-ink-2">
-        the autopilot opens a fresh contest every few minutes. while you wait, browse open contests, jump into a
-        peer challenge, or host your own.
-      </p>
-      <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-        <TagButton href="/contests">BROWSE CONTESTS</TagButton>
-        <TagButton variant="ghost" href="/challenges">BROWSE CHALLENGES</TagButton>
+    <a
+      href={`/live/${card.source}/${card.id}`}
+      className="group relative block border border-[color:var(--hairline-strong)] bg-canvas p-5 transition-colors hover:bg-canvas-2"
+    >
+      <CornerBracket pos="tl" /><CornerBracket pos="tr" /><CornerBracket pos="bl" /><CornerBracket pos="br" />
+
+      <div className="flex items-center justify-between">
+        <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
+          <span aria-hidden className="text-accent">■</span> {card.source.toUpperCase()} #{card.id}
+        </span>
+        {streaming ? (
+          <span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-accent">
+            <span className="h-1.5 w-1.5 rounded-full bg-accent live-dot" />
+            LIVE
+          </span>
+        ) : (
+          <StatusChip tone={card.statusTone}>{card.statusLabel}</StatusChip>
+        )}
       </div>
-    </BracketedCell>
+
+      <div className="mt-3 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">{card.kindLabel}</div>
+      <div
+        className="mt-1 font-stencil text-accent"
+        style={{ fontSize: "clamp(28px, 4vw, 40px)", lineHeight: 1, letterSpacing: "-0.01em" }}
+      >
+        {card.pool}
+      </div>
+      <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">{card.poolLabel}</div>
+
+      {/* Mini-stage: three agent mascots */}
+      <div className="mt-4 flex items-end justify-start gap-2 border-t border-[color:var(--hairline)] pt-4">
+        {card.mascotIds.map((mid, i) => {
+          const variant: RobotVariant = robotVariantForId(mid);
+          return (
+            <span key={`${mid}-${i}`} className="flex h-10 w-10 items-center justify-center bg-canvas-3">
+              <Robot variant={variant} size={32} decorative />
+            </span>
+          );
+        })}
+      </div>
+
+      <div className="mt-3 flex items-center justify-between font-mono text-[11px] text-ink-3">
+        <span>{card.entrantsLabel}</span>
+        <span>{card.endSec ? `${fmtCountdown(card.endSec)} LEFT` : "WINDOW CLOSED"}</span>
+      </div>
+
+      <div className="mt-4 flex items-center justify-end font-mono text-[11px] uppercase tracking-[0.16em] text-ink-2 group-hover:text-accent">
+        WATCH <span aria-hidden className="ml-2">→</span>
+      </div>
+    </a>
   );
+}
+
+function CornerBracket({ pos }: { pos: "tl" | "tr" | "bl" | "br" }) {
+  const base = {
+    position: "absolute" as const,
+    width: 12,
+    height: 12,
+    pointerEvents: "none" as const,
+  };
+  const ink = "var(--ink)";
+  const styles = {
+    tl: { ...base, top: -1, left: -1, borderTop: `1.5px solid ${ink}`, borderLeft: `1.5px solid ${ink}` },
+    tr: { ...base, top: -1, right: -1, borderTop: `1.5px solid ${ink}`, borderRight: `1.5px solid ${ink}` },
+    bl: { ...base, bottom: -1, left: -1, borderBottom: `1.5px solid ${ink}`, borderLeft: `1.5px solid ${ink}` },
+    br: { ...base, bottom: -1, right: -1, borderBottom: `1.5px solid ${ink}`, borderRight: `1.5px solid ${ink}` },
+  };
+  return <span aria-hidden style={styles[pos]} />;
 }

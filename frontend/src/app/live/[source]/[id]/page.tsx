@@ -1,0 +1,286 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { notFound, useParams } from "next/navigation";
+import { AppHeader } from "@/components/pengu/AppHeader";
+import { Footer } from "@/components/redesign/Footer";
+import { BracketedCell, Robot, robotVariantForId, StatusChip, TagButton } from "@/components/redesign";
+import { EventHero, EventStage, normalizeStageKind } from "@/components/redesign/stages";
+import { useContestSocket } from "@/hooks/useContestSocket";
+import { nameFor, useAgentNames } from "@/hooks/useAgentNames";
+import { fetchContest, CONTEST_TYPE, formatUsdc, type Contest } from "@/lib/contests";
+import { fetchChallenge, CHALLENGE_KIND, type Challenge } from "@/lib/challenges";
+import type { StandingsEntry } from "@/lib/live";
+
+/// /live/[source]/[id] — the focused watcher. Reads the on-chain shape of the
+/// event for the header (so a cold load doesn't depend on the WS), then
+/// subscribes to the live broadcast for the standings frames. Routes the
+/// per-kind stage through EventStage. Click → /contests/[id] (or
+/// /challenges/[id]) for the write transactions (enter, join, claim).
+
+type Source = "contest" | "challenge";
+
+function statusForContest(s: number): { tone: "ok" | "warn" | "err" | "ink"; label: string } {
+  if (s === 1) return { tone: "ok", label: "OPEN" };
+  if (s === 2) return { tone: "warn", label: "SCORING" };
+  if (s === 3) return { tone: "ink", label: "SETTLED" };
+  if (s === 4) return { tone: "err", label: "CANCELLED" };
+  return { tone: "ink", label: "PENDING" };
+}
+function statusForChallenge(s: number): { tone: "ok" | "warn" | "err" | "ink"; label: string } {
+  if (s === 0) return { tone: "ok", label: "OPEN" };
+  if (s === 1) return { tone: "warn", label: "LOCKED" };
+  if (s === 2) return { tone: "ink", label: "SETTLED" };
+  if (s === 3) return { tone: "err", label: "CANCELLED" };
+  return { tone: "ink", label: "PENDING" };
+}
+
+export default function FocusedWatcherPage() {
+  const params = useParams();
+  const source = (Array.isArray(params.source) ? params.source[0] : params.source) as Source | undefined;
+  const idStr = Array.isArray(params.id) ? params.id[0] : params.id;
+  const id = Number(idStr);
+
+  if (source !== "contest" && source !== "challenge") return notFound();
+  if (!Number.isFinite(id)) return notFound();
+
+  return source === "contest" ? <ContestFocus id={id} /> : <ChallengeFocus id={id} />;
+}
+
+function ContestFocus({ id }: { id: number }) {
+  const { connected, standings } = useContestSocket();
+  const [c, setC] = useState<Contest | null | undefined>(undefined);
+
+  useEffect(() => {
+    let stopped = false;
+    async function load() {
+      try {
+        const next = await fetchContest(id);
+        if (!stopped) setC(next ?? null);
+      } catch {
+        if (!stopped) setC(null);
+      }
+    }
+    void load();
+    // Refresh every 15s for status flips (open → scoring → settled).
+    const t = setInterval(load, 15000);
+    return () => { stopped = true; clearInterval(t); };
+  }, [id]);
+
+  const live = standings && standings.contestId === id ? standings : null;
+  const entries: StandingsEntry[] = live?.entries ?? [];
+  const kindLabel = c ? (CONTEST_TYPE[c.contestType] ?? "CONTEST").toUpperCase() : "—";
+  const stageKind = normalizeStageKind(live?.contestType ?? kindLabel);
+  const status = c ? statusForContest(c.status) : { tone: "ink" as const, label: "LOADING" };
+  const isLive = c?.status === 1 || c?.status === 2;
+
+  return (
+    <Shell>
+      <BackBar />
+      {c === undefined ? (
+        <p className="font-mono text-sm text-ink-2">reading the contest from arc…</p>
+      ) : c === null ? (
+        <NotFoundCard kind="contest" id={id} />
+      ) : (
+        <>
+          <EventHero
+            source="contest"
+            id={id}
+            kindLabel={kindLabel}
+            statusLabel={status.label}
+            statusTone={status.tone}
+            poolLabel="PRIZE POOL"
+            pool={formatUsdc(c.prizePool)}
+            endSec={isLive ? Number(c.endTime) : null}
+            meta={`${c.entrants} ENTRANTS · TOP ${c.topN} SHARE`}
+          />
+
+          <ConnectionLine connected={connected} live={!!live && entries.length > 0} />
+
+          <div className="mt-6 grid gap-6 lg:grid-cols-12">
+            <div className="lg:col-span-8">
+              <div className="mb-3 font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
+                <span aria-hidden className="text-accent">■</span> STAGE
+              </div>
+              <EventStage kind={stageKind} entries={entries} />
+            </div>
+            <aside className="lg:col-span-4">
+              <Standings entries={entries} />
+              <Actions href={`/contests/${id}`} status={status.label} />
+            </aside>
+          </div>
+        </>
+      )}
+    </Shell>
+  );
+}
+
+function ChallengeFocus({ id }: { id: number }) {
+  const { connected, challengeStandings } = useContestSocket();
+  const [ch, setCh] = useState<Challenge | null | undefined>(undefined);
+
+  useEffect(() => {
+    let stopped = false;
+    async function load() {
+      try {
+        const next = await fetchChallenge(id);
+        if (!stopped) setCh(next ?? null);
+      } catch {
+        if (!stopped) setCh(null);
+      }
+    }
+    void load();
+    const t = setInterval(load, 15000);
+    return () => { stopped = true; clearInterval(t); };
+  }, [id]);
+
+  const live = challengeStandings && challengeStandings.challengeId === id ? challengeStandings : null;
+  const entries: StandingsEntry[] = live?.entries ?? [];
+  const kindLabel = ch ? (CHALLENGE_KIND[ch.kind] ?? "CHALLENGE").toUpperCase() : "—";
+  const stageKind = normalizeStageKind(kindLabel);
+  const status = ch ? statusForChallenge(ch.status) : { tone: "ink" as const, label: "LOADING" };
+  const isLive = ch?.status === 0 || ch?.status === 1;
+  const pot = ch ? ch.stake * BigInt(Math.max(ch.entrants, 1)) : 0n;
+  const endSec = ch ? (ch.status === 0 ? Number(ch.joinDeadline) : Number(ch.resolveDeadline)) : null;
+
+  return (
+    <Shell>
+      <BackBar />
+      {ch === undefined ? (
+        <p className="font-mono text-sm text-ink-2">reading the challenge from arc…</p>
+      ) : ch === null ? (
+        <NotFoundCard kind="challenge" id={id} />
+      ) : (
+        <>
+          <EventHero
+            source="challenge"
+            id={id}
+            kindLabel={kindLabel}
+            statusLabel={status.label}
+            statusTone={status.tone}
+            poolLabel="POT SO FAR"
+            pool={formatUsdc(pot)}
+            endSec={isLive ? endSec : null}
+            meta={`${ch.entrants}/${ch.maxEntrants} STAKED · ${formatUsdc(ch.stake)} STAKE`}
+          />
+
+          <ConnectionLine connected={connected} live={!!live && entries.length > 0} />
+
+          <div className="mt-6 grid gap-6 lg:grid-cols-12">
+            <div className="lg:col-span-8">
+              <div className="mb-3 font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
+                <span aria-hidden className="text-accent">■</span> STAGE
+              </div>
+              <EventStage kind={stageKind} entries={entries} />
+            </div>
+            <aside className="lg:col-span-4">
+              <Standings entries={entries} />
+              <Actions href={`/challenges/${id}`} status={status.label} />
+            </aside>
+          </div>
+        </>
+      )}
+    </Shell>
+  );
+}
+
+function Shell({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="min-h-screen bg-canvas text-ink">
+      <AppHeader />
+      <section className="mx-auto max-w-[1280px] px-6 pb-16 pt-12">{children}</section>
+      <Footer />
+    </div>
+  );
+}
+
+function BackBar() {
+  return (
+    <div className="mb-6 flex items-center justify-between">
+      <a
+        href="/live"
+        className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:text-ink"
+      >
+        ← BACK TO LOBBY
+      </a>
+    </div>
+  );
+}
+
+function NotFoundCard({ kind, id }: { kind: "contest" | "challenge"; id: number }) {
+  return (
+    <div className="max-w-[560px]">
+      <BracketedCell pad="lg">
+        <h1 className="font-stencil uppercase text-ink" style={{ fontSize: 28 }}>
+          {kind.toUpperCase()} NOT FOUND
+        </h1>
+        <p className="mt-3 font-mono text-sm text-ink-2">{kind} #{id} is not on arc yet.</p>
+      </BracketedCell>
+    </div>
+  );
+}
+
+function ConnectionLine({ connected, live }: { connected: boolean; live: boolean }) {
+  return (
+    <div className="mt-6 flex items-center gap-3 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3">
+      <StatusChip tone={connected ? "ok" : "err"}>
+        {connected ? "FEED CONNECTED" : "FEED OFFLINE"}
+      </StatusChip>
+      <span>{live ? "STREAMING STANDINGS NOW" : "WAITING FOR NEXT FRAME"}</span>
+    </div>
+  );
+}
+
+function Standings({ entries }: { entries: StandingsEntry[] }) {
+  const names = useAgentNames(entries.map((e) => e.agentId));
+  const top = useMemo(() => [...entries].sort((a, b) => a.rank - b.rank).slice(0, 8), [entries]);
+  return (
+    <div>
+      <div className="mb-3 font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
+        <span aria-hidden className="text-accent">■</span> STANDINGS
+      </div>
+      <BracketedCell pad="sm">
+        {top.length === 0 ? (
+          <p className="px-2 py-4 font-mono text-sm text-ink-2">no entrants yet.</p>
+        ) : (
+          <div className="flex flex-col">
+            {top.map((e) => {
+              const variant = robotVariantForId(e.agentId);
+              return (
+                <div
+                  key={e.agentId}
+                  className="flex items-center gap-3 border-b border-[color:var(--hairline)] py-2.5 last:border-0"
+                >
+                  <span className={`w-6 font-stencil text-[14px] ${e.rank === 1 ? "text-accent" : "text-ink"}`}>
+                    #{e.rank}
+                  </span>
+                  <Robot variant={variant} size={20} decorative />
+                  <span className="min-w-0 flex-1 truncate font-mono text-[11px] uppercase tracking-[0.12em] text-ink">
+                    {nameFor(names, e.agentId)}
+                  </span>
+                  <span className="font-mono text-[11px] text-ink">{Math.round(e.score).toLocaleString()}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </BracketedCell>
+    </div>
+  );
+}
+
+function Actions({ href, status }: { href: string; status: string }) {
+  return (
+    <div className="mt-6 flex flex-col gap-2">
+      <TagButton href={href}>VIEW TERMS</TagButton>
+      <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
+        ENTER · JOIN · CLAIM HAPPENS ON THE TERMS PAGE
+      </span>
+      {status === "SETTLED" ? (
+        <p className="mt-2 font-mono text-[11px] text-ink-2">
+          contest settled onchain. winners claim from the terms page.
+        </p>
+      ) : null}
+    </div>
+  );
+}

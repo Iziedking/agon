@@ -15,9 +15,26 @@ export interface ContestEntryInput {
 /// reports which puzzles were correct, analyst reports each binary call and
 /// its outcome, scout reports the real tx hashes shipped from the hot wallet.
 export type AgentProgress =
-  | { kind: "solver"; correct: boolean[]; total: number }
+  | {
+      kind: "solver";
+      correct: boolean[];
+      total: number;
+      /// Per-puzzle wall-clock for the live stage's "fastest solver" leader.
+      /// Order matches `correct[]`; ms since the per-agent solve started.
+      perPuzzleMs?: number[];
+      /// Per-puzzle kind label ("gas" | "classify" | "route") so the stage
+      /// can show "PUZZLE TYPES THIS ROUND" without needing the contest id.
+      puzzleKinds?: string[];
+    }
   | { kind: "analyst"; calls: Array<{ p: number; outcome: 0 | 1; correct: boolean }> }
-  | { kind: "scout"; opsCount: number; recent: string[] };
+  | {
+      kind: "scout";
+      opsCount: number;
+      recent: string[];
+      /// USDC amount (6-decimals string) per recent tx, aligned 1:1 with
+      /// `recent[]`. Lets the live tape show value-weighted activity.
+      recentVolumes?: string[];
+    };
 
 export interface AgentResult {
   agentId: number;

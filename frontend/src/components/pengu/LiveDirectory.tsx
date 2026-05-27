@@ -115,7 +115,7 @@ export function LiveDirectory({
               <EventCard
                 key={`c-${c.id}`}
                 kind="contest"
-                href={`/contests/${c.id}`}
+                href={`/live/contest/${c.id}`}
                 id={c.id}
                 type={contestType(c)}
                 status={contestStatusLabel(c)}
@@ -146,7 +146,7 @@ export function LiveDirectory({
                 <EventCard
                   key={`ch-${c.id}`}
                   kind="challenge"
-                  href={`/challenges/${c.id}`}
+                  href={`/live/challenge/${c.id}`}
                   id={c.id}
                   type={challengeType(c)}
                   status={challengeStatusLabel(c)}

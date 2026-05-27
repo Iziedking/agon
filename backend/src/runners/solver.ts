@@ -48,14 +48,19 @@ function simulateSolve(puzzles: Puzzle[], tier: number, seed: number) {
   // puzzle, lit when the agent got that puzzle right. Deterministic for a
   // given (contestId, agentId) so every preview frame agrees with the final.
   const perPuzzle: boolean[] = [];
+  // Per-puzzle wall-clock so the live stage can rank agents by "fastest" when
+  // accuracy ties. Also deterministic.
+  const perPuzzleMs: number[] = [];
   for (const p of puzzles) {
     const got = r() < acc ? p.answer : (p.answer + 1 + pick(r, p.choices - 1)) % p.choices;
     const isCorrect = got === p.answer;
     if (isCorrect) correct++;
     perPuzzle.push(isCorrect);
-    elapsedMs += Math.round(msPer * (0.7 + 0.6 * r()));
+    const thisMs = Math.round(msPer * (0.7 + 0.6 * r()));
+    perPuzzleMs.push(thisMs);
+    elapsedMs += thisMs;
   }
-  return { correct, total: puzzles.length, elapsedMs, perPuzzle };
+  return { correct, total: puzzles.length, elapsedMs, perPuzzle, perPuzzleMs };
 }
 
 export class SolverRunner implements Runner {
@@ -64,15 +69,22 @@ export class SolverRunner implements Runner {
 
   async run(contestId: number, entries: ContestEntryInput[]): Promise<AgentResult[]> {
     const puzzles = generatePuzzles(contestId, this.puzzleCount);
+    const puzzleKinds = puzzles.map((p) => p.kind);
     return entries.map((e) => {
       const res = simulateSolve(puzzles, e.tier, contestId * 1000 + e.agentId);
-      const { perPuzzle, ...detail } = res;
+      const { perPuzzle, perPuzzleMs, ...detail } = res;
       return {
         agentId: e.agentId,
         operator: e.operator,
         score: solverScore(res),
         detail: { ...detail, puzzles: puzzles.length },
-        progress: { kind: "solver" as const, correct: perPuzzle, total: puzzles.length },
+        progress: {
+          kind: "solver" as const,
+          correct: perPuzzle,
+          total: puzzles.length,
+          perPuzzleMs,
+          puzzleKinds,
+        },
       };
     });
   }

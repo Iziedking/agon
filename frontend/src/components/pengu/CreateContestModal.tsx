@@ -118,7 +118,7 @@ export function CreateContestModal({ open, onClose }: { open: boolean; onClose: 
               </p>
               <div className="mt-6 flex flex-col gap-2">
                 <a
-                  href={`/contests/${createdId}`}
+                  href={`/live/contest/${createdId}`}
                   className="inline-flex items-center justify-center gap-2 bg-accent px-4 py-2.5 font-mono text-[13px] uppercase tracking-[0.12em] text-accent-ink hover:bg-accent-press"
                   style={{ clipPath: NOTCH }}
                 >
