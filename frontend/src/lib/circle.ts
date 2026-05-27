@@ -45,3 +45,54 @@ export async function createCircleAccount(
 
   return account as unknown as CircleAccount;
 }
+
+/// One-button email sign-in: try Register first, fall back to Login if the
+/// email is already on file or a credential exists for this device. Users
+/// don't have to know whether they have an account; the modal just says
+/// "continue with email" and we figure it out.
+///
+/// Errors that triggers the Login fallback:
+///   - "already exists" / "already registered" — Circle reports the email is
+///     taken (scenario 1: ghost registration on Circle's side, or the user
+///     genuinely has an account).
+///   - InvalidStateError — WebAuthn detected an existing credential for this
+///     RP+username on the device and refused to create another.
+///   - "credential already exists" — same shape from the SDK.
+/// A user-cancelled ceremony (NotAllowedError) is NOT retried; we surface
+/// the original error so the modal can say "cancelled" instead of looping.
+export async function continueWithEmail(username: string): Promise<CircleAccount> {
+  try {
+    return await createCircleAccount(username, "Register");
+  } catch (err) {
+    if (isUserCancelled(err)) throw err;
+    if (isAlreadyRegistered(err)) {
+      // Silent fallback. The user doesn't see this branch.
+      return createCircleAccount(username, "Login");
+    }
+    throw err;
+  }
+}
+
+function errorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message.toLowerCase();
+  if (typeof err === "string") return err.toLowerCase();
+  return "";
+}
+
+function isUserCancelled(err: unknown): boolean {
+  const m = errorMessage(err);
+  if (err instanceof Error && err.name === "NotAllowedError") return true;
+  return m.includes("not allowed") || m.includes("cancelled") || m.includes("user denied");
+}
+
+function isAlreadyRegistered(err: unknown): boolean {
+  const m = errorMessage(err);
+  if (err instanceof Error && err.name === "InvalidStateError") return true;
+  return (
+    m.includes("already exists") ||
+    m.includes("already registered") ||
+    m.includes("already in use") ||
+    m.includes("credential already") ||
+    m.includes("username") && m.includes("taken")
+  );
+}

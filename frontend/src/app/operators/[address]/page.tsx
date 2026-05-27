@@ -58,6 +58,12 @@ export default function OperatorPage() {
     } catch {/* silent */}
   }
 
+  // Pick the operator's first agent with a custom skin (if any) so the
+  // header avatar reflects their identity instead of the default flat pink
+  // Robot. Falls back to the Robot while agents load or when no agent has a
+  // skin set yet.
+  const headerSkinAgent = Array.isArray(agents) ? agents.find((a) => !!a.skin) : null;
+
   return (
     <div className="min-h-screen bg-canvas text-ink">
       <AppHeader />
@@ -72,7 +78,17 @@ export default function OperatorPage() {
             className="flex h-14 w-14 flex-none items-center justify-center overflow-hidden border border-[color:var(--hairline-strong)] bg-canvas-2"
             style={{ borderRadius: "50%" }}
           >
-            <Robot variant="pink" size={40} decorative />
+            {headerSkinAgent?.skin ? (
+              <img
+                src={headerSkinAgent.skin}
+                alt={headerSkinAgent.nickname ?? `agent #${headerSkinAgent.id}`}
+                className="h-full w-full object-cover"
+                loading="lazy"
+                decoding="async"
+              />
+            ) : (
+              <Robot variant="pink" size={40} decorative />
+            )}
           </span>
           <div className="min-w-0 flex-1">
             <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">

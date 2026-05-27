@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="180" height="180" viewBox="0 0 180 180" role="img" aria-label="ArcRun">
+  <rect width="180" height="180" fill="#F4F1ED"/>
+  <g transform="translate(36 36) scale(3.375)">
+    <polygon points="0,0 26,0 32,6 32,32 0,32" fill="#D6336C"/>
+    <g fill="#F4F1ED">
+      <polygon points="3,28 8,28 14,9 11,9"/>
+      <polygon points="21,9 18,9 24,28 29,28"/>
+      <rect x="8" y="19" width="16" height="3"/>
+    </g>
+    <rect x="14.5" y="19" width="3" height="3" fill="#D6336C"/>
+  </g>
+</svg>

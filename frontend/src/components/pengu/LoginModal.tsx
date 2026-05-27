@@ -6,7 +6,7 @@ import { useAccount, useChainId, useConnect, useDisconnect, useSignMessage, useS
 import { injected } from "wagmi/connectors";
 import { arcTestnet } from "@/lib/arc";
 import { loginWithSigner } from "@/lib/auth";
-import { circleConfigured, createCircleAccount } from "@/lib/circle";
+import { circleConfigured, continueWithEmail } from "@/lib/circle";
 import { useAuth } from "@/hooks/useAuth";
 import { Robot } from "@/components/redesign";
 import { friendlyError } from "@/lib/errors";
@@ -180,7 +180,11 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
     }
   }
 
-  async function signInCircle(mode: "Register" | "Login") {
+  /// One-button email flow. Tries Register first, silently falls back to
+  /// Login if the email is already on file or a credential exists for this
+  /// device — see continueWithEmail in lib/circle.ts. Users don't have to
+  /// know whether they have an account already.
+  async function signInWithEmail() {
     if (!email) {
       setError("enter an email first");
       return;
@@ -188,16 +192,27 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
     setCircleBusy(true);
     setError(null);
     try {
-      const account = await createCircleAccount(email, mode);
+      const account = await continueWithEmail(email);
       await loginWithSigner(account.address, (m) => account.signMessage({ message: m }));
       await refresh();
-      reportEvent("login", { context: { method: "email", mode } });
+      reportEvent("login", { context: { method: "email" } });
     } catch (e) {
-      setError(friendlyError(e, "passkey login failed."));
+      const msg = e instanceof Error ? e.message : String(e);
+      // Map common WebAuthn failure modes to copy a non-developer can act on.
+      const lower = msg.toLowerCase();
+      let userMsg = friendlyError(e, "couldn't sign in with that email.");
+      if (e instanceof Error && e.name === "NotAllowedError") {
+        userMsg = "cancelled or timed out. try again, or use a wallet below.";
+      } else if (lower.includes("already") || lower.includes("invalidstate")) {
+        userMsg = "this email is registered with a passkey not on this device. try a different email, or use a wallet below.";
+      } else if (lower.includes("client key") || lower.includes("not set")) {
+        userMsg = "email login isn't configured. use a wallet below.";
+      }
+      setError(userMsg);
       reportEvent("login_error", {
         level: "error",
-        message: e instanceof Error ? e.message : String(e),
-        context: { method: "email", mode },
+        message: msg,
+        context: { method: "email" },
       });
     } finally {
       setCircleBusy(false);
@@ -382,16 +397,24 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
                         disabled={circleBusy}
                       />
                       <div className="mt-4 flex flex-col gap-3">
-                        <PrimaryTag disabled={circleBusy} onClick={() => signInCircle("Register")}>
-                          <span>{circleBusy ? "CHECK YOUR DEVICE" : "CREATE ACCOUNT"}</span>
+                        <PrimaryTag disabled={circleBusy} onClick={signInWithEmail}>
+                          <span>{circleBusy ? "CHECK YOUR DEVICE" : "CONTINUE"}</span>
                         </PrimaryTag>
-                        <GhostTag disabled={circleBusy} onClick={() => signInCircle("Login")}>
-                          <span>I HAVE A PASSKEY</span>
-                        </GhostTag>
+                      </div>
+                      <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
+                        WE'LL CREATE A PASSKEY OR USE YOUR EXISTING ONE AUTOMATICALLY.
+                      </p>
+                      <div className="mt-4 border-t border-[color:var(--hairline)] pt-4">
+                        <button
+                          onClick={() => setView("choose")}
+                          className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:text-ink"
+                        >
+                          ← USE A WALLET INSTEAD
+                        </button>
                       </div>
                       <button
                         onClick={() => setView("choose")}
-                        className="mt-5 inline-flex items-center gap-1 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:text-ink"
+                        className="mt-5 hidden items-center gap-1 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:text-ink"
                       >
                         ← BACK
                       </button>
