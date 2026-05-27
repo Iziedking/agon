@@ -2,20 +2,20 @@
   "network": "arc-testnet",
   "chainId": 5042002,
   "rpcUrl": "https://rpc.testnet.arc.network",
-  "deployedAt": "2026-05-23",
+  "deployedAt": "2026-05-27",
   "deployer": "0x0aeEF0Dd6b0754262d1a91e435565749Cdc365Ad",
   "roles": {
     "admin": "0x0aeEF0Dd6b0754262d1a91e435565749Cdc365Ad",
-    "treasury": "0x0aeEF0Dd6b0754262d1a91e435565749Cdc365Ad",
-    "coordinator": "0x0aeEF0Dd6b0754262d1a91e435565749Cdc365Ad"
+    "treasury": "0x4D61c5b8B100603dd578A99ACB5160FCf0b44f75",
+    "coordinator": "0x4D61c5b8B100603dd578A99ACB5160FCf0b44f75"
   },
   "contracts": {
-    "PrizeEscrow": "0xc6E4b4F9d42B723F20DDFB640e5604A0e16E387E",
-    "AgentRegistry": "0x08D2736275d6243759578510a095F50f09f8aB5C",
-    "ContestEngine": "0x818B8EE65a059512C689Ddd557bd0d20E0c91B16",
-    "ChallengeArena": "0xBcfdb3b48AD304D419bf7484a2B22B3e9A1bAbfC",
-    "SyndicateFactory": "0x31EDEcf4d6258ae9182eBda7C0FdF693E4754772",
-    "PointsLedger": "0x4e6f9E7Cd4B481AbC99548F052582AaCCFc2f38C"
+    "PrizeEscrow": "0xE50F6D034b9ACe0a8f3D6757645199d9833d1870",
+    "AgentRegistry": "0x38C04d257fdEC06Bd3B17e7668d2f8DD35A4B35B",
+    "ContestEngine": "0x760cfCD0538FAF46cDd4486FF39B1CA9f7635a8E",
+    "ChallengeArena": "0x09aa84f70C9b8998eA0f06A0C00cd0263F94237F",
+    "SyndicateFactory": "0xde848a1aD652E0D6316a3282f47cca710A6f25d7",
+    "PointsLedger": "0xf944973b701663a526a6A130771de0ca20Ec4107"
   },
   "external": {
     "USDC": "0x3600000000000000000000000000000000000000",

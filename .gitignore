@@ -46,3 +46,8 @@ yarn-debug.log*
 done.md
 todo.md
 docs/images
+# Local-only operator scripts (admin keys, role grants, etc.)
+scripts/
+
+# Local-only run guide (contains operational tips, not for distribution)
+docs/run_guide.md

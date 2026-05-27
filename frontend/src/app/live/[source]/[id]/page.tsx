@@ -105,7 +105,7 @@ function ContestFocus({ id }: { id: number }) {
               <EventStage kind={stageKind} entries={entries} />
             </div>
             <aside className="lg:col-span-4">
-              <Standings entries={entries} />
+              <Standings entries={entries} stakedCount={c.entrants} />
               <Actions href={`/contests/${id}`} status={status.label} />
             </aside>
           </div>
@@ -174,7 +174,7 @@ function ChallengeFocus({ id }: { id: number }) {
               <EventStage kind={stageKind} entries={entries} />
             </div>
             <aside className="lg:col-span-4">
-              <Standings entries={entries} />
+              <Standings entries={entries} stakedCount={ch.entrants} />
               <Actions href={`/challenges/${id}`} status={status.label} />
             </aside>
           </div>
@@ -231,7 +231,12 @@ function ConnectionLine({ connected, live }: { connected: boolean; live: boolean
   );
 }
 
-function Standings({ entries }: { entries: StandingsEntry[] }) {
+/// Standings rail. Reads from the live WS broadcast first; when the runner
+/// hasn't emitted a scoring frame yet the panel falls back to the on-chain
+/// entrant count so the user doesn't see "no entrants" while staring at a
+/// 2/2 staked challenge. The fallback shape carries no scores — just a
+/// "waiting on first frame" line and the staked count.
+function Standings({ entries, stakedCount }: { entries: StandingsEntry[]; stakedCount?: number }) {
   const names = useAgentNames(entries.map((e) => e.agentId));
   const top = useMemo(() => [...entries].sort((a, b) => a.rank - b.rank).slice(0, 8), [entries]);
   return (
@@ -241,7 +246,16 @@ function Standings({ entries }: { entries: StandingsEntry[] }) {
       </div>
       <BracketedCell pad="sm">
         {top.length === 0 ? (
-          <p className="px-2 py-4 font-mono text-sm text-ink-2">no entrants yet.</p>
+          stakedCount && stakedCount > 0 ? (
+            <div className="px-1 py-3 font-mono text-[12px] text-ink-2">
+              <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
+                {stakedCount} {stakedCount === 1 ? "ENTRANT" : "ENTRANTS"} STAKED
+              </div>
+              <p className="mt-1.5 text-ink-3">scoring starts when the join window closes. live frames will fill this in.</p>
+            </div>
+          ) : (
+            <p className="px-2 py-4 font-mono text-sm text-ink-2">no entrants yet.</p>
+          )
         ) : (
           <div className="flex flex-col">
             {top.map((e) => {

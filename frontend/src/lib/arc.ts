@@ -29,10 +29,10 @@ export const publicClient = createPublicClient({ chain: arcTestnet, transport: h
 /// Deployed ArcRun contracts on Arc testnet. Public addresses; the canonical
 /// record is contracts/deployments/arc-testnet.json.
 export const CONTRACTS = {
-  ContestEngine: "0x818B8EE65a059512C689Ddd557bd0d20E0c91B16",
-  ChallengeArena: "0xBcfdb3b48AD304D419bf7484a2B22B3e9A1bAbfC",
-  AgentRegistry: "0x08D2736275d6243759578510a095F50f09f8aB5C",
-  PrizeEscrow: "0xc6E4b4F9d42B723F20DDFB640e5604A0e16E387E",
-  SyndicateFactory: "0x31EDEcf4d6258ae9182eBda7C0FdF693E4754772",
-  PointsLedger: "0x4e6f9E7Cd4B481AbC99548F052582AaCCFc2f38C",
+  ContestEngine: "0x760cfCD0538FAF46cDd4486FF39B1CA9f7635a8E",
+  ChallengeArena: "0x09aa84f70C9b8998eA0f06A0C00cd0263F94237F",
+  AgentRegistry: "0x38C04d257fdEC06Bd3B17e7668d2f8DD35A4B35B",
+  PrizeEscrow: "0xE50F6D034b9ACe0a8f3D6757645199d9833d1870",
+  SyndicateFactory: "0xde848a1aD652E0D6316a3282f47cca710A6f25d7",
+  PointsLedger: "0xf944973b701663a526a6A130771de0ca20Ec4107",
 } as const;

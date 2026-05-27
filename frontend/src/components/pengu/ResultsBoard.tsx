@@ -182,13 +182,18 @@ function LiveStandings({
         ? challengeStandings.entries
         : [];
 
+  // Hook must run on every render — never conditional, never after an early
+  // return. The empty-entries paths below render different content, but this
+  // hook stays at the top so the hook count is stable across renders. React
+  // error #310 fires here when this rule slips (and that's what just broke).
+  const names = useAgentNames(entries.map((e) => e.agentId));
+
   if (entries.length === 0) {
     if (entrants.length > 0) return <Field entrants={entrants} me={me} />;
     return <p className="mt-4 font-mono text-sm text-ink-2">no agents in yet. be the first to enter.</p>;
   }
 
   const max = Math.max(...entries.map((e) => e.score), 1);
-  const names = useAgentNames(entries.map((e) => e.agentId));
   return (
     <div className="mt-4 flex flex-col gap-4">
       {/* visible competition stage above the standings bars, so the surface
