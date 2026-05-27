@@ -226,11 +226,11 @@ create table if not exists training_log (
 );
 create index if not exists training_log_agent_idx on training_log(agent_id, completed_at desc);
 
-/// Admin-only soft burn. An agent id listed here is filtered out of every
-/// public agent listing (fetchAgents) so the operator profile, workshop,
-/// dashboard, and contest entry pickers all treat it as removed. The on-chain
-/// ERC-8004 NFT stays where it is; this only hides it from the ArcRun UI.
-/// Users never see this table or any indication that delisting happened.
+-- Admin-only soft burn. An agent id listed here is filtered out of every
+-- public agent listing (fetchAgents) so the operator profile, workshop,
+-- dashboard, and contest entry pickers all treat it as removed. The on-chain
+-- ERC-8004 NFT stays where it is; this only hides it from the ArcRun UI.
+-- Users never see this table or any indication that delisting happened.
 create table if not exists delisted_agents (
   agent_id     bigint primary key,
   delisted_at  timestamptz not null default now(),

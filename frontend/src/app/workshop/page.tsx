@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useAccount } from "wagmi";
 import { AppHeader } from "@/components/pengu/AppHeader";
@@ -34,8 +34,21 @@ import {
 /// /workshop per arcrun-redesign §4.4. Disconnected: one BracketedCell + a
 /// pink SIGN IN tag. Connected: two-column layout. Left = agent list as
 /// ledger rows. Right = the active agent's Robot + bracketed STATS block.
+///
+/// useSearchParams() forces a CSR bailout on this route, so Next 15 requires
+/// the consumer to live inside a Suspense boundary for the static build to
+/// succeed. The outer default export is the Suspense wrapper; the body is
+/// WorkshopPageBody below.
 
 export default function WorkshopPage() {
+  return (
+    <Suspense fallback={null}>
+      <WorkshopPageBody />
+    </Suspense>
+  );
+}
+
+function WorkshopPageBody() {
   const { address, isConnected } = useAccount();
   const searchParams = useSearchParams();
   const [agents, setAgents] = useState<AgentState[] | undefined>(undefined);
