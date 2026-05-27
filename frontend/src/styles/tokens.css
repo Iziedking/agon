@@ -167,10 +167,13 @@
 }
 
 /* Base body: arcrun-redesign canvas. Light only.
-   The faint grid + vertical paper gradient give the "creamy quality" feel —
-   ChainGPT-style background depth, on the warm cream brand color. Hairline
-   ink at ~5% alpha, 140px cells. Cards and bracketed cells sit on top with
-   their own bg-canvas, which covers the grid where it would distract. */
+   The four-layer body background gives the chaingpt-style "real paper under
+   stage lighting" feel: a warm vertical gradient, a faint minor grid at 60px,
+   a slightly stronger major grid at 240px, and small L-bracket corner marks
+   at every major intersection. Everything sits on the warm cream canvas and
+   uses ink at low alpha so the texture reads without ever competing with
+   content. Cards and bracketed cells layer their own bg-canvas on top, which
+   covers the grid where it would distract. */
 html, body {
   background-color: var(--canvas);
   color: var(--ink);
@@ -183,6 +186,18 @@ html, body {
 
 body {
   background-image:
+    /* L-bracket corner marks at every major (240px) intersection. Inline SVG
+       paints a 12px corner of ink hairline at the top-left of each cell, so
+       at every gridline crossing you see one neat L. This is the chaingpt
+       "tracking mark" detail that makes the canvas feel measured. */
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><path d='M0 12 L0 0 L12 0' stroke='rgba(26,22,18,0.22)' stroke-width='1' fill='none'/></svg>"),
+    /* Major grid: 240x240, slightly stronger ink. Six-ish columns on a 1440
+       viewport, mirrors the chaingpt column rhythm. */
+    linear-gradient(to right, rgba(26, 22, 18, 0.06) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(26, 22, 18, 0.06) 1px, transparent 1px),
+    /* Minor grid: 60x60, a whisper. Four minor cells make one major cell. */
+    linear-gradient(to right, rgba(26, 22, 18, 0.025) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(26, 22, 18, 0.025) 1px, transparent 1px),
     /* Vertical paper gradient: slightly warmer at the top, slightly cooler
        lower, so the page reads like a sheet of paper under stage lighting. */
     linear-gradient(180deg,
@@ -190,17 +205,32 @@ body {
       rgba(244, 241, 237, 0) 360px,
       rgba(244, 241, 237, 0) calc(100% - 360px),
       rgba(228, 222, 213, 0.4) 100%
-    ),
-    /* Hairline grid: thin vertical lines */
-    linear-gradient(to right, rgba(26, 22, 18, 0.05) 1px, transparent 1px),
-    /* Hairline grid: thin horizontal lines */
-    linear-gradient(to bottom, rgba(26, 22, 18, 0.05) 1px, transparent 1px);
+    );
   background-size:
-    100% 100%,
-    140px 140px,
-    140px 140px;
-  background-attachment: fixed, fixed, fixed;
-  background-position: 0 0, 0 0, 0 0;
+    240px 240px,
+    240px 240px,
+    240px 240px,
+    60px 60px,
+    60px 60px,
+    100% 100%;
+  background-attachment: fixed, fixed, fixed, fixed, fixed, fixed;
+  background-position: 0 0, 0 0, 0 0, 0 0, 0 0, 0 0;
+}
+
+/* Decorative pink "tracking square" anchored to the very top-left of the
+   viewport, mirroring the small pink mark that opens every chaingpt section.
+   Sits fixed so it stays on the canvas edge as the user scrolls. Pointer
+   events off so it never blocks clicks. Disabled under reduced-motion. */
+body::before {
+  content: "";
+  position: fixed;
+  top: 88px;
+  left: 24px;
+  width: 6px;
+  height: 6px;
+  background: var(--accent);
+  pointer-events: none;
+  z-index: 1;
 }
 
 /* Dark mode toggle is dead per arcrun-redesign §0. The class is ignored;
