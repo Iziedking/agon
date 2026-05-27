@@ -217,20 +217,20 @@ body {
   background-position: 0 0, 0 0, 0 0, 0 0, 0 0, 0 0;
 }
 
-/* Decorative pink "tracking square" anchored to the very top-left of the
-   viewport, mirroring the small pink mark that opens every chaingpt section.
-   Sits fixed so it stays on the canvas edge as the user scrolls. Pointer
-   events off so it never blocks clicks. Disabled under reduced-motion. */
+/* Decorative pink "tracking square" anchored just below the nav, mirroring
+   the small pink mark that opens every chaingpt section. Sits absolutely
+   under the page content so it never blocks clicks and never participates
+   in the modal stacking context. */
 body::before {
   content: "";
-  position: fixed;
+  position: absolute;
   top: 88px;
   left: 24px;
   width: 6px;
   height: 6px;
   background: var(--accent);
   pointer-events: none;
-  z-index: 1;
+  z-index: 0;
 }
 
 /* Dark mode toggle is dead per arcrun-redesign §0. The class is ignored;

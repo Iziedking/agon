@@ -76,7 +76,7 @@ export default function OperatorPage() {
             </div>
             <h1
               className="mt-2 break-all font-stencil uppercase text-ink"
-              style={{ fontSize: "clamp(28px, 4vw, 44px)", lineHeight: 1, letterSpacing: "-0.01em" }}
+              style={{ fontSize: "clamp(56px, 10vw, 132px)", lineHeight: 0.92, letterSpacing: "-0.03em" }}
             >
               {short(address)}
             </h1>

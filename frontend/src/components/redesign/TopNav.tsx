@@ -23,7 +23,7 @@ export function TopNav() {
   const pathname = usePathname() ?? "/";
 
   return (
-    <header className="sticky top-0 z-20 border-b border-[color:var(--hairline)] bg-canvas/95 backdrop-blur-[2px]">
+    <header className="sticky top-0 z-20 border-b border-[color:var(--hairline)] bg-canvas">
       <div className="mx-auto flex h-16 max-w-[1280px] items-center justify-between px-6">
         <a href="/" className="inline-flex items-center text-ink">
           <ArcRunMark />
