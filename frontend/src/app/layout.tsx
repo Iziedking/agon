@@ -7,6 +7,9 @@ import { Providers } from "@/components/Providers";
 import { ErrorReporter } from "@/components/ErrorReporter";
 import { ChainGuard } from "@/components/ChainGuard";
 import { WinWatcher } from "@/components/WinWatcher";
+import { BodyLines } from "@/components/redesign/BodyLines";
+import { SideRail } from "@/components/redesign/SideRail";
+import { ChainTicker } from "@/components/redesign/ChainTicker";
 
 // Mono body. Every label, eyebrow, numeral, and table cell reads from this.
 const jetbrainsMono = JetBrains_Mono({
@@ -33,9 +36,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${GeistSans.variable} ${jetbrainsMono.variable} ${blackOps.variable}`}>
       <body>
+        <BodyLines />
         <Providers>
           <ChainGuard />
+          <ChainTicker />
           {children}
+          <SideRail />
           <WinWatcher />
         </Providers>
         <ErrorReporter />

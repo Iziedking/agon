@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/redesign/Footer";
-import { Robot, SectionHeader, robotVariantForId } from "@/components/redesign";
+import { CornerMarkers, MicroLabel, Robot, SectionHeader, robotVariantForId } from "@/components/redesign";
 import { fetchLeaderboard, formatReputation, formatUsdcString, short, type LeaderRow } from "@/lib/profiles";
 
 /// /leaderboard per arcrun-redesign §4.7. True mono table, not a rounded
@@ -42,7 +42,11 @@ export default function LeaderboardPage() {
     <div className="min-h-screen bg-canvas text-ink">
       <AppHeader />
 
-      <section className="mx-auto max-w-[1080px] px-6 pt-16">
+      <section className="relative mx-auto max-w-[1080px] px-6 pt-16">
+        <CornerMarkers />
+        <div className="mb-4">
+          <MicroLabel tone="ink-3">ALL-TIME · ARC TESTNET</MicroLabel>
+        </div>
         <SectionHeader
           eyebrow="LEADERBOARD"
           heading="TOP OPERATORS"

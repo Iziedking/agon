@@ -2,29 +2,30 @@
 
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { useAccount, useChainId, useConnect, useSignMessage, useSwitchChain } from "wagmi";
+import { useAccount, useChainId, useConnect, useDisconnect, useSignMessage, useSwitchChain } from "wagmi";
 import { injected } from "wagmi/connectors";
 import { arcTestnet } from "@/lib/arc";
 import { loginWithSigner } from "@/lib/auth";
 import { circleConfigured, createCircleAccount } from "@/lib/circle";
 import { useAuth } from "@/hooks/useAuth";
-import { AgentMascot } from "@/components/pengu/AgentMascot";
+import { Robot } from "@/components/redesign";
 import { friendlyError } from "@/lib/errors";
 import { reportEvent } from "@/lib/report";
 
-// Thick, pressable "chunky" buttons: a solid drop edge underneath that
-// compresses when pressed. This is the Pengu game-button feel, not a flat pill.
-const solid =
-  "group flex w-full items-center justify-between rounded-pill bg-pengu-blue px-6 py-4 font-display text-base uppercase tracking-wide text-white shadow-[0_5px_0_0_#5b34d6] transition-all duration-100 hover:translate-y-[2px] hover:shadow-[0_3px_0_0_#5b34d6] active:translate-y-[4px] active:shadow-[0_1px_0_0_#5b34d6] disabled:opacity-60";
-const ghost =
-  "group flex w-full items-center justify-between rounded-pill border-2 border-pengu-blue bg-pengu-card px-6 py-4 font-display text-base uppercase tracking-wide text-pengu-blue shadow-[0_5px_0_0_#e3dbff] transition-all duration-100 hover:translate-y-[2px] hover:shadow-[0_3px_0_0_#e3dbff] active:translate-y-[4px] disabled:opacity-60";
-const ghostCenter =
-  "flex w-full items-center justify-center rounded-pill border-2 border-pengu-blue bg-pengu-card px-6 py-4 font-display text-base uppercase tracking-wide text-pengu-blue shadow-[0_5px_0_0_#e3dbff] transition-all duration-100 hover:translate-y-[2px] hover:shadow-[0_3px_0_0_#e3dbff] active:translate-y-[4px] disabled:opacity-60";
+/// Login popout, reskinned to arcrun-redesign. Bracketed surface on a warm
+/// canvas, stencil heading, mono body, flat notched pink tag CTAs. Three
+/// views: signed-out (choose between email passkey or wallet), email form,
+/// and signed-in (account info plus a single SIGN OUT button that also
+/// disconnects the wagmi wallet so the next click starts a fresh wallet
+/// pick and a fresh SIWE signature). No rounded bubbles, no purple backdrop.
+
+// Notched CTA shape — same clipPath the rest of the redesign uses.
+const NOTCH = "polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%)";
 
 function MailIcon() {
   return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="5" width="18" height="14" rx="2" />
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="5" width="18" height="14" rx="0" />
       <path d="m3 7 9 6 9-6" />
     </svg>
   );
@@ -32,28 +33,16 @@ function MailIcon() {
 
 function WalletIcon() {
   return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="6" width="18" height="13" rx="2" />
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="6" width="18" height="13" rx="0" />
       <path d="M3 10h18" />
-      <circle cx="16.5" cy="14" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="16.5" cy="14" r="1" fill="currentColor" stroke="none" />
     </svg>
   );
 }
 
-function GoCircle({ bg }: { bg: string }) {
-  return (
-    <span
-      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${bg} transition-transform duration-150 group-hover:translate-x-0.5`}
-    >
-      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M9 5l7 7-7 7" />
-      </svg>
-    </span>
-  );
-}
-
-/// Click-to-copy address chip. Shows the short form, flips to "copied" for a
-/// beat after a successful navigator.clipboard write.
+/// Click-to-copy address chip. Shows the short form, flips to "COPIED" for
+/// a beat after a successful navigator.clipboard write.
 function CopyAddress({ address, short }: { address: string; short: string }) {
   const [copied, setCopied] = useState(false);
   async function copy() {
@@ -69,25 +58,73 @@ function CopyAddress({ address, short }: { address: string; short: string }) {
     <button
       onClick={copy}
       title={copied ? "copied" : `copy ${address}`}
-      className="inline-flex items-center gap-1.5 rounded-pill border border-pengu-blue/15 bg-pengu-blue/5 px-2.5 py-1 font-mono text-xs text-pengu-dark transition-colors hover:border-pengu-blue/30 hover:text-pengu-blue"
+      className="inline-flex items-center gap-1.5 border border-[color:var(--hairline-strong)] bg-canvas-2 px-2.5 py-1 font-mono text-[11px] uppercase tracking-[0.08em] text-ink transition-colors hover:bg-canvas-3"
     >
-      <span>{short}</span>
-      {copied ? (
-        <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-          <path d="m5 12 5 5 9-11" />
-        </svg>
-      ) : (
-        <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="9" y="9" width="11" height="11" rx="2" />
-          <path d="M5 15V6a2 2 0 0 1 2-2h9" />
-        </svg>
-      )}
+      <span>{copied ? "COPIED" : short}</span>
     </button>
   );
 }
 
-/// The login popout: an animated, chunky ArcRun modal. Pick a path (email
-/// passkey or wallet). Reuses the SIWE plus Circle auth logic.
+function PrimaryTag({
+  children,
+  onClick,
+  disabled,
+}: {
+  children: React.ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="inline-flex w-full items-center justify-between gap-2 bg-accent px-4 py-3 font-mono text-[12px] uppercase tracking-[0.12em] text-accent-ink transition-colors hover:bg-accent-press disabled:opacity-60"
+      style={{ clipPath: NOTCH }}
+    >
+      <span className="flex items-center gap-2">{children}</span>
+      <span aria-hidden>→</span>
+    </button>
+  );
+}
+
+function GhostTag({
+  children,
+  onClick,
+  disabled,
+}: {
+  children: React.ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="inline-flex w-full items-center justify-between gap-2 border border-ink bg-canvas px-4 py-3 font-mono text-[12px] uppercase tracking-[0.12em] text-ink transition-colors hover:bg-canvas-3 disabled:opacity-60"
+    >
+      <span className="flex items-center gap-2">{children}</span>
+      <span aria-hidden>→</span>
+    </button>
+  );
+}
+
+function Bracket({ pos }: { pos: "tl" | "tr" | "bl" | "br" }) {
+  const base = {
+    position: "absolute" as const,
+    width: 14,
+    height: 14,
+    pointerEvents: "none" as const,
+  };
+  const ink = "var(--ink)";
+  const styles: Record<typeof pos, React.CSSProperties> = {
+    tl: { ...base, top: -1, left: -1, borderTop: `1.5px solid ${ink}`, borderLeft: `1.5px solid ${ink}` },
+    tr: { ...base, top: -1, right: -1, borderTop: `1.5px solid ${ink}`, borderRight: `1.5px solid ${ink}` },
+    bl: { ...base, bottom: -1, left: -1, borderBottom: `1.5px solid ${ink}`, borderLeft: `1.5px solid ${ink}` },
+    br: { ...base, bottom: -1, right: -1, borderBottom: `1.5px solid ${ink}`, borderRight: `1.5px solid ${ink}` },
+  };
+  return <span aria-hidden style={styles[pos]} />;
+}
+
 export function LoginModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const reduce = useReducedMotion();
   const [mounted, setMounted] = useState(false);
@@ -96,6 +133,7 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
   const { connect, isPending: connecting } = useConnect();
+  const { disconnect } = useDisconnect();
   const { switchChain } = useSwitchChain();
   const { signMessageAsync } = useSignMessage();
   const { me, refresh, signOut } = useAuth();
@@ -166,25 +204,45 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
     }
   }
 
+  /// Full sign-out: clear the SIWE session AND disconnect the wagmi wallet.
+  /// This is what the user expects "SIGN OUT" to mean. Without the disconnect,
+  /// wagmi remembers the wallet and the next sign-in skips the wallet picker,
+  /// which makes the flow feel sticky in a way that's confusing during demos.
+  /// The modal closes after so the next click hits a clean "choose" view.
+  async function handleSignOut() {
+    try {
+      await signOut();
+    } finally {
+      try { disconnect(); } catch { /* wagmi disconnect is non-throwing in practice */ }
+      onClose();
+    }
+  }
+
+  /// Same idea for "disconnect" when a wallet is connected but no SIWE
+  /// session exists yet. Lets the user back out and pick a different wallet.
+  function handleDisconnect() {
+    try { disconnect(); } catch { /* ignore */ }
+  }
+
   const wallet: { label: string; onClick?: () => void; disabled: boolean } = !mounted
-    ? { label: "connect a wallet", disabled: true }
+    ? { label: "CONNECT A WALLET", disabled: true }
     : !isConnected
-      ? { label: connecting ? "check your wallet" : "connect a wallet", onClick: () => connect({ connector: injected() }), disabled: connecting }
+      ? { label: connecting ? "CHECK YOUR WALLET" : "CONNECT A WALLET", onClick: () => connect({ connector: injected() }), disabled: connecting }
       : chainId !== arcTestnet.id
-        ? { label: "switch to arc", onClick: () => switchChain({ chainId: arcTestnet.id }), disabled: false }
-        : { label: busy ? "signing" : "sign in with wallet", onClick: signInWeb3, disabled: busy };
+        ? { label: "SWITCH TO ARC", onClick: () => switchChain({ chainId: arcTestnet.id }), disabled: false }
+        : { label: busy ? "SIGNING" : "SIGN IN WITH WALLET", onClick: signInWeb3, disabled: busy };
 
   const short = me ? `${me.address.slice(0, 6)}…${me.address.slice(-4)}` : "";
   const contentKey = me ? "account" : view;
-  const dur = reduce ? 0 : 0.28;
-  const stepDur = reduce ? 0 : 0.18;
+  const dur = reduce ? 0 : 0.24;
+  const stepDur = reduce ? 0 : 0.16;
 
   return (
     <AnimatePresence>
       {open && (
         <motion.div
           className="fixed inset-0 z-modal overflow-y-auto"
-          style={{ backgroundColor: "rgba(27,17,64,0.55)" }}
+          style={{ backgroundColor: "rgba(26,22,18,0.55)" }}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -192,112 +250,160 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
           onClick={onClose}
         >
           <div className="flex min-h-full items-center justify-center px-4 py-12 sm:py-16" onClick={onClose}>
-          <motion.div
-            className="relative my-auto w-full max-w-[420px] rounded-[28px] border-2 border-pengu-dark/5 bg-pengu-card p-8 text-center shadow-[0_30px_80px_rgba(27,17,64,0.35)]"
-            initial={{ opacity: 0, y: 18, scale: 0.96 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 12, scale: 0.98 }}
-            transition={{ duration: dur, ease: [0.16, 1, 0.3, 1] }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              onClick={onClose}
-              aria-label="close"
-              className="absolute right-5 top-5 text-xl leading-none text-pengu-dark/30 transition-colors hover:text-pengu-dark"
+            <motion.div
+              className="relative my-auto w-full max-w-[440px] border border-ink bg-canvas p-8"
+              initial={{ opacity: 0, y: 18 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 12 }}
+              transition={{ duration: dur, ease: [0.16, 1, 0.3, 1] }}
+              onClick={(e) => e.stopPropagation()}
             >
-              ✕
-            </button>
+              <Bracket pos="tl" /><Bracket pos="tr" /><Bracket pos="bl" /><Bracket pos="br" />
 
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={contentKey}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                transition={{ duration: stepDur, ease: [0.16, 1, 0.3, 1] }}
+              <button
+                onClick={onClose}
+                aria-label="close"
+                className="absolute right-4 top-4 font-mono text-base text-ink-3 transition-colors hover:text-ink"
               >
-                <AgentMascot color="#7c4dff" className="mx-auto h-16 w-auto" />
+                ✕
+              </button>
 
-                {me ? (
-                  <>
-                    <h2 className="mt-4 font-bubble text-3xl uppercase leading-none text-pengu-dark">you are in</h2>
-                    <div className="mt-2 flex items-center justify-center gap-2 font-mono text-sm text-pengu-dark/70">
-                      <span>signed in as</span>
-                      <CopyAddress address={me.address} short={short} />
-                    </div>
-                    <div className="mt-7 flex flex-col gap-4">
-                      <a href="/contests" className={solid}>
-                        <span>enter the arena</span>
-                        <GoCircle bg="bg-white/25" />
-                      </a>
-                      <button className={ghostCenter} onClick={signOut}>
-                        sign out
-                      </button>
-                    </div>
-                  </>
-                ) : view === "choose" ? (
-                  <>
-                    <h2 className="mt-4 font-bubble text-3xl uppercase leading-none text-pengu-dark">sign in to arcrun</h2>
-                    <p className="mx-auto mt-3 max-w-[34ch] text-sm text-pengu-dark/65">
-                      two ways in. both give you an onchain identity to run agents and enter contests.
-                    </p>
-                    <div className="mt-7 flex flex-col gap-4">
-                      <button className={solid} disabled={!circleConfigured()} onClick={() => setView("email")}>
-                        <span className="flex items-center gap-2">
-                          <MailIcon /> continue with email
-                        </span>
-                        <GoCircle bg="bg-white/25" />
-                      </button>
-                      <div className="flex items-center gap-3 font-display text-xs uppercase tracking-wide text-pengu-dark/40">
-                        <span className="h-px flex-1 bg-pengu-dark/10" /> or <span className="h-px flex-1 bg-pengu-dark/10" />
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={contentKey}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: stepDur, ease: [0.16, 1, 0.3, 1] }}
+                >
+                  {me ? (
+                    <>
+                      <div className="flex items-center gap-4">
+                        <Robot variant="pink" size={56} decorative />
+                        <div>
+                          <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">
+                            <span aria-hidden className="text-accent">■</span> SIGNED IN
+                          </div>
+                          <h2
+                            className="mt-1 font-stencil uppercase text-ink"
+                            style={{ fontSize: 26, lineHeight: 1, letterSpacing: "-0.01em" }}
+                          >
+                            YOU ARE IN
+                          </h2>
+                        </div>
                       </div>
-                      <button className={ghost} disabled={wallet.disabled} onClick={wallet.onClick}>
-                        <span className="flex items-center gap-2">
+                      <div className="mt-5 flex items-center gap-2 font-mono text-[12px] text-ink-2">
+                        <span>SIGNED IN AS</span>
+                        <CopyAddress address={me.address} short={short} />
+                      </div>
+                      <div className="mt-7 flex flex-col gap-3">
+                        <PrimaryTag onClick={onClose}>
+                          <span>ENTER THE ARENA</span>
+                        </PrimaryTag>
+                        <GhostTag onClick={handleSignOut}>
+                          <span>SIGN OUT &amp; DISCONNECT</span>
+                        </GhostTag>
+                      </div>
+                      <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
+                        SIGNING OUT CLEARS THE SESSION AND DISCONNECTS THE WALLET.
+                      </p>
+                    </>
+                  ) : view === "choose" ? (
+                    <>
+                      <div className="flex items-center gap-4">
+                        <Robot variant="pink" size={56} decorative />
+                        <div>
+                          <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">
+                            <span aria-hidden className="text-accent">■</span> SIGN IN
+                          </div>
+                          <h2
+                            className="mt-1 font-stencil uppercase text-ink"
+                            style={{ fontSize: 26, lineHeight: 1, letterSpacing: "-0.01em" }}
+                          >
+                            SIGN IN TO ARCRUN
+                          </h2>
+                        </div>
+                      </div>
+                      <p className="mt-4 font-mono text-[13px] leading-[1.55] text-ink-2">
+                        two ways in. both give you an onchain identity to run agents and enter contests.
+                      </p>
+                      <div className="mt-6 flex flex-col gap-3">
+                        <PrimaryTag disabled={!circleConfigured()} onClick={() => setView("email")}>
+                          <MailIcon /> CONTINUE WITH EMAIL
+                        </PrimaryTag>
+                        <div className="flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
+                          <span className="h-px flex-1 bg-[color:var(--hairline-strong)]" />
+                          OR
+                          <span className="h-px flex-1 bg-[color:var(--hairline-strong)]" />
+                        </div>
+                        <GhostTag disabled={wallet.disabled} onClick={wallet.onClick}>
                           <WalletIcon /> {wallet.label}
-                        </span>
-                        <GoCircle bg="bg-pengu-blue/10" />
+                        </GhostTag>
+                        {isConnected ? (
+                          <button
+                            onClick={handleDisconnect}
+                            className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3 hover:text-ink"
+                          >
+                            DISCONNECT WALLET
+                          </button>
+                        ) : null}
+                      </div>
+                      {!circleConfigured() ? (
+                        <p className="mt-4 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
+                          SET NEXT_PUBLIC_CIRCLE_CLIENT_KEY TO ENABLE EMAIL.
+                        </p>
+                      ) : null}
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-4">
+                        <Robot variant="pink" size={56} decorative />
+                        <div>
+                          <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">
+                            <span aria-hidden className="text-accent">■</span> EMAIL PASSKEY
+                          </div>
+                          <h2
+                            className="mt-1 font-stencil uppercase text-ink"
+                            style={{ fontSize: 22, lineHeight: 1, letterSpacing: "-0.01em" }}
+                          >
+                            CONTINUE WITH EMAIL
+                          </h2>
+                        </div>
+                      </div>
+                      <p className="mt-4 font-mono text-[13px] leading-[1.55] text-ink-2">
+                        your email names a device passkey. no emailed code, no seed phrase. a gasless smart account is created for you.
+                      </p>
+                      <input
+                        className="mt-5 w-full border border-[color:var(--hairline-strong)] bg-canvas px-3 py-2.5 font-mono text-sm text-ink outline-none transition-colors focus:border-ink"
+                        type="email"
+                        placeholder="you@email.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        disabled={circleBusy}
+                      />
+                      <div className="mt-4 flex flex-col gap-3">
+                        <PrimaryTag disabled={circleBusy} onClick={() => signInCircle("Register")}>
+                          <span>{circleBusy ? "CHECK YOUR DEVICE" : "CREATE ACCOUNT"}</span>
+                        </PrimaryTag>
+                        <GhostTag disabled={circleBusy} onClick={() => signInCircle("Login")}>
+                          <span>I HAVE A PASSKEY</span>
+                        </GhostTag>
+                      </div>
+                      <button
+                        onClick={() => setView("choose")}
+                        className="mt-5 inline-flex items-center gap-1 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:text-ink"
+                      >
+                        ← BACK
                       </button>
-                    </div>
-                    {!circleConfigured() ? (
-                      <p className="mt-4 font-mono text-xs text-pengu-dark/45">set NEXT_PUBLIC_CIRCLE_CLIENT_KEY to enable email.</p>
-                    ) : null}
-                  </>
-                ) : (
-                  <>
-                    <h2 className="mt-4 font-bubble text-3xl uppercase leading-none text-pengu-dark">continue with email</h2>
-                    <p className="mx-auto mt-3 max-w-[36ch] text-sm text-pengu-dark/65">
-                      your email names a device passkey. no emailed code, no seed phrase. a gasless smart account is created for you.
-                    </p>
-                    <input
-                      className="mt-5 w-full rounded-pill border-2 border-pengu-dark/15 bg-pengu-card px-5 py-3.5 text-left font-mono text-sm text-pengu-dark outline-none transition-colors focus:border-pengu-blue"
-                      type="email"
-                      placeholder="you@email.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      disabled={circleBusy}
-                    />
-                    <div className="mt-4 flex flex-col gap-4">
-                      <button className={solid} disabled={circleBusy} onClick={() => signInCircle("Register")}>
-                        <span>{circleBusy ? "check your device" : "create account"}</span>
-                        <GoCircle bg="bg-white/25" />
-                      </button>
-                      <button className={ghostCenter} disabled={circleBusy} onClick={() => signInCircle("Login")}>
-                        i have a passkey
-                      </button>
-                    </div>
-                    <button
-                      onClick={() => setView("choose")}
-                      className="group mt-5 inline-flex items-center gap-1 font-display text-xs uppercase tracking-wide text-pengu-dark/50 hover:text-pengu-dark"
-                    >
-                      <span className="transition-transform duration-150 group-hover:-translate-x-1">←</span> back
-                    </button>
-                  </>
-                )}
-              </motion.div>
-            </AnimatePresence>
+                    </>
+                  )}
+                </motion.div>
+              </AnimatePresence>
 
-            {error ? <p className="mt-4 font-mono text-xs text-[#e0466e]">{error}</p> : null}
-          </motion.div>
+              {error ? (
+                <p className="mt-4 font-mono text-[11px] text-[color:var(--err)]">{error}</p>
+              ) : null}
+            </motion.div>
           </div>
         </motion.div>
       )}

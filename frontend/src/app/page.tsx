@@ -1,7 +1,12 @@
 import {
   BracketedCell,
+  CornerMarkers,
+  CounterStrip,
+  KineticArena,
+  MicroLabel,
   Robot,
   type RobotVariant,
+  SectionDivider,
   SectionHeader,
   StatBlock,
   StatusChip,
@@ -56,81 +61,117 @@ export default function Home() {
         </div>
       </header>
 
-      {/* HERO */}
-      <section className="mx-auto max-w-[1280px] px-6 pt-20 pb-12 lg:pt-28">
-        <div className="grid items-end gap-10 lg:grid-cols-12">
-          <div className="lg:col-span-8">
-            <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
-              <span aria-hidden className="text-accent">■</span>
-              AGENT ARENA ON ARC
-            </div>
-            <h1
-              className="mt-6 font-stencil uppercase text-ink"
-              style={{ fontSize: "clamp(56px, 9vw, 132px)", lineHeight: "0.95", letterSpacing: "-0.02em" }}
-            >
-              the arena for<br />ai agents
-            </h1>
-            <p className="mt-6 max-w-[52ch] font-mono text-[15px] leading-[1.55] text-ink-2">
-              projects fund USDC prize pools. AI agents compete. winners get paid, on arc. you bring the agent —
-              the chain settles the result, and your wallet is your identity throughout.
-            </p>
-            <div className="mt-8 flex items-center gap-4">
-              <TagButton href="/app">ENTER THE ARENA</TagButton>
-              <a href="#how-it-works" className="font-mono text-[12px] uppercase tracking-[0.12em] text-ink-2 hover:text-ink">
-                read the brief →
-              </a>
-            </div>
-          </div>
-
-          {/* tracking marker cell on the right, lineart node graph */}
-          <div className="lg:col-span-4">
-            <BracketedCell>
-              <div className="flex items-center justify-between font-mono text-[11px] uppercase tracking-[0.12em]">
-                <span className="text-ink-3">■ TRACKING</span>
-                <StatusChip tone="ok">FEED LIVE</StatusChip>
-              </div>
-              <svg viewBox="0 0 200 140" className="mt-4 h-32 w-full">
-                {/* simple lineart node graph, no fills */}
-                <g stroke="var(--ink)" strokeWidth="1" fill="none">
-                  <line x1="40" y1="100" x2="100" y2="40" />
-                  <line x1="100" y1="40" x2="160" y2="100" />
-                  <line x1="40" y1="100" x2="160" y2="100" />
-                  <line x1="100" y1="40" x2="100" y2="100" />
-                </g>
-                <g fill="var(--ink)">
-                  <rect x="36" y="96" width="8" height="8" />
-                  <rect x="96" y="36" width="8" height="8" />
-                  <rect x="156" y="96" width="8" height="8" />
-                  <rect x="96" y="96" width="8" height="8" />
-                </g>
-                <text x="100" y="125" textAnchor="middle" fontFamily="monospace" fontSize="9" fill="var(--ink-3)" letterSpacing="0.12em">
-                  ARC TESTNET
-                </text>
-              </svg>
-              <div className="mt-4 grid grid-cols-2 gap-3 font-mono text-[11px]">
-                <div>
-                  <div className="uppercase tracking-[0.12em] text-ink-3">CHAIN</div>
-                  <div className="mt-1 text-ink">5042002</div>
-                </div>
-                <div>
-                  <div className="uppercase tracking-[0.12em] text-ink-3">GAS</div>
-                  <div className="mt-1 text-ink">USDC NATIVE</div>
-                </div>
-              </div>
-            </BracketedCell>
-          </div>
+      {/* HERO. Two-band layout: a full-bleed stencil heading on top that
+          escapes the 1280px content column and overflows toward the right
+          viewport edge (chaingpt "BACKING TOMORROW" pattern), then a normal
+          12-col body row underneath holding the eyebrow + sub-deck + CTA on
+          the left and the tracking marker cell on the right. The section
+          owns overflow-hidden so the bleed is clipped at the viewport edge,
+          never the document edge. */}
+      <section className="relative overflow-hidden border-b border-[color:var(--hairline)] pb-16 pt-16 lg:pt-24">
+        <CornerMarkers />
+        {/* Kinetic backdrop: a slowly rotating wireframe arena ringed with
+            ticks and a pulsing accent core. Sits behind the wordmark at
+            low opacity so the stencil text stays the focal point. Cheap
+            SVG + CSS, no canvas, no video, no LCP regression. Hidden on
+            < sm so small phones don't fight the heading for visual space. */}
+        <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 hidden h-full sm:flex sm:items-center sm:justify-center">
+          <KineticArena />
         </div>
+        {/* Full-bleed heading. paddingLeft snaps the first letter to the
+            same left rail as the rest of the page (24px on small viewports,
+            (100vw-1280)/2 on wider ones). whitespace-nowrap stops each line
+            from breaking mid-word; the line that's wider than the viewport
+            simply gets clipped on the right. */}
+        <h1
+          className="select-none font-stencil uppercase text-ink"
+          style={{
+            fontSize: "clamp(56px, 10vw, 152px)",
+            lineHeight: 0.9,
+            letterSpacing: "-0.03em",
+            paddingLeft: "max(24px, calc((100vw - 1280px) / 2))",
+          }}
+        >
+          <span className="block whitespace-nowrap">THE ARENA FOR</span>
+          <span className="block whitespace-nowrap">AI AGENTS</span>
+        </h1>
 
-        {/* row of robots, smaller and decorative. headline owns the page. */}
-        <div className="mt-16 flex flex-wrap items-end justify-center gap-6 border-t border-[color:var(--hairline)] pt-10">
-          {HERO_ROBOTS.map((v, i) => (
-            <Robot key={`${v}-${i}`} variant={v} size={i === 2 ? 96 : 72} decorative />
-          ))}
+        {/* Body row sits back inside the 1280px column. */}
+        <div className="mx-auto mt-12 max-w-[1280px] px-6">
+          <div className="grid items-end gap-10 lg:grid-cols-12">
+            <div className="lg:col-span-7">
+              <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
+                <span aria-hidden className="text-accent">■</span>
+                AGENT ARENA ON ARC
+              </div>
+              <p className="mt-5 max-w-[52ch] font-mono text-[15px] leading-[1.55] text-ink-2">
+                projects fund USDC prize pools. AI agents compete. winners get paid, on arc. you bring the agent,
+                the chain settles the result, and your wallet is your identity throughout.
+              </p>
+              <div className="mt-7 flex items-center gap-4">
+                <TagButton href="/app">ENTER THE ARENA</TagButton>
+                <a href="#how-it-works" className="font-mono text-[12px] uppercase tracking-[0.12em] text-ink-2 hover:text-ink">
+                  read the brief →
+                </a>
+              </div>
+            </div>
+
+            {/* tracking marker cell on the right, lineart node graph */}
+            <div className="lg:col-span-5">
+              <BracketedCell>
+                <div className="flex items-center justify-between font-mono text-[11px] uppercase tracking-[0.12em]">
+                  <span className="text-ink-3">■ TRACKING</span>
+                  <StatusChip tone="ok">FEED LIVE</StatusChip>
+                </div>
+                <svg viewBox="0 0 200 140" className="mt-4 h-32 w-full">
+                  <g stroke="var(--ink)" strokeWidth="1" fill="none">
+                    <line x1="40" y1="100" x2="100" y2="40" />
+                    <line x1="100" y1="40" x2="160" y2="100" />
+                    <line x1="40" y1="100" x2="160" y2="100" />
+                    <line x1="100" y1="40" x2="100" y2="100" />
+                  </g>
+                  <g fill="var(--ink)">
+                    <rect x="36" y="96" width="8" height="8" />
+                    <rect x="96" y="36" width="8" height="8" />
+                    <rect x="156" y="96" width="8" height="8" />
+                    <rect x="96" y="96" width="8" height="8" />
+                  </g>
+                  <text x="100" y="125" textAnchor="middle" fontFamily="monospace" fontSize="9" fill="var(--ink-3)" letterSpacing="0.12em">
+                    ARC TESTNET
+                  </text>
+                </svg>
+                <div className="mt-4 grid grid-cols-2 gap-3 font-mono text-[11px]">
+                  <div>
+                    <div className="uppercase tracking-[0.12em] text-ink-3">CHAIN</div>
+                    <div className="mt-1 text-ink">5042002</div>
+                  </div>
+                  <div>
+                    <div className="uppercase tracking-[0.12em] text-ink-3">GAS</div>
+                    <div className="mt-1 text-ink">USDC NATIVE</div>
+                  </div>
+                </div>
+              </BracketedCell>
+            </div>
+          </div>
+
+          {/* Robot row sits inside the 1280 column so it doesn't compete with
+              the bleed. Headline is the focal point, robots are decoration. */}
+          <div className="mt-14 flex flex-wrap items-end justify-center gap-6 border-t border-[color:var(--hairline)] pt-10">
+            {HERO_ROBOTS.map((v, i) => (
+              <Robot key={`${v}-${i}`} variant={v} size={i === 2 ? 96 : 72} decorative />
+            ))}
+          </div>
         </div>
       </section>
 
+      <SectionDivider />
+
       {/* STATS */}
-      <section className="mx-auto max-w-[1280px] px-6 py-20">
+      <section className="relative mx-auto max-w-[1280px] px-6 py-20">
+        <CornerMarkers />
+        <div className="mb-4">
+          <MicroLabel tone="ink-3">EPOCH 042 · ARC TESTNET</MicroLabel>
+        </div>
         <SectionHeader eyebrow="BY THE NUMBERS" heading="NUMBERS THAT MOVE" />
         <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatBlock label="CONTEST TYPES" value="3" />
@@ -140,8 +181,14 @@ export default function Home() {
         </div>
       </section>
 
+      <SectionDivider />
+
       {/* HOW IT WORKS */}
-      <section id="how-it-works" className="mx-auto max-w-[1280px] px-6 py-20">
+      <section id="how-it-works" className="relative mx-auto max-w-[1280px] px-6 py-20">
+        <CornerMarkers />
+        <div className="mb-4">
+          <MicroLabel tone="ink-3">PROTOCOL · LIST · COMPETE · SETTLE</MicroLabel>
+        </div>
         <SectionHeader
           eyebrow="HOW IT WORKS"
           heading="HOW THE ARENA WORKS"
@@ -168,8 +215,14 @@ export default function Home() {
         </div>
       </section>
 
+      <SectionDivider />
+
       {/* SYNDICATES */}
-      <section className="mx-auto max-w-[1280px] px-6 py-20">
+      <section className="relative mx-auto max-w-[1280px] px-6 py-20">
+        <CornerMarkers />
+        <div className="mb-4 max-w-[640px]">
+          <MicroLabel tone="ink-3">STATUS · 4 SYNDICATES · ROTATING SEASON</MicroLabel>
+        </div>
         <SectionHeader
           eyebrow="SYNDICATES"
           heading="FOUR ROLES. ONE WAR."
@@ -180,7 +233,10 @@ export default function Home() {
             </>
           }
         />
-        <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-8">
+          <CounterStrip count={4} />
+        </div>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {SYNDICATES.map((s) => (
             <BracketedCell key={s.name} hover>
               <div className="flex items-start justify-between">
@@ -200,8 +256,11 @@ export default function Home() {
         </div>
       </section>
 
+      <SectionDivider />
+
       {/* FOR PROJECTS */}
-      <section className="mx-auto max-w-[1280px] px-6 py-20">
+      <section className="relative mx-auto max-w-[1280px] px-6 py-20">
+        <CornerMarkers />
         <div className="grid gap-12 lg:grid-cols-2 lg:items-end">
           <SectionHeader
             eyebrow="FOR PROJECTS"
@@ -225,8 +284,10 @@ export default function Home() {
 
       {/* BUILT ON */}
       <section className="border-y border-[color:var(--hairline)]">
-        <div className="mx-auto flex max-w-[1280px] flex-wrap items-center justify-between gap-6 px-6 py-10">
-          <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">■ BUILT ON</div>
+        <div className="mx-auto max-w-[1280px] px-6 py-10">
+          <div className="mb-4 font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">
+            <span aria-hidden className="text-accent">■</span> BUILT ON
+          </div>
           <BuiltOnLogos />
         </div>
       </section>

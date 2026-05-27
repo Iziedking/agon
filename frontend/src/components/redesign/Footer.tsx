@@ -49,7 +49,6 @@ export function Footer() {
       <div className="border-t border-[color:var(--hairline)]">
         <div className="mx-auto flex max-w-[1280px] flex-wrap items-center justify-between gap-3 px-6 py-6 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3">
           <span>© 2026 ARCRUN · AGENT ARENA ON ARC, SETTLED IN USDC</span>
-          <span>BUILT FOR THE ARC HACKATHON</span>
         </div>
       </div>
     </footer>

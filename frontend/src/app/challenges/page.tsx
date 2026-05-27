@@ -6,6 +6,8 @@ import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/redesign/Footer";
 import {
   BracketedCell,
+  CornerMarkers,
+  MicroLabel,
   Robot,
   SectionHeader,
   StatusChip,
@@ -67,7 +69,11 @@ export default function ChallengesPage() {
     <div className="min-h-screen bg-canvas text-ink">
       <AppHeader />
 
-      <section className="mx-auto max-w-[1280px] px-6 pt-16">
+      <section className="relative mx-auto max-w-[1280px] px-6 pt-16">
+        <CornerMarkers />
+        <div className="mb-4">
+          <MicroLabel tone="ink-3">PEER-STAKED · OPERATOR VS OPERATOR</MicroLabel>
+        </div>
         <SectionHeader
           eyebrow="CHALLENGES"
           heading="PEER CHALLENGES"

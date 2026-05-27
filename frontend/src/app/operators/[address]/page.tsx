@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { useAccount } from "wagmi";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/redesign/Footer";
-import { BracketedCell, Robot } from "@/components/redesign";
+import { BracketedCell, CornerMarkers, MicroLabel, Robot } from "@/components/redesign";
 import { AgentTraits } from "@/components/pengu/AgentTraits";
 import { NftBadge } from "@/components/pengu/NftBadge";
 import { EXPLORER } from "@/lib/arc";
@@ -62,7 +62,11 @@ export default function OperatorPage() {
     <div className="min-h-screen bg-canvas text-ink">
       <AppHeader />
 
-      <section className="mx-auto max-w-[1080px] px-6 pt-16">
+      <section className="relative mx-auto max-w-[1080px] px-6 pt-16">
+        <CornerMarkers />
+        <div className="mb-4">
+          <MicroLabel tone="ink-3">PUBLIC PROFILE · OWNED AGENTS</MicroLabel>
+        </div>
         <div className="flex flex-wrap items-center gap-5">
           <span
             className="flex h-14 w-14 flex-none items-center justify-center overflow-hidden border border-[color:var(--hairline-strong)] bg-canvas-2"

@@ -186,18 +186,21 @@ html, body {
 
 body {
   background-image:
-    /* L-bracket corner marks at every major (240px) intersection. Inline SVG
-       paints a 12px corner of ink hairline at the top-left of each cell, so
-       at every gridline crossing you see one neat L. This is the chaingpt
-       "tracking mark" detail that makes the canvas feel measured. */
-    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><path d='M0 12 L0 0 L12 0' stroke='rgba(26,22,18,0.22)' stroke-width='1' fill='none'/></svg>"),
+    /* L-bracket at the top-left of each 240px cell PLUS a small filled ink
+       square at the bottom-right. Together they bookend every grid cell,
+       which gives the canvas the chaingpt "instrument panel" feel without
+       adding another bg-image layer (browser only composites one svg here).
+       The filled square is the "tracking pip" — visible enough to read as
+       intentional decoration on big empty stretches, faint enough to never
+       distract from content sitting on top of a BracketedCell. */
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><path d='M0 12 L0 0 L12 0' stroke='rgba(26,22,18,0.14)' stroke-width='1' fill='none'/><rect x='232' y='232' width='5' height='5' fill='rgba(26,22,18,0.22)'/></svg>"),
     /* Major grid: 240x240, slightly stronger ink. Six-ish columns on a 1440
        viewport, mirrors the chaingpt column rhythm. */
-    linear-gradient(to right, rgba(26, 22, 18, 0.06) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(26, 22, 18, 0.06) 1px, transparent 1px),
+    linear-gradient(to right, rgba(26, 22, 18, 0.035) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(26, 22, 18, 0.035) 1px, transparent 1px),
     /* Minor grid: 60x60, a whisper. Four minor cells make one major cell. */
-    linear-gradient(to right, rgba(26, 22, 18, 0.025) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(26, 22, 18, 0.025) 1px, transparent 1px),
+    linear-gradient(to right, rgba(26, 22, 18, 0.015) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(26, 22, 18, 0.015) 1px, transparent 1px),
     /* Vertical paper gradient: slightly warmer at the top, slightly cooler
        lower, so the page reads like a sheet of paper under stage lighting. */
     linear-gradient(180deg,
@@ -231,6 +234,27 @@ body::before {
   background: var(--accent);
   pointer-events: none;
   z-index: 0;
+}
+
+/* Paper grain: a faint feTurbulence noise overlay locked to the viewport.
+   Stops large empty stretches of canvas from looking like dead css fill;
+   keeps the page reading as paper-under-stage-lighting. Generated inline
+   via svg data url so there's no extra network request. pointer-events
+   off, z:0, mix-blend multiply at 4 percent so it tints with the canvas
+   instead of stacking flatly. Modals at z-modal sit on top.
+
+   Reduced-motion disables nothing here because it's static texture, not
+   motion. Per chaingpt parity (gap 6 of arcrun-ui-upgrade skill). */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.1  0 0 0 0 0.09  0 0 0 0 0.07  0 0 0 0.85 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  background-size: 220px 220px;
+  opacity: 0.045;
+  mix-blend-mode: multiply;
 }
 
 /* Dark mode toggle is dead per arcrun-redesign §0. The class is ignored;

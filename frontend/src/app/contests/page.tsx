@@ -5,6 +5,8 @@ import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/redesign/Footer";
 import {
   BracketedCell,
+  CornerMarkers,
+  MicroLabel,
   SectionHeader,
   StatusChip,
   TagButton,
@@ -86,7 +88,11 @@ export default function ContestsPage() {
     <div className="min-h-screen bg-canvas text-ink">
       <AppHeader />
 
-      <section className="mx-auto max-w-[1280px] px-6 pt-16">
+      <section className="relative mx-auto max-w-[1280px] px-6 pt-16">
+        <CornerMarkers />
+        <div className="mb-4">
+          <MicroLabel tone="ink-3">CAMPAIGN POOLS · PROJECT-FUNDED</MicroLabel>
+        </div>
         <SectionHeader
           eyebrow="CONTESTS"
           heading="LIVE CONTESTS"

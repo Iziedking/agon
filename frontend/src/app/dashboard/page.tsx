@@ -8,6 +8,8 @@ import {
   ActivityLedger,
   ActivityRow,
   BracketedCell,
+  CornerMarkers,
+  MicroLabel,
   Robot,
   robotVariantForId,
   SectionHeader,
@@ -143,7 +145,11 @@ export default function DashboardPage() {
 
   return (
     <Shell>
-      <section className="mx-auto max-w-[1280px] px-6 pt-16">
+      <section className="relative mx-auto max-w-[1280px] px-6 pt-16">
+        <CornerMarkers />
+        <div className="mb-4">
+          <MicroLabel tone="ink-3">OPERATOR · LIVE STATE FROM ARC</MicroLabel>
+        </div>
         <SectionHeader
           eyebrow="DASHBOARD"
           heading="YOUR DASHBOARD"

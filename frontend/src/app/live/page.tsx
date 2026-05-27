@@ -5,6 +5,8 @@ import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/redesign/Footer";
 import {
   BracketedCell,
+  CornerMarkers,
+  MicroLabel,
   Robot,
   robotVariantForId,
   type RobotVariant,
@@ -122,7 +124,11 @@ export default function LiveLobby() {
     <div className="min-h-screen bg-canvas text-ink">
       <AppHeader />
 
-      <section className="mx-auto max-w-[1280px] px-6 pt-16">
+      <section className="relative mx-auto max-w-[1280px] px-6 pt-16">
+        <CornerMarkers />
+        <div className="mb-4">
+          <MicroLabel tone="ink-3">UNIVERSAL WATCHER · STREAMING NOW</MicroLabel>
+        </div>
         <SectionHeader
           eyebrow={
             <span className="flex flex-wrap items-center gap-3">
