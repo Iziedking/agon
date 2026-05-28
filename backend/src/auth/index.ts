@@ -31,6 +31,21 @@ import {
   flushTrainingQueue,
   type Stat,
 } from "../coordinator/training.js";
+import {
+  circleDevConfigured,
+  createUserWallet,
+  seedTestnetUsdc,
+  executeContractCall,
+  getTxState,
+} from "../chain/circleDev.js";
+import {
+  listCredentialsForEmail,
+  beginRegistration,
+  finishRegistration,
+  beginAuthentication,
+  finishAuthentication,
+} from "./webauthn.js";
+import type { RegistrationResponseJSON, AuthenticationResponseJSON } from "@simplewebauthn/server";
 
 const SESSION_MAX_AGE = 7 * 24 * 60 * 60; // 7 days, matches issueToken expiry
 
@@ -121,16 +136,356 @@ app.post("/auth/logout", (c) => {
   return c.json({ ok: true });
 });
 
-app.get("/auth/me", requireAuth, async (c) => {
+// ----- Email login with WebAuthn passkey (Circle Developer-Controlled wallets) -----
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function readEmail(body: unknown): string | null {
+  const b = body as { email?: unknown };
+  const email = (typeof b?.email === "string" ? b.email : "").trim().toLowerCase();
+  if (!email || !EMAIL_RE.test(email) || email.length > 254) return null;
+  return email;
+}
+
+function setSessionCookie(c: Parameters<typeof setCookie>[0], token: string) {
+  setCookie(c, SESSION_COOKIE, token, {
+    httpOnly: true,
+    sameSite: "Lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: SESSION_MAX_AGE,
+  });
+}
+
+/// Email passkey flow, step 1. The client posts an email; we decide whether
+/// this email needs a fresh passkey registration ("register") or can prove
+/// itself with an existing passkey ("login"), and return the matching
+/// WebAuthn challenge for the browser ceremony.
+app.post("/auth/email/begin", async (c) => {
+  if (!circleDevConfigured()) {
+    return c.json(
+      { error: "email login is not configured on this server; ask the operator to set CIRCLE_API_KEY / CIRCLE_ENTITY_SECRET / CIRCLE_WALLET_SET_ID" },
+      503,
+    );
+  }
+
+  let body: unknown;
+  try { body = await c.req.json(); } catch { return c.json({ error: "bad json" }, 400); }
+  const email = readEmail(body);
+  if (!email) return c.json({ error: "valid email required" }, 400);
+
+  const credentials = await listCredentialsForEmail(email);
+  if (credentials.length > 0) {
+    const options = await beginAuthentication(email);
+    return c.json({ mode: "login", options });
+  }
+  const options = await beginRegistration(email);
+  return c.json({ mode: "register", options });
+});
+
+/// Email passkey flow, step 2. The client posts the email, the mode it ran
+/// (matching what /begin returned), and the browser's attestation or
+/// assertion. We verify, mint a Circle wallet if this is a fresh registration,
+/// store the credential, and set the session cookie.
+app.post("/auth/email/finish", async (c) => {
+  if (!circleDevConfigured()) {
+    return c.json({ error: "email login is not configured on this server" }, 503);
+  }
+
+  let body: { email?: string; mode?: string; response?: unknown };
+  try { body = await c.req.json(); } catch { return c.json({ error: "bad json" }, 400); }
+  const email = readEmail(body);
+  if (!email) return c.json({ error: "valid email required" }, 400);
+  if (body.mode !== "register" && body.mode !== "login") {
+    return c.json({ error: "mode must be register or login" }, 400);
+  }
+  if (!body.response || typeof body.response !== "object") {
+    return c.json({ error: "missing webauthn response" }, 400);
+  }
+
+  if (body.mode === "register") {
+    // Either resume an existing operator row (e.g. they signed up under the
+    // earlier passkey-less flow and are enrolling a passkey now) or mint a
+    // fresh Circle wallet for a never-seen email.
+    let address: string;
+    let walletId: string | null;
+    let seeded = false;
+    let createdNow = false;
+
+    const existing = await query<{ address: string; circle_wallet_id: string | null }>(
+      "select address, circle_wallet_id from operators where email = $1",
+      [email],
+    );
+
+    if (existing.rows[0]) {
+      address = existing.rows[0].address;
+      walletId = existing.rows[0].circle_wallet_id;
+    } else {
+      const created = await createUserWallet(email).catch((err) => {
+        console.error("[auth/email/finish] createUserWallet failed:", err);
+        return null;
+      });
+      if (!created) return c.json({ error: "could not create wallet, try again in a moment" }, 502);
+      address = created.address;
+      walletId = created.walletId;
+
+      await query(
+        `insert into operators (address, email, circle_wallet_id)
+           values ($1, $2, $3)
+           on conflict (address) do update set email = excluded.email, circle_wallet_id = excluded.circle_wallet_id`,
+        [address, email, walletId],
+      );
+      createdNow = true;
+      const seed = await seedTestnetUsdc(address as `0x${string}`).catch(() => ({ requested: false }));
+      seeded = seed.requested;
+    }
+
+    try {
+      await finishRegistration(email, address, body.response as RegistrationResponseJSON);
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : "registration verification failed" }, 401);
+    }
+
+    const token = await issueToken(address);
+    setSessionCookie(c, token);
+    void logEvent({
+      kind: createdNow ? "email_signup" : "passkey_enroll",
+      address,
+      context: { email, walletId, seeded },
+      source: "auth",
+    });
+    return c.json({ address, walletId, seeded, isNew: createdNow });
+  }
+
+  // login mode
+  let resolved: { operatorAddress: string };
+  try {
+    const out = await finishAuthentication(email, body.response as AuthenticationResponseJSON);
+    resolved = { operatorAddress: out.operatorAddress };
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : "authentication verification failed" }, 401);
+  }
+  const token = await issueToken(resolved.operatorAddress);
+  setSessionCookie(c, token);
+
+  const { rows } = await query<{ circle_wallet_id: string | null }>(
+    "select circle_wallet_id from operators where address = $1",
+    [resolved.operatorAddress],
+  );
+  void logEvent({ kind: "email_login", address: resolved.operatorAddress, context: { email }, source: "auth" });
+  return c.json({
+    address: resolved.operatorAddress,
+    walletId: rows[0]?.circle_wallet_id ?? null,
+    seeded: false,
+    isNew: false,
+  });
+});
+
+// ----- Passkey enrollment from inside a live session -----
+//
+// Lets a signed-in user attach a passkey to their existing operator row so
+// the next login requires the passkey ceremony. Different from /auth/email/
+// begin+finish, which expects no session and creates one. This pair runs
+// against the live session's address and uses the operator row's email as
+// the WebAuthn user handle.
+
+app.post("/auth/passkey/enroll/begin", requireAuth, async (c) => {
   const address = c.get("address");
-  const { rows } = await query<{ address: string; x_handle: string | null; current_syndicate_id: string | null }>(
-    "select address, x_handle, current_syndicate_id from operators where address = $1",
+  const { rows } = await query<{ email: string | null }>(
+    "select email from operators where address = $1",
     [address],
   );
-  const op = rows[0] ?? { address, x_handle: null, current_syndicate_id: null };
+  const email = rows[0]?.email;
+  if (!email) {
+    return c.json(
+      { error: "this session is not an email account; passkeys are only for email logins" },
+      400,
+    );
+  }
+  const options = await beginRegistration(email);
+  return c.json({ options });
+});
+
+app.post("/auth/passkey/enroll/finish", requireAuth, async (c) => {
+  const address = c.get("address");
+  const { rows } = await query<{ email: string | null }>(
+    "select email from operators where address = $1",
+    [address],
+  );
+  const email = rows[0]?.email;
+  if (!email) return c.json({ error: "this session is not an email account" }, 400);
+
+  let body: { response?: unknown };
+  try { body = await c.req.json(); } catch { return c.json({ error: "bad json" }, 400); }
+  if (!body.response || typeof body.response !== "object") {
+    return c.json({ error: "missing webauthn response" }, 400);
+  }
+
+  try {
+    await finishRegistration(email, address, body.response as RegistrationResponseJSON);
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : "passkey enrollment failed" }, 401);
+  }
+
+  void logEvent({ kind: "passkey_enroll", address, context: { email }, source: "auth" });
+  return c.json({ ok: true });
+});
+
+// ----- Circle wallet execute (server-signed contract calls) -----
+
+// The four ArcRun contracts + USDC are the only addresses /wallet/execute will
+// sign for. This blocks the endpoint from being weaponized into a generic
+// signing oracle.
+const WRITE_ALLOWLIST = new Set<string>(
+  [
+    config.contracts.ContestEngine,
+    config.contracts.ChallengeArena,
+    config.contracts.AgentRegistry,
+    config.contracts.PrizeEscrow,
+    config.contracts.SyndicateFactory,
+    config.contracts.PointsLedger,
+    config.external.USDC,
+  ].map((a) => a.toLowerCase()),
+);
+
+const executeBodySchema = {
+  parse(body: unknown): {
+    contractAddress: `0x${string}`;
+    abiFunctionSignature: string;
+    abiParameters: ReadonlyArray<string | number | boolean | string[]>;
+    amount?: string;
+    refId?: string;
+  } {
+    if (!body || typeof body !== "object") throw new Error("body must be an object");
+    const b = body as Record<string, unknown>;
+    if (typeof b.contractAddress !== "string" || !/^0x[a-fA-F0-9]{40}$/.test(b.contractAddress)) {
+      throw new Error("contractAddress must be a 0x address");
+    }
+    if (typeof b.abiFunctionSignature !== "string" || !b.abiFunctionSignature.includes("(")) {
+      throw new Error("abiFunctionSignature must look like name(types,...)");
+    }
+    if (!Array.isArray(b.abiParameters)) throw new Error("abiParameters must be an array");
+    const amount = typeof b.amount === "string" ? b.amount : undefined;
+    const refId = typeof b.refId === "string" ? b.refId : undefined;
+    return {
+      contractAddress: b.contractAddress.toLowerCase() as `0x${string}`,
+      abiFunctionSignature: b.abiFunctionSignature,
+      abiParameters: b.abiParameters as ReadonlyArray<string | number | boolean | string[]>,
+      amount,
+      refId,
+    };
+  },
+};
+
+app.post("/wallet/execute", requireAuth, async (c) => {
+  if (!circleDevConfigured()) {
+    return c.json({ error: "Circle Dev-Controlled wallets are not configured on this server" }, 503);
+  }
+
+  const operator = c.get("address");
+  const { rows } = await query<{ circle_wallet_id: string | null }>(
+    "select circle_wallet_id from operators where address = $1",
+    [operator],
+  );
+  const walletId = rows[0]?.circle_wallet_id;
+  if (!walletId) {
+    return c.json(
+      { error: "this session is not a Circle-managed wallet; connect an injected wallet and sign client-side" },
+      400,
+    );
+  }
+
+  let body: ReturnType<typeof executeBodySchema.parse>;
+  try {
+    body = executeBodySchema.parse(await c.req.json());
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 400);
+  }
+
+  if (!WRITE_ALLOWLIST.has(body.contractAddress.toLowerCase())) {
+    return c.json({ error: "contract address is not part of ArcRun" }, 400);
+  }
+
+  try {
+    const tx = await executeContractCall({
+      walletId,
+      contractAddress: body.contractAddress,
+      abiFunctionSignature: body.abiFunctionSignature,
+      abiParameters: body.abiParameters,
+      amount: body.amount,
+      refId: body.refId,
+    });
+    void logEvent({
+      kind: "wallet_execute",
+      address: operator,
+      context: { circleTxId: tx.id, state: tx.state, fn: body.abiFunctionSignature, contract: body.contractAddress },
+      source: "auth",
+    });
+    return c.json({ id: tx.id, state: tx.state });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    void logEvent({
+      level: "error",
+      kind: "wallet_execute_error",
+      address: operator,
+      message,
+      context: { fn: body.abiFunctionSignature, contract: body.contractAddress },
+      source: "auth",
+    });
+    return c.json({ error: message }, 502);
+  }
+});
+
+app.get("/wallet/tx/:id", requireAuth, async (c) => {
+  if (!circleDevConfigured()) {
+    return c.json({ error: "Circle Dev-Controlled wallets are not configured on this server" }, 503);
+  }
+  const id = c.req.param("id");
+  if (!id) return c.json({ error: "id required" }, 400);
+  try {
+    const state = await getTxState(id);
+    return c.json(state);
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : String(err) }, 502);
+  }
+});
+
+app.get("/auth/me", requireAuth, async (c) => {
+  const address = c.get("address");
+  const { rows } = await query<{
+    address: string;
+    x_handle: string | null;
+    current_syndicate_id: string | null;
+    email: string | null;
+    circle_wallet_id: string | null;
+  }>(
+    "select address, x_handle, current_syndicate_id, email, circle_wallet_id from operators where address = $1",
+    [address],
+  );
+  const op =
+    rows[0] ?? { address, x_handle: null, current_syndicate_id: null, email: null, circle_wallet_id: null };
   // The wallet is the identity; any authenticated operator can compete. X is an
-  // optional social link, not a gate.
-  return c.json({ ...op, canEnterContests: true });
+  // optional social link, not a gate. `walletKind` lets the frontend pick the
+  // write path: "circle" => POST /wallet/execute, "wagmi" => useWriteContract.
+  const walletKind: "circle" | "wagmi" = op.circle_wallet_id ? "circle" : "wagmi";
+
+  // Count this address's enrolled passkeys so the settings UI can show "ADD
+  // A PASSKEY" vs "PASSKEY ENABLED" without a separate round-trip.
+  const credCount = await query<{ n: string }>(
+    "select count(*)::text as n from webauthn_credentials where operator_address = $1",
+    [op.address],
+  );
+  const hasPasskey = Number(credCount.rows[0]?.n ?? "0") > 0;
+
+  return c.json({
+    address: op.address,
+    x_handle: op.x_handle,
+    current_syndicate_id: op.current_syndicate_id,
+    email: op.email,
+    walletKind,
+    hasPasskey,
+    canEnterContests: true,
+  });
 });
 
 // ----- Activity and error log -----

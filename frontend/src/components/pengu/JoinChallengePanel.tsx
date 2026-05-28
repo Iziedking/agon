@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useAccount, useWriteContract } from "wagmi";
 import { useOperatorAddress } from "@/hooks/useAuth";
+import { useArcWrite } from "@/hooks/useArcWrite";
 import { CONTRACTS, USDC, publicClient } from "@/lib/arc";
 import {
   agentDisplayName,
@@ -48,7 +48,7 @@ export function JoinChallengePanel({
   joinDeadline: number; // epoch seconds
 }) {
   const { address, isSignedIn: isConnected } = useOperatorAddress();
-  const { writeContractAsync } = useWriteContract();
+  const { writeContractAsync } = useArcWrite();
   const stakeWei = BigInt(stake);
   const [agents, setAgents] = useState<AgentState[] | undefined>(undefined);
   const [activeId, setActiveId] = useState<number | null>(null);

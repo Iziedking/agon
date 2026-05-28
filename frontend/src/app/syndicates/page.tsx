@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useAccount, useWriteContract } from "wagmi";
+import { useAccount } from "wagmi";
 import { useOperatorAddress } from "@/hooks/useAuth";
+import { useArcWrite } from "@/hooks/useArcWrite";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/redesign/Footer";
 import { CornerMarkers, MicroLabel, SectionHeader, SyndicateTile, type SyndicateKey } from "@/components/redesign";
@@ -32,7 +33,7 @@ function syndicateKey(name: string): SyndicateKey | null {
 
 export default function SyndicatesPage() {
   const { address, isSignedIn: isConnected } = useOperatorAddress();
-  const { writeContractAsync } = useWriteContract();
+  const { writeContractAsync } = useArcWrite();
   const [syndicates, setSyndicates] = useState<Syndicate[] | null>(null);
   const [current, setCurrent] = useState<number>(0);
   const [busy, setBusy] = useState<number | "leave" | null>(null);

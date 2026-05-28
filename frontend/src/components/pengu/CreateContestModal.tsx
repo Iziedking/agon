@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { zeroAddress } from "viem";
-import { useAccount, useWriteContract } from "wagmi";
+import { useOperatorAddress } from "@/hooks/useAuth";
+import { useArcWrite } from "@/hooks/useArcWrite";
 import { CONTRACTS, USDC, publicClient } from "@/lib/arc";
 import { erc20Abi } from "@/lib/agents";
 import { contestEngineAbi, fetchListingFee, metricForType, nextContestId } from "@/lib/contests";
@@ -22,8 +23,8 @@ const labelCls = "font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3";
 const TYPES = ["SCOUT", "ANALYST", "SOLVER"] as const;
 
 export function CreateContestModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { address } = useAccount();
-  const { writeContractAsync } = useWriteContract();
+  const { address } = useOperatorAddress();
+  const { writeContractAsync } = useArcWrite();
   const [cType, setCType] = useState(0);
   const [pool, setPool] = useState("10");
   const [durationMin, setDurationMin] = useState("60");

@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useAccount, useWriteContract } from "wagmi";
+import { useOperatorAddress } from "@/hooks/useAuth";
+import { useArcWrite } from "@/hooks/useArcWrite";
 import { CONTRACTS, publicClient } from "@/lib/arc";
 import { agentRegistryAbi } from "@/lib/agents";
 import { friendlyError } from "@/lib/errors";
@@ -20,8 +21,8 @@ export function ClaimAgentButton({
   busyLabel?: string;
   onClaimed?: () => void | Promise<void>;
 }) {
-  const { address } = useAccount();
-  const { writeContractAsync } = useWriteContract();
+  const { address } = useOperatorAddress();
+  const { writeContractAsync } = useArcWrite();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

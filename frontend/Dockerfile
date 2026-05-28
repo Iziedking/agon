@@ -11,9 +11,6 @@ COPY . ./
 
 ENV NEXT_PUBLIC_AUTH_URL=http://localhost:8082
 ENV NEXT_PUBLIC_WS_URL=ws://localhost:8788
-# Optional: pass the Circle key to enable email login. Comes from compose build args.
-ARG NEXT_PUBLIC_CIRCLE_CLIENT_KEY=
-ENV NEXT_PUBLIC_CIRCLE_CLIENT_KEY=$NEXT_PUBLIC_CIRCLE_CLIENT_KEY
 
 RUN npm run build
 

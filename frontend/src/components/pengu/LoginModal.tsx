@@ -5,8 +5,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useAccount, useChainId, useConnect, useDisconnect, useSignMessage, useSwitchChain } from "wagmi";
 import { injected } from "wagmi/connectors";
 import { arcTestnet } from "@/lib/arc";
-import { loginWithSigner } from "@/lib/auth";
-import { circleConfigured, continueWithEmail } from "@/lib/circle";
+import { loginWithSigner, signInWithEmail, enrollPasskey } from "@/lib/auth";
 import { useAuth } from "@/hooks/useAuth";
 import { Robot } from "@/components/redesign";
 import { friendlyError } from "@/lib/errors";
@@ -142,6 +141,8 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [circleBusy, setCircleBusy] = useState(false);
+  const [enrolling, setEnrolling] = useState(false);
+  const [enrolled, setEnrolled] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -180,33 +181,30 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
     }
   }
 
-  /// One-button email flow. Tries Register first, silently falls back to
-  /// Login if the email is already on file or a credential exists for this
-  /// device — see continueWithEmail in lib/circle.ts. Users don't have to
-  /// know whether they have an account already.
-  async function signInWithEmail() {
-    if (!email) {
+  /// Email sign-in. POSTs the email to the backend, which either resumes the
+  /// user's existing Circle wallet or mints a fresh one and seeds it with
+  /// testnet USDC. The backend sets the session cookie inline, so we just
+  /// refresh useAuth and we're in. No passkey, no WebAuthn, no SIWE step.
+  async function handleEmailSignIn() {
+    const trimmed = email.trim();
+    if (!trimmed) {
       setError("enter an email first");
       return;
     }
     setCircleBusy(true);
     setError(null);
     try {
-      const account = await continueWithEmail(email);
-      await loginWithSigner(account.address, (m) => account.signMessage({ message: m }));
+      const result = await signInWithEmail(trimmed);
       await refresh();
-      reportEvent("login", { context: { method: "email" } });
+      reportEvent("login", { context: { method: "email", isNew: result.isNew, seeded: result.seeded } });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      // Map common WebAuthn failure modes to copy a non-developer can act on.
       const lower = msg.toLowerCase();
       let userMsg = friendlyError(e, "couldn't sign in with that email.");
-      if (e instanceof Error && e.name === "NotAllowedError") {
-        userMsg = "cancelled or timed out. try again, or use a wallet below.";
-      } else if (lower.includes("already") || lower.includes("invalidstate")) {
-        userMsg = "this email is registered with a passkey not on this device. try a different email, or use a wallet below.";
-      } else if (lower.includes("client key") || lower.includes("not set")) {
-        userMsg = "email login isn't configured. use a wallet below.";
+      if (lower.includes("not configured")) {
+        userMsg = "email login isn't enabled on this server. use a wallet below.";
+      } else if (lower.includes("valid email")) {
+        userMsg = "that doesn't look like a valid email.";
       }
       setError(userMsg);
       reportEvent("login_error", {
@@ -216,6 +214,32 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
       });
     } finally {
       setCircleBusy(false);
+    }
+  }
+
+  /// Attach a passkey to the live session so the next login requires it.
+  /// Visible only for email accounts that haven't enrolled one yet. The
+  /// hasPasskey flag on /auth/me drives the chip.
+  async function handleEnrollPasskey() {
+    setEnrolling(true);
+    setError(null);
+    try {
+      await enrollPasskey();
+      await refresh();
+      setEnrolled(true);
+      reportEvent("passkey_enroll", { context: { from: "settings" } });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      let userMsg = friendlyError(e, "could not enroll passkey.");
+      if (e instanceof Error && e.name === "NotAllowedError") {
+        userMsg = "cancelled or timed out. try again from this device.";
+      } else if (msg.toLowerCase().includes("invalid")) {
+        userMsg = "this device already has a passkey for this account.";
+      }
+      setError(userMsg);
+      reportEvent("passkey_enroll_error", { level: "error", message: msg });
+    } finally {
+      setEnrolling(false);
     }
   }
 
@@ -311,6 +335,36 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
                         <span>SIGNED IN AS</span>
                         <CopyAddress address={me.address} short={short} />
                       </div>
+                      {me.email ? (
+                        <div className="mt-4 border-t border-[color:var(--hairline)] pt-4">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">PASSKEY</div>
+                              <div className="mt-1 font-mono text-[12px] text-ink">
+                                {me.hasPasskey || enrolled ? "REQUIRED ON NEXT LOGIN" : "NOT SET — EMAIL ALONE IS ENOUGH"}
+                              </div>
+                            </div>
+                            {me.hasPasskey || enrolled ? (
+                              <span className="inline-flex items-center gap-1.5 border border-[color:var(--ok)] bg-canvas px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[color:var(--ok)]">
+                                ■ ENABLED
+                              </span>
+                            ) : (
+                              <button
+                                onClick={handleEnrollPasskey}
+                                disabled={enrolling}
+                                className="inline-flex items-center gap-2 bg-accent px-3 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-accent-ink transition-colors hover:bg-accent-press disabled:opacity-60"
+                              >
+                                {enrolling ? "CHECK YOUR DEVICE" : "ADD A PASSKEY"}
+                              </button>
+                            )}
+                          </div>
+                          {!me.hasPasskey && !enrolled ? (
+                            <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
+                              ADDING A PASSKEY MAKES THE NEXT SIGN-IN REQUIRE YOUR DEVICE.
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : null}
                       <div className="mt-7 flex flex-col gap-3">
                         <PrimaryTag onClick={onClose}>
                           <span>ENTER THE ARENA</span>
@@ -343,7 +397,7 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
                         two ways in. both give you an onchain identity to run agents and enter contests.
                       </p>
                       <div className="mt-6 flex flex-col gap-3">
-                        <PrimaryTag disabled={!circleConfigured()} onClick={() => setView("email")}>
+                        <PrimaryTag onClick={() => setView("email")}>
                           <MailIcon /> CONTINUE WITH EMAIL
                         </PrimaryTag>
                         <div className="flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
@@ -363,11 +417,6 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
                           </button>
                         ) : null}
                       </div>
-                      {!circleConfigured() ? (
-                        <p className="mt-4 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
-                          SET NEXT_PUBLIC_CIRCLE_CLIENT_KEY TO ENABLE EMAIL.
-                        </p>
-                      ) : null}
                     </>
                   ) : (
                     <>
@@ -375,7 +424,7 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
                         <Robot variant="pink" size={56} decorative />
                         <div>
                           <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">
-                            <span aria-hidden className="text-accent">■</span> EMAIL PASSKEY
+                            <span aria-hidden className="text-accent">■</span> EMAIL
                           </div>
                           <h2
                             className="mt-1 font-stencil uppercase text-ink"
@@ -386,7 +435,7 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
                         </div>
                       </div>
                       <p className="mt-4 font-mono text-[13px] leading-[1.55] text-ink-2">
-                        your email names a device passkey. no emailed code, no seed phrase. a gasless smart account is created for you.
+                        a wallet is created for you on first sign-in and seeded with testnet usdc. no seed phrase, no extension. enter the arena and let arcrun sign for you.
                       </p>
                       <input
                         className="mt-5 w-full border border-[color:var(--hairline-strong)] bg-canvas px-3 py-2.5 font-mono text-sm text-ink outline-none transition-colors focus:border-ink"
@@ -394,15 +443,18 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
                         placeholder="you@email.com"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !circleBusy) void handleEmailSignIn();
+                        }}
                         disabled={circleBusy}
                       />
                       <div className="mt-4 flex flex-col gap-3">
-                        <PrimaryTag disabled={circleBusy} onClick={signInWithEmail}>
-                          <span>{circleBusy ? "CHECK YOUR DEVICE" : "CONTINUE"}</span>
+                        <PrimaryTag disabled={circleBusy} onClick={handleEmailSignIn}>
+                          <span>{circleBusy ? "SETTING UP YOUR WALLET" : "CONTINUE"}</span>
                         </PrimaryTag>
                       </div>
                       <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
-                        WE'LL CREATE A PASSKEY OR USE YOUR EXISTING ONE AUTOMATICALLY.
+                        WE STORE THE EMAIL TO RECOGNIZE YOU NEXT TIME. NO PASSWORD.
                       </p>
                       <div className="mt-4 border-t border-[color:var(--hairline)] pt-4">
                         <button

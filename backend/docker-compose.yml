@@ -101,9 +101,6 @@ services:
     build:
       context: ../frontend
       dockerfile: Dockerfile
-      args:
-        # Set NEXT_PUBLIC_CIRCLE_CLIENT_KEY in backend/.env to enable email login.
-        NEXT_PUBLIC_CIRCLE_CLIENT_KEY: "${NEXT_PUBLIC_CIRCLE_CLIENT_KEY:-}"
     image: arcrun-frontend:local
     container_name: arcrun-frontend
     ports:

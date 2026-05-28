@@ -26,6 +26,33 @@ alter table operators add column if not exists telegram_id text;
 alter table operators add column if not exists telegram_username text;
 alter table operators add column if not exists discord_id text;
 alter table operators add column if not exists discord_username text;
+-- Email and Circle Dev-Controlled wallet linkage. An operator row exists for
+-- both SIWE-only users (email/circle null) and email-login users (email set,
+-- circle_wallet_id set). When circle_wallet_id is non-null the backend signs
+-- writes on the operator's behalf through Circle. Email is unique so the same
+-- mailbox cannot register two wallets.
+alter table operators add column if not exists email text;
+alter table operators add column if not exists circle_wallet_id text;
+create unique index if not exists operators_email_idx on operators(email) where email is not null;
+create unique index if not exists operators_circle_wallet_idx on operators(circle_wallet_id) where circle_wallet_id is not null;
+
+-- WebAuthn passkey credentials. One row per registered authenticator. An email
+-- can have multiple credentials over time (extra devices), but the demo only
+-- ever uses one per email. `credential_id` is base64url-encoded as it comes
+-- from the authenticator; `public_key` is the raw CBOR-encoded public key
+-- bytes the SimpleWebAuthn library returns. `operator_address` is the email
+-- user's resolved wallet address (foreign-key-ish to operators.address).
+create table if not exists webauthn_credentials (
+  credential_id    text primary key,
+  operator_address text not null,
+  public_key       bytea not null,
+  counter          bigint not null default 0,
+  transports       text[],
+  device_type      text,
+  backed_up        boolean,
+  created_at       timestamptz not null default now()
+);
+create index if not exists webauthn_credentials_op_idx on webauthn_credentials(operator_address);
 
 create table if not exists agents (
   id               bigint primary key,

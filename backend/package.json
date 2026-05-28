@@ -9,6 +9,7 @@
   },
   "scripts": {
     "migrate": "tsx src/db/migrate.ts",
+    "circle:bootstrap": "tsx scripts/circle-bootstrap.ts",
     "indexer": "tsx src/indexer/index.ts",
     "indexer:dev": "tsx watch src/indexer/index.ts",
     "auth": "tsx src/auth/index.ts",
@@ -18,7 +19,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@circle-fin/developer-controlled-wallets": "^9.2.0",
     "@hono/node-server": "^1.13.7",
+    "@simplewebauthn/server": "^13.0.0",
     "bullmq": "^5.34.0",
     "dotenv": "^17.4.2",
     "hono": "^4.6.14",

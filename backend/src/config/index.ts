@@ -30,6 +30,27 @@ const envSchema = z.object({
   DISCORD_CLIENT_SECRET: z.string().optional(),
   DISCORD_CALLBACK_URL: z.string().optional(),
 
+  // Circle Developer-Controlled Wallets. Used to back ArcRun email logins so
+  // operators can ENTER, JOIN, and CLAIM without holding their own keys. The
+  // entity secret is registered once via scripts/circle-bootstrap.ts; the
+  // wallet set id is written back to the env after that run.
+  CIRCLE_API_KEY: z.string().optional(),
+  CIRCLE_ENTITY_SECRET: z.string().optional(),
+  CIRCLE_WALLET_SET_ID: z.string().optional(),
+  CIRCLE_BLOCKCHAIN: z.string().default("ARC-TESTNET"),
+  // When true, every newly minted Circle wallet is auto-seeded with USDC
+  // from Circle's testnet faucet. Off for mainnet.
+  CIRCLE_AUTO_SEED_USDC: z.coerce.boolean().default(true),
+
+  // WebAuthn (passkey) configuration. RP_ID is the registrable domain the
+  // passkey is bound to (no port, no protocol). ORIGIN must include the
+  // protocol and port. For local dev RP_ID="localhost" and
+  // ORIGIN="http://localhost:3000". For prod, RP_ID="arcrun.app" and
+  // ORIGIN="https://arcrun.app".
+  WEBAUTHN_RP_NAME: z.string().default("ArcRun"),
+  WEBAUTHN_RP_ID: z.string().default("localhost"),
+  WEBAUTHN_ORIGIN: z.string().default("http://localhost:3000"),
+
   // Agent training. Cost to go from level N to N+1 is (N+1) × 50 Cycles and
   // (N+1) × this many real seconds. Default 1800 = 30 minutes per level base
   // (so level 5 takes 2.5h). Set to 30 in the demo environment so a judge
@@ -166,6 +187,18 @@ export const config = {
   },
   validator: {
     privateKey: normalizePrivateKey(env.VALIDATOR_PRIVATE_KEY, "VALIDATOR_PRIVATE_KEY"),
+  },
+  circle: {
+    apiKey: env.CIRCLE_API_KEY,
+    entitySecret: env.CIRCLE_ENTITY_SECRET,
+    walletSetId: env.CIRCLE_WALLET_SET_ID,
+    blockchain: env.CIRCLE_BLOCKCHAIN,
+    autoSeedUsdc: env.CIRCLE_AUTO_SEED_USDC,
+  },
+  webauthn: {
+    rpName: env.WEBAUTHN_RP_NAME,
+    rpId: env.WEBAUTHN_RP_ID,
+    origin: env.WEBAUTHN_ORIGIN,
   },
 } as const;
 

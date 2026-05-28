@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { useAccount, useWriteContract } from "wagmi";
+import { useAccount } from "wagmi";
 import { useOperatorAddress } from "@/hooks/useAuth";
+import { useArcWrite } from "@/hooks/useArcWrite";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/pengu/Footer";
 import { Bubble3D, SectionLabel } from "@/components/pengu/atoms";
@@ -37,7 +38,7 @@ export default function SyndicateDetail() {
   const valid = Number.isFinite(id) && id > 0;
 
   const { address, isSignedIn: isConnected } = useOperatorAddress();
-  const { writeContractAsync } = useWriteContract();
+  const { writeContractAsync } = useArcWrite();
 
   const [syndicate, setSyndicate] = useState<Syndicate | null | undefined>(undefined);
   const [current, setCurrent] = useState<number>(0);

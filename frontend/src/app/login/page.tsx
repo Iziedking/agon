@@ -4,8 +4,7 @@ import { useEffect, useState } from "react";
 import { useAccount, useChainId, useConnect, useSignMessage, useSwitchChain } from "wagmi";
 import { injected } from "wagmi/connectors";
 import { arcTestnet } from "@/lib/arc";
-import { loginWithSigner } from "@/lib/auth";
-import { circleConfigured, createCircleAccount } from "@/lib/circle";
+import { loginWithSigner, signInWithEmail } from "@/lib/auth";
 import { useAuth } from "@/hooks/useAuth";
 
 export default function LoginPage() {
@@ -38,19 +37,19 @@ export default function LoginPage() {
     }
   }
 
-  async function signInCircle(mode: "Register" | "Login") {
-    if (!email) {
+  async function signInEmail() {
+    const trimmed = email.trim();
+    if (!trimmed) {
       setError("enter an email first");
       return;
     }
     setCircleBusy(true);
     setError(null);
     try {
-      const account = await createCircleAccount(email, mode);
-      await loginWithSigner(account.address, (m) => account.signMessage({ message: m }));
+      await signInWithEmail(trimmed);
       await refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "passkey login failed");
+      setError(e instanceof Error ? e.message : "email sign-in failed");
     } finally {
       setCircleBusy(false);
     }
@@ -109,11 +108,11 @@ export default function LoginPage() {
             </section>
 
             <section className="card">
-              <div className="n">Email + passkey</div>
+              <div className="n">Email</div>
               <h3>No wallet needed</h3>
               <p>
-                Your email names a device passkey, and your device approves the sign-in. No emailed code, no seed
-                phrase. Circle Modular Wallets creates a gasless smart account for you.
+                Enter an email and we create a wallet for you and seed it with testnet usdc. No password, no seed
+                phrase. Arcrun signs every contest entry on your behalf.
               </p>
               <input
                 className="field"
@@ -121,27 +120,13 @@ export default function LoginPage() {
                 placeholder="you@email.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                disabled={!circleConfigured() || circleBusy}
+                disabled={circleBusy}
               />
               <div className="cta">
-                <button
-                  className="btn"
-                  disabled={!circleConfigured() || circleBusy}
-                  onClick={() => signInCircle("Register")}
-                >
-                  {circleBusy ? "Check your device..." : "Create account"}
-                </button>
-                <button
-                  className="btn btn-outline"
-                  disabled={!circleConfigured() || circleBusy}
-                  onClick={() => signInCircle("Login")}
-                >
-                  I have a passkey
+                <button className="btn" disabled={circleBusy} onClick={signInEmail}>
+                  {circleBusy ? "Setting up your wallet..." : "Continue"}
                 </button>
               </div>
-              {!circleConfigured() ? (
-                <div className="mono muted">Set NEXT_PUBLIC_CIRCLE_CLIENT_KEY to enable this.</div>
-              ) : null}
             </section>
           </div>
         )}

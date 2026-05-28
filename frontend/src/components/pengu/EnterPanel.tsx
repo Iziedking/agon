@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useAccount, useWriteContract } from "wagmi";
 import { useOperatorAddress } from "@/hooks/useAuth";
+import { useArcWrite } from "@/hooks/useArcWrite";
 import { CONTRACTS, publicClient } from "@/lib/arc";
 import { contestEngineAbi, hasEntered, hasClaimed, fetchPayout, formatUsdc } from "@/lib/contests";
 import {
@@ -30,7 +30,7 @@ type Payout = { amount: bigint; proof: `0x${string}`[] };
 /// localStorage via the active-agent helpers in `lib/agents`.
 export function EnterPanel({ contestId, status, endTime }: { contestId: number; status: number; endTime: number }) {
   const { address, isSignedIn: isConnected } = useOperatorAddress();
-  const { writeContractAsync } = useWriteContract();
+  const { writeContractAsync } = useArcWrite();
   const [agents, setAgents] = useState<AgentState[] | undefined>(undefined);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [entered, setEntered] = useState(false);

@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useAccount, useWriteContract } from "wagmi";
+import { useOperatorAddress } from "@/hooks/useAuth";
+import { useArcWrite } from "@/hooks/useArcWrite";
 import { CONTRACTS, publicClient } from "@/lib/arc";
 import { challengeArenaAbi, CHALLENGE_KIND, nextChallengeId } from "@/lib/challenges";
 import { friendlyError } from "@/lib/errors";
@@ -18,8 +19,8 @@ const inputCls =
 const labelCls = "font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3";
 
 export function CreateChallengeModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { address } = useAccount();
-  const { writeContractAsync } = useWriteContract();
+  const { address } = useOperatorAddress();
+  const { writeContractAsync } = useArcWrite();
   const [kind, setKind] = useState(0);
   const [stake, setStake] = useState("1");
   const [maxEntrants, setMaxEntrants] = useState("4");

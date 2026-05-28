@@ -51,3 +51,9 @@ scripts/
 
 # Local-only run guide (contains operational tips, not for distribution)
 docs/run_guide.md
+
+# Circle Developer-Controlled Wallets local secrets. The recovery directory
+# holds the disaster-recovery key for the entity secret; never commit it. The
+# env snippet is just a paste helper produced by circle-bootstrap.ts.
+backend/circle-recovery/
+backend/circle-bootstrap.env.snippet

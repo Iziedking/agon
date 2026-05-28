@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { maxUint256 } from "viem";
-import { useAccount, useWriteContract } from "wagmi";
+import { useOperatorAddress } from "@/hooks/useAuth";
+import { useArcWrite } from "@/hooks/useArcWrite";
 import { CONTRACTS, USDC, publicClient } from "@/lib/arc";
 import {
   ABILITIES,
@@ -37,8 +38,8 @@ export function UpgradeFlow({
   agent: AgentState;
   onUpgraded: () => Promise<void> | void;
 }) {
-  const { address } = useAccount();
-  const { writeContractAsync } = useWriteContract();
+  const { address } = useOperatorAddress();
+  const { writeContractAsync } = useArcWrite();
   const [prices, setPrices] = useState<Record<ContestTypeName, bigint | null>>({ scout: null, analyst: null, solver: null });
   const [busy, setBusy] = useState<ContestTypeName | null>(null);
   const [error, setError] = useState<string | null>(null);
