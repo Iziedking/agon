@@ -1137,6 +1137,89 @@ app.post("/mystery/claim", requireAuth, async (c) => {
   return c.json({ rugged: false, trait, agentId });
 });
 
+// ----- Real LLM run audit trail -----
+//
+// Public read of the per-puzzle solve history for a contest. Drives the
+// "see the real solves" surface on the contest detail page so judges can
+// look at the exact puzzle text and each agent's answer. Limited so a
+// curious viewer can't pull thousands of rows in one call.
+
+app.get("/contests/:id/llm-runs", async (c) => {
+  const contestId = Number(c.req.param("id"));
+  if (!Number.isFinite(contestId)) return c.json({ runs: [] });
+  const limit = Math.min(Math.max(Number(c.req.query("limit") ?? 100), 1), 500);
+  const { rows } = await query<{
+    agent_id: string;
+    operator: string;
+    round_idx: number;
+    puzzle_idx: number;
+    kind: string;
+    model: string;
+    prompt: string;
+    response: string;
+    expected: string | null;
+    verdict: string;
+    latency_ms: number;
+    input_tokens: number;
+    output_tokens: number;
+    cost_usd: string;
+    created_at: Date;
+  }>(
+    `select agent_id::text, operator, round_idx, puzzle_idx, kind, model, prompt, response, expected,
+            verdict, latency_ms, input_tokens, output_tokens, cost_usd::text, created_at
+       from llm_runs
+      where contest_id = $1
+      order by round_idx asc, puzzle_idx asc, agent_id asc
+      limit $2`,
+    [contestId, limit],
+  );
+  return c.json({
+    runs: rows.map((r) => ({
+      agentId: Number(r.agent_id),
+      operator: r.operator,
+      roundIdx: r.round_idx,
+      puzzleIdx: r.puzzle_idx,
+      kind: r.kind,
+      model: r.model,
+      prompt: r.prompt,
+      response: r.response,
+      expected: r.expected,
+      verdict: r.verdict,
+      latencyMs: r.latency_ms,
+      inputTokens: r.input_tokens,
+      outputTokens: r.output_tokens,
+      costUsd: r.cost_usd,
+      createdAt: r.created_at,
+    })),
+  });
+});
+
+// ----- Pending stake refunds (cancelled challenges) -----
+//
+// Lists challenges this operator joined that the contract has marked
+// cancelled. The frontend pairs this with an on-chain refunded() check per
+// row so it only renders rows the user can still claim back. Public read
+// since the data is already on-chain; callers usually pass their own
+// address but knowing somebody else's refund queue isn't sensitive.
+
+app.get("/operators/:address/refunds-pending", async (c) => {
+  const address = (c.req.param("address") ?? "").toLowerCase();
+  if (!/^0x[a-f0-9]{40}$/.test(address)) return c.json({ challenges: [] });
+
+  const { rows } = await query<{ id: string; stake: string }>(
+    `select distinct ch.id::text as id, ch.stake::text as stake
+       from challenge_entries ce
+       join challenges ch on ch.id = ce.challenge_id
+      where ce.operator = $1
+        and ch.status = 'cancelled'
+      order by ch.id desc`,
+    [address],
+  );
+  return c.json({
+    challenges: rows.map((r) => ({ id: Number(r.id), stake: r.stake })),
+  });
+});
+
 // ----- Activity feed -----
 
 // Recent on-chain activity across the arena, newest first, from the raw event

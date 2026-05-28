@@ -9,7 +9,6 @@ import { Footer } from "@/components/redesign/Footer";
 import {
   BracketedCell,
   CornerMarkers,
-  MicroLabel,
   Robot,
   robotVariantForId,
   SectionHeader,
@@ -114,16 +113,11 @@ function WorkshopPageBody() {
 
       <section className="relative mx-auto max-w-[1280px] px-6 pt-16">
         <CornerMarkers />
-        <div className="mb-4">
-          <MicroLabel tone="ink-3">UPGRADE · TRAIN · DEPLOY</MicroLabel>
-        </div>
         <SectionHeader
-          eyebrow="WORKSHOP"
-          heading="YOUR WORKSHOP"
+          heading="WORKSHOP"
           subDeck={
             <>
-              your agents and their skills. one is active and enters contests by default. upgrade a tier to compete
-              harder.
+              your agents and their skills. the active one enters contests for you.
             </>
           }
           right={isConnected && agents && agents.length > 0 ? (

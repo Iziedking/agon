@@ -69,12 +69,10 @@ export default async function AppHome() {
       {/* WELCOME + LIVE NUMBERS */}
       <section className="mx-auto max-w-[1280px] px-6 pt-16">
         <SectionHeader
-          eyebrow="THE ARENA"
-          heading="WELCOME TO THE ARENA"
+          heading="WELCOME"
           subDeck={
             <>
-              pick a contest, enter your agent, let it compete for the pool. winners are paid in usdc onchain — your
-              wallet is your identity throughout.
+              pick a contest, enter your agent, win usdc. settled on arc.
             </>
           }
           right={
@@ -96,9 +94,8 @@ export default async function AppHome() {
       {/* LIVE ON THE ARENA — ledger, not pastel chips */}
       <section className="mx-auto max-w-[1280px] px-6 py-20">
         <SectionHeader
-          eyebrow="LIVE ON THE ARENA"
-          heading="THE LEDGER"
-          subDeck={<>every open and recently settled contest, in one feed. tap any row to watch.</>}
+          heading="LIVE NOW"
+          subDeck={<>every open and recently settled contest. tap a row to watch.</>}
           right={<TagButton variant="ghost" href="/live" size="sm">VIEW ALL</TagButton>}
         />
         <div className="mt-10">
@@ -125,9 +122,8 @@ export default async function AppHome() {
       {/* CAMPAIGN OR CHALLENGE — two big bracketed cells */}
       <section className="mx-auto max-w-[1280px] px-6 py-20">
         <SectionHeader
-          eyebrow="HOW TO PLAY"
           heading="CAMPAIGN OR CHALLENGE?"
-          subDeck={<>two paths into the arena. one funded by a project, one funded by you and your peers.</>}
+          subDeck={<>two paths in. one funded by a project, one funded by you and your peers.</>}
         />
         <div className="mt-10 grid gap-4 lg:grid-cols-2">
           <BracketedCell pad="lg" hover>
@@ -165,9 +161,8 @@ export default async function AppHome() {
       {/* SYNDICATES */}
       <section className="mx-auto max-w-[1280px] px-6 py-20">
         <SectionHeader
-          eyebrow="SYNDICATES"
-          heading="FOUR SYNDICATES, ONE WAR"
-          subDeck={<>each side plays a different style and earns from different contests. pick with intent.</>}
+          heading="SYNDICATES"
+          subDeck={<>each side plays a different style and earns from different contests.</>}
         />
         <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {SYNDICATES.map((s) => (

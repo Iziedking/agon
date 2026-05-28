@@ -5,7 +5,7 @@ import { useOperatorAddress } from "@/hooks/useAuth";
 import { useArcWrite } from "@/hooks/useArcWrite";
 import { CONTRACTS, publicClient } from "@/lib/arc";
 import { agentRegistryAbi } from "@/lib/agents";
-import { friendlyError } from "@/lib/errors";
+import { friendlyError, rawErrorDetail } from "@/lib/errors";
 import { reportEvent } from "@/lib/report";
 
 /// Mints a free default agent for the connected wallet via AgentRegistry. Used
@@ -24,7 +24,7 @@ export function ClaimAgentButton({
   const { address } = useOperatorAddress();
   const { writeContractAsync } = useArcWrite();
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ friendly: string; raw: string } | null>(null);
 
   async function claim() {
     if (!address) return;
@@ -41,7 +41,10 @@ export function ClaimAgentButton({
       reportEvent("agent_created", { address });
       await onClaimed?.();
     } catch (e) {
-      setError(friendlyError(e, "could not claim your agent."));
+      setError({
+        friendly: friendlyError(e, "could not claim your agent."),
+        raw: rawErrorDetail(e),
+      });
       reportEvent("agent_create_error", {
         level: "error",
         message: e instanceof Error ? e.message : String(e),
@@ -57,7 +60,16 @@ export function ClaimAgentButton({
       <button onClick={claim} disabled={busy || !address} className={className}>
         {busy ? busyLabel : label}
       </button>
-      {error ? <p className="font-mono text-xs text-[#e0466e]">{error}</p> : null}
+      {error ? (
+        <div>
+          <p className="font-mono text-xs text-[#e0466e]">{error.friendly}</p>
+          {error.raw && error.raw !== error.friendly ? (
+            <p className="mt-1 font-mono text-[10px] leading-[1.4] text-ink-3 break-words">
+              <span className="text-ink-2">details:</span> {error.raw}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

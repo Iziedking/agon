@@ -336,33 +336,21 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
                         <CopyAddress address={me.address} short={short} />
                       </div>
                       {me.email ? (
-                        <div className="mt-4 border-t border-[color:var(--hairline)] pt-4">
-                          <div className="flex items-center justify-between gap-3">
-                            <div>
-                              <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">PASSKEY</div>
-                              <div className="mt-1 font-mono text-[12px] text-ink">
-                                {me.hasPasskey || enrolled ? "REQUIRED ON NEXT LOGIN" : "NOT SET — EMAIL ALONE IS ENOUGH"}
-                              </div>
-                            </div>
-                            {me.hasPasskey || enrolled ? (
-                              <span className="inline-flex items-center gap-1.5 border border-[color:var(--ok)] bg-canvas px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[color:var(--ok)]">
-                                ■ ENABLED
-                              </span>
-                            ) : (
-                              <button
-                                onClick={handleEnrollPasskey}
-                                disabled={enrolling}
-                                className="inline-flex items-center gap-2 bg-accent px-3 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-accent-ink transition-colors hover:bg-accent-press disabled:opacity-60"
-                              >
-                                {enrolling ? "CHECK YOUR DEVICE" : "ADD A PASSKEY"}
-                              </button>
-                            )}
-                          </div>
-                          {!me.hasPasskey && !enrolled ? (
-                            <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
-                              ADDING A PASSKEY MAKES THE NEXT SIGN-IN REQUIRE YOUR DEVICE.
-                            </p>
-                          ) : null}
+                        <div className="mt-4 flex items-center justify-between gap-3 border-t border-[color:var(--hairline)] pt-4">
+                          <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-2">PASSKEY</span>
+                          {me.hasPasskey || enrolled ? (
+                            <span className="inline-flex items-center gap-1.5 border border-[color:var(--ok)] bg-canvas px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[color:var(--ok)]">
+                              ■ ENABLED
+                            </span>
+                          ) : (
+                            <button
+                              onClick={handleEnrollPasskey}
+                              disabled={enrolling}
+                              className="inline-flex items-center gap-2 bg-accent px-3 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-accent-ink transition-colors hover:bg-accent-press disabled:opacity-60"
+                            >
+                              {enrolling ? "CHECK YOUR DEVICE" : "ADD A PASSKEY"}
+                            </button>
+                          )}
                         </div>
                       ) : null}
                       <div className="mt-7 flex flex-col gap-3">
@@ -370,12 +358,9 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
                           <span>ENTER THE ARENA</span>
                         </PrimaryTag>
                         <GhostTag onClick={handleSignOut}>
-                          <span>SIGN OUT &amp; DISCONNECT</span>
+                          <span>SIGN OUT</span>
                         </GhostTag>
                       </div>
-                      <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
-                        SIGNING OUT CLEARS THE SESSION AND DISCONNECTS THE WALLET.
-                      </p>
                     </>
                   ) : view === "choose" ? (
                     <>
@@ -393,9 +378,6 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
                           </h2>
                         </div>
                       </div>
-                      <p className="mt-4 font-mono text-[13px] leading-[1.55] text-ink-2">
-                        two ways in. both give you an onchain identity to run agents and enter contests.
-                      </p>
                       <div className="mt-6 flex flex-col gap-3">
                         <PrimaryTag onClick={() => setView("email")}>
                           <MailIcon /> CONTINUE WITH EMAIL
@@ -434,9 +416,6 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
                           </h2>
                         </div>
                       </div>
-                      <p className="mt-4 font-mono text-[13px] leading-[1.55] text-ink-2">
-                        a wallet is created for you on first sign-in and seeded with testnet usdc. no seed phrase, no extension. enter the arena and let arcrun sign for you.
-                      </p>
                       <input
                         className="mt-5 w-full border border-[color:var(--hairline-strong)] bg-canvas px-3 py-2.5 font-mono text-sm text-ink outline-none transition-colors focus:border-ink"
                         type="email"
@@ -450,12 +429,9 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
                       />
                       <div className="mt-4 flex flex-col gap-3">
                         <PrimaryTag disabled={circleBusy} onClick={handleEmailSignIn}>
-                          <span>{circleBusy ? "SETTING UP YOUR WALLET" : "CONTINUE"}</span>
+                          <span>{circleBusy ? "CHECK YOUR DEVICE" : "CONTINUE"}</span>
                         </PrimaryTag>
                       </div>
-                      <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
-                        WE STORE THE EMAIL TO RECOGNIZE YOU NEXT TIME. NO PASSWORD.
-                      </p>
                       <div className="mt-4 border-t border-[color:var(--hairline)] pt-4">
                         <button
                           onClick={() => setView("choose")}

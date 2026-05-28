@@ -100,6 +100,41 @@ export async function hasClaimedChallenge(id: number, operator: `0x${string}`): 
   }
 }
 
+/// Cancelled challenges the operator joined that they still have a stake
+/// to pull back. Joins the backend's list (which scans the indexer's
+/// challenge_entries + challenges) with on-chain refunded() reads so rows
+/// already refunded drop out. Used by the dashboard's REFUNDS WAITING
+/// section.
+export interface PendingRefund {
+  id: number;
+  stake: bigint;
+}
+
+export async function fetchPendingRefunds(operator: `0x${string}`): Promise<PendingRefund[]> {
+  try {
+    const res = await fetch(`${AUTH_URL}/operators/${operator}/refunds-pending`, { cache: "no-store" });
+    if (!res.ok) return [];
+    const data = (await res.json()) as { challenges?: Array<{ id: number; stake: string }> };
+    const rows = data.challenges ?? [];
+    const refundedFlags = await Promise.all(
+      rows.map((r) =>
+        publicClient.readContract({
+          address: CONTRACTS.ChallengeArena,
+          abi: challengeArenaAbi,
+          functionName: "refunded",
+          args: [BigInt(r.id), operator],
+        }).catch(() => false) as Promise<boolean>,
+      ),
+    );
+    return rows
+      .map((r, i) => ({ id: r.id, stake: BigInt(r.stake), refunded: refundedFlags[i] === true }))
+      .filter((r) => !r.refunded)
+      .map(({ id, stake }) => ({ id, stake }));
+  } catch {
+    return [];
+  }
+}
+
 export async function hasRefunded(id: number, operator: `0x${string}`): Promise<boolean> {
   try {
     return (await publicClient.readContract({ address: CONTRACTS.ChallengeArena, abi: challengeArenaAbi, functionName: "refunded", args: [BigInt(id), operator] })) as boolean;

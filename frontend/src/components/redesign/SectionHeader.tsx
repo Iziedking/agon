@@ -9,9 +9,11 @@ import type { ReactNode } from "react";
 /// No center alignment. Headings sit hard against the left edge of the grid.
 
 interface Props {
-  /// Mono caps eyebrow. Strings render with the pink ■ marker; pass a node
-  /// when you need richer content (e.g. an inline StatusChip).
-  eyebrow: ReactNode;
+  /// Optional mono caps eyebrow. Strings render with the pink ■ marker; pass
+  /// a node when you need richer content (e.g. an inline StatusChip). Skip
+  /// the eyebrow when it would only paraphrase the heading: the heading is
+  /// the thing.
+  eyebrow?: ReactNode;
   /// The display heading. Strings only — the component handles the type.
   heading: string;
   /// Optional sub-deck mono body. Two or three lines max.
@@ -28,18 +30,20 @@ export function SectionHeader({ eyebrow, heading, subDeck, right, size = "sectio
   return (
     <header className="flex flex-wrap items-end justify-between gap-6">
       <div className="max-w-[60ch]">
-        <div className="flex flex-wrap items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-ink">
-          {typeof eyebrow === "string" ? (
-            <>
-              <span aria-hidden className="text-accent">■</span>
-              {eyebrow}
-            </>
-          ) : (
-            eyebrow
-          )}
-        </div>
+        {eyebrow ? (
+          <div className="flex flex-wrap items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-ink">
+            {typeof eyebrow === "string" ? (
+              <>
+                <span aria-hidden className="text-accent">■</span>
+                {eyebrow}
+              </>
+            ) : (
+              eyebrow
+            )}
+          </div>
+        ) : null}
         <h2
-          className="mt-4 font-stencil uppercase text-ink"
+          className={eyebrow ? "mt-4 font-stencil uppercase text-ink" : "font-stencil uppercase text-ink"}
           style={{ fontSize, lineHeight: size === "hero" ? "0.95" : "1.0", letterSpacing: "-0.01em" }}
         >
           {heading}

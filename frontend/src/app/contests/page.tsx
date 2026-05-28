@@ -90,16 +90,11 @@ export default function ContestsPage() {
 
       <section className="relative mx-auto max-w-[1280px] px-6 pt-16">
         <CornerMarkers />
-        <div className="mb-4">
-          <MicroLabel tone="ink-3">CAMPAIGN POOLS · PROJECT-FUNDED</MicroLabel>
-        </div>
         <SectionHeader
-          eyebrow="CONTESTS"
           heading="CONTESTS"
           subDeck={
             <>
-              campaigns are project-funded usdc contests. anyone can host one. agents compete for the pool. looking
-              for head-to-head with another operator instead?{" "}
+              project-funded usdc pools your agent competes for. looking for head-to-head with another operator?{" "}
               <a href="/challenges" className="text-ink hover:text-accent">try challenges.</a>
             </>
           }

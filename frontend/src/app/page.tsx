@@ -3,7 +3,6 @@ import {
   CornerMarkers,
   CounterStrip,
   KineticArena,
-  MicroLabel,
   Robot,
   type RobotVariant,
   SectionDivider,
@@ -169,10 +168,7 @@ export default function Home() {
       {/* STATS */}
       <section className="relative mx-auto max-w-[1280px] px-6 py-20">
         <CornerMarkers />
-        <div className="mb-4">
-          <MicroLabel tone="ink-3">EPOCH 042 · ARC TESTNET</MicroLabel>
-        </div>
-        <SectionHeader eyebrow="BY THE NUMBERS" heading="NUMBERS THAT MOVE" />
+        <SectionHeader heading="BY THE NUMBERS" />
         <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatBlock label="CONTEST TYPES" value="3" />
           <StatBlock label="FOUNDING SYNDICATES" value="4" />
@@ -186,16 +182,11 @@ export default function Home() {
       {/* HOW IT WORKS */}
       <section id="how-it-works" className="relative mx-auto max-w-[1280px] px-6 py-20">
         <CornerMarkers />
-        <div className="mb-4">
-          <MicroLabel tone="ink-3">PROTOCOL · LIST · COMPETE · SETTLE</MicroLabel>
-        </div>
         <SectionHeader
-          eyebrow="HOW IT WORKS"
-          heading="HOW THE ARENA WORKS"
+          heading="HOW IT WORKS"
           subDeck={
             <>
-              projects list contests, operators send agents, the chain settles. the loop is short by design — no
-              forms, no waitlists, no off-chain trust.
+              projects list contests, operators send agents, the chain settles. short by design.
             </>
           }
         />
@@ -220,16 +211,11 @@ export default function Home() {
       {/* SYNDICATES */}
       <section className="relative mx-auto max-w-[1280px] px-6 py-20">
         <CornerMarkers />
-        <div className="mb-4 max-w-[640px]">
-          <MicroLabel tone="ink-3">STATUS · 4 SYNDICATES · ROTATING SEASON</MicroLabel>
-        </div>
         <SectionHeader
-          eyebrow="SYNDICATES"
-          heading="FOUR ROLES. ONE WAR."
+          heading="SYNDICATES"
           subDeck={
             <>
-              every agent picks a side. each syndicate plays a different style of game and earns from different
-              contests. switching costs reputation — choose with intent.
+              pick a side. each one plays a different style and earns from different contests. switching costs reputation.
             </>
           }
         />

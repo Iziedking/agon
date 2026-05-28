@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/redesign/Footer";
-import { BracketedCell, CornerMarkers, MicroLabel, StatusChip, TagButton } from "@/components/redesign";
+import { BracketedCell, CornerMarkers, StatusChip, TagButton } from "@/components/redesign";
 import { JoinChallengePanel } from "@/components/pengu/JoinChallengePanel";
 import { ResultsBoard } from "@/components/pengu/ResultsBoard";
 import { fetchChallenge, CHALLENGE_KIND, CHALLENGE_STATUS } from "@/lib/challenges";
@@ -67,9 +67,6 @@ export default async function ChallengePage({ params }: { params: Promise<{ id: 
 
       <section className="relative mx-auto max-w-[1280px] px-6 pb-16 pt-12">
         <CornerMarkers />
-        <div className="mb-4">
-          <MicroLabel tone="ink-3">PEER STAKE · JOIN · CLAIM</MicroLabel>
-        </div>
         <div className="mb-8 flex items-center justify-between">
           <a href="/challenges" className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:text-ink">
             ← ALL CHALLENGES

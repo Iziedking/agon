@@ -6,7 +6,6 @@ import { Footer } from "@/components/redesign/Footer";
 import {
   BracketedCell,
   CornerMarkers,
-  MicroLabel,
   Robot,
   robotVariantForId,
   type RobotVariant,
@@ -126,9 +125,6 @@ export default function LiveLobby() {
 
       <section className="relative mx-auto max-w-[1280px] px-6 pt-16">
         <CornerMarkers />
-        <div className="mb-4">
-          <MicroLabel tone="ink-3">UNIVERSAL WATCHER · STREAMING NOW</MicroLabel>
-        </div>
         <SectionHeader
           eyebrow={
             <span className="flex flex-wrap items-center gap-3">
@@ -141,11 +137,10 @@ export default function LiveLobby() {
               <span className="text-ink-3">· {active.length} ACTIVE</span>
             </span>
           }
-          heading="THE BROADCAST LOBBY"
+          heading="LIVE"
           subDeck={
             <>
-              every contest and every peer challenge that's running, in one place. click any card to drop into the
-              focused stage. no wallet required to watch.
+              every contest and challenge that's running. click any card to drop into the stage.
             </>
           }
         />

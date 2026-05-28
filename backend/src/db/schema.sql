@@ -36,6 +36,34 @@ alter table operators add column if not exists circle_wallet_id text;
 create unique index if not exists operators_email_idx on operators(email) where email is not null;
 create unique index if not exists operators_circle_wallet_idx on operators(circle_wallet_id) where circle_wallet_id is not null;
 
+-- Per-call audit trail for LLM runner calls. Lets the demo prove that an
+-- agent's answer came from a real model call and not a synthetic ticker:
+-- show the puzzle text, the agent's response, the verdict, and the tokens
+-- consumed. (contest_id, agent_id, round_idx, puzzle_idx) uniquely keys a
+-- single solve attempt; primary key is the autoincrement id to make
+-- inserts simple.
+create table if not exists llm_runs (
+  id            bigserial primary key,
+  contest_id    bigint not null,
+  agent_id      bigint not null,
+  operator      text   not null,
+  round_idx     int    not null default 0,
+  puzzle_idx    int    not null default 0,
+  kind          text   not null, -- "solver" | "analyst" | "scout"
+  model         text   not null,
+  prompt        text   not null,
+  response      text   not null,
+  expected      text,
+  verdict       text   not null, -- "correct" | "wrong" | "skipped" | "error"
+  latency_ms    int    not null default 0,
+  input_tokens  int    not null default 0,
+  output_tokens int    not null default 0,
+  cost_usd      numeric(12, 6) not null default 0,
+  created_at    timestamptz not null default now()
+);
+create index if not exists llm_runs_contest_idx on llm_runs(contest_id, agent_id);
+create index if not exists llm_runs_created_idx on llm_runs(created_at desc);
+
 -- WebAuthn passkey credentials. One row per registered authenticator. An email
 -- can have multiple credentials over time (extra devices), but the demo only
 -- ever uses one per email. `credential_id` is base64url-encoded as it comes

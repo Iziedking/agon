@@ -21,6 +21,7 @@ import { CreateChallengeModal } from "@/components/pengu/CreateChallengeModal";
 import { HostCampaignButton } from "@/components/pengu/HostCampaignButton";
 import { LoginCTA } from "@/components/pengu/LoginCTA";
 import { MysteryClaimCard } from "@/components/pengu/MysteryClaimCard";
+import { RefundsWaiting } from "@/components/pengu/RefundsWaiting";
 import {
   CONTEST_TYPES,
   agentDisplayName,
@@ -75,15 +76,11 @@ export default function DashboardPage() {
     return (
       <Shell>
         <section className="mx-auto max-w-[1280px] px-6 pt-16">
-          <SectionHeader eyebrow="DASHBOARD" heading="CONNECT FIRST" />
+          <SectionHeader heading="SIGN IN TO CONTINUE" />
 
           <div className="mt-10 max-w-[560px]">
             <BracketedCell pad="lg">
-              <p className="font-mono text-sm leading-[1.6] text-ink-2">
-                the dashboard is your private home base. agents you own, contests you've entered, prizes waiting for
-                you. connect a wallet to open it.
-              </p>
-              <div className="mt-6 flex flex-col gap-2">
+              <div className="flex flex-col gap-2">
                 <LoginCTA
                   label="SIGN IN"
                   className="inline-flex items-center gap-2 bg-accent px-4 py-2.5 font-mono text-[13px] uppercase tracking-[0.12em] text-accent-ink hover:bg-accent-press"
@@ -92,12 +89,9 @@ export default function DashboardPage() {
                   href="/onboarding/welcome"
                   className="inline-block font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:text-ink"
                 >
-                  OR TAKE THE TOUR →
+                  TAKE THE TOUR →
                 </a>
               </div>
-              <p className="mt-4 border-t border-[color:var(--hairline)] pt-4 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3">
-                NO EMAIL NEEDED. WALLET ONLY.
-              </p>
             </BracketedCell>
           </div>
         </section>
@@ -110,8 +104,8 @@ export default function DashboardPage() {
     return (
       <Shell>
         <section className="mx-auto max-w-[1280px] px-6 pt-16">
-          <SectionHeader eyebrow="DASHBOARD" heading="YOUR DASHBOARD" />
-          <p className="mt-8 font-mono text-sm text-ink-2">reading your dashboard from arc…</p>
+          <SectionHeader heading="DASHBOARD" />
+          <p className="mt-8 font-mono text-sm text-ink-2">loading…</p>
         </section>
       </Shell>
     );
@@ -147,12 +141,8 @@ export default function DashboardPage() {
     <Shell>
       <section className="relative mx-auto max-w-[1280px] px-6 pt-16">
         <CornerMarkers />
-        <div className="mb-4">
-          <MicroLabel tone="ink-3">OPERATOR · LIVE STATE FROM ARC</MicroLabel>
-        </div>
         <SectionHeader
-          eyebrow="DASHBOARD"
-          heading="YOUR DASHBOARD"
+          heading="DASHBOARD"
           subDeck={
             <>
               signed in as{" "}
@@ -281,6 +271,9 @@ export default function DashboardPage() {
           </div>
         </div>
       </section>
+
+      {/* REFUNDS WAITING — only renders when the user has cancelled challenges to pull back */}
+      <RefundsWaiting address={address as `0x${string}`} />
 
       {/* MYSTERY CLAIM — kept as a bracketed sidecar */}
       {agents.length > 0 ? (

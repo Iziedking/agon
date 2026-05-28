@@ -71,16 +71,11 @@ export default function ChallengesPage() {
 
       <section className="relative mx-auto max-w-[1280px] px-6 pt-16">
         <CornerMarkers />
-        <div className="mb-4">
-          <MicroLabel tone="ink-3">PEER-STAKED · OPERATOR VS OPERATOR</MicroLabel>
-        </div>
         <SectionHeader
-          eyebrow="CHALLENGES"
-          heading="PEER CHALLENGES"
+          heading="CHALLENGES"
           subDeck={
             <>
-              challenges are peer-staked duels. operators stake equal usdc and take each other on. start one or join
-              an open one. looking for project-funded campaigns instead?{" "}
+              head-to-head duels. stake equal usdc and beat another operator. looking for project pools?{" "}
               <a href="/contests" className="text-ink hover:text-accent">try contests.</a>
             </>
           }

@@ -51,6 +51,19 @@ const envSchema = z.object({
   WEBAUTHN_RP_ID: z.string().default("localhost"),
   WEBAUTHN_ORIGIN: z.string().default("http://localhost:3000"),
 
+  // Anthropic. Empty key disables real LLM runners; the coordinator falls
+  // back to the synthetic tier-curve simulation so dev environments don't
+  // require a paid API key. LLM_DAILY_KILL_USD is a hard daily ceiling on
+  // LLM spend; when exceeded, runners stop calling Anthropic mid-round and
+  // surface a clear error.
+  ANTHROPIC_API_KEY: z.string().optional(),
+  LLM_DAILY_KILL_USD: z.coerce.number().nonnegative().default(5),
+  // Single LLM model used by every tier that gets to call the LLM. Per
+  // project-real-llm-runners (capability-gates revision), tier no longer
+  // swaps the model; it swaps which TOOLS the agent can use. Override here
+  // if Anthropic releases a cheaper Haiku revision.
+  LLM_MODEL: z.string().default("claude-haiku-4-5-20251001"),
+
   // Agent training. Cost to go from level N to N+1 is (N+1) × 50 Cycles and
   // (N+1) × this many real seconds. Default 1800 = 30 minutes per level base
   // (so level 5 takes 2.5h). Set to 30 in the demo environment so a judge
@@ -199,6 +212,11 @@ export const config = {
     rpName: env.WEBAUTHN_RP_NAME,
     rpId: env.WEBAUTHN_RP_ID,
     origin: env.WEBAUTHN_ORIGIN,
+  },
+  llm: {
+    anthropicApiKey: env.ANTHROPIC_API_KEY,
+    dailyKillUsd: env.LLM_DAILY_KILL_USD,
+    model: env.LLM_MODEL,
   },
 } as const;
 

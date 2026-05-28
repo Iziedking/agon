@@ -19,6 +19,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.40.0",
     "@circle-fin/developer-controlled-wallets": "^9.2.0",
     "@hono/node-server": "^1.13.7",
     "@simplewebauthn/server": "^13.0.0",
