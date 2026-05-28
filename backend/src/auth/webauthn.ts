@@ -63,17 +63,24 @@ export async function listCredentialsForEmail(email: string): Promise<StoredCred
 }
 
 /// Build the WebAuthn registration challenge for `email`. The challenge is
-/// stored in Redis under the email so /finish can verify it; the caller is
-/// expected to short-circuit before calling this if the email already has a
-/// credential (use listCredentialsForEmail for the check).
+/// stored in Redis under the email so /finish can verify it. Already-
+/// registered credentials are passed as `excludeCredentials` so the same
+/// device can't enroll the same email twice (the authenticator refuses).
+/// Different devices have different authenticators and won't collide, so
+/// this supports multi-device enrollment cleanly: device A's cred won't
+/// stop device B from registering its own.
 export async function beginRegistration(email: string): Promise<PublicKeyCredentialCreationOptionsJSON> {
+  const existing = await listCredentialsForEmail(email);
   const options = await generateRegistrationOptions({
     rpName: config.webauthn.rpName,
     rpID: config.webauthn.rpId,
     userName: email,
     userID: userHandle(email),
     attestationType: "none",
-    excludeCredentials: [], // first credential for this email
+    excludeCredentials: existing.map((c) => ({
+      id: c.credential_id,
+      transports: (c.transports ?? undefined) as AuthenticatorTransportFuture[] | undefined,
+    })),
     authenticatorSelection: {
       residentKey: "preferred",
       userVerification: "preferred",

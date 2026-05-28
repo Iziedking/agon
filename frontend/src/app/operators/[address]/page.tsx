@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import { useAccount } from "wagmi";
+import { useAuth } from "@/hooks/useAuth";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/redesign/Footer";
 import { BracketedCell, CornerMarkers, Robot } from "@/components/redesign";
@@ -21,6 +21,8 @@ import {
   type OperatorProfile,
   type SettingKey,
 } from "@/lib/profiles";
+import { enrollPasskey, fetchPasskeys, type PasskeyRecord } from "@/lib/auth";
+import { friendlyError } from "@/lib/errors";
 
 /// /operators/[address] per arcrun-redesign §4.5. The profile is for who you
 /// are and how things look. Stats live on /dashboard.
@@ -30,8 +32,14 @@ const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL ?? "http://localhost:8082";
 export default function OperatorPage() {
   const params = useParams();
   const address = (Array.isArray(params.address) ? params.address[0] : params.address) ?? "";
-  const { address: me } = useAccount();
-  const isMe = !!me && !!address && me.toLowerCase() === address.toLowerCase();
+  // Read the signed-in operator address from the shared auth context so
+  // Circle email users (who have a SIWE session but no wagmi connection)
+  // see their own profile as "isMe". wagmi's useAccount returns undefined
+  // for them and would hide SOCIALS + SETTINGS.
+  const { me: auth } = useAuth();
+  const meAddress = auth?.address ?? null;
+  const isMe = !!meAddress && !!address && meAddress.toLowerCase() === address.toLowerCase();
+  const isEmailUser = auth?.walletKind === "circle";
 
   const [profile, setProfile] = useState<OperatorProfile | null | "loading">("loading");
   const [agents, setAgents] = useState<AgentState[] | undefined>(undefined);
@@ -201,6 +209,7 @@ export default function OperatorPage() {
           </div>
           <BracketedCell pad="sm">
             <div className="flex flex-col">
+              {isEmailUser ? <PasskeysRow /> : null}
               <SettingRow
                 k="lang"
                 label="LANGUAGE"
@@ -682,6 +691,92 @@ function SettingRow({
       </div>
     </div>
   );
+}
+
+/// PASSKEY settings row for Circle email users. Lists enrolled passkeys
+/// and exposes ADD A PASSKEY so the user can register a credential on
+/// another device. The backend excludes already-known credentials at the
+/// registration challenge, so a device that's already enrolled rejects
+/// re-registration; a new device sees no conflict and enrols cleanly.
+function PasskeysRow() {
+  const [passkeys, setPasskeys] = useState<PasskeyRecord[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    fetchPasskeys().then((list) => { if (live) setPasskeys(list); });
+    return () => { live = false; };
+  }, []);
+
+  async function add() {
+    setBusy(true);
+    setError(null);
+    setNote(null);
+    try {
+      await enrollPasskey();
+      const next = await fetchPasskeys();
+      setPasskeys(next);
+      setNote("PASSKEY ADDED");
+      setTimeout(() => setNote(null), 1500);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      let user = friendlyError(e, "could not add passkey.");
+      if (e instanceof Error && e.name === "InvalidStateError") {
+        user = "this device already has a passkey for this account.";
+      } else if (e instanceof Error && e.name === "NotAllowedError") {
+        user = "cancelled or timed out. try again.";
+      } else if (msg.toLowerCase().includes("excluded")) {
+        user = "this device already has a passkey for this account.";
+      }
+      setError(user);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const count = passkeys?.length ?? 0;
+
+  return (
+    <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[color:var(--hairline)] py-3 last:border-0">
+      <div className="min-w-0 flex-1">
+        <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">PASSKEY</div>
+        <div className="mt-1 font-mono text-sm text-ink">
+          {passkeys === null ? "loading…" : count === 0 ? "none added" : `${count} ${count === 1 ? "device" : "devices"} enrolled`}
+        </div>
+        {passkeys && passkeys.length > 0 ? (
+          <ul className="mt-2 flex flex-col gap-1">
+            {passkeys.map((p, i) => (
+              <li key={p.id} className="font-mono text-[11px] text-ink-3">
+                · {p.deviceType === "multiDevice" || p.backedUp ? "synced passkey" : "device-bound passkey"}
+                {" · added "}{formatPasskeyDate(p.createdAt)}
+                {i === passkeys.length - 1 ? " (this list)" : ""}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {note ? <p className="mt-1 font-mono text-[11px] uppercase tracking-[0.12em] text-[color:var(--ok)]">{note}</p> : null}
+        {error ? <p className="mt-1 font-mono text-[11px] text-[color:var(--err)]">{error}</p> : null}
+      </div>
+      <button
+        onClick={add}
+        disabled={busy}
+        className="inline-flex items-center gap-2 bg-accent px-3 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-accent-ink transition-colors hover:bg-accent-press disabled:opacity-60"
+      >
+        {busy ? "CHECK YOUR DEVICE" : "ADD A PASSKEY"}
+      </button>
+    </div>
+  );
+}
+
+function formatPasskeyDate(iso: string): string {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString();
+  } catch {
+    return iso.slice(0, 10);
+  }
 }
 
 function ToggleRow({ k, label, hint }: { k: SettingKey; label: string; hint?: string }) {

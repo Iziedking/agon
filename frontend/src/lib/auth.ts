@@ -139,10 +139,34 @@ export async function signInWithEmail(email: string): Promise<EmailLoginResult> 
   };
 }
 
+/// One registered passkey, as returned by GET /auth/passkey/list. Used by
+/// the profile settings to show the user's enrolled devices.
+export interface PasskeyRecord {
+  id: string;
+  deviceType: string | null;
+  backedUp: boolean;
+  transports: string[];
+  createdAt: string;
+}
+
+export async function fetchPasskeys(): Promise<PasskeyRecord[]> {
+  try {
+    const res = await fetch(`${AUTH_URL}/auth/passkey/list`, { credentials: "include" });
+    if (!res.ok) return [];
+    const data = (await res.json()) as { passkeys?: PasskeyRecord[] };
+    return data.passkeys ?? [];
+  } catch {
+    return [];
+  }
+}
+
 /// Enroll a passkey on the current live session. Runs the WebAuthn
 /// registration ceremony against the email tied to this session and stores
-/// the credential so the user's next login requires this passkey. Throws on
-/// cancellation, mismatched origin, or any verification failure.
+/// the credential. Supports multi-device: each call from a different
+/// device adds a NEW credential without overwriting older ones. Throws on
+/// cancellation, mismatched origin, verification failure, or when the
+/// authenticator already holds a credential for this email on the same
+/// device (the backend's excludeCredentials trips).
 export async function enrollPasskey(): Promise<void> {
   const { startRegistration } = await import("@simplewebauthn/browser");
 

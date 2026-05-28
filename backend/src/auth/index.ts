@@ -306,6 +306,35 @@ app.post("/auth/passkey/enroll/begin", requireAuth, async (c) => {
   return c.json({ options });
 });
 
+/// Lists the current session's registered passkeys with device hints so
+/// the profile settings can show "you have 2 passkeys" with a per-row
+/// summary (device type, when added). Read-only.
+app.get("/auth/passkey/list", requireAuth, async (c) => {
+  const address = c.get("address");
+  const { rows } = await query<{
+    credential_id: string;
+    device_type: string | null;
+    backed_up: boolean | null;
+    transports: string[] | null;
+    created_at: Date;
+  }>(
+    `select credential_id, device_type, backed_up, transports, created_at
+       from webauthn_credentials
+      where operator_address = $1
+      order by created_at asc`,
+    [address],
+  );
+  return c.json({
+    passkeys: rows.map((r) => ({
+      id: r.credential_id,
+      deviceType: r.device_type,
+      backedUp: r.backed_up ?? false,
+      transports: r.transports ?? [],
+      createdAt: r.created_at,
+    })),
+  });
+});
+
 app.post("/auth/passkey/enroll/finish", requireAuth, async (c) => {
   const address = c.get("address");
   const { rows } = await query<{ email: string | null }>(
