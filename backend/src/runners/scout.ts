@@ -6,6 +6,8 @@ import { arcTestnet, publicClient } from "../chain/arc.js";
 import { config } from "../config/index.js";
 import { scoutScore } from "../scoring/index.js";
 import type { AgentResult, ContestEntryInput, Runner } from "./types.js";
+import { callModel, llmConfigured, recordLlmRun, DailyKillError } from "./llm/client.js";
+import { resolveRuntimeParams, type RuntimeParams } from "./llm/tierConfig.js";
 
 /// ScoutRunner: each agent has a deterministic hot wallet derived from the
 /// master mnemonic by agentId. The agent performs tier-limited real USDC
@@ -116,12 +118,125 @@ export async function executeScout(
   };
 }
 
+/// LLM-picked execution strategy. Tier 0/1 skip the LLM and use defaults
+/// (tier cap clamped); tier 2+ ask the LLM to choose opsCount and
+/// perOpUsdc6 within the tier's hard caps. The LLM can't go over the cap
+/// (we clamp on the way out), so paying for tier 4 still grants more
+/// volume; the LLM only decides how to distribute it.
+interface ScoutStrategy {
+  opsCount: number;
+  perOpUsdc6: bigint;
+  rationale: string;
+}
+
+async function pickScoutStrategy(
+  contestId: number,
+  entry: ContestEntryInput,
+  balance: bigint,
+  limit: TierLimit,
+  params: RuntimeParams,
+): Promise<ScoutStrategy> {
+  const defaultOps = Math.min(limit.maxOps, 5);
+  const defaultPerOp = balance / BigInt(defaultOps + 1);
+  if (!params.llmEnabled) {
+    return { opsCount: defaultOps, perOpUsdc6: defaultPerOp, rationale: "tier default" };
+  }
+
+  const systemPrompt = [
+    "You are an ArcRun scout agent picking a USDC volume execution strategy.",
+    "Choose how many self-transfer ops to run and how much USDC to move per op.",
+    "Output two lines exactly:",
+    "OPS: <integer>",
+    "PER_OP_USDC: <decimal>",
+  ].join(" ");
+  const userPrompt = [
+    `You control a hot wallet with ${Number(balance) / 1_000_000} USDC.`,
+    `Tier cap: at most ${limit.maxOps} ops, at most ${Number(limit.maxPerOpUsdc6) / 1_000_000} USDC per op.`,
+    "Pick ops + per_op_usdc to maximize total volume while leaving headroom for gas.",
+  ].join("\n");
+
+  let response = "";
+  let verdict: "correct" | "wrong" | "skipped" | "error" = "correct";
+  let cost = 0;
+  let latencyMs = 0;
+  let inputTokens = 0;
+  let outputTokens = 0;
+  try {
+    const res = await callModel({
+      model: params.model,
+      systemPrompt,
+      userPrompt,
+      maxTokens: params.maxTokens,
+      temperature: params.temperature,
+      tools: params.tools,
+    });
+    response = res.text;
+    latencyMs = res.latencyMs;
+    inputTokens = res.inputTokens;
+    outputTokens = res.outputTokens;
+    cost = res.costUsd;
+  } catch (err) {
+    verdict = err instanceof DailyKillError ? "skipped" : "error";
+    response = err instanceof Error ? err.message : String(err);
+  }
+
+  const parsed = parseStrategy(response);
+  // Clamp to tier limits + balance reality.
+  const opsCount = Math.max(0, Math.min(limit.maxOps, parsed.opsCount ?? defaultOps));
+  let perOp = parsed.perOpUsdc6 ?? defaultPerOp;
+  if (perOp > limit.maxPerOpUsdc6) perOp = limit.maxPerOpUsdc6;
+  if (opsCount > 0 && perOp > balance / BigInt(opsCount + 1)) {
+    perOp = balance / BigInt(opsCount + 1);
+  }
+
+  await recordLlmRun({
+    contestId,
+    agentId: entry.agentId,
+    operator: entry.operator,
+    roundIdx: 0,
+    puzzleIdx: 0,
+    kind: "scout",
+    model: params.llmEnabled ? params.model : "default",
+    prompt: userPrompt,
+    response,
+    expected: null,
+    verdict,
+    latencyMs,
+    inputTokens,
+    outputTokens,
+    costUsd: cost,
+  }).catch(() => { /* audit row best-effort */ });
+
+  return {
+    opsCount,
+    perOpUsdc6: perOp,
+    rationale: response.slice(0, 200),
+  };
+}
+
+function parseStrategy(text: string): { opsCount: number | null; perOpUsdc6: bigint | null } {
+  const opsMatch = text.match(/OPS\s*[:=]?\s*(\d+)/i);
+  const perOpMatch = text.match(/PER_OP_USDC\s*[:=]?\s*(\d+(?:\.\d+)?)/i);
+  const opsCount = opsMatch ? Number(opsMatch[1]) : null;
+  let perOpUsdc6: bigint | null = null;
+  if (perOpMatch) {
+    const v = Number(perOpMatch[1]);
+    if (Number.isFinite(v) && v >= 0) perOpUsdc6 = BigInt(Math.floor(v * 1_000_000));
+  }
+  return {
+    opsCount: opsCount != null && Number.isFinite(opsCount) ? opsCount : null,
+    perOpUsdc6,
+  };
+}
+
 export class ScoutRunner implements Runner {
   readonly kind = "scout" as const;
   constructor(private readonly opsPerContest = 5) {}
 
   async run(contestId: number, entries: ContestEntryInput[]): Promise<AgentResult[]> {
     const results: AgentResult[] = [];
+    const real = llmConfigured();
+
     for (const e of entries) {
       const account = deriveHotWallet(e.agentId);
       const balance = await hotWalletBalance(e.agentId);
@@ -134,7 +249,17 @@ export class ScoutRunner implements Runner {
         });
         continue;
       }
-      const exec = await executeScout(e.agentId, e.tier, { ops: this.opsPerContest });
+
+      const limit = tierLimit(e.tier);
+      const params = real ? await resolveRuntimeParams(e.agentId, e.tier).catch(() => null) : null;
+      const strategy = params
+        ? await pickScoutStrategy(contestId, e, balance, limit, params)
+        : { opsCount: Math.min(this.opsPerContest, limit.maxOps), perOpUsdc6: balance / BigInt(this.opsPerContest + 1), rationale: "no llm" };
+
+      const exec = await executeScout(e.agentId, e.tier, {
+        ops: strategy.opsCount,
+        perOpUsdc6: strategy.perOpUsdc6,
+      });
       const score = scoutScore({
         volumeUsdc6: exec.volumeUsdc6,
         opsCount: exec.opsCount,
@@ -149,7 +274,12 @@ export class ScoutRunner implements Runner {
         agentId: e.agentId,
         operator: e.operator,
         score,
-        detail: { volumeUsdc6: exec.volumeUsdc6.toString(), opsCount: exec.opsCount, hot: account.address },
+        detail: {
+          volumeUsdc6: exec.volumeUsdc6.toString(),
+          opsCount: exec.opsCount,
+          hot: account.address,
+          strategy: strategy.rationale,
+        },
         progress: { kind: "scout" as const, opsCount: exec.opsCount, recent, recentVolumes },
       });
     }
