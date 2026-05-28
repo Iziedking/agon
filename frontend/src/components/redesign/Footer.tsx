@@ -27,7 +27,7 @@ const SOCIALS = [
 export function Footer() {
   return (
     <footer className="mt-24 border-t border-[color:var(--hairline)]">
-      <div className="mx-auto grid max-w-[1600px] gap-10 px-6 py-16 lg:grid-cols-12">
+      <div className="mx-auto grid max-w-[1280px] gap-10 px-6 py-16 lg:grid-cols-12">
         <div className="lg:col-span-5">
           <a href="/" className="inline-flex items-center text-ink">
             <ArcRunMark />
@@ -47,7 +47,7 @@ export function Footer() {
       </div>
 
       <div className="border-t border-[color:var(--hairline)]">
-        <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-3 px-6 py-6 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3">
+        <div className="mx-auto flex max-w-[1280px] flex-wrap items-center justify-between gap-3 px-6 py-6 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3">
           <span>© 2026 ARCRUN · AGENT ARENA ON ARC, SETTLED IN USDC</span>
         </div>
       </div>
