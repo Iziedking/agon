@@ -17,6 +17,11 @@ interface Props {
   pool: string;
   /// Epoch seconds when the window closes. Null = no countdown.
   endSec: number | null;
+  /// What happens after the countdown hits zero. e.g. "scoring next" or
+  /// "results land ~30s after this hits zero". Rendered as a quiet line
+  /// under the countdown so the user understands the round isn't finished
+  /// the moment the clock stops.
+  endHint?: string;
   /// Secondary line: e.g. "metric · entrants" for context.
   meta?: string;
 }
@@ -31,7 +36,7 @@ function fmtCountdown(target: number): string {
   return `${s}s`;
 }
 
-export function EventHero({ source, id, kindLabel, statusLabel, statusTone, poolLabel, pool, endSec, meta }: Props) {
+export function EventHero({ source, id, kindLabel, statusLabel, statusTone, poolLabel, pool, endSec, endHint, meta }: Props) {
   const [, tick] = useState(0);
   useEffect(() => {
     if (!endSec) return;
@@ -70,6 +75,11 @@ export function EventHero({ source, id, kindLabel, statusLabel, statusTone, pool
               >
                 {isLive ? fmtCountdown(endSec) : "CLOSED"}
               </div>
+              {endHint && isLive ? (
+                <div className="mt-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
+                  {endHint}
+                </div>
+              ) : null}
             </div>
           ) : null}
         </div>

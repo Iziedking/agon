@@ -4,3 +4,4 @@ export { PuzzleStage } from "./PuzzleStage";
 export { VolumeStage } from "./VolumeStage";
 export { PredictionStage } from "./PredictionStage";
 export { CustomStage } from "./CustomStage";
+export { RealSolves } from "./RealSolves";

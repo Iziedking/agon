@@ -104,10 +104,22 @@ export async function resolveRuntimeParams(agentId: number, tier: number): Promi
   const fewShotCount = Math.max(3, Math.min(10, 3 + Math.floor((stats.FOCUS ?? 0) / 3)));
   // LUCK: 0.01 nudge per level.
   const luckBonus = (stats.LUCK ?? 0) * 0.01;
+
+  // Testing belt: strip web_search (the only paid server-tool), clamp
+  // tokens, kill retries. Tier 4 keeps code_execution because that's free
+  // and exercises the tool path during smoke runs.
+  const tools = config.llm.testing
+    ? base.tools.filter((t) => t.name !== "web_search")
+    : base.tools;
+  const finalMaxTokens = config.llm.testing ? Math.min(200, maxTokens) : maxTokens;
+  const retries = config.llm.testing ? 0 : base.retries;
+
   return {
     ...base,
+    tools,
+    retries,
     model: config.llm.model,
-    maxTokens,
+    maxTokens: finalMaxTokens,
     temperature,
     parallelSolves,
     fewShotCount,

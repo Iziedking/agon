@@ -5,12 +5,14 @@ import { notFound, useParams } from "next/navigation";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/redesign/Footer";
 import { BracketedCell, Robot, robotVariantForId, StatusChip, TagButton } from "@/components/redesign";
-import { EventHero, EventStage, normalizeStageKind } from "@/components/redesign/stages";
+import { EventHero, EventStage, normalizeStageKind, RealSolves, type StageKind } from "@/components/redesign/stages";
 import { useContestSocket } from "@/hooks/useContestSocket";
 import { nameFor, useAgentNames } from "@/hooks/useAgentNames";
+import { useLiveNarrative, progressSummary } from "@/hooks/useLiveNarrative";
 import { fetchContest, CONTEST_TYPE, formatUsdc, type Contest } from "@/lib/contests";
 import { fetchChallenge, CHALLENGE_KIND, type Challenge } from "@/lib/challenges";
 import type { StandingsEntry } from "@/lib/live";
+import { computeWinProbabilities, formatProb, probFor, type WinProbability } from "@/lib/winProbability";
 
 /// /live/[source]/[id] — the focused watcher. Reads the on-chain shape of the
 /// event for the header (so a cold load doesn't depend on the WS), then
@@ -92,6 +94,7 @@ function ContestFocus({ id }: { id: number }) {
             poolLabel="PRIZE POOL"
             pool={formatUsdc(c.prizePool)}
             endSec={isLive ? Number(c.endTime) : null}
+            endHint="results land shortly after"
             meta={`${c.entrants} ENTRANTS · TOP ${c.topN} SHARE`}
           />
 
@@ -99,10 +102,7 @@ function ContestFocus({ id }: { id: number }) {
 
           <div className="mt-6 grid gap-6 lg:grid-cols-12">
             <div className="lg:col-span-8">
-              <div className="mb-3 font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
-                <span aria-hidden className="text-accent">■</span> STAGE
-              </div>
-              <EventStage kind={stageKind} entries={entries} />
+              <StageWithNarrative entries={entries} stageKind={stageKind} eventId={id} />
             </div>
             <aside className="lg:col-span-4">
               <Standings entries={entries} stakedCount={c.entrants} />
@@ -161,6 +161,7 @@ function ChallengeFocus({ id }: { id: number }) {
             poolLabel="POT SO FAR"
             pool={formatUsdc(pot)}
             endSec={isLive ? endSec : null}
+            endHint={ch.status === 0 ? "scoring opens after" : "results land shortly after"}
             meta={`${ch.entrants}/${ch.maxEntrants} STAKED · ${formatUsdc(ch.stake)} STAKE`}
           />
 
@@ -168,10 +169,7 @@ function ChallengeFocus({ id }: { id: number }) {
 
           <div className="mt-6 grid gap-6 lg:grid-cols-12">
             <div className="lg:col-span-8">
-              <div className="mb-3 font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
-                <span aria-hidden className="text-accent">■</span> STAGE
-              </div>
-              <EventStage kind={stageKind} entries={entries} />
+              <StageWithNarrative entries={entries} stageKind={stageKind} eventId={id} />
             </div>
             <aside className="lg:col-span-4">
               <Standings entries={entries} stakedCount={ch.entrants} />
@@ -231,14 +229,49 @@ function ConnectionLine({ connected, live }: { connected: boolean; live: boolean
   );
 }
 
+/// Renders the per-kind stage with a "WHAT'S HAPPENING" headline above it
+/// that updates per-tick by diffing successive standings frames. The
+/// headline replaces the static "■ STAGE" eyebrow so judges and casual
+/// viewers can read what's happening without interpreting bars and rows.
+function StageWithNarrative({
+  entries,
+  stageKind,
+  eventId,
+}: {
+  entries: StandingsEntry[];
+  stageKind: StageKind;
+  /// Contest or challenge id. Drives the RealSolves audit-trail panel
+  /// that surfaces the actual puzzle prompts + each agent's answer.
+  eventId: number;
+}) {
+  const ids = useMemo(() => entries.map((e) => e.agentId), [entries]);
+  const names = useAgentNames(ids);
+  const nameOf = (id: number) => nameFor(names, id);
+  const narrative = useLiveNarrative(entries, nameOf);
+  return (
+    <>
+      <div className="mb-3 flex flex-wrap items-center gap-3 font-mono text-[11px] uppercase tracking-[0.16em]">
+        <span aria-hidden className="text-accent">■</span>
+        <span className="text-ink-3">WHAT'S HAPPENING</span>
+        <span className="text-ink">{narrative}</span>
+      </div>
+      <EventStage kind={stageKind} entries={entries} />
+      {stageKind === "puzzle" ? <RealSolves id={eventId} /> : null}
+    </>
+  );
+}
+
 /// Standings rail. Reads from the live WS broadcast first; when the runner
 /// hasn't emitted a scoring frame yet the panel falls back to the on-chain
 /// entrant count so the user doesn't see "no entrants" while staring at a
 /// 2/2 staked challenge. The fallback shape carries no scores — just a
-/// "waiting on first frame" line and the staked count.
+/// "waiting on first frame" line and the staked count. Per-row win-prob
+/// estimate sits between the name and the score so it's the first thing
+/// the eye picks up.
 function Standings({ entries, stakedCount }: { entries: StandingsEntry[]; stakedCount?: number }) {
   const names = useAgentNames(entries.map((e) => e.agentId));
   const top = useMemo(() => [...entries].sort((a, b) => a.rank - b.rank).slice(0, 8), [entries]);
+  const probs: WinProbability[] = useMemo(() => computeWinProbabilities(entries), [entries]);
   return (
     <div>
       <div className="mb-3 font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
@@ -251,7 +284,7 @@ function Standings({ entries, stakedCount }: { entries: StandingsEntry[]; staked
               <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
                 {stakedCount} {stakedCount === 1 ? "ENTRANT" : "ENTRANTS"} STAKED
               </div>
-              <p className="mt-1.5 text-ink-3">scoring starts when the join window closes. live frames will fill this in.</p>
+              <p className="mt-1.5 text-ink-3">scoring starts when the join window closes.</p>
             </div>
           ) : (
             <p className="px-2 py-4 font-mono text-sm text-ink-2">no entrants yet.</p>
@@ -260,6 +293,8 @@ function Standings({ entries, stakedCount }: { entries: StandingsEntry[]; staked
           <div className="flex flex-col">
             {top.map((e) => {
               const variant = robotVariantForId(e.agentId);
+              const p = probFor(probs, e.agentId);
+              const summary = progressSummary(e.progress);
               return (
                 <div
                   key={e.agentId}
@@ -269,10 +304,20 @@ function Standings({ entries, stakedCount }: { entries: StandingsEntry[]; staked
                     #{e.rank}
                   </span>
                   <Robot variant={variant} size={20} decorative />
-                  <span className="min-w-0 flex-1 truncate font-mono text-[11px] uppercase tracking-[0.12em] text-ink">
-                    {nameFor(names, e.agentId)}
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-mono text-[11px] uppercase tracking-[0.12em] text-ink">
+                      {nameFor(names, e.agentId)}
+                    </div>
+                    {summary ? (
+                      <div className="mt-0.5 font-mono text-[10px] text-ink-3">{summary}</div>
+                    ) : null}
+                  </div>
+                  <span
+                    className={`font-mono text-[11px] ${e.rank === 1 ? "text-accent" : "text-ink-2"}`}
+                    title="win probability"
+                  >
+                    {formatProb(p)}
                   </span>
-                  <span className="font-mono text-[11px] text-ink">{Math.round(e.score).toLocaleString()}</span>
                 </div>
               );
             })}

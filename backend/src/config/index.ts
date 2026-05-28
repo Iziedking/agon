@@ -63,6 +63,12 @@ const envSchema = z.object({
   // swaps the model; it swaps which TOOLS the agent can use. Override here
   // if Anthropic releases a cheaper Haiku revision.
   LLM_MODEL: z.string().default("claude-haiku-4-5-20251001"),
+  // Testing safety belt. When true:
+  //  - web_search tool is stripped from every tier (avoids $0.01/search)
+  //  - max_tokens is clamped to 200 regardless of POWER stat
+  //  - retries are disabled
+  // Use during smoke runs so the cost ceiling stays predictable.
+  LLM_TESTING: z.coerce.boolean().default(false),
 
   // Agent training. Cost to go from level N to N+1 is (N+1) × 50 Cycles and
   // (N+1) × this many real seconds. Default 1800 = 30 minutes per level base
@@ -217,6 +223,7 @@ export const config = {
     anthropicApiKey: env.ANTHROPIC_API_KEY,
     dailyKillUsd: env.LLM_DAILY_KILL_USD,
     model: env.LLM_MODEL,
+    testing: env.LLM_TESTING,
   },
 } as const;
 

@@ -90,8 +90,19 @@ export default function LeaderboardPage() {
                   #{rank}
                 </span>
                 <span className="flex min-w-0 items-center gap-2.5">
-                  <span className="flex h-6 w-6 flex-none items-center justify-center bg-canvas-3">
-                    <Robot variant={robotVariantForOperator(r.operator)} size={22} decorative />
+                  <span className="flex h-6 w-6 flex-none items-center justify-center overflow-hidden bg-canvas-3">
+                    {r.primarySkin ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={r.primarySkin}
+                        alt=""
+                        className="h-full w-full object-cover"
+                        loading="lazy"
+                        decoding="async"
+                      />
+                    ) : (
+                      <Robot variant={robotVariantForOperator(r.operator)} size={22} decorative />
+                    )}
                   </span>
                   <span className="truncate font-mono text-[13px] text-ink">{short(r.operator)}</span>
                 </span>

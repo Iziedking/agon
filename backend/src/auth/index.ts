@@ -1276,14 +1276,23 @@ app.get("/leaderboard", async (c) => {
     earned: string | null;
     cycles: string;
     reputation: string;
+    primary_agent_id: string | null;
+    primary_skin: string | null;
   }>(
+    // Primary agent is the operator's first non-delisted agent by id. Its
+    // skin shows in the leaderboard row so identifiable operators (the
+    // ones who bothered to upload a skin) read as themselves at a glance
+    // instead of as a generic mascot. Falls back to a Robot variant
+    // when no skin is set.
     `select
        op.address              as operator,
        coalesce(e.entered, 0)  as entered,
        coalesce(p.wins, 0)     as wins,
        coalesce(p.earned, 0)   as earned,
        op.cycles               as cycles,
-       coalesce(ag.reputation, 0) as reputation
+       coalesce(ag.reputation, 0) as reputation,
+       pa.id::text             as primary_agent_id,
+       pa.skin                 as primary_skin
      from operators op
      left join (select operator, count(distinct contest_id) as entered from entries group by operator) e
        on e.operator = op.address
@@ -1291,6 +1300,14 @@ app.get("/leaderboard", async (c) => {
        on p.operator = op.address
      left join (select owner, sum(reputation) as reputation from agents group by owner) ag
        on ag.owner = op.address
+     left join lateral (
+       select a.id, a.skin
+         from agents a
+         left join delisted_agents d on d.agent_id = a.id
+        where a.owner = op.address and d.agent_id is null
+        order by a.id
+        limit 1
+     ) pa on true
      where op.address in (select distinct operator from entries)
      order by earned desc nulls last, wins desc, cycles desc, entered desc
      limit $1`,
@@ -1304,6 +1321,8 @@ app.get("/leaderboard", async (c) => {
       earned: r.earned ?? "0",
       cycles: Number(r.cycles ?? "0"),
       reputation: r.reputation ?? "0",
+      primaryAgentId: r.primary_agent_id ? Number(r.primary_agent_id) : null,
+      primarySkin: r.primary_skin ?? null,
     })),
   });
 });

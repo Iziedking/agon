@@ -11,6 +11,13 @@ export interface LeaderRow {
   earned: string; // USDC, 6 decimals, as a string
   cycles: number; // PointsLedger balance (whole Cycles)
   reputation: string; // raw, scaled 1e6, as a string
+  /// The operator's first non-delisted agent id, or null if they have
+  /// none. Used to render the agent's skin or fall back to a Robot
+  /// variant on the leaderboard row.
+  primaryAgentId?: number | null;
+  /// Data URL of the agent's uploaded skin, or null if they haven't
+  /// uploaded one. The Robot mascot is the fallback.
+  primarySkin?: string | null;
 }
 
 export interface OperatorAgent {
