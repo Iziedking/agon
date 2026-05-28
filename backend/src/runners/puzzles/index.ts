@@ -1,4 +1,5 @@
 import { seededRng, pick } from "../rng.js";
+import { QUIZ_BANK, type QuizQuestion } from "./quizBank.js";
 
 /// Puzzle templates for the Solver contest. Generated deterministically from
 /// a (contestId, roundIdx) seed so every agent in a round faces the same
@@ -10,7 +11,7 @@ import { seededRng, pick } from "../rng.js";
 /// deterministic so the contest itself doesn't burn budget before agents
 /// even start.
 
-export type PuzzleKind = "arithmetic" | "classify" | "routing" | "pattern" | "wordcount";
+export type PuzzleKind = "arithmetic" | "classify" | "routing" | "pattern" | "wordcount" | "quiz";
 
 export interface Puzzle {
   /// One of a small set so the stage can display "ARITHMETIC", "ROUTING",
@@ -27,18 +28,57 @@ export interface Puzzle {
 /// Build N puzzles for one round. Seed is (contestId * 1009 + roundIdx) so
 /// rounds within the same contest don't collide and contests don't share
 /// templates. The first 100 rounds of a contest fit inside 32-bit ranges.
+///
+/// Quiz is weighted up so the demo features it prominently (about half of
+/// every round). Each quiz question is drawn from QUIZ_BANK with the same
+/// seed-derived index, so a 60+ question bank means a 5-puzzle round rarely
+/// reuses questions within the same contest.
 export function generatePuzzles(seed: number, count: number): Puzzle[] {
   const r = seededRng(seed);
   const out: Puzzle[] = [];
+  // Track quiz indices used in this round so a round of N puzzles doesn't
+  // pick the same quiz question twice. Cross-round duplicates are still
+  // possible but at low probability with a 60+ bank.
+  const usedQuizIndices = new Set<number>();
   for (let i = 0; i < count; i++) {
-    const k = pick(r, 5);
-    if (k === 0) out.push(arithmetic(r));
-    else if (k === 1) out.push(classify(r));
-    else if (k === 2) out.push(routing(r));
-    else if (k === 3) out.push(pattern(r));
+    // 10 buckets: 5 quiz, 1 each for arithmetic/classify/routing/pattern/wordcount.
+    const k = pick(r, 10);
+    if (k < 5) out.push(quiz(r, usedQuizIndices));
+    else if (k === 5) out.push(arithmetic(r));
+    else if (k === 6) out.push(classify(r));
+    else if (k === 7) out.push(routing(r));
+    else if (k === 8) out.push(pattern(r));
     else out.push(wordcount(r));
   }
   return out;
+}
+
+// ----- quiz family -----
+
+const LETTERS = ["A", "B", "C", "D"] as const;
+
+function quiz(r: () => number, used: Set<number>): Puzzle {
+  let idx = pick(r, QUIZ_BANK.length);
+  // Skip already-used indices in this round. Bounded loop so we never spin
+  // forever even if the bank is misconfigured.
+  for (let attempts = 0; attempts < 8 && used.has(idx); attempts++) {
+    idx = pick(r, QUIZ_BANK.length);
+  }
+  used.add(idx);
+  const q: QuizQuestion = QUIZ_BANK[idx] ?? QUIZ_BANK[0]!;
+  const lines = [
+    q.question,
+    `A) ${q.choices[0]}`,
+    `B) ${q.choices[1]}`,
+    `C) ${q.choices[2]}`,
+    `D) ${q.choices[3]}`,
+    "Answer with a single letter: A, B, C, or D.",
+  ];
+  return {
+    kind: "quiz",
+    prompt: lines.join("\n"),
+    expected: LETTERS[q.correctIndex],
+  };
 }
 
 // ----- families -----

@@ -65,7 +65,7 @@ export function RefundsWaiting({ address }: { address: `0x${string}` }) {
   const total = rows.reduce((sum, r) => sum + r.stake, 0n);
 
   return (
-    <section className="mx-auto max-w-[1280px] px-6 pb-10">
+    <section className="mx-auto max-w-[1600px] px-6 pb-10">
       <div className="mb-3 flex items-center justify-between">
         <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
           <span aria-hidden className="text-accent">■</span> REFUNDS WAITING

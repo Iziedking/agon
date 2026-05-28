@@ -76,7 +76,7 @@ export default function OperatorPage() {
     <div className="min-h-screen bg-canvas text-ink">
       <AppHeader />
 
-      <section className="relative mx-auto max-w-[1080px] px-6 pt-16">
+      <section className="relative mx-auto max-w-[1600px] px-6 pt-16">
         <CornerMarkers />
         <div className="flex flex-wrap items-center gap-5">
           <span
@@ -127,7 +127,7 @@ export default function OperatorPage() {
       </section>
 
       {/* AGENTS */}
-      <section className="mx-auto max-w-[1080px] px-6 pt-12">
+      <section className="mx-auto max-w-[1600px] px-6 pt-12">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
             <span aria-hidden className="text-accent">■</span> AGENTS
@@ -159,7 +159,7 @@ export default function OperatorPage() {
       {/* SOCIALS. Public viewers only see what's linked — owner sees the full
           card with link / unbind actions and unlinked rows. */}
       {isMe ? (
-        <section className="mx-auto max-w-[1080px] px-6 pt-12">
+        <section className="mx-auto max-w-[1600px] px-6 pt-12">
           <div className="mb-4 font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
             <span aria-hidden className="text-accent">■</span> SOCIALS
           </div>
@@ -203,7 +203,7 @@ export default function OperatorPage() {
 
       {/* SETTINGS — isMe only. Dark mode is gone per the redesign. */}
       {isMe ? (
-        <section className="mx-auto max-w-[1080px] px-6 py-12 pb-16">
+        <section className="mx-auto max-w-[1600px] px-6 py-12 pb-16">
           <div className="mb-4 font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
             <span aria-hidden className="text-accent">■</span> SETTINGS
           </div>
@@ -335,7 +335,7 @@ function PublicSocialStrip({
   if (linked.length === 0) return null;
 
   return (
-    <section className="mx-auto max-w-[1080px] px-6 pt-10">
+    <section className="mx-auto max-w-[1600px] px-6 pt-10">
       <div className="flex flex-wrap items-center gap-x-8 gap-y-2 border-t border-[color:var(--hairline)] pt-6">
         {linked.map((l) => (
           <div key={l.label} className="flex items-center gap-2">

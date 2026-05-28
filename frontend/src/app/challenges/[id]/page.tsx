@@ -40,7 +40,7 @@ export default async function ChallengePage({ params }: { params: Promise<{ id: 
     return (
       <div className="min-h-screen bg-canvas text-ink">
         <AppHeader />
-        <section className="mx-auto max-w-[1280px] px-6 pb-16 pt-16">
+        <section className="mx-auto max-w-[1600px] px-6 pb-16 pt-16">
           <a href="/challenges" className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:text-ink">
             ← ALL CHALLENGES
           </a>
@@ -65,7 +65,7 @@ export default async function ChallengePage({ params }: { params: Promise<{ id: 
     <div className="min-h-screen bg-canvas text-ink">
       <AppHeader />
 
-      <section className="relative mx-auto max-w-[1280px] px-6 pb-16 pt-12">
+      <section className="relative mx-auto max-w-[1600px] px-6 pb-16 pt-12">
         <CornerMarkers />
         <div className="mb-8 flex items-center justify-between">
           <a href="/challenges" className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:text-ink">

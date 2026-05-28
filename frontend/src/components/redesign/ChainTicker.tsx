@@ -49,7 +49,7 @@ export function ChainTicker() {
 
   return (
     <div className="relative z-10 hidden border-b border-[color:var(--hairline)] bg-canvas-2 sm:block">
-      <div className="mx-auto flex h-7 max-w-[1280px] items-center justify-between gap-6 px-6 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">
+      <div className="mx-auto flex h-7 max-w-[1600px] items-center justify-between gap-6 px-6 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">
         <span className="flex items-center gap-3">
           <span aria-hidden className="inline-block h-1.5 w-1.5 animate-[pulse-live_1.5s_ease-in-out_infinite] bg-[color:var(--ok)]" />
           ARC TESTNET

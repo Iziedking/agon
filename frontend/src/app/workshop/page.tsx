@@ -111,7 +111,7 @@ function WorkshopPageBody() {
     <div className="min-h-screen bg-canvas text-ink">
       <AppHeader />
 
-      <section className="relative mx-auto max-w-[1280px] px-6 pt-16">
+      <section className="relative mx-auto max-w-[1600px] px-6 pt-16">
         <CornerMarkers />
         <SectionHeader
           heading="WORKSHOP"
@@ -130,7 +130,7 @@ function WorkshopPageBody() {
         />
       </section>
 
-      <section className="mx-auto max-w-[1280px] px-6 py-10 pb-16">
+      <section className="mx-auto max-w-[1600px] px-6 py-10 pb-16">
         {!isConnected ? (
           <BracketedCell className="max-w-[560px]" pad="lg">
             <p className="font-mono text-sm leading-[1.6] text-ink-2">

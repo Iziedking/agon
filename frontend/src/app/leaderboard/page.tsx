@@ -42,7 +42,7 @@ export default function LeaderboardPage() {
     <div className="min-h-screen bg-canvas text-ink">
       <AppHeader />
 
-      <section className="relative mx-auto max-w-[1080px] px-6 pt-16">
+      <section className="relative mx-auto max-w-[1600px] px-6 pt-16">
         <CornerMarkers />
         <SectionHeader
           heading="LEADERBOARD"
@@ -50,7 +50,7 @@ export default function LeaderboardPage() {
         />
       </section>
 
-      <section className="mx-auto max-w-[1080px] px-6 py-10 pb-16">
+      <section className="mx-auto max-w-[1600px] px-6 py-10 pb-16">
         {/* Header row */}
         <div className={`grid ${COLS} items-center gap-3 border-b border-[color:var(--hairline-strong)] py-3 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3`}>
           <span>RANK</span>

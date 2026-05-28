@@ -107,7 +107,7 @@ export default function SyndicatesPage() {
     <div className="min-h-screen bg-canvas text-ink">
       <AppHeader />
 
-      <section className="relative mx-auto max-w-[1280px] px-6 pt-16">
+      <section className="relative mx-auto max-w-[1600px] px-6 pt-16">
         <CornerMarkers />
         <SectionHeader
           heading="SYNDICATES"
@@ -121,7 +121,7 @@ export default function SyndicatesPage() {
         {error ? <p className="mt-4 font-mono text-xs text-[var(--err)]">{error}</p> : null}
       </section>
 
-      <section className="mx-auto max-w-[1280px] px-6 py-10">
+      <section className="mx-auto max-w-[1600px] px-6 py-10">
         {syndicates === null ? (
           <p className="font-mono text-sm text-ink-2">reading syndicates from arc…</p>
         ) : founding.length === 0 ? (
@@ -151,7 +151,7 @@ export default function SyndicatesPage() {
 
       {/* Community / custom syndicates table */}
       {(syndicates?.length ?? 0) > founding.length ? (
-        <section className="mx-auto max-w-[1280px] px-6 pb-16">
+        <section className="mx-auto max-w-[1600px] px-6 pb-16">
           <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">
             ■ COMMUNITY SYNDICATES
           </div>

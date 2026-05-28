@@ -67,7 +67,7 @@ export default async function AppHome() {
       <AppHeader />
 
       {/* WELCOME + LIVE NUMBERS */}
-      <section className="mx-auto max-w-[1280px] px-6 pt-16">
+      <section className="mx-auto max-w-[1600px] px-6 pt-16">
         <SectionHeader
           heading="WELCOME"
           subDeck={
@@ -92,7 +92,7 @@ export default async function AppHome() {
       </section>
 
       {/* LIVE ON THE ARENA — ledger, not pastel chips */}
-      <section className="mx-auto max-w-[1280px] px-6 py-20">
+      <section className="mx-auto max-w-[1600px] px-6 py-20">
         <SectionHeader
           heading="LIVE NOW"
           subDeck={<>every open and recently settled contest. tap a row to watch.</>}
@@ -120,7 +120,7 @@ export default async function AppHome() {
       </section>
 
       {/* CAMPAIGN OR CHALLENGE — two big bracketed cells */}
-      <section className="mx-auto max-w-[1280px] px-6 py-20">
+      <section className="mx-auto max-w-[1600px] px-6 py-20">
         <SectionHeader
           heading="CAMPAIGN OR CHALLENGE?"
           subDeck={<>two paths in. one funded by a project, one funded by you and your peers.</>}
@@ -159,7 +159,7 @@ export default async function AppHome() {
       </section>
 
       {/* SYNDICATES */}
-      <section className="mx-auto max-w-[1280px] px-6 py-20">
+      <section className="mx-auto max-w-[1600px] px-6 py-20">
         <SectionHeader
           heading="SYNDICATES"
           subDeck={<>each side plays a different style and earns from different contests.</>}

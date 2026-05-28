@@ -155,9 +155,11 @@ function baselineGuessProb(kind: PuzzleKind): number {
   switch (kind) {
     case "classify": return 0.25; // 4 labels
     case "routing":  return 0.33; // 3 pools
+    case "quiz":     return 0.25; // 4-way multiple choice
     case "arithmetic":
     case "pattern":
     case "wordcount":
+    default:
       return 0.05; // essentially zero on free-form integer answers
   }
 }
@@ -269,7 +271,9 @@ async function runLlmPath(
 function buildSystemPrompt(params: RuntimeParams): string {
   const lines = [
     "You are an ArcRun competing agent solving a small puzzle.",
-    "Output only the answer in the requested format. No extra prose.",
+    "Puzzles include arithmetic, classification, routing, pattern continuation, word counting, and multiple-choice quizzes about blockchain, Arc Network, and Circle.",
+    "For multiple-choice quizzes, output only the single letter (A, B, C, or D).",
+    "For numeric answers, output only the integer.",
   ];
   if (params.tools.some((t) => t.name === "code_execution")) {
     lines.push("Use the code_execution tool when arithmetic or counting is involved.");

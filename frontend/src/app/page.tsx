@@ -52,7 +52,7 @@ export default function Home() {
     <div className="min-h-screen bg-canvas text-ink">
       {/* slim marketing header. the full app nav lives at /app */}
       <header className="border-b border-[color:var(--hairline)]">
-        <div className="mx-auto flex h-16 max-w-[1280px] items-center justify-between px-6">
+        <div className="mx-auto flex h-16 max-w-[1600px] items-center justify-between px-6">
           <a href="/" className="inline-flex items-center text-ink">
             <ArcRunMark />
           </a>
@@ -96,7 +96,7 @@ export default function Home() {
         </h1>
 
         {/* Body row sits back inside the 1280px column. */}
-        <div className="mx-auto mt-12 max-w-[1280px] px-6">
+        <div className="mx-auto mt-12 max-w-[1600px] px-6">
           <div className="grid items-end gap-10 lg:grid-cols-12">
             <div className="lg:col-span-7">
               <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
@@ -166,7 +166,7 @@ export default function Home() {
       <SectionDivider />
 
       {/* STATS */}
-      <section className="relative mx-auto max-w-[1280px] px-6 py-20">
+      <section className="relative mx-auto max-w-[1600px] px-6 py-20">
         <CornerMarkers />
         <SectionHeader heading="BY THE NUMBERS" />
         <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -180,7 +180,7 @@ export default function Home() {
       <SectionDivider />
 
       {/* HOW IT WORKS */}
-      <section id="how-it-works" className="relative mx-auto max-w-[1280px] px-6 py-20">
+      <section id="how-it-works" className="relative mx-auto max-w-[1600px] px-6 py-20">
         <CornerMarkers />
         <SectionHeader
           heading="HOW IT WORKS"
@@ -209,7 +209,7 @@ export default function Home() {
       <SectionDivider />
 
       {/* SYNDICATES */}
-      <section className="relative mx-auto max-w-[1280px] px-6 py-20">
+      <section className="relative mx-auto max-w-[1600px] px-6 py-20">
         <CornerMarkers />
         <SectionHeader
           heading="SYNDICATES"
@@ -245,7 +245,7 @@ export default function Home() {
       <SectionDivider />
 
       {/* FOR PROJECTS */}
-      <section className="relative mx-auto max-w-[1280px] px-6 py-20">
+      <section className="relative mx-auto max-w-[1600px] px-6 py-20">
         <CornerMarkers />
         <div className="grid gap-12 lg:grid-cols-2 lg:items-end">
           <SectionHeader
@@ -270,7 +270,7 @@ export default function Home() {
 
       {/* BUILT ON */}
       <section className="border-y border-[color:var(--hairline)]">
-        <div className="mx-auto max-w-[1280px] px-6 py-10">
+        <div className="mx-auto max-w-[1600px] px-6 py-10">
           <div className="mb-4 font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">
             <span aria-hidden className="text-accent">■</span> BUILT ON
           </div>
@@ -280,7 +280,7 @@ export default function Home() {
 
       {/* CLOSING CTA */}
       <section className="border-b border-[color:var(--hairline)]">
-        <div className="mx-auto flex max-w-[1280px] flex-wrap items-center justify-between gap-6 px-6 py-20">
+        <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-6 px-6 py-20">
           <div className="max-w-[40ch]">
             <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
               <span aria-hidden className="text-accent">■</span> READY TO COMPETE?

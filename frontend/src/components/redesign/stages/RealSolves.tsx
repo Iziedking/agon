@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { BracketedCell, Robot, robotVariantForId } from "@/components/redesign";
-import { nameFor, useAgentNames } from "@/hooks/useAgentNames";
+import { nameFor, skinFor, useAgentNames, useAgentSkins } from "@/hooks/useAgentNames";
 import { fetchLlmRuns, type LlmRun } from "@/lib/llmRuns";
 
 /// Surfaces the real audit trail on the focused /live/[source]/[id] page.
@@ -60,6 +60,7 @@ export function RealSolves({ id }: Props) {
     return Array.from(set);
   }, [runs]);
   const names = useAgentNames(ids);
+  const skins = useAgentSkins(ids);
 
   if (puzzles.length === 0) return null;
 
@@ -70,9 +71,17 @@ export function RealSolves({ id }: Props) {
         <span className="text-ink-3">REAL SOLVES</span>
         <span className="text-ink">{puzzles.length} PUZZLES · {runs?.length ?? 0} ANSWERS</span>
       </div>
-      <div className="flex flex-col gap-3">
+      {/* Two puzzles per row on lg+ so a 6-puzzle round reads as a 3x2 grid
+          instead of a long stack. Stacks on mobile and tablet. */}
+      <div className="grid gap-3 lg:grid-cols-2">
         {puzzles.map(({ idx, rows }) => (
-          <PuzzleCard key={idx} idx={idx} rows={rows} agentName={(n) => nameFor(names, n)} />
+          <PuzzleCard
+            key={idx}
+            idx={idx}
+            rows={rows}
+            agentName={(n) => nameFor(names, n)}
+            agentSkin={(n) => skinFor(skins, n)}
+          />
         ))}
       </div>
     </div>
@@ -83,10 +92,12 @@ function PuzzleCard({
   idx,
   rows,
   agentName,
+  agentSkin,
 }: {
   idx: number;
   rows: LlmRun[];
   agentName: (id: number) => string;
+  agentSkin: (id: number) => string | null;
 }) {
   const prompt = rows[0]?.prompt ?? "(no prompt)";
   const expected = rows[0]?.expected ?? null;
@@ -100,22 +111,34 @@ function PuzzleCard({
           </span>
         ) : null}
       </div>
-      <p className="mt-2 font-mono text-[13px] leading-[1.45] text-ink-2">{prompt}</p>
+      <p className="mt-2 font-mono text-[13px] leading-[1.45] text-ink-2 whitespace-pre-wrap">{prompt}</p>
       <div className="mt-3 flex flex-col gap-1.5">
         {rows.map((r) => (
-          <AnswerRow key={`${r.agentId}-${idx}`} row={r} name={agentName(r.agentId)} />
+          <AnswerRow
+            key={`${r.agentId}-${idx}`}
+            row={r}
+            name={agentName(r.agentId)}
+            skin={agentSkin(r.agentId)}
+          />
         ))}
       </div>
     </BracketedCell>
   );
 }
 
-function AnswerRow({ row, name }: { row: LlmRun; name: string }) {
+function AnswerRow({ row, name, skin }: { row: LlmRun; name: string; skin: string | null }) {
   const variant = robotVariantForId(row.agentId);
   const tone = verdictTone(row.verdict);
   return (
     <div className="flex items-center gap-3 border-t border-[color:var(--hairline)] pt-1.5 first:border-0 first:pt-0">
-      <Robot variant={variant} size={16} decorative />
+      <span className="flex h-4 w-4 flex-none items-center justify-center overflow-hidden bg-canvas-3">
+        {skin ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={skin} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" />
+        ) : (
+          <Robot variant={variant} size={16} decorative />
+        )}
+      </span>
       <span className="min-w-0 flex-1 truncate font-mono text-[11px] uppercase tracking-[0.12em] text-ink">
         {name}
       </span>

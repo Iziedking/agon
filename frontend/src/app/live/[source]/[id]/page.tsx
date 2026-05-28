@@ -9,6 +9,7 @@ import { EventHero, EventStage, normalizeStageKind, RealSolves, type StageKind }
 import { useContestSocket } from "@/hooks/useContestSocket";
 import { nameFor, useAgentNames } from "@/hooks/useAgentNames";
 import { useLiveNarrative, progressSummary } from "@/hooks/useLiveNarrative";
+import { useAgentSkins, skinFor } from "@/hooks/useAgentNames";
 import { fetchContest, CONTEST_TYPE, formatUsdc, type Contest } from "@/lib/contests";
 import { fetchChallenge, CHALLENGE_KIND, type Challenge } from "@/lib/challenges";
 import type { StandingsEntry } from "@/lib/live";
@@ -186,7 +187,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-canvas text-ink">
       <AppHeader />
-      <section className="mx-auto max-w-[1280px] px-6 pb-16 pt-12">{children}</section>
+      <section className="mx-auto w-full max-w-[1600px] px-4 pb-16 pt-12 sm:px-6 lg:px-8">{children}</section>
       <Footer />
     </div>
   );
@@ -269,7 +270,9 @@ function StageWithNarrative({
 /// estimate sits between the name and the score so it's the first thing
 /// the eye picks up.
 function Standings({ entries, stakedCount }: { entries: StandingsEntry[]; stakedCount?: number }) {
-  const names = useAgentNames(entries.map((e) => e.agentId));
+  const ids = useMemo(() => entries.map((e) => e.agentId), [entries]);
+  const names = useAgentNames(ids);
+  const skins = useAgentSkins(ids);
   const top = useMemo(() => [...entries].sort((a, b) => a.rank - b.rank).slice(0, 8), [entries]);
   const probs: WinProbability[] = useMemo(() => computeWinProbabilities(entries), [entries]);
   return (
@@ -293,6 +296,7 @@ function Standings({ entries, stakedCount }: { entries: StandingsEntry[]; staked
           <div className="flex flex-col">
             {top.map((e) => {
               const variant = robotVariantForId(e.agentId);
+              const skin = skinFor(skins, e.agentId);
               const p = probFor(probs, e.agentId);
               const summary = progressSummary(e.progress);
               return (
@@ -303,7 +307,14 @@ function Standings({ entries, stakedCount }: { entries: StandingsEntry[]; staked
                   <span className={`w-6 font-stencil text-[14px] ${e.rank === 1 ? "text-accent" : "text-ink"}`}>
                     #{e.rank}
                   </span>
-                  <Robot variant={variant} size={20} decorative />
+                  <span className="flex h-5 w-5 flex-none items-center justify-center overflow-hidden bg-canvas-3">
+                    {skin ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={skin} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" />
+                    ) : (
+                      <Robot variant={variant} size={20} decorative />
+                    )}
+                  </span>
                   <div className="min-w-0 flex-1">
                     <div className="truncate font-mono text-[11px] uppercase tracking-[0.12em] text-ink">
                       {nameFor(names, e.agentId)}

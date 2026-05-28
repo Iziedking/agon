@@ -27,6 +27,8 @@ export function judge(puzzle: Puzzle, raw: string): JudgeOutcome {
       return judgeOneOf(cleaned, ["transfer", "swap", "mint", "bridge"], puzzle.expected);
     case "routing":
       return judgeOneOf(cleaned, ["a", "b", "c"], puzzle.expected.toLowerCase());
+    case "quiz":
+      return judgeOneOf(cleaned, ["a", "b", "c", "d"], puzzle.expected.toLowerCase());
     default:
       return assertNever(puzzle.kind);
   }

@@ -22,6 +22,7 @@ import { HostCampaignButton } from "@/components/pengu/HostCampaignButton";
 import { LoginCTA } from "@/components/pengu/LoginCTA";
 import { MysteryClaimCard } from "@/components/pengu/MysteryClaimCard";
 import { RefundsWaiting } from "@/components/pengu/RefundsWaiting";
+import { PrizesPending } from "@/components/pengu/PrizesPending";
 import {
   CONTEST_TYPES,
   agentDisplayName,
@@ -75,7 +76,7 @@ export default function DashboardPage() {
   if (!isConnected || !address) {
     return (
       <Shell>
-        <section className="mx-auto max-w-[1280px] px-6 pt-16">
+        <section className="mx-auto max-w-[1600px] px-6 pt-16">
           <SectionHeader heading="SIGN IN TO CONTINUE" />
 
           <div className="mt-10 max-w-[560px]">
@@ -103,7 +104,7 @@ export default function DashboardPage() {
   if (profile === undefined || agents === undefined) {
     return (
       <Shell>
-        <section className="mx-auto max-w-[1280px] px-6 pt-16">
+        <section className="mx-auto max-w-[1600px] px-6 pt-16">
           <SectionHeader heading="DASHBOARD" />
           <p className="mt-8 font-mono text-sm text-ink-2">loading…</p>
         </section>
@@ -139,7 +140,7 @@ export default function DashboardPage() {
 
   return (
     <Shell>
-      <section className="relative mx-auto max-w-[1280px] px-6 pt-16">
+      <section className="relative mx-auto max-w-[1600px] px-6 pt-16">
         <CornerMarkers />
         <SectionHeader
           heading="DASHBOARD"
@@ -162,7 +163,7 @@ export default function DashboardPage() {
       </section>
 
       {/* Stats row */}
-      <section className="mx-auto max-w-[1280px] px-6 py-10">
+      <section className="mx-auto max-w-[1600px] px-6 py-10">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatBlock label="EARNED" value={formatUsdcString(safeProfile.stats.earned)} accent />
           <StatBlock label="ENTERED" value={String(safeProfile.stats.entered)} />
@@ -172,7 +173,7 @@ export default function DashboardPage() {
       </section>
 
       {/* MY AGENTS + PRIZES PENDING */}
-      <section className="mx-auto max-w-[1280px] px-6 pb-10">
+      <section className="mx-auto max-w-[1600px] px-6 pb-10">
         <div className="grid gap-6 lg:grid-cols-12">
           {/* MY AGENTS */}
           <div className="lg:col-span-7">
@@ -240,44 +241,42 @@ export default function DashboardPage() {
             </BracketedCell>
           </div>
 
-          {/* PRIZES PENDING */}
+          {/* PRIZES PENDING placeholder — the real surface is the
+              self-contained PrizesPending component below, which renders
+              its own bracketed section. Leave a small "your prizes"
+              pointer here so the right column isn't empty when nothing is
+              claimable. */}
           <div className="lg:col-span-5">
             <div className="mb-3 flex items-center justify-between">
               <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
-                <span aria-hidden className="text-accent">■</span> PRIZES PENDING
+                <span aria-hidden className="text-accent">■</span> PRIZES
               </span>
-              <span className="font-mono text-[11px] text-ink-3">{claimable.length} TO CLAIM</span>
+              <span className="font-mono text-[11px] text-ink-3">
+                {claimable.length === 0 ? "NONE WAITING" : `${claimable.length} TO CLAIM`}
+              </span>
             </div>
             <BracketedCell pad="sm">
-              {claimable.length === 0 ? (
-                <p className="px-2 py-5 font-mono text-sm text-ink-2">
-                  no prizes waiting. enter a contest and place top tier to earn one.
-                </p>
-              ) : (
-                <ActivityLedger>
-                  {claimable.slice(0, 6).map((c) => (
-                    <ActivityRow
-                      key={c.contestId}
-                      tone="accent"
-                      label={`CONTEST #${c.contestId}`}
-                      description={c.contestType != null ? (CONTEST_TYPE[c.contestType] ?? `type ${c.contestType}`) : ""}
-                      right={c.won ? formatUsdcString(c.won) : ""}
-                      txHref={`/live/contest/${c.contestId}`}
-                    />
-                  ))}
-                </ActivityLedger>
-              )}
+              <p className="px-2 py-3 font-mono text-sm text-ink-2">
+                {claimable.length === 0
+                  ? "no prizes waiting. enter a contest and place top tier to earn one."
+                  : "claim them below — no need to find the contest page."}
+              </p>
             </BracketedCell>
           </div>
         </div>
       </section>
+
+      {/* PRIZES PENDING — full-width self-contained surface that fetches
+          both contest and challenge unclaimed payouts and shows the share
+          modal after a successful claim. Self-hides when nothing pending. */}
+      <PrizesPending address={address as `0x${string}`} />
 
       {/* REFUNDS WAITING — only renders when the user has cancelled challenges to pull back */}
       <RefundsWaiting address={address as `0x${string}`} />
 
       {/* MYSTERY CLAIM — kept as a bracketed sidecar */}
       {agents.length > 0 ? (
-        <section className="mx-auto max-w-[1280px] px-6 pb-10">
+        <section className="mx-auto max-w-[1600px] px-6 pb-10">
           <div className="mb-3 font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
             <span aria-hidden className="text-accent">■</span> MYSTERY EVENT
           </div>
@@ -291,7 +290,7 @@ export default function DashboardPage() {
       ) : null}
 
       {/* ACTIVITY — full width */}
-      <section className="mx-auto max-w-[1280px] px-6 pb-10">
+      <section className="mx-auto max-w-[1600px] px-6 pb-10">
         <div className="mb-3 flex items-center justify-between">
           <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
             <span aria-hidden className="text-accent">■</span> ACTIVITY
@@ -316,7 +315,7 @@ export default function DashboardPage() {
       </section>
 
       {/* QUICK ACTIONS */}
-      <section className="mx-auto max-w-[1280px] px-6 pb-16">
+      <section className="mx-auto max-w-[1600px] px-6 pb-16">
         <div className="mb-3 font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
           <span aria-hidden className="text-accent">■</span> QUICK ACTIONS
         </div>

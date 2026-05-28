@@ -1223,6 +1223,52 @@ app.get("/contests/:id/llm-runs", async (c) => {
   });
 });
 
+// ----- Pending winnings (claimable payouts) -----
+//
+// Lists every contest and challenge where this operator has an unclaimed
+// payout. Frontend pairs each row with the on-chain claim check via
+// hasClaimed / hasClaimedChallenge so already-claimed prizes drop out
+// before render. Drives the dashboard's PRIZES PENDING surface so the
+// user can claim from one place instead of finding each contest page.
+
+app.get("/operators/:address/winnings-pending", async (c) => {
+  const address = (c.req.param("address") ?? "").toLowerCase();
+  if (!/^0x[a-f0-9]{40}$/.test(address)) return c.json({ contests: [], challenges: [] });
+
+  // Project contests: payouts table is the source of truth.
+  const contestRows = await query<{ id: string; amount: string; contest_type: number | null }>(
+    `select p.contest_id::text as id, p.amount::text as amount, c.contest_type
+       from payouts p
+       left join contests c on c.id = p.contest_id
+      where p.operator = $1
+      order by p.contest_id desc`,
+    [address],
+  );
+
+  // Peer challenges: challenge_payouts table.
+  const challengeRows = await query<{ id: string; amount: string; kind: number | null }>(
+    `select cp.challenge_id::text as id, cp.amount::text as amount, ch.kind
+       from challenge_payouts cp
+       left join challenges ch on ch.id = cp.challenge_id
+      where cp.operator = $1
+      order by cp.challenge_id desc`,
+    [address],
+  );
+
+  return c.json({
+    contests: contestRows.rows.map((r) => ({
+      id: Number(r.id),
+      amount: r.amount,
+      contestType: r.contest_type,
+    })),
+    challenges: challengeRows.rows.map((r) => ({
+      id: Number(r.id),
+      amount: r.amount,
+      kind: r.kind,
+    })),
+  });
+});
+
 // ----- Pending stake refunds (cancelled challenges) -----
 //
 // Lists challenges this operator joined that the contract has marked

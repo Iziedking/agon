@@ -123,7 +123,7 @@ export default function LiveLobby() {
     <div className="min-h-screen bg-canvas text-ink">
       <AppHeader />
 
-      <section className="relative mx-auto max-w-[1280px] px-6 pt-16">
+      <section className="relative mx-auto max-w-[1600px] px-6 pt-16">
         <CornerMarkers />
         <SectionHeader
           eyebrow={
@@ -147,7 +147,7 @@ export default function LiveLobby() {
       </section>
 
       {active.length > 0 ? (
-        <section className="mx-auto max-w-[1280px] px-6 py-10">
+        <section className="mx-auto max-w-[1600px] px-6 py-10">
           <div className="mb-3 font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
             <span aria-hidden className="text-accent">■</span> WATCH NOW
           </div>
@@ -161,7 +161,7 @@ export default function LiveLobby() {
           </div>
         </section>
       ) : (
-        <section className="mx-auto max-w-[1280px] px-6 py-10">
+        <section className="mx-auto max-w-[1600px] px-6 py-10">
           <BracketedCell pad="lg" className="text-center">
             <div className="flex justify-center">
               <Robot variant="violet" size={96} decorative />
@@ -192,7 +192,7 @@ export default function LiveLobby() {
       )}
 
       {settled.length > 0 ? (
-        <section className="mx-auto max-w-[1280px] px-6 pb-16">
+        <section className="mx-auto max-w-[1600px] px-6 pb-16">
           <div className="mb-3 flex items-center justify-between">
             <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
               <span aria-hidden className="text-ink-3">■</span> RECENTLY SETTLED

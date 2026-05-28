@@ -4,7 +4,7 @@
 /// its own. Decorative only.
 export function SectionDivider() {
   return (
-    <div aria-hidden className="relative mx-auto w-full max-w-[1280px] px-6">
+    <div aria-hidden className="relative mx-auto w-full max-w-[1600px] px-6">
       <div className="relative flex items-center">
         {/* left bracket notch */}
         <span className="block h-2 w-2 border-b border-l border-[color:var(--ink)]" />
