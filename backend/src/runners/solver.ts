@@ -100,11 +100,14 @@ async function runWithCapabilities(
   return runLlmPath(contestId, entry, puzzles, params);
 }
 
-/// Tier 0 / Tier 1: no LLM call. Random guess per puzzle with kind-aware
-/// probability (4-way classify => 25% baseline, 3-way routing => 33%, etc.).
-/// LUCK adds a small additive bonus on tier 1. Audit rows still get
-/// written so the contest detail page can show "agent guessed" alongside
-/// "agent ran the calculator" for narrative comparison.
+/// Tier 0 / Tier 1: no LLM call. Random guess per puzzle that samples
+/// from the puzzle's actual answer space, so audit rows surface the
+/// answer the agent landed on (e.g. "B") instead of a literal "(guess)".
+/// Kind-aware odds: multiple-choice guesses are right 25 to 33 percent
+/// of the time, free-form numeric guesses almost never. LUCK on tier 1
+/// adds a small bias toward the correct answer; with enough luck a
+/// tier 1 agent can outperform a stock tier 2 LLM by chance, which is
+/// the "guess + luck" story the upgrade flow advertises.
 async function runGuessPath(
   contestId: number,
   entry: ContestEntryInput,
@@ -119,9 +122,7 @@ async function runGuessPath(
 
   for (let i = 0; i < puzzles.length; i++) {
     const puzzle = puzzles[i]!;
-    const baseP = baselineGuessProb(puzzle.kind);
-    const p = Math.min(1, baseP + params.luckBonus);
-    const ok = r() < p;
+    const { guess, ok } = sampleGuess(puzzle, r, params.luckBonus);
     if (ok) correct++;
     perPuzzle.push(ok);
     const ms = 800 + Math.round(400 * r());
@@ -137,7 +138,7 @@ async function runGuessPath(
       kind: "solver",
       model: "guess",
       prompt: puzzle.prompt,
-      response: ok ? puzzle.expected : "(guess)",
+      response: guess,
       expected: puzzle.expected,
       verdict: ok ? "correct" : "wrong",
       latencyMs: ms,
@@ -150,18 +151,58 @@ async function runGuessPath(
   return { correct, total: puzzles.length, elapsedMs, perPuzzle, perPuzzleMs, costUsd: 0 };
 }
 
-function baselineGuessProb(kind: PuzzleKind): number {
-  // What a uniform random guess gets right by chance.
-  switch (kind) {
-    case "classify": return 0.25; // 4 labels
-    case "routing":  return 0.33; // 3 pools
-    case "quiz":     return 0.25; // 4-way multiple choice
+/// Pick a concrete answer from the puzzle's choice space and report
+/// whether it matches the expected one. Multiple-choice families return
+/// a letter or label; free-form numeric families return a plausible
+/// integer. LUCK biases the agent toward the right answer: at luck 0 it
+/// fires the base probability, scaled up additively with luckBonus.
+function sampleGuess(
+  puzzle: Puzzle,
+  r: () => number,
+  luckBonus: number,
+): { guess: string; ok: boolean } {
+  const choices = guessChoices(puzzle);
+  if (choices) {
+    // Multiple-choice: bias the pick toward the correct option by
+    // luckBonus, otherwise uniform.
+    const total = choices.length;
+    const baseP = 1 / total;
+    const biasedP = Math.min(0.95, baseP + luckBonus);
+    let picked: string;
+    if (r() < biasedP) {
+      picked = puzzle.expected;
+    } else {
+      const wrongs = choices.filter((c) => normalize(c) !== normalize(puzzle.expected));
+      picked = wrongs[Math.floor(r() * wrongs.length)] ?? puzzle.expected;
+    }
+    return { guess: picked, ok: normalize(picked) === normalize(puzzle.expected) };
+  }
+  // Free-form numeric: pick a small integer. Hit rate is ~0; LUCK
+  // gives a small chance of guessing the exact value (which feels right
+  // for a "lucky guess").
+  if (r() < 0.02 + luckBonus * 0.5) {
+    return { guess: puzzle.expected, ok: true };
+  }
+  const value = 1 + Math.floor(r() * 200);
+  const guess = String(value);
+  return { guess, ok: guess === puzzle.expected };
+}
+
+function guessChoices(puzzle: Puzzle): string[] | null {
+  switch (puzzle.kind) {
+    case "classify": return ["transfer", "swap", "mint", "bridge"];
+    case "routing":  return ["A", "B", "C"];
+    case "quiz":     return ["A", "B", "C", "D"];
     case "arithmetic":
     case "pattern":
     case "wordcount":
     default:
-      return 0.05; // essentially zero on free-form integer answers
+      return null;
   }
+}
+
+function normalize(s: string): string {
+  return s.trim().toLowerCase();
 }
 
 /// Tier 2+: real LLM call with the tier's attached tools.
