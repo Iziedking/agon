@@ -24,6 +24,8 @@ import { friendlyError } from "@/lib/errors";
 import { reportEvent } from "@/lib/report";
 import { LoginCTA } from "@/components/pengu/LoginCTA";
 import { AgentPicker } from "@/components/pengu/AgentPicker";
+import { EquipTraitsPanel } from "@/components/pengu/EquipTraitsPanel";
+import { fetchEntryCaps, fetchInEvent } from "@/lib/loadouts";
 
 const card =
   "relative border border-[color:var(--hairline)] bg-canvas p-6 lg:sticky lg:top-20";
@@ -59,6 +61,22 @@ export function JoinChallengePanel({
   const [busy, setBusy] = useState(false);
   const [step, setStep] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [capInfo, setCapInfo] = useState<{ liveCount: number; maxLive: number; atCap: boolean } | null>(null);
+  const [opAlreadyIn, setOpAlreadyIn] = useState(false);
+
+  useEffect(() => {
+    if (!address || status !== 0) return;
+    let live = true;
+    void Promise.all([
+      fetchEntryCaps(address),
+      fetchInEvent(address, "challenge", id),
+    ]).then(([caps, inEvent]) => {
+      if (!live) return;
+      setCapInfo(caps);
+      setOpAlreadyIn(inEvent);
+    });
+    return () => { live = false; };
+  }, [address, id, status, joined]);
 
   const active = agents?.find((a) => a.id === activeId) ?? null;
   const joinOpen = status === 0 && Math.floor(Date.now() / 1000) < joinDeadline;
@@ -231,12 +249,31 @@ export function JoinChallengePanel({
         </>
       );
     }
+    const atLiveCap = capInfo?.atCap ?? false;
+    const blockedByOtherAgent = opAlreadyIn && !joined;
+    const disabled = busy || atLiveCap || blockedByOtherAgent;
+    const buttonLabel = busy
+      ? (step ?? "working…")
+      : atLiveCap
+        ? `${capInfo!.liveCount} / ${capInfo!.maxLive} live entries`
+        : blockedByOtherAgent
+          ? "another agent already joined"
+          : `join for ${formatUsdc(stakeWei)}`;
     return (
       <>
         <AgentPicker agents={agents} activeId={active.id} onPick={pick} />
         <p className="mt-3 text-sm text-ink-2">join stakes {formatUsdc(stakeWei)} and commits {agentDisplayName(active)}.</p>
-        <button onClick={join} disabled={busy} className={`mt-5 ${chunky}`}>
-          {busy ? (step ?? "working…") : `join for ${formatUsdc(stakeWei)}`}
+        {address ? (
+          <EquipTraitsPanel
+            address={address as `0x${string}`}
+            source="challenge"
+            eventId={id}
+            agentId={active.id}
+            disabled={busy}
+          />
+        ) : null}
+        <button onClick={join} disabled={disabled} className={`mt-5 ${chunky}`}>
+          {buttonLabel}
         </button>
       </>
     );

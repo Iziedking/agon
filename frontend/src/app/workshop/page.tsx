@@ -16,6 +16,7 @@ import {
   TagButton,
 } from "@/components/redesign";
 import { TrainingPanel } from "@/components/redesign/TrainingPanel";
+import { StrengthBreakdown } from "@/components/pengu/StrengthBreakdown";
 import { AgentAvatar } from "@/components/pengu/AgentAvatar";
 import { AgentTraits } from "@/components/pengu/AgentTraits";
 import { ClaimAgentButton } from "@/components/pengu/ClaimAgentButton";
@@ -232,6 +233,7 @@ function WorkshopPageBody() {
               <span className="font-mono text-[11px] text-ink-3">EACH LEVEL +1% TO SCORE</span>
             </div>
             <TrainingPanel agentId={active.id} />
+            <StrengthBreakdown agentId={active.id} />
           </div>
         ) : null}
       </section>

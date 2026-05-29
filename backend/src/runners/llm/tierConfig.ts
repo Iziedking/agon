@@ -88,6 +88,15 @@ export interface RuntimeParams extends TierCapabilities {
 /// llmEnabled (LUCK still adds a guess bonus); for LLM-enabled tiers, the
 /// stats fine-tune the call (POWER/PRECISION/SPEED/FOCUS) without changing
 /// which tools are attached.
+/// Tier 4 may run on a smarter model when LLM_MODEL_TIER4 is set in the
+/// env (typical mainnet config). Tiers 0..3 always use the default
+/// LLM_MODEL. Keeps the testnet cost flat while letting mainnet sell
+/// tier 4 as the absolute top of the food chain.
+export function modelForTier(tier: number): string {
+  if (tier >= 4 && config.llm.modelTier4) return config.llm.modelTier4;
+  return config.llm.model;
+}
+
 export async function resolveRuntimeParams(agentId: number, tier: number): Promise<RuntimeParams> {
   const base = tierToCapabilities(tier);
   const stats = await readAgentStats(agentId);
@@ -118,13 +127,20 @@ export async function resolveRuntimeParams(agentId: number, tier: number): Promi
     ...base,
     tools,
     retries,
-    model: config.llm.model,
+    model: modelForTier(tier),
     maxTokens: finalMaxTokens,
     temperature,
     parallelSolves,
     fewShotCount,
     luckBonus,
   };
+}
+
+/// Public so the runners can fold stat levels into the
+/// `effectiveStrength` multiplier from `scoring/strength.ts` without
+/// duplicating the DB query.
+export async function loadAgentStats(agentId: number): Promise<Partial<Record<StatName, number>>> {
+  return readAgentStats(agentId);
 }
 
 async function readAgentStats(agentId: number): Promise<Partial<Record<StatName, number>>> {

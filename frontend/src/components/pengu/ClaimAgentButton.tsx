@@ -1,12 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useOperatorAddress } from "@/hooks/useAuth";
 import { useArcWrite } from "@/hooks/useArcWrite";
 import { CONTRACTS, publicClient } from "@/lib/arc";
-import { agentRegistryAbi } from "@/lib/agents";
+import { agentRegistryAbi, fetchAgents } from "@/lib/agents";
 import { friendlyError, rawErrorDetail } from "@/lib/errors";
 import { reportEvent } from "@/lib/report";
+
+/// Max agents a single profile can hold. Matches docs/agentTier.md and
+/// the proposed AgentRegistry on-chain cap (deferred to mainnet contract
+/// redeploy). Off-chain we hide the CLAIM button at the cap and surface
+/// a clear message so the user knows they're full.
+const MAX_AGENTS_PER_PROFILE = 5;
 
 /// Mints a free default agent for the connected wallet via AgentRegistry. Used
 /// from /workshop and /start so the claim path is identical from either entry.
@@ -25,9 +31,28 @@ export function ClaimAgentButton({
   const { writeContractAsync } = useArcWrite();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ friendly: string; raw: string } | null>(null);
+  const [count, setCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!address) { setCount(null); return; }
+    let live = true;
+    fetchAgents(address)
+      .then((list) => { if (live) setCount(list.length); })
+      .catch(() => { if (live) setCount(0); });
+    return () => { live = false; };
+  }, [address]);
+
+  const atCap = count !== null && count >= MAX_AGENTS_PER_PROFILE;
 
   async function claim() {
     if (!address) return;
+    if (atCap) {
+      setError({
+        friendly: `you already own ${MAX_AGENTS_PER_PROFILE} agents. that's the cap.`,
+        raw: "",
+      });
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -57,8 +82,13 @@ export function ClaimAgentButton({
 
   return (
     <div className="flex flex-col gap-2">
-      <button onClick={claim} disabled={busy || !address} className={className}>
-        {busy ? busyLabel : label}
+      <button
+        onClick={claim}
+        disabled={busy || !address || atCap}
+        className={className}
+        title={atCap ? `${count} / ${MAX_AGENTS_PER_PROFILE} agents claimed` : undefined}
+      >
+        {busy ? busyLabel : atCap ? `${MAX_AGENTS_PER_PROFILE}/${MAX_AGENTS_PER_PROFILE} agents owned` : label}
       </button>
       {error ? (
         <div>

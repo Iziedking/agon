@@ -16,6 +16,8 @@ import { friendlyError } from "@/lib/errors";
 import { reportEvent } from "@/lib/report";
 import { LoginCTA } from "@/components/pengu/LoginCTA";
 import { AgentPicker } from "@/components/pengu/AgentPicker";
+import { EquipTraitsPanel } from "@/components/pengu/EquipTraitsPanel";
+import { fetchEntryCaps, fetchInEvent } from "@/lib/loadouts";
 
 const card =
   "relative border border-[color:var(--hairline)] bg-canvas p-6 lg:sticky lg:top-20";
@@ -38,9 +40,25 @@ export function EnterPanel({ contestId, status, endTime }: { contestId: number; 
   const [claimed, setClaimed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [capInfo, setCapInfo] = useState<{ liveCount: number; maxLive: number; atCap: boolean } | null>(null);
+  const [opAlreadyIn, setOpAlreadyIn] = useState(false);
 
   const active = agents?.find((a) => a.id === activeId) ?? null;
   const nowOpen = status === 1 && Math.floor(Date.now() / 1000) < endTime;
+
+  useEffect(() => {
+    if (!address || status !== 1) return;
+    let live = true;
+    void Promise.all([
+      fetchEntryCaps(address),
+      fetchInEvent(address, "contest", contestId),
+    ]).then(([caps, inEvent]) => {
+      if (!live) return;
+      setCapInfo(caps);
+      setOpAlreadyIn(inEvent);
+    });
+    return () => { live = false; };
+  }, [address, contestId, status, entered]);
 
   const load = useCallback(async () => {
     if (!address) {
@@ -198,12 +216,31 @@ export function EnterPanel({ contestId, status, endTime }: { contestId: number; 
           </>
         );
       }
+      const atLiveCap = capInfo?.atCap ?? false;
+      const blockedByOtherAgent = opAlreadyIn && !entered;
+      const disabled = busy || atLiveCap || blockedByOtherAgent;
+      const buttonLabel = busy
+        ? "entering…"
+        : atLiveCap
+          ? `${capInfo!.liveCount} / ${capInfo!.maxLive} live entries`
+          : blockedByOtherAgent
+            ? "another agent already entered"
+            : "enter contest";
       return (
         <>
           <AgentPicker agents={agents} activeId={active.id} onPick={pick} />
           <p className="mt-3 text-sm text-ink-2">entering commits {agentDisplayName(active)} for the contest window.</p>
-          <button onClick={enter} disabled={busy} className={`mt-5 ${chunky}`}>
-            {busy ? "entering…" : "enter contest"}
+          {address ? (
+            <EquipTraitsPanel
+              address={address as `0x${string}`}
+              source="contest"
+              eventId={contestId}
+              agentId={active.id}
+              disabled={busy}
+            />
+          ) : null}
+          <button onClick={enter} disabled={disabled} className={`mt-5 ${chunky}`}>
+            {buttonLabel}
           </button>
         </>
       );

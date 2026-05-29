@@ -268,6 +268,22 @@ create table if not exists training_queue (
   completes_at timestamptz not null
 );
 
+-- Equipped trait loadouts per entry. ArcRun caps a loadout at three traits
+-- and rejects clashing combinations. Used by the runner to fold the trait
+-- multiplier (and any routing trait) into final score. Source distinguishes
+-- contest entries from peer-challenge entries since the two have separate id
+-- spaces.
+create table if not exists entry_loadouts (
+  source       text   not null, -- 'contest' or 'challenge'
+  event_id     bigint not null,
+  agent_id     bigint not null,
+  operator     text   not null,
+  trait_ids    text[] not null default '{}',
+  created_at   timestamptz not null default now(),
+  primary key (source, event_id, agent_id)
+);
+create index if not exists entry_loadouts_op_idx on entry_loadouts(operator);
+
 -- Append-only log of every completed training step. Used for history on the
 -- workshop card and for the future training_log feed on the dashboard.
 create table if not exists training_log (

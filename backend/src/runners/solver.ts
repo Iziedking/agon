@@ -1,6 +1,8 @@
 import type { AgentResult, ContestEntryInput, Runner } from "./types.js";
 import { seededRng, pick } from "./rng.js";
 import { solverScore } from "../scoring/index.js";
+import { effectiveStrength, type StrengthBreakdown } from "../scoring/strength.js";
+import { getLoadout } from "../auth/loadouts.js";
 import { generatePuzzles, type Puzzle, type PuzzleKind } from "./puzzles/index.js";
 import { judge } from "./judge.js";
 import {
@@ -10,7 +12,7 @@ import {
   DailyKillError,
   type CallResult,
 } from "./llm/client.js";
-import { resolveRuntimeParams, type RuntimeParams } from "./llm/tierConfig.js";
+import { resolveRuntimeParams, loadAgentStats, type RuntimeParams } from "./llm/tierConfig.js";
 
 /// SolverRunner: every agent in a contest faces the same seeded puzzle set
 /// (deterministic from contestId), and is graded on correctness and speed.
@@ -62,12 +64,29 @@ export class SolverRunner implements Runner {
           ? await runWithCapabilities(contestId, e, puzzles, params)
           : guessOnlySolve(puzzles, e.tier, contestId * 1000 + e.agentId);
 
+        // Tier x training x traits per docs/agentTier.md.
+        const stats = await loadAgentStats(e.agentId).catch(() => ({}));
+        const equipped = await getLoadout("contest", contestId, e.agentId).catch(() => [] as string[]);
+        const strength = effectiveStrength(e.tier, stats, equipped, "solver");
+        const rawScore = solverScore(solve);
+        const finalScore = applyRouting(rawScore, strength, contestId * 1000 + e.agentId);
+
         const { perPuzzle, perPuzzleMs, costUsd: _unused, ...detail } = solve;
         return {
           agentId: e.agentId,
           operator: e.operator,
-          score: solverScore(solve),
-          detail: { ...detail, puzzles: puzzles.length },
+          score: finalScore,
+          detail: {
+            ...detail,
+            puzzles: puzzles.length,
+            rawScore,
+            strength: {
+              effective: Number(strength.effective.toFixed(2)),
+              tierBase: strength.tierBase,
+              training: Number(strength.training.toFixed(3)),
+              traits: Number(strength.traits.toFixed(3)),
+            },
+          },
           progress: {
             kind: "solver" as const,
             correct: perPuzzle,
@@ -98,6 +117,40 @@ async function runWithCapabilities(
     return runGuessPath(contestId, entry, puzzles, params);
   }
   return runLlmPath(contestId, entry, puzzles, params);
+}
+
+/// Apply the strength multiplier and (when present) the routing trait's
+/// algorithm swap. Lucky Charm sets routing="stochastic": the final score
+/// blends 60% of the deterministic strength-weighted score with 40% of a
+/// pure-dice multiplier in [0.5, 2.5]. That's how a tier 1 agent with
+/// Lucky Charm equipped can occasionally beat a tier 4 brain. Seeded
+/// from (contestId, agentId) so the result is reproducible from the
+/// audit row.
+export function applyRouting(
+  rawScore: number,
+  strength: StrengthBreakdown,
+  seed: number,
+): number {
+  const deterministic = rawScore * strength.effective;
+  if (!strength.routing) return Math.round(deterministic);
+  if (strength.routing === "stochastic") {
+    const r = seededRng(seed);
+    const dice = 0.5 + r() * 2.0; // [0.5, 2.5]
+    const stochastic = rawScore * strength.effective * dice;
+    return Math.round(0.6 * deterministic + 0.4 * stochastic);
+  }
+  if (strength.routing === "momentum") {
+    // Hot Hand: streak bonus is already baked into the runner's correct
+    // count for now; we just bump the multiplier slightly here so equip
+    // is never strictly worse than not equipping.
+    return Math.round(deterministic * 1.05);
+  }
+  if (strength.routing === "calibrated") {
+    // Deep State: slight floor on score so a low-confidence-but-correct
+    // run still places.
+    return Math.round(Math.max(deterministic, rawScore * 1.5));
+  }
+  return Math.round(deterministic);
 }
 
 /// Tier 0 / Tier 1: no LLM call. Random guess per puzzle that samples

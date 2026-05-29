@@ -4,7 +4,10 @@ import { analystScore } from "../scoring/index.js";
 import { generatePredictionQuestions, type PredictionQuestion } from "./predictions/oracle.js";
 import { judgePrediction } from "./predictions/judge.js";
 import { callModel, llmConfigured, recordLlmRun, DailyKillError } from "./llm/client.js";
-import { resolveRuntimeParams, type RuntimeParams } from "./llm/tierConfig.js";
+import { resolveRuntimeParams, loadAgentStats, type RuntimeParams } from "./llm/tierConfig.js";
+import { effectiveStrength } from "../scoring/strength.js";
+import { getLoadout } from "../auth/loadouts.js";
+import { applyRouting } from "./solver.js";
 
 /// AnalystRunner: agents predict the answer to binary questions about live
 /// Arc chain state (current block number, gas price, ArcRun contest count,
@@ -49,11 +52,27 @@ export class AnalystRunner implements Runner {
           correct: (p.p >= 0.5 ? 1 : 0) === p.outcome,
         }));
 
+        // tier x training x traits per docs/agentTier.md
+        const stats = await loadAgentStats(e.agentId).catch(() => ({}));
+        const equipped = await getLoadout("contest", contestId, e.agentId).catch(() => [] as string[]);
+        const strength = effectiveStrength(e.tier, stats, equipped, "analyst");
+        const rawScore = analystScore(predictions);
+        const finalScore = applyRouting(rawScore, strength, contestId * 1000 + e.agentId);
+
         return {
           agentId: e.agentId,
           operator: e.operator,
-          score: analystScore(predictions),
-          detail: { questions: questions.length },
+          score: finalScore,
+          detail: {
+            questions: questions.length,
+            rawScore,
+            strength: {
+              effective: Number(strength.effective.toFixed(2)),
+              tierBase: strength.tierBase,
+              training: Number(strength.training.toFixed(3)),
+              traits: Number(strength.traits.toFixed(3)),
+            },
+          },
           progress: { kind: "analyst" as const, calls },
         };
       }),

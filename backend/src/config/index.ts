@@ -58,11 +58,18 @@ const envSchema = z.object({
   // surface a clear error.
   ANTHROPIC_API_KEY: z.string().optional(),
   LLM_DAILY_KILL_USD: z.coerce.number().nonnegative().default(5),
-  // Single LLM model used by every tier that gets to call the LLM. Per
-  // project-real-llm-runners (capability-gates revision), tier no longer
-  // swaps the model; it swaps which TOOLS the agent can use. Override here
-  // if Anthropic releases a cheaper Haiku revision.
+  // Default LLM model used by every LLM-enabled tier. Tier 0/1 don't call
+  // the LLM at all; tier 2 and up share this model. Default Haiku 4.5 to
+  // keep testnet cost predictable. Override per the marketing tier curve
+  // (1 / 2 / 4 / 8 / 16) by setting LLM_MODEL_TIER4 to a smarter brain
+  // for mainnet, where tier 4 is the absolute top of the food chain.
   LLM_MODEL: z.string().default("claude-haiku-4-5-20251001"),
+  // Optional override applied ONLY to tier 4 agents. When set, tier 4 calls
+  // use this model while tiers 2 and 3 stay on LLM_MODEL. Designed for
+  // mainnet where the platform sells tier 4 as the best agent on Arc;
+  // typical values are claude-sonnet-4-6 or claude-opus-4-7. Leave unset on
+  // testnet so the demo stays cheap.
+  LLM_MODEL_TIER4: z.string().optional(),
   // Testing safety belt. When true:
   //  - web_search tool is stripped from every tier (avoids $0.01/search)
   //  - max_tokens is clamped to 200 regardless of POWER stat
@@ -223,6 +230,7 @@ export const config = {
     anthropicApiKey: env.ANTHROPIC_API_KEY,
     dailyKillUsd: env.LLM_DAILY_KILL_USD,
     model: env.LLM_MODEL,
+    modelTier4: env.LLM_MODEL_TIER4,
     testing: env.LLM_TESTING,
   },
 } as const;

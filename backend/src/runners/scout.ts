@@ -7,7 +7,10 @@ import { config } from "../config/index.js";
 import { scoutScore } from "../scoring/index.js";
 import type { AgentResult, ContestEntryInput, Runner } from "./types.js";
 import { callModel, llmConfigured, recordLlmRun, DailyKillError } from "./llm/client.js";
-import { resolveRuntimeParams, type RuntimeParams } from "./llm/tierConfig.js";
+import { resolveRuntimeParams, loadAgentStats, type RuntimeParams } from "./llm/tierConfig.js";
+import { effectiveStrength } from "../scoring/strength.js";
+import { getLoadout } from "../auth/loadouts.js";
+import { applyRouting } from "./solver.js";
 
 /// ScoutRunner: each agent has a deterministic hot wallet derived from the
 /// master mnemonic by agentId. The agent performs tier-limited real USDC
@@ -260,11 +263,16 @@ export class ScoutRunner implements Runner {
         ops: strategy.opsCount,
         perOpUsdc6: strategy.perOpUsdc6,
       });
-      const score = scoutScore({
+      const rawScore = scoutScore({
         volumeUsdc6: exec.volumeUsdc6,
         opsCount: exec.opsCount,
         seed: contestId * 1000 + e.agentId,
       });
+      // tier x training x traits per docs/agentTier.md
+      const stats = await loadAgentStats(e.agentId).catch(() => ({}));
+      const equipped = await getLoadout("contest", contestId, e.agentId).catch(() => [] as string[]);
+      const strength = effectiveStrength(e.tier, stats, equipped, "scout");
+      const score = applyRouting(rawScore, strength, contestId * 1000 + e.agentId);
       // Surface the real tx hashes (most recent first) so the volume stage on
       // the live page renders the actual onchain activity. recentVolumes is
       // aligned 1:1 so each tape row can show its own value.
@@ -279,6 +287,13 @@ export class ScoutRunner implements Runner {
           opsCount: exec.opsCount,
           hot: account.address,
           strategy: strategy.rationale,
+          rawScore,
+          strength: {
+            effective: Number(strength.effective.toFixed(2)),
+            tierBase: strength.tierBase,
+            training: Number(strength.training.toFixed(3)),
+            traits: Number(strength.traits.toFixed(3)),
+          },
         },
         progress: { kind: "scout" as const, opsCount: exec.opsCount, recent, recentVolumes },
       });

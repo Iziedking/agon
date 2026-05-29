@@ -45,6 +45,16 @@ import {
   beginAuthentication,
   finishAuthentication,
 } from "./webauthn.js";
+import {
+  MAX_EQUIPPED,
+  validateLoadout,
+  setLoadout,
+  getLoadout,
+  ownedTraitPool,
+  TRAIT_CATALOGUE,
+  liveEntryCount,
+  hasAgentInEvent,
+} from "./loadouts.js";
 import type { RegistrationResponseJSON, AuthenticationResponseJSON } from "@simplewebauthn/server";
 
 const SESSION_MAX_AGE = 7 * 24 * 60 * 60; // 7 days, matches issueToken expiry
@@ -1164,6 +1174,153 @@ app.post("/mystery/claim", requireAuth, async (c) => {
   void logEvent({ kind: "mystery_claim", address: operator, context: { agentId, traitId: trait.id, rarity: trait.rarity }, source: "auth" });
 
   return c.json({ rugged: false, trait, agentId });
+});
+
+// ----- Strength breakdown (workshop panel) -----
+
+import { effectiveStrength, type ContestType, STAT_NAMES as STRENGTH_STAT_NAMES, type StatName as StrengthStatName } from "../scoring/strength.js";
+
+/// Returns the agent's effective-strength breakdown per contest type so
+/// the workshop can show "tier × training × traits" with the actual
+/// numbers. Optional ?traits=lucky_charm,puzzle_savant query lets the
+/// user preview a hypothetical loadout.
+app.get("/agents/:id/strength", async (c) => {
+  const agentId = Number(c.req.param("id"));
+  if (!Number.isFinite(agentId)) return c.json({ error: "bad agent id" }, 400);
+  const traitParam = (c.req.query("traits") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  const traits = traitParam.slice(0, 3);
+
+  const { rows: agentRows } = await query<{
+    owner: string;
+    scout_tier: number;
+    analyst_tier: number;
+    solver_tier: number;
+  }>(
+    "select owner, scout_tier, analyst_tier, solver_tier from agents where id = $1",
+    [agentId],
+  );
+  if (!agentRows[0]) return c.json({ error: "agent not found" }, 404);
+
+  const { rows: statRows } = await query<{ stat: string; level: number }>(
+    "select stat, level from agent_stats where agent_id = $1",
+    [agentId],
+  );
+  const stats: Partial<Record<StrengthStatName, number>> = {};
+  for (const r of statRows) {
+    if ((STRENGTH_STAT_NAMES as readonly string[]).includes(r.stat)) {
+      stats[r.stat as StrengthStatName] = r.level;
+    }
+  }
+
+  const tierFor: Record<ContestType, number> = {
+    solver: agentRows[0].solver_tier,
+    analyst: agentRows[0].analyst_tier,
+    scout: agentRows[0].scout_tier,
+  };
+
+  const breakdown: Record<ContestType, ReturnType<typeof effectiveStrength>> = {
+    solver: effectiveStrength(tierFor.solver, stats, traits, "solver"),
+    analyst: effectiveStrength(tierFor.analyst, stats, traits, "analyst"),
+    scout: effectiveStrength(tierFor.scout, stats, traits, "scout"),
+  };
+
+  return c.json({ agentId, traits, breakdown });
+});
+
+// ----- Trait loadouts (equip up to 3 traits per entry) -----
+
+/// Public read of the operator's owned trait pool plus the catalogue. The
+/// equip UI uses this to render which traits the user can pick from and
+/// what each does.
+app.get("/operators/:address/traits", async (c) => {
+  const address = (c.req.param("address") ?? "").toLowerCase();
+  if (!/^0x[a-f0-9]{40}$/.test(address)) return c.json({ owned: [], catalogue: TRAIT_CATALOGUE });
+  const owned = await ownedTraitPool(address);
+  return c.json({ owned, catalogue: TRAIT_CATALOGUE, maxEquipped: MAX_EQUIPPED });
+});
+
+/// Read the equipped loadout for a specific (source, event_id, agent_id).
+app.get("/loadouts/:source/:eventId/:agentId", async (c) => {
+  const source = c.req.param("source");
+  if (source !== "contest" && source !== "challenge") {
+    return c.json({ error: "source must be contest or challenge" }, 400);
+  }
+  const eventId = Number(c.req.param("eventId"));
+  const agentId = Number(c.req.param("agentId"));
+  if (!Number.isFinite(eventId) || !Number.isFinite(agentId)) {
+    return c.json({ error: "bad event or agent id" }, 400);
+  }
+  const traitIds = await getLoadout(source, eventId, agentId);
+  return c.json({ traitIds });
+});
+
+/// Set the equipped loadout for a specific entry. Validates max 3, no
+/// clashes, no duplicates, and that every trait id is one the operator's
+/// agents have collected. Auth-gated to the agent's owner.
+app.post("/loadouts/:source/:eventId", requireAuth, async (c) => {
+  const operator = c.get("address");
+  const source = c.req.param("source");
+  if (source !== "contest" && source !== "challenge") {
+    return c.json({ error: "source must be contest or challenge" }, 400);
+  }
+  const eventId = Number(c.req.param("eventId"));
+  if (!Number.isFinite(eventId)) return c.json({ error: "bad event id" }, 400);
+
+  let body: { agentId?: number; traitIds?: string[] };
+  try { body = await c.req.json(); } catch { return c.json({ error: "bad json" }, 400); }
+  const agentId = Number(body.agentId);
+  if (!Number.isFinite(agentId) || agentId <= 0) return c.json({ error: "agentId required" }, 400);
+  const traitIds = Array.isArray(body.traitIds) ? body.traitIds.map((s) => String(s)) : [];
+
+  // The agent must belong to the operator.
+  const { rows: ownerRows } = await query<{ owner: string }>(
+    "select owner from agents where id = $1",
+    [agentId],
+  );
+  if (!ownerRows[0]) return c.json({ error: "agent not found" }, 404);
+  if (ownerRows[0].owner.toLowerCase() !== operator.toLowerCase()) {
+    return c.json({ error: "you do not own this agent" }, 403);
+  }
+
+  // Validate shape (max 3, no clash).
+  const v = validateLoadout(traitIds);
+  if (!v.ok) return c.json({ error: v.reason ?? "invalid loadout" }, 400);
+
+  // Validate ownership of each trait.
+  const owned = new Set(await ownedTraitPool(operator));
+  for (const id of traitIds) {
+    if (!owned.has(id)) return c.json({ error: `you don't own the trait ${id}` }, 403);
+  }
+
+  await setLoadout(source as "contest" | "challenge", eventId, agentId, operator, traitIds);
+  return c.json({ ok: true, traitIds });
+});
+
+// ----- Entry caps (live + one-per-event) -----
+
+/// How many live contests/challenges this operator currently has agents
+/// in, plus a boolean for each cap rule so the frontend can disable the
+/// ENTER button with a clear message instead of letting the tx fire.
+app.get("/operators/:address/entry-caps", async (c) => {
+  const address = (c.req.param("address") ?? "").toLowerCase();
+  if (!/^0x[a-f0-9]{40}$/.test(address)) {
+    return c.json({ liveCount: 0, maxLive: 3, atCap: false });
+  }
+  const liveCount = await liveEntryCount(address);
+  const maxLive = 3;
+  return c.json({ liveCount, maxLive, atCap: liveCount >= maxLive });
+});
+
+/// True if this operator already has any agent entered in (source, id).
+app.get("/operators/:address/in-event/:source/:eventId", async (c) => {
+  const address = (c.req.param("address") ?? "").toLowerCase();
+  if (!/^0x[a-f0-9]{40}$/.test(address)) return c.json({ inEvent: false });
+  const source = c.req.param("source");
+  if (source !== "contest" && source !== "challenge") return c.json({ inEvent: false });
+  const eventId = Number(c.req.param("eventId"));
+  if (!Number.isFinite(eventId)) return c.json({ inEvent: false });
+  const inEvent = await hasAgentInEvent(source, eventId, address);
+  return c.json({ inEvent });
 });
 
 // ----- Real LLM run audit trail -----
