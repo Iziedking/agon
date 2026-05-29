@@ -140,7 +140,8 @@ export async function recordLlmRun(row: AuditRow): Promise<void> {
   await query(
     `insert into llm_runs
        (contest_id, agent_id, operator, round_idx, puzzle_idx, kind, model, prompt, response, expected, verdict, latency_ms, input_tokens, output_tokens, cost_usd)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+       on conflict (contest_id, agent_id, kind, round_idx, puzzle_idx) do nothing`,
     [
       row.contestId,
       row.agentId,
@@ -159,4 +160,48 @@ export async function recordLlmRun(row: AuditRow): Promise<void> {
       row.costUsd.toFixed(6),
     ],
   );
+}
+
+/// Read previously persisted runs for an agent in a contest, keyed by
+/// (kind, round, puzzle). Lets the runner skip the LLM call when an audit
+/// row already exists, so live-window preview passes don't pay for the
+/// same solve twice. Returns a map of puzzle_idx -> { verdict, latencyMs,
+/// cost, response } for the requested kind.
+export interface ExistingRun {
+  puzzleIdx: number;
+  verdict: "correct" | "wrong" | "skipped" | "error";
+  latencyMs: number;
+  costUsd: number;
+  response: string;
+  expected: string | null;
+}
+
+export async function readExistingRuns(
+  contestId: number,
+  agentId: number,
+  kind: "solver" | "analyst" | "scout",
+  roundIdx = 0,
+): Promise<ExistingRun[]> {
+  const { rows } = await query<{
+    puzzle_idx: number;
+    verdict: string;
+    latency_ms: number;
+    cost_usd: string;
+    response: string;
+    expected: string | null;
+  }>(
+    `select puzzle_idx, verdict, latency_ms, cost_usd::text, response, expected
+       from llm_runs
+      where contest_id = $1 and agent_id = $2 and kind = $3 and round_idx = $4
+      order by puzzle_idx asc`,
+    [contestId, agentId, kind, roundIdx],
+  );
+  return rows.map((r) => ({
+    puzzleIdx: r.puzzle_idx,
+    verdict: r.verdict as ExistingRun["verdict"],
+    latencyMs: r.latency_ms,
+    costUsd: Number(r.cost_usd),
+    response: r.response,
+    expected: r.expected,
+  }));
 }

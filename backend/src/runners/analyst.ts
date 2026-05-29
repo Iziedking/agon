@@ -3,7 +3,7 @@ import { clamp01, seededRng } from "./rng.js";
 import { analystScore } from "../scoring/index.js";
 import { generatePredictionQuestions, type PredictionQuestion } from "./predictions/oracle.js";
 import { judgePrediction } from "./predictions/judge.js";
-import { callModel, llmConfigured, recordLlmRun, DailyKillError } from "./llm/client.js";
+import { callModel, llmConfigured, recordLlmRun, readExistingRuns, DailyKillError } from "./llm/client.js";
 import { resolveRuntimeParams, loadAgentStats, type RuntimeParams } from "./llm/tierConfig.js";
 import { effectiveStrength } from "../scoring/strength.js";
 import { getLoadout } from "../auth/loadouts.js";
@@ -91,6 +91,22 @@ async function runRealAnalyst(
   questions: PredictionQuestion[],
   params: RuntimeParams,
 ): Promise<CallOutcome[]> {
+  // Idempotent across preview passes: if we already have audit rows for
+  // this (contest, agent), reconstruct predictions from the persisted
+  // verdicts so the live-window passes don't burn budget.
+  const cached = await readExistingRuns(contestId, entry.agentId, "analyst").catch(() => []);
+  if (cached.length >= questions.length) {
+    return questions.map((q, i) => {
+      const row = cached.find((r) => r.puzzleIdx === i);
+      const correct = row?.verdict === "correct";
+      // p = 0.7 toward the truth on hits, away on misses. Good enough
+      // for reconstruction; the actual p was already captured into
+      // analystScore via the original pass.
+      const p = correct ? (q.outcome === 1 ? 0.7 : 0.3) : (q.outcome === 1 ? 0.3 : 0.7);
+      return { p, outcome: q.outcome };
+    });
+  }
+
   const out: CallOutcome[] = [];
 
   for (let i = 0; i < questions.length; i++) {

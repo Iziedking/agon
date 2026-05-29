@@ -9,6 +9,7 @@ import {
   callModel,
   llmConfigured,
   recordLlmRun,
+  readExistingRuns,
   DailyKillError,
   type CallResult,
 } from "./llm/client.js";
@@ -113,10 +114,41 @@ async function runWithCapabilities(
   puzzles: Puzzle[],
   params: RuntimeParams,
 ): Promise<SolveOutcome> {
+  // Idempotent across preview passes: reuse the persisted solve when one
+  // already exists, so the live-window polling doesn't pay for the same
+  // LLM call over and over.
+  const cached = await readExistingRuns(contestId, entry.agentId, "solver").catch(() => []);
+  if (cached.length >= puzzles.length) {
+    return reconstructSolve(cached, puzzles);
+  }
   if (!params.llmEnabled) {
     return runGuessPath(contestId, entry, puzzles, params);
   }
   return runLlmPath(contestId, entry, puzzles, params);
+}
+
+function reconstructSolve(
+  cached: { puzzleIdx: number; verdict: string; latencyMs: number; costUsd: number }[],
+  puzzles: Puzzle[],
+): SolveOutcome {
+  const byIdx = new Map<number, { verdict: string; latencyMs: number; costUsd: number }>();
+  for (const c of cached) byIdx.set(c.puzzleIdx, c);
+  let correct = 0;
+  let elapsedMs = 0;
+  let costUsd = 0;
+  const perPuzzle: boolean[] = [];
+  const perPuzzleMs: number[] = [];
+  for (let i = 0; i < puzzles.length; i++) {
+    const row = byIdx.get(i);
+    const ok = row?.verdict === "correct";
+    if (ok) correct++;
+    perPuzzle.push(ok);
+    const ms = row?.latencyMs ?? 0;
+    perPuzzleMs.push(ms);
+    elapsedMs += ms;
+    costUsd += row?.costUsd ?? 0;
+  }
+  return { correct, total: puzzles.length, elapsedMs, perPuzzle, perPuzzleMs, costUsd };
 }
 
 /// Apply the strength multiplier and (when present) the routing trait's

@@ -63,6 +63,12 @@ create table if not exists llm_runs (
 );
 create index if not exists llm_runs_contest_idx on llm_runs(contest_id, agent_id);
 create index if not exists llm_runs_created_idx on llm_runs(created_at desc);
+-- One audit row per (contest, agent, kind, round, puzzle). Without this the
+-- runner duplicates rows every preview pass during the live window, and the
+-- LLM gets called per pass too, so the demo paid for the same solve 40
+-- times. Insert path uses ON CONFLICT DO NOTHING to make re-runs idempotent.
+create unique index if not exists llm_runs_unique_idx
+  on llm_runs(contest_id, agent_id, kind, round_idx, puzzle_idx);
 
 -- WebAuthn passkey credentials. One row per registered authenticator. An email
 -- can have multiple credentials over time (extra devices), but the demo only

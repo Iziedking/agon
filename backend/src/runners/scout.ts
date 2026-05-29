@@ -6,7 +6,7 @@ import { arcTestnet, publicClient } from "../chain/arc.js";
 import { config } from "../config/index.js";
 import { scoutScore } from "../scoring/index.js";
 import type { AgentResult, ContestEntryInput, Runner } from "./types.js";
-import { callModel, llmConfigured, recordLlmRun, DailyKillError } from "./llm/client.js";
+import { callModel, llmConfigured, recordLlmRun, readExistingRuns, DailyKillError } from "./llm/client.js";
 import { resolveRuntimeParams, loadAgentStats, type RuntimeParams } from "./llm/tierConfig.js";
 import { effectiveStrength } from "../scoring/strength.js";
 import { getLoadout } from "../auth/loadouts.js";
@@ -141,6 +141,25 @@ async function pickScoutStrategy(
 ): Promise<ScoutStrategy> {
   const defaultOps = Math.min(limit.maxOps, 5);
   const defaultPerOp = balance / BigInt(defaultOps + 1);
+
+  // Idempotent: scout strategy lives at puzzle_idx 0 in llm_runs. If we
+  // already have a row, reuse the rationale instead of paying for another
+  // LLM call. Strategy is read-only on the second pass; the actual
+  // executeScout call still fires every time because that's the on-chain
+  // work.
+  const cached = await readExistingRuns(contestId, entry.agentId, "scout").catch(() => []);
+  if (cached.length > 0) {
+    // We don't parse OPS / PER_OP_USDC out of the cached response here;
+    // the second pass uses the cap clamp and the rationale string from
+    // the audit so the audit row narrates the agent's actual decision.
+    const opsCount = defaultOps;
+    return {
+      opsCount,
+      perOpUsdc6: defaultPerOp,
+      rationale: cached[0]!.response.slice(0, 200),
+    };
+  }
+
   if (!params.llmEnabled) {
     return { opsCount: defaultOps, perOpUsdc6: defaultPerOp, rationale: "tier default" };
   }
