@@ -78,7 +78,10 @@ export function JoinChallengePanel({
     return () => { live = false; };
   }, [address, id, status, joined]);
 
-  const active = agents?.find((a) => a.id === activeId) ?? null;
+  // Fall back to the first agent when the active-id resolution is racing
+  // the agents fetch. Without this fallback the panel briefly renders the
+  // "no agents - go to workshop" branch and the user can click it.
+  const active = agents?.find((a) => a.id === activeId) ?? agents?.[0] ?? null;
   const joinOpen = status === 0 && Math.floor(Date.now() / 1000) < joinDeadline;
 
   const load = useCallback(async () => {

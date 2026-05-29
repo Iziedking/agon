@@ -445,6 +445,26 @@ app.post("/wallet/execute", requireAuth, async (c) => {
     return c.json({ error: "contract address is not part of ArcRun" }, 400);
   }
 
+  // Enforce the 5-agent profile cap for Circle wallet users at the
+  // backend's signing layer. Wagmi users sign client-side and bypass
+  // this check, but the cap also stays enforced on-chain once the
+  // mainnet AgentRegistry redeploy lands. Off-chain we just refuse to
+  // sign a sixth createAgent call so Circle users can't race past the
+  // frontend gate.
+  if (
+    body.contractAddress.toLowerCase() === config.contracts.AgentRegistry.toLowerCase() &&
+    body.abiFunctionSignature.startsWith("createAgent")
+  ) {
+    const { rows: countRows } = await query<{ n: string }>(
+      "select count(*)::text as n from agents where owner = $1",
+      [operator],
+    );
+    const owned = Number(countRows[0]?.n ?? "0");
+    if (owned >= 5) {
+      return c.json({ error: "5 agent cap reached; no more claims allowed" }, 403);
+    }
+  }
+
   try {
     const tx = await executeContractCall({
       walletId,
@@ -1225,6 +1245,33 @@ app.get("/agents/:id/strength", async (c) => {
   };
 
   return c.json({ agentId, traits, breakdown });
+});
+
+// ----- Claim-prep gate (off-chain 5-agent cap for web3 wallets) -----
+//
+// Web3 wallet users sign createAgent client-side, so the auth service
+// never sees the tx until the indexer picks it up. We can't actually
+// stop a determined user from skipping this check, but we expose a
+// "are you allowed to claim" endpoint the frontend calls right before
+// signing. Combined with the frontend disable/refetch race fixes, this
+// catches the casual case where two clicks race past the on-chain
+// limit. Permanent enforcement comes from the AgentRegistry mainnet
+// redeploy, queued in BEFORE PRODUCTION in todo.md.
+
+app.get("/agents/claim-prep", requireAuth, async (c) => {
+  const operator = c.get("address");
+  const { rows } = await query<{ n: string }>(
+    "select count(*)::text as n from agents where owner = $1",
+    [operator],
+  );
+  const owned = Number(rows[0]?.n ?? "0");
+  const max = 5;
+  return c.json({
+    owned,
+    max,
+    canClaim: owned < max,
+    reason: owned < max ? null : `${max} agent cap reached`,
+  });
 });
 
 // ----- Trait loadouts (equip up to 3 traits per entry) -----

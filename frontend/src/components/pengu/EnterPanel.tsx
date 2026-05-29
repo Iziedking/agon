@@ -43,7 +43,10 @@ export function EnterPanel({ contestId, status, endTime }: { contestId: number; 
   const [capInfo, setCapInfo] = useState<{ liveCount: number; maxLive: number; atCap: boolean } | null>(null);
   const [opAlreadyIn, setOpAlreadyIn] = useState(false);
 
-  const active = agents?.find((a) => a.id === activeId) ?? null;
+  // Fall back to the first agent when the active-id resolution is racing
+  // the agents fetch. Without this fallback the panel briefly renders the
+  // "no agents - go to workshop" branch and the user can click it.
+  const active = agents?.find((a) => a.id === activeId) ?? agents?.[0] ?? null;
   const nowOpen = status === 1 && Math.floor(Date.now() / 1000) < endTime;
 
   useEffect(() => {
