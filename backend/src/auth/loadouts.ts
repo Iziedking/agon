@@ -15,10 +15,21 @@ export const MAX_EQUIPPED = 3;
 /// reasoning per pair is in the doc; the rule of thumb is "two traits
 /// that pull the scoring math in incompatible directions clash."
 const CLASH_PAIRS: Array<[string, string]> = [
-  ["lucky_charm", "pattern_reader"],  // pure dice vs careful calibration
-  ["lucky_charm", "oracle_eye"],      // pure dice vs noisy-kind edge
-  ["chain_breaker", "deep_state"],    // universal bonus vs specialised edge
-  ["hot_hand", "lucky_charm"],        // momentum (state-dependent) vs dice (state-free)
+  // Pure-dice routing clashes with careful calibration
+  ["lucky_charm", "pattern_reader"],
+  ["lucky_charm", "oracle_eye"],
+  ["lucky_charm", "precision_engine"],
+  ["dice_roller", "precision_engine"],
+  // Two routing traits at once - first wins, but they still clash to keep
+  // the equip choice sharp
+  ["hot_hand", "lucky_charm"],
+  ["lucky_charm", "circle_protocol"],
+  ["deep_state", "lucky_charm"],
+  // Universal vs specialised - pick a side
+  ["chain_breaker", "deep_state"],
+  ["arc_sovereign", "circle_protocol"],
+  // Volume strategy conflicts
+  ["volume_titan", "gas_whisperer"],
 ];
 
 export function traitsClash(a: string, b: string): boolean {

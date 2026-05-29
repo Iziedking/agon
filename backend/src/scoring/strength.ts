@@ -55,16 +55,39 @@ export interface TraitEffect {
 }
 
 export const TRAIT_EFFECTS: Record<string, TraitEffect> = {
-  // multiplier-only traits
-  puzzle_savant:  { domain: "solver",  multiplier: 1.15 },
-  whale_spotter:  { domain: "scout",   multiplier: 1.20 },
-  oracles_eye:    { domain: "analyst", multiplier: 1.15 },
-  gas_whisperer:  { domain: "any",     multiplier: 1.05 },
-  deep_state:     { domain: "analyst", multiplier: 1.10 },
-  // routing traits (also have a small multiplier so an equipped routing
-  // trait is never a worse stat-line than a flat multiplier trait)
-  lucky_charm:    { domain: "any",     multiplier: 1.05, routing: "stochastic" },
-  hot_hand:       { domain: "solver",  multiplier: 1.05, routing: "momentum" },
+  // Commons - small flat boosts
+  lucky_charm:      { domain: "any",     multiplier: 1.05, routing: "stochastic" },
+  speed_demon:      { domain: "scout",   multiplier: 1.05 },
+  hot_hand:         { domain: "solver",  multiplier: 1.05, routing: "momentum" },
+  quick_draw:       { domain: "solver",  multiplier: 1.04 },
+  dice_roller:      { domain: "any",     multiplier: 1.03 },
+  mempool_diver:    { domain: "scout",   multiplier: 1.05 },
+  crystal_ball:     { domain: "analyst", multiplier: 1.04 },
+
+  // Rares - mid-grade specialised edges
+  pattern_reader:   { domain: "analyst", multiplier: 1.10 },
+  whale_spotter:    { domain: "scout",   multiplier: 1.20 },
+  gas_whisperer:    { domain: "any",     multiplier: 1.05 },
+  liquidity_hunter: { domain: "scout",   multiplier: 1.12 },
+  precision_engine: { domain: "analyst", multiplier: 1.12 },
+  gas_arb:          { domain: "scout",   multiplier: 1.10 },
+  tape_reader:      { domain: "analyst", multiplier: 1.10 },
+
+  // Epics - heavy specialisation
+  puzzle_savant:    { domain: "solver",  multiplier: 1.18 },
+  arc_initiate:     { domain: "any",     multiplier: 1.10 },
+  deep_state:       { domain: "analyst", multiplier: 1.15, routing: "calibrated" },
+  quant_oracle:     { domain: "analyst", multiplier: 1.18 },
+  solver_circuit:   { domain: "solver",  multiplier: 1.18 },
+  volume_titan:     { domain: "scout",   multiplier: 1.20 },
+
+  // Legendaries - the trophies (universal or top-tier)
+  chain_breaker:    { domain: "any",     multiplier: 1.18 },
+  oracle_eye:       { domain: "analyst", multiplier: 1.20 },
+  arc_sovereign:    { domain: "any",     multiplier: 1.22 },
+  circle_protocol:  { domain: "any",     multiplier: 1.20, routing: "calibrated" },
+  // Legacy id kept so any rows persisted under the old key still resolve.
+  oracles_eye:      { domain: "analyst", multiplier: 1.15 },
 };
 
 export function tierBase(tier: number): number {

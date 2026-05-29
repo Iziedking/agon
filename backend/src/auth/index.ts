@@ -1180,9 +1180,22 @@ app.post("/mystery/claim", requireAuth, async (c) => {
     [operator],
   );
 
-  const result = rollMystery(available);
+  // Count how many distinct traits this operator already owns across all
+  // their agents so the adaptive rug chance has the right input. The
+  // first few rolls feel rewarding; once they've collected most of the
+  // catalogue, rugs get more common so completing the set is earned.
+  const ownedCountRow = await query<{ n: string }>(
+    `select count(distinct at.trait_id)::text as n
+       from agent_traits at
+       join agents a on a.id = at.agent_id
+      where a.owner = $1`,
+    [operator],
+  );
+  const totalOwned = Number(ownedCountRow.rows[0]?.n ?? "0");
+
+  const result = rollMystery(available, totalOwned);
   if (result.rugged || !result.trait) {
-    void logEvent({ kind: "mystery_claim", address: operator, context: { agentId, rugged: true }, source: "auth" });
+    void logEvent({ kind: "mystery_claim", address: operator, context: { agentId, rugged: true, totalOwned }, source: "auth" });
     return c.json({ rugged: true, trait: null, agentId });
   }
 

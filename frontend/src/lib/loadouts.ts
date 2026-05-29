@@ -12,8 +12,14 @@ export const MAX_EQUIPPED = 3;
 const CLASH_PAIRS: Array<[string, string]> = [
   ["lucky_charm", "pattern_reader"],
   ["lucky_charm", "oracle_eye"],
-  ["chain_breaker", "deep_state"],
+  ["lucky_charm", "precision_engine"],
+  ["dice_roller", "precision_engine"],
   ["hot_hand", "lucky_charm"],
+  ["lucky_charm", "circle_protocol"],
+  ["deep_state", "lucky_charm"],
+  ["chain_breaker", "deep_state"],
+  ["arc_sovereign", "circle_protocol"],
+  ["volume_titan", "gas_whisperer"],
 ];
 
 export function clashesWith(a: string, b: string): boolean {
