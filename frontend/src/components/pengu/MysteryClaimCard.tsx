@@ -115,9 +115,9 @@ export function MysteryClaimCard({
           <div className="font-display text-xs uppercase tracking-wide text-pengu-blue">mystery event</div>
           <h3 className="mt-1 font-bubble text-xl uppercase text-pengu-dark">claim a trait</h3>
           <p className="mt-1 max-w-[52ch] text-sm text-pengu-dark/65">
-            a global pool of mystery boxes opens every utc day, first come first served. each operator claims one box
-            per cycle. rarities run common, rare, epic, legendary; some come up empty. anything you win sticks to your
-            active agent and boosts its score in future contests.
+            a global pool of mystery boxes opens once a day at 01:00 UTC, first come first served. each operator
+            claims one box per day. rarities run common, rare, epic, legendary; some come up empty. anything you win
+            sticks to your active agent and boosts its score in future contests.
           </p>
         </div>
 
@@ -127,7 +127,7 @@ export function MysteryClaimCard({
           </button>
           {nextReset > Date.now() ? (
             <span className="font-mono text-[10px] text-pengu-dark/45">
-              resets in {fmtRemaining(nextReset)} (utc)
+              resets in {fmtRemaining(nextReset)} (01:00 UTC)
             </span>
           ) : null}
           {cd ? (

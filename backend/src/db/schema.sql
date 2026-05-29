@@ -268,6 +268,17 @@ create table if not exists training_queue (
   completes_at timestamptz not null
 );
 
+-- Private challenge invite list. The contract emits ChallengeInvited per
+-- (id, invitee); the indexer mirrors it here so the frontend can render
+-- "who's been invited" without scanning logs.
+create table if not exists challenge_invites (
+  challenge_id bigint not null,
+  invitee      text   not null,
+  created_at   timestamptz not null default now(),
+  primary key (challenge_id, invitee)
+);
+create index if not exists challenge_invites_id_idx on challenge_invites(challenge_id);
+
 -- Equipped trait loadouts per entry. ArcRun caps a loadout at three traits
 -- and rejects clashing combinations. Used by the runner to fold the trait
 -- multiplier (and any routing trait) into final score. Source distinguishes

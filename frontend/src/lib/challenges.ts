@@ -8,6 +8,8 @@ import { CONTRACTS, publicClient } from "./arc";
 
 export const challengeArenaAbi = parseAbi([
   "function createChallenge(uint8 kind, uint128 stake, uint64 maxEntrants, uint64 joinDeadline, uint64 resolveDeadline, bool isPrivate) returns (uint256)",
+  "function invite(uint256 id, address[] invitees)",
+  "function invited(uint256 id, address operator) view returns (bool)",
   "function nextChallengeId() view returns (uint256)",
   "function getChallenge(uint256 id) view returns ((address creator, uint8 kind, uint8 status, bool isPrivate, uint16 platformFeeBps, uint128 stake, uint64 maxEntrants, uint64 joinDeadline, uint64 resolveDeadline, bytes32 winnerRoot))",
   "function entrantCount(uint256 id) view returns (uint64)",
@@ -18,6 +20,23 @@ export const challengeArenaAbi = parseAbi([
   "function claimChallengePayout(uint256 id, uint256 amount, bytes32[] proof)",
   "function refund(uint256 id)",
 ]);
+
+/// Public read of who's been invited to a private challenge.
+export interface ChallengeInvitee {
+  address: string;
+  invitedAt: string;
+}
+
+export async function fetchChallengeInvites(id: number): Promise<ChallengeInvitee[]> {
+  try {
+    const res = await fetch(`${AUTH_URL}/challenges/${id}/invites`, { cache: "no-store" });
+    if (!res.ok) return [];
+    const data = (await res.json()) as { invitees?: ChallengeInvitee[] };
+    return data.invitees ?? [];
+  } catch {
+    return [];
+  }
+}
 
 const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL ?? "http://localhost:8082";
 const ZERO = "0x0000000000000000000000000000000000000000";

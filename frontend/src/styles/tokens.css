@@ -257,11 +257,72 @@ body::after {
   mix-blend-mode: multiply;
 }
 
-/* Dark mode toggle is dead per arcrun-redesign §0. The class is ignored;
-   keep the rule as a no-op so any stale localStorage value doesn't shift
-   the palette. The toggle UI will be removed in the secondary-pages pass. */
+/* ===== Dark theme =====
+   Mirror of the light tokens with the canvas/ink axis flipped. Pink stays
+   pink because pink looks good on both. Hairline borders go from 12% ink
+   to 12% cream so they still feel like the same product. The accent ink
+   color (text on a pink button) swaps from white to the dark canvas so
+   contrast holds. All status colors lift one notch for AA contrast
+   against the dark canvas. */
 html.dark {
-  /* no overrides */
+  --canvas: #0E0C0A;
+  --canvas-2: #181410;
+  --canvas-3: #221C16;
+
+  --ink: #F4F1ED;
+  --ink-2: #B8AC9C;
+  --ink-3: #7A7064;
+
+  --hairline: rgba(244, 241, 237, 0.12);
+  --hairline-strong: rgba(244, 241, 237, 0.22);
+
+  --accent: #FF4D8A;
+  --accent-press: #FF2D72;
+  --accent-ink: #0E0C0A;
+
+  --ok: #3DDDB0;
+  --warn: #FFCC4D;
+  --err: #FF5C7B;
+
+  /* Legacy pengu palette swapped so any page still reading it doesn't
+     read as cream-on-cream. */
+  --pengu-bg: 14 12 10;
+  --pengu-bg-2: 24 20 16;
+  --pengu-card: 24 20 16;
+  --pengu-card-2: 34 28 22;
+  --pengu-soft: 34 28 22;
+  --pengu-text: 244 241 237;
+  --pengu-dim: 184 172 156;
+  --pengu-dark: 244 241 237;
+
+  color-scheme: dark;
+}
+
+/* Body decorations in dark: grid lines lift to cream alpha, the L-bracket
+   SVG is repainted in cream, the soft vertical paper gradient becomes a
+   warm lift at the top and bottom edges, the corner pink mark is left
+   alone (still reads). */
+html.dark body {
+  background-image:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><path d='M0 12 L0 0 L12 0' stroke='rgba(244,241,237,0.16)' stroke-width='1' fill='none'/><rect x='232' y='232' width='5' height='5' fill='rgba(244,241,237,0.22)'/></svg>"),
+    linear-gradient(to right, rgba(244, 241, 237, 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(244, 241, 237, 0.04) 1px, transparent 1px),
+    linear-gradient(to right, rgba(244, 241, 237, 0.02) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(244, 241, 237, 0.02) 1px, transparent 1px),
+    linear-gradient(180deg,
+      rgba(34, 28, 22, 0.55) 0%,
+      rgba(14, 12, 10, 0) 360px,
+      rgba(14, 12, 10, 0) calc(100% - 360px),
+      rgba(34, 28, 22, 0.4) 100%
+    );
+}
+
+/* Paper grain inverted: noise now lifts the dark canvas instead of
+   shadowing the cream. screen blend keeps it as additive grain. */
+html.dark body::after {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.95  0 0 0 0 0.92  0 0 0 0 0.87  0 0 0 0.85 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  opacity: 0.05;
+  mix-blend-mode: screen;
 }
 
 /* Pill label, the small uppercase tag above every major section */

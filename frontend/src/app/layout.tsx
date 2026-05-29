@@ -7,6 +7,7 @@ import { Providers } from "@/components/Providers";
 import { ErrorReporter } from "@/components/ErrorReporter";
 import { ChainGuard } from "@/components/ChainGuard";
 import { WinWatcher } from "@/components/WinWatcher";
+import { ThemeScript } from "@/components/ThemeScript";
 import { BodyLines } from "@/components/redesign/BodyLines";
 import { SideRail } from "@/components/redesign/SideRail";
 import { ChainTicker } from "@/components/redesign/ChainTicker";
@@ -35,6 +36,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${GeistSans.variable} ${jetbrainsMono.variable} ${blackOps.variable}`}>
+      <head>
+        <ThemeScript />
+      </head>
       <body>
         <BodyLines />
         <Providers>

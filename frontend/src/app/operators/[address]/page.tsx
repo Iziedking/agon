@@ -201,7 +201,7 @@ export default function OperatorPage() {
         />
       )}
 
-      {/* SETTINGS — isMe only. Dark mode is gone per the redesign. */}
+      {/* SETTINGS — isMe only. */}
       {isMe ? (
         <section className="mx-auto max-w-[1600px] px-6 py-12 pb-16">
           <div className="mb-4 font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
@@ -210,6 +210,16 @@ export default function OperatorPage() {
           <BracketedCell pad="sm">
             <div className="flex flex-col">
               {isEmailUser ? <PasskeysRow /> : null}
+              <SettingRow
+                k="theme"
+                label="THEME"
+                hint="warm paper canvas or deep ink."
+                options={[
+                  { value: "light", label: "LIGHT" },
+                  { value: "dark", label: "DARK" },
+                ]}
+                fallback="light"
+              />
               <SettingRow
                 k="lang"
                 label="LANGUAGE"

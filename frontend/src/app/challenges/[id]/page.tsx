@@ -3,6 +3,7 @@ import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/redesign/Footer";
 import { BracketedCell, CornerMarkers, StatusChip, TagButton } from "@/components/redesign";
 import { JoinChallengePanel } from "@/components/pengu/JoinChallengePanel";
+import { InvitePanel } from "@/components/pengu/InvitePanel";
 import { ResultsBoard } from "@/components/pengu/ResultsBoard";
 import { fetchChallenge, CHALLENGE_KIND, CHALLENGE_STATUS } from "@/lib/challenges";
 import { formatUsdc } from "@/lib/contests";
@@ -137,6 +138,14 @@ export default async function ChallengePage({ params }: { params: Promise<{ id: 
                 contestType={CHALLENGE_KIND[ch.kind] ?? "custom"}
               />
             </div>
+
+            {/* Invite panel: creator-only, renders when private + OPEN. */}
+            <InvitePanel
+              challengeId={ch.id}
+              creator={ch.creator}
+              isPrivate={ch.isPrivate}
+              status={ch.status}
+            />
           </div>
 
           {/* RIGHT: sticky join panel */}

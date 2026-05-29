@@ -684,8 +684,10 @@ app.get("/traits/pool", (c) => c.json({ traits: TRAITS, rugChance: RUG_CHANCE })
 // How many mystery boxes are left in today's global pool and when the next
 // batch opens. Public read so the dashboard card can show the live count.
 app.get("/mystery/pool", async (c) => {
+  // Same UTC+1 day key as the claim writer above. The pool slot lives at
+  // (((now at UTC) + 1 hour))::date so the read and the write agree.
   const { rows } = await query<{ claimed: string | null }>(
-    "select claimed::text from mystery_pool_daily where day = (now() at time zone 'utc')::date",
+    "select claimed::text from mystery_pool_daily where day = (((now() at time zone 'utc') - interval '1 hour'))::date",
   );
   const claimed = Number(rows[0]?.claimed ?? 0);
   const remaining = Math.max(0, DAILY_POOL_MAX - claimed);
@@ -1155,19 +1157,21 @@ app.post("/mystery/claim", requireAuth, async (c) => {
     return c.json({ error: "this agent has collected every trait" }, 409);
   }
 
-  // Reserve a slot in today's global pool atomically. The insert/upsert returns
-  // the new `claimed` value; if it exceeds the cap, the pool is full and we
-  // roll the count back so the next claimer doesn't see a false drain.
+  // Reserve a slot in today's global pool atomically. "Today" is the
+  // claim day in UTC+1, so the boundary lands at 23:00 UTC instead of
+  // 00:00 UTC. First-come-first-served: when the row reaches
+  // DAILY_POOL_MAX, the next claim sees a false drain rollback and the
+  // pool stays at MAX until the next reset.
   const poolRes = await query<{ claimed: number }>(
     `insert into mystery_pool_daily (day, claimed)
-       values ((now() at time zone 'utc')::date, 1)
+       values ((((now() at time zone 'utc') - interval '1 hour'))::date, 1)
        on conflict (day) do update set claimed = mystery_pool_daily.claimed + 1
        returning claimed`,
   );
   const newClaimed = Number(poolRes.rows[0]?.claimed ?? 0);
   if (newClaimed > DAILY_POOL_MAX) {
     await query(
-      "update mystery_pool_daily set claimed = claimed - 1 where day = (now() at time zone 'utc')::date",
+      "update mystery_pool_daily set claimed = claimed - 1 where day = (((now() at time zone 'utc') - interval '1 hour'))::date",
     );
     return c.json({ error: "today's pool is exhausted", nextAvailable: nextResetMs() }, 429);
   }
@@ -1258,6 +1262,24 @@ app.get("/agents/:id/strength", async (c) => {
   };
 
   return c.json({ agentId, traits, breakdown });
+});
+
+// ----- Private challenge invite list -----
+
+/// Public read of who's been invited to a private challenge. The indexer
+/// mirrors ChallengeInvited events into challenge_invites; the creator's
+/// invite panel renders the list and the join page can show "you are
+/// invited" when the connected wallet appears here.
+app.get("/challenges/:id/invites", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isFinite(id)) return c.json({ invitees: [] });
+  const { rows } = await query<{ invitee: string; created_at: Date }>(
+    "select invitee, created_at from challenge_invites where challenge_id = $1 order by created_at asc",
+    [id],
+  );
+  return c.json({
+    invitees: rows.map((r) => ({ address: r.invitee, invitedAt: r.created_at })),
+  });
 });
 
 // ----- Claim-prep gate (off-chain 5-agent cap for web3 wallets) -----

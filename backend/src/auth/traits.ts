@@ -132,19 +132,35 @@ export const DAILY_POOL_MAX: number = (() => {
   return Math.floor(raw);
 })();
 
-/// Epoch milliseconds for the next midnight UTC. The cooldown and pool both
-/// roll over at that boundary, so this is the single timestamp the UI needs.
+/// Epoch milliseconds for the next mystery reset. The contract rolls over
+/// at 01:00 UTC (one hour after UTC midnight). First-come-first-served:
+/// the global daily pool fills until DAILY_POOL_MAX, then closes until
+/// the next reset.
 export function nextResetMs(now: Date = new Date()): number {
-  return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
+  const today01UTC = Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate(),
+    1, 0, 0, 0,
+  );
+  if (now.getTime() < today01UTC) return today01UTC;
+  return today01UTC + 24 * 60 * 60 * 1000;
 }
 
-/// True if the given timestamp falls on the same UTC day as `now`.
+/// True if the given timestamp falls on the same claim day as `now`. A
+/// claim day starts at 01:00 UTC and ends at the next 01:00 UTC. A
+/// timestamp at 00:59 UTC is still "yesterday's" claim day; at 01:00 UTC
+/// it flips to today.
 export function sameUtcDay(prev: Date, now: Date = new Date()): boolean {
-  return (
-    prev.getUTCFullYear() === now.getUTCFullYear() &&
-    prev.getUTCMonth() === now.getUTCMonth() &&
-    prev.getUTCDate() === now.getUTCDate()
-  );
+  return claimDayKey(prev) === claimDayKey(now);
+}
+
+/// String key for the claim day a timestamp belongs to. Shifts -1h so the
+/// boundary lands at 01:00 UTC: anything from 01:00 UTC onward belongs
+/// to that calendar UTC day; 00:00 to 00:59 UTC belongs to the previous.
+export function claimDayKey(d: Date): string {
+  const shifted = new Date(d.getTime() - 60 * 60 * 1000);
+  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, "0")}-${String(shifted.getUTCDate()).padStart(2, "0")}`;
 }
 
 export function traitById(id: string): Trait | undefined {
