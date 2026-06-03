@@ -13,6 +13,7 @@ import {
   ctypeIndex,
   erc20Abi,
   fetchPrice,
+  invalidateAgentsCache,
   tierOf,
   usdc,
   type AgentState,
@@ -94,6 +95,9 @@ export function UpgradeFlow({
       });
       await publicClient.waitForTransactionReceipt({ hash: upHash });
       reportEvent("agent_upgrade", { context: { type: t, toTier: cur + 1 }, address });
+      // Invalidate cache so onUpgraded's next fetchAgents reflects the new
+      // tier instead of returning the pre-upgrade row.
+      if (address) invalidateAgentsCache(address as `0x${string}`);
       await onUpgraded();
     } catch (e) {
       setError(friendlyError(e, "upgrade failed."));

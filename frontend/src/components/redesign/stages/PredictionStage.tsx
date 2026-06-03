@@ -63,7 +63,24 @@ export function PredictionStage({
     return <ArcanaBranch entries={entries} names={names} pinnedMarkets={pinnedArcanaMarkets ?? []} />;
   }
 
+  // Total YES/NO calls across analyst entries. With the synthetic fallback
+  // disabled by default, this stays at 0 when Arcana has no markets — so
+  // we drop straight into the branded waiting placeholder instead of
+  // showing an empty call chart.
+  const totalAnalystCalls = useMemo(() => {
+    let total = 0;
+    for (const e of entries) {
+      if (e.progress?.kind === "analyst") total += e.progress.calls.length;
+    }
+    return total;
+  }, [entries]);
+
+  if (totalAnalystCalls === 0) {
+    return <ArcanaWaitingPlaceholder entryCount={entries.length} />;
+  }
+
   // Aggregate the question count from whichever entry carries calls first.
+  // Reaches here only when synthetic fallback is enabled and calls exist.
   const totalQs = useMemo(() => {
     for (const e of entries) {
       if (e.progress?.kind === "analyst") return e.progress.calls.length;
@@ -79,20 +96,15 @@ export function PredictionStage({
     return [];
   }, [entries]);
 
-  if (totalQs === 0) {
-    return (
-      <BracketedCell pad="sm">
-        <p className="px-2 py-4 font-mono text-sm text-ink-2">
-          waiting for the first prediction frame. analysts file their calls and the chart fills in.
-        </p>
-      </BracketedCell>
-    );
-  }
-
   const colW = (CHART_W - PAD_X * 2) / Math.max(1, totalQs);
 
   return (
     <div className="flex flex-col gap-5">
+      {/* Fallback badge: explains why this round didn't route through
+          Arcana so the synthetic call chart isn't confusing. Shows only
+          when Arcana had no markets to pin AND no agent traded. */}
+      <SyntheticFallbackBadge />
+
       {/* CHART */}
       <BracketedCell pad="sm">
         <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
@@ -250,6 +262,51 @@ export function PredictionStage({
   );
 }
 
+/// Branded placeholder for PREDICTION events that opened while Arcana had
+/// no open markets. Shows on the live page until either markets ship and
+/// agents start trading (state flips to ArcanaBranch automatically on the
+/// next standings frame) or the deadline hits and the coordinator
+/// cancels-and-refunds.
+function ArcanaWaitingPlaceholder({ entryCount }: { entryCount: number }) {
+  return (
+    <BracketedCell pad="md">
+      <div className="flex flex-col items-center gap-3 py-6 text-center">
+        <div className="flex items-center gap-2">
+          <span aria-hidden className="text-accent">■</span>
+          <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">PREDICTION VIA</span>
+          <span className="font-mono text-[12px] uppercase tracking-[0.12em] text-ink">
+            ARCANA MARKETS
+          </span>
+        </div>
+        <p className="max-w-[480px] font-stencil text-[24px] uppercase leading-[1.15] text-ink">
+          waiting for arcana markets
+        </p>
+        <p className="max-w-[520px] font-mono text-[12px] leading-[1.5] text-ink-2">
+          no live prediction markets are open right now. agents stay parked.
+          when arcana ships markets before the deadline, this round runs
+          automatically. otherwise the round closes and stakes refund.
+        </p>
+        {entryCount > 0 ? (
+          <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
+            {entryCount} AGENT{entryCount === 1 ? "" : "S"} STAKED · REFUND ON CLOSE IF NO MARKET
+          </p>
+        ) : null}
+      </div>
+    </BracketedCell>
+  );
+}
+
+function SyntheticFallbackBadge() {
+  return (
+    <div className="flex flex-wrap items-center gap-2 border border-[color:var(--hairline-strong)] bg-canvas-2 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-2">
+      <span className="border border-[color:var(--hairline-strong)] px-1.5 py-0.5 text-ink-3">SYNTHETIC FALLBACK</span>
+      <span>
+        no open arcana markets at round start — agents predicted live arc state instead. arcana branch resumes automatically when their pipeline ships markets.
+      </span>
+    </div>
+  );
+}
+
 // ===========================================================================
 // Arcana branch — real prediction-market positions, live PnL, claim status.
 // ===========================================================================
@@ -334,8 +391,18 @@ function ArcanaBranch({
                 <div className="flex items-start gap-3">
                   <Robot variant={variant} size={28} decorative />
                   <div className="min-w-0">
-                    <div className="font-mono text-[12px] uppercase tracking-[0.12em] text-ink truncate">
-                      {nameFor(names, e.agentId)}
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-[12px] uppercase tracking-[0.12em] text-ink truncate">
+                        {nameFor(names, e.agentId)}
+                      </span>
+                      {analyst?.ticksBudget && analyst.ticksBudget > 0 ? (
+                        <span
+                          className="border border-[color:var(--hairline-strong)] px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em] text-ink-2"
+                          title="ticks used / tick budget (tier + speed stat + traits)"
+                        >
+                          T {analyst.ticksUsed ?? 0}/{analyst.ticksBudget}
+                        </span>
+                      ) : null}
                     </div>
                     <div className="font-mono text-[10px] text-ink-3">
                       {positions.length > 0

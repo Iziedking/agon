@@ -64,7 +64,10 @@ export function ArcanaWalletPanel({ agentId }: { agentId: number }) {
       }
     }
     void load();
-    const t = setInterval(load, 12_000);
+    // 30s cadence: positions only change when an agent enters a contest or
+    // a market resolves. Workshop is operator-facing so it doesn't need
+    // sub-minute freshness.
+    const t = setInterval(load, 30_000);
     return () => { alive = false; clearInterval(t); };
   }, [agentId]);
 

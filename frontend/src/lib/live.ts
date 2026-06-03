@@ -37,6 +37,10 @@ export type AgentProgress =
   | {
       kind: "analyst";
       calls: Array<{ p: number; outcome: 0 | 1; correct: boolean }>;
+      /// Phase 1 tick budget surface. Lets the live page render the
+      /// "T 3/8" chip per agent so viewers see decision pacing.
+      ticksUsed?: number;
+      ticksBudget?: number;
       /// Arcana Markets positions the agent took this round. Present when
       /// the contest routed through Arcana; undefined / empty when it fell
       /// back to synthetic predictions.
@@ -131,10 +135,26 @@ export interface ChallengeSettledMessage {
   winners: SettledWinner[];
 }
 
+/// Fired by the coordinator's prediction tick scheduler the moment an
+/// agent's per-tick LLM decision lands on chain. Lightweight — the
+/// authoritative position state still arrives on the next standings
+/// frame; this message just nudges the live narration so the WHAT'S
+/// HAPPENING line ticks within seconds of a real trade instead of
+/// waiting for the next scoring pass.
+export interface TickMessage {
+  type: "tick";
+  source: "contest" | "challenge";
+  eventId: number;
+  agentId: number;
+  action: "OPEN_YES" | "OPEN_NO" | "HEDGE_YES" | "HEDGE_NO" | "HOLD";
+  marketId: number | null;
+}
+
 export type WsMessage =
   | { type: "hello"; service?: string }
   | ContestOpenMessage
   | StandingsMessage
   | ChallengeStandingsMessage
   | SettledMessage
-  | ChallengeSettledMessage;
+  | ChallengeSettledMessage
+  | TickMessage;

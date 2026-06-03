@@ -83,11 +83,42 @@ export function usdc(amount6: bigint): string {
   return `${(Number(amount6) / 1e6).toLocaleString(undefined, { maximumFractionDigits: 2 })} USDC`;
 }
 
+/// Session-scoped cache for fetchAgents. Live for 15s per owner address.
+/// Halves the perceived load on contest/challenge navigation because the
+/// EnterPanel/JoinChallengePanel both hit fetchAgents on mount; with the
+/// cache, the second one is instant.
+const AGENTS_TTL_MS = 15_000;
+const agentsCache = new Map<string, { at: number; value: AgentState[] }>();
+
+function cachedAgents(owner: string): AgentState[] | null {
+  const hit = agentsCache.get(owner.toLowerCase());
+  if (!hit) return null;
+  if (Date.now() - hit.at > AGENTS_TTL_MS) {
+    agentsCache.delete(owner.toLowerCase());
+    return null;
+  }
+  return hit.value;
+}
+
+function setAgentsCache(owner: string, value: AgentState[]) {
+  agentsCache.set(owner.toLowerCase(), { at: Date.now(), value });
+}
+
+/// Public hook so claim / upgrade flows can wipe the cache and force a
+/// fresh read without waiting for the TTL.
+export function invalidateAgentsCache(owner?: `0x${string}`) {
+  if (owner) agentsCache.delete(owner.toLowerCase());
+  else agentsCache.clear();
+}
+
 /// All agents owned by this wallet, in creation order. Retries the chain reads
 /// up to three times with exponential backoff so a transient RPC blip on the
 /// first hit doesn't collapse to an empty list (which used to falsely flip the
 /// UI into "claim your agent" for wallets that already had one).
 export async function fetchAgents(owner: `0x${string}`): Promise<AgentState[]> {
+  const cached = cachedAgents(owner);
+  if (cached) return cached;
+
   let lastError: unknown = null;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
@@ -97,46 +128,55 @@ export async function fetchAgents(owner: `0x${string}`): Promise<AgentState[]> {
         functionName: "agentsOf",
         args: [owner],
       })) as readonly bigint[];
-      if (rawIds.length === 0) return [];
+      if (rawIds.length === 0) {
+        setAgentsCache(owner, []);
+        return [];
+      }
 
       // Filter out admin-delisted ids before doing any per-id chain reads.
       // The agent NFT still exists on Arc; ArcRun just doesn't render it.
       const delisted = await fetchDelistedAgents();
       const ids = rawIds.filter((id) => !delisted.has(Number(id)));
-      if (ids.length === 0) return [];
+      if (ids.length === 0) {
+        setAgentsCache(owner, []);
+        return [];
+      }
 
-      const agents: AgentState[] = [];
-      for (const id of ids) {
-        const a = await publicClient.readContract({
-          address: CONTRACTS.AgentRegistry,
-          abi: agentRegistryAbi,
-          functionName: "getAgent",
-          args: [id],
-        });
-        agents.push({
+      // Parallel per-id chain reads. Was sequential; with 5 agents this
+      // collapses ~5 round-trips into one wall-clock RPC tier. Names and
+      // skins also fire in the same parallel batch.
+      const [chainResults, names, skins] = await Promise.all([
+        Promise.all(
+          ids.map((id) =>
+            publicClient.readContract({
+              address: CONTRACTS.AgentRegistry,
+              abi: agentRegistryAbi,
+              functionName: "getAgent",
+              args: [id],
+            }),
+          ),
+        ),
+        fetchAgentNames(ids.map((id) => Number(id))),
+        fetchAgentSkins(ids.map((id) => Number(id))),
+      ]);
+
+      const agents: AgentState[] = ids.map((id, i) => {
+        const a = chainResults[i]!;
+        const out: AgentState = {
           id: Number(id),
           scoutTier: Number(a.scoutTier),
           analystTier: Number(a.analystTier),
           solverTier: Number(a.solverTier),
           reputation: a.reputation,
           erc8004TokenId: a.erc8004TokenId,
-        });
-      }
-      // Enrich with server-stored nicknames and skins so every surface that
-      // reads AgentState gets the operator-set identity without separate
-      // fetches. Both failures are non-fatal: agents still render with their
-      // fallback id and the variant mascot.
-      const agentIds = agents.map((a) => a.id);
-      const [names, skins] = await Promise.all([
-        fetchAgentNames(agentIds),
-        fetchAgentSkins(agentIds),
-      ]);
-      for (const a of agents) {
-        const n = names.get(a.id);
-        const s = skins.get(a.id);
-        if (n) a.nickname = n;
-        if (s) a.skin = s;
-      }
+        };
+        const n = names.get(out.id);
+        const s = skins.get(out.id);
+        if (n) out.nickname = n;
+        if (s) out.skin = s;
+        return out;
+      });
+      setAgentsCache(owner, agents);
       return agents;
     } catch (e) {
       lastError = e;

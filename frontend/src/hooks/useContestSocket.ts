@@ -7,6 +7,7 @@ import type {
   ContestOpenMessage,
   SettledMessage,
   StandingsMessage,
+  TickMessage,
   WsMessage,
 } from "@/lib/live";
 
@@ -31,6 +32,9 @@ export function useContestSocket() {
   /// at contest_open. Lets the live page render the round's market menu from
   /// the instant the contest opens, before any agent has placed a trade.
   const [pinnedArcana, setPinnedArcana] = useState<PinnedArcanaMarketSet | null>(null);
+  /// Most recent prediction tick. Lightweight WS hint from the tick
+  /// scheduler; the next standings frame carries the authoritative state.
+  const [lastTick, setLastTick] = useState<TickMessage | null>(null);
 
   useEffect(() => {
     let ws: WebSocket | null = null;
@@ -80,6 +84,8 @@ export function useContestSocket() {
             setSettled(msg);
           } else if (msg.type === "challenge_settled") {
             setChallengeSettled(msg);
+          } else if (msg.type === "tick") {
+            setLastTick(msg);
           }
         } catch {
           // ignore malformed frames
@@ -95,5 +101,13 @@ export function useContestSocket() {
     };
   }, []);
 
-  return { connected, standings, challengeStandings, settled, challengeSettled, pinnedArcana };
+  return {
+    connected,
+    standings,
+    challengeStandings,
+    settled,
+    challengeSettled,
+    pinnedArcana,
+    lastTick,
+  };
 }

@@ -126,6 +126,11 @@ alter table agents add column if not exists nickname text;
 -- server. Null means "use the mascot variant fallback".
 alter table agents add column if not exists skin text;
 
+-- Phase 2 scoring mode: pnl_mtm (default), pnl_realized, or volume.
+-- Set by the creator at contest/challenge open time; the runner reads it
+-- at settlement to dispatch the right payout curve. NULL = default
+-- (pnl_mtm). Stored off-chain because contracts don't see it.
+-- See docs/brandkit/13-prediction-windows-design.md.
 create table if not exists contests (
   id              bigint primary key,
   sponsor         text,
@@ -153,6 +158,10 @@ create table if not exists entries (
 );
 create index if not exists entries_operator_idx on entries(operator);
 
+-- Idempotent column add so existing DBs pick up scoring_mode without a
+-- manual migration. Default null = treat as pnl_mtm at scoring time.
+alter table contests add column if not exists scoring_mode text;
+
 create table if not exists challenges (
   id          bigint primary key,
   creator     text,
@@ -164,6 +173,8 @@ create table if not exists challenges (
   entrants    int not null default 0,
   created_at  timestamptz not null default now()
 );
+
+alter table challenges add column if not exists scoring_mode text;
 
 create table if not exists syndicates (
   id               bigint primary key,
@@ -430,6 +441,35 @@ create table if not exists arcana_indexer_state (
   last_block    bigint not null,
   updated_at    timestamptz not null default now()
 );
+
+-- Phase 1 tick-driven prediction model. One row per agent decision tick
+-- during a contest/challenge trade window. `tick_idx` is the agent's
+-- per-event tick counter (0-based); the unique index gives at-most-once
+-- semantics so a scheduler crash + restart doesn't double-fire a tick.
+-- `action` is the LLM's decision: OPEN_YES / OPEN_NO opens a position,
+-- HEDGE_YES / HEDGE_NO buys the opposite side of an existing position
+-- to cut exposure, HOLD records that the agent saw the tick and chose
+-- not to act (still counts toward the budget). market_id + stake_usdc
+-- are null for HOLD ticks.
+create table if not exists agent_decisions (
+  id            bigserial primary key,
+  source        text not null,                       -- 'contest' | 'challenge'
+  event_id      bigint not null,                     -- contest id or challenge id
+  agent_id      bigint not null,
+  operator      text not null,
+  tick_idx      int not null,
+  action        text not null,                       -- OPEN_YES | OPEN_NO | HEDGE_YES | HEDGE_NO | HOLD
+  market_id     bigint,
+  stake_usdc    numeric(38, 0),
+  tx_hash       text,
+  rationale     text,
+  decided_at    timestamptz not null default now(),
+  unique (source, event_id, agent_id, tick_idx)
+);
+create index if not exists agent_decisions_event_idx
+  on agent_decisions(source, event_id);
+create index if not exists agent_decisions_agent_idx
+  on agent_decisions(agent_id, decided_at desc);
 
 -- Per-contest pinned market set. When the coordinator opens an Analyst
 -- contest, it selects N open Arcana markets up-front and persists them

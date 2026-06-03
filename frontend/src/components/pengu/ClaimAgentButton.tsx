@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useOperatorAddress } from "@/hooks/useAuth";
 import { useArcWrite } from "@/hooks/useArcWrite";
 import { CONTRACTS, publicClient } from "@/lib/arc";
-import { agentRegistryAbi, fetchAgents } from "@/lib/agents";
+import { agentRegistryAbi, fetchAgents, invalidateAgentsCache } from "@/lib/agents";
 import { friendlyError, rawErrorDetail } from "@/lib/errors";
 import { reportEvent } from "@/lib/report";
 
@@ -111,6 +111,9 @@ export function ClaimAgentButton({
       });
       await publicClient.waitForTransactionReceipt({ hash });
       reportEvent("agent_created", { address });
+      // Invalidate the agents cache so the post-claim refresh actually
+      // re-reads the chain (instead of returning the pre-claim count).
+      invalidateAgentsCache(address);
       // Tick the count locally so a second click in the same session can't
       // race past the cap before the parent's onClaimed refresh lands.
       setCount((c) => (c == null ? 1 : c + 1));

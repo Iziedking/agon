@@ -8,6 +8,7 @@ import { runContestById } from "./runContestById.js";
 import { findActiveChallenges, resolveChallengeById } from "./runChallengeById.js";
 import { startArcanaClaimerLoop } from "../lib/arcanaClaimer.js";
 import { pinArcanaMarketsForContest } from "../lib/arcanaPins.js";
+import { startTickScheduler } from "./predictionTicks.js";
 
 /// Self-driving contest loop. With a funded COORDINATOR_PRIVATE_KEY in place, the
 /// coordinator opens a contest, streams its standings over the window, funds Scout
@@ -270,6 +271,14 @@ export async function startAutopilot(broadcast: (message: unknown) => void): Pro
   // winning agents collect their USDC from Arcana without a manual nudge.
   void startArcanaClaimerLoop().catch((err) =>
     console.error("arcana claimer crashed:", err instanceof Error ? err.message : err),
+  );
+
+  // Tick scheduler: drives per-agent prediction-market decisions across
+  // the trade window for Analyst contests and Prediction challenges.
+  // Spreads tier-gated ticks evenly so the live page tells a real-time
+  // story (vs the old one-pass-per-contest pattern).
+  void startTickScheduler(broadcast).catch((err) =>
+    console.error("tick scheduler crashed:", err instanceof Error ? err.message : err),
   );
 
   for (let cycle = 0; ; cycle++) {

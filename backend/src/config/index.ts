@@ -122,6 +122,12 @@ const envSchema = z.object({
   //
   // The Circle Arc Testnet faucet refreshes ~$20 USDC per 2 hours
   // (~$240/day capacity), so the $50/day default cap is well within budget.
+  // PREDICTION events hold for Arcana when this is false (default): if no
+  // open Arcana markets exist at settlement time, the runner returns empty
+  // results and the coordinator cancels the contest/challenge and refunds.
+  // Set ANALYST_ALLOW_SYNTHETIC=1 to keep the legacy synthetic Brier
+  // fallback (dev / no-Arcana environments only).
+  ANALYST_ALLOW_SYNTHETIC: z.coerce.boolean().default(false),
   ANALYST_AUTOFUND: z.coerce.boolean().default(true),
   // Per-tier drip amounts in whole USDC. Four comma-separated values for
   // tiers 1..4 (tier 0 is ineligible for Analyst Arcana contests). Defaults
@@ -132,6 +138,13 @@ const envSchema = z.object({
   ANALYST_AUTOFUND_USDC: z.coerce.number().nonnegative().optional(),
   ANALYST_AUTOFUND_DAILY_USD: z.coerce.number().nonnegative().default(50),
   ANALYST_AUTOFUND_MIN_BALANCE: z.coerce.number().nonnegative().default(1),
+
+  // Phase 1 prediction-tick scheduler. When true (default), agents make
+  // multiple tier-gated decisions across the trade window via the
+  // coordinator's tick scheduler. The legacy single-pass analyst runner
+  // gates its own trade-creation logic so we don't double-trade. Set to
+  // 0 to disable the scheduler and revert to single-pass behavior.
+  PREDICTION_TICKS: z.coerce.boolean().default(true),
 });
 
 const addr = z
@@ -279,6 +292,10 @@ export const config = {
     address: env.ARCANA_MARKETS_ADDRESS,
     startBlock: env.ARCANA_START_BLOCK,
     indexing: env.ARCANA_INDEXING,
+  },
+  analyst: {
+    allowSyntheticFallback: env.ANALYST_ALLOW_SYNTHETIC,
+    predictionTicks: env.PREDICTION_TICKS,
   },
   analystAutofund: {
     enabled: env.ANALYST_AUTOFUND,

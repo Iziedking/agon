@@ -11,7 +11,8 @@ import { SolverRunner } from "../runners/solver.js";
 import type { AgentResult, ContestEntryInput } from "../runners/types.js";
 import { fundHotWallets } from "./contestOps.js";
 import { merkleRoot, payoutLeaf } from "./merkle.js";
-import { computePayouts, computePnlWeightedPayouts, isArcanaResults } from "./payouts.js";
+import { computePayoutsForMode, normalizeScoringMode } from "./payouts.js";
+import { creditPoints } from "./reputation.js";
 import { applyTraitMultipliers, awardPlacementTraits, fetchAgentMultipliers } from "./traits.js";
 import {
   applyTrainingMultipliers,
@@ -408,12 +409,46 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
 
       const pot = ch.stake * BigInt(entrants);
       const fee = (pot * BigInt(ch.platformFeeBps)) / 10_000n;
-      // PREDICTION challenges that routed through Arcana split the pot by
-      // realized + marked-to-market PnL (30% participation flat, 70% by
-      // positive PnL weight); everything else uses the rank-based curve.
-      payouts = isArcanaResults(results)
-        ? computePnlWeightedPayouts(results, pot - fee)
-        : computePayouts(results, pot - fee);
+      // Dispatcher reads the challenge's scoring_mode. Non-Arcana
+      // challenges fall back to rank-based; Arcana challenges use
+      // pnl_mtm / pnl_realized / volume depending on what the creator
+      // picked at create time.
+      const modeRow = await query<{ scoring_mode: string | null }>(
+        "select scoring_mode from challenges where id = $1",
+        [challengeId],
+      );
+      const scoringMode = normalizeScoringMode(modeRow.rows[0]?.scoring_mode);
+
+      // PNL_REALIZED gate (Phase 3): same logic as runContestById. Bail
+      // early if pinned markets unresolved and under 48h. Resolver sweep
+      // retries every 60s.
+      if (scoringMode === "pnl_realized") {
+        const { rows: pending } = await query<{ resolved: boolean }>(
+          `select coalesce(m.resolved, false) as resolved
+             from contest_arcana_markets pm
+             left join arcana_markets m on m.market_id = pm.market_id
+            where pm.contest_id = $1`,
+          [challengeId],
+        );
+        const unresolved = pending.filter((r) => !r.resolved);
+        if (unresolved.length > 0) {
+          const resolveDeadlineMs = Number(ch.resolveDeadline) * 1000;
+          const elapsedMs = Date.now() - resolveDeadlineMs;
+          const TIMEOUT_MS = 48 * 60 * 60 * 1000;
+          if (elapsedMs < TIMEOUT_MS) {
+            const remaining = Math.round((TIMEOUT_MS - elapsedMs) / 1000 / 60);
+            console.log(
+              `challenge ${challengeId}: PNL_REALIZED waiting on ${unresolved.length} unresolved market(s), ${remaining}min until timeout`,
+            );
+            return;
+          }
+          console.log(
+            `challenge ${challengeId}: PNL_REALIZED 48h timeout — settling on resolved markets only`,
+          );
+        }
+      }
+
+      payouts = computePayoutsForMode(scoringMode, results, pot - fee);
       if (payouts.length === 0) {
         // A LOCKED challenge can only be cancelled after its resolve deadline,
         // so leave it; if it never scores, the deadline path above cancels it
@@ -437,6 +472,12 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
       await awardPlacementTraits("challenge", challengeId, results).catch((err) =>
         console.error(`challenge ${challengeId}: placement trait awards failed:`, err instanceof Error ? err.message : err),
       );
+
+      // Credit Cycles to challenge participants via PointsLedger. Was
+      // missing — only contests credited cycles, so challenge wins
+      // showed 0 cycles on the leaderboard. cType uses the same family
+      // mapping as the runner so the on-chain event is tagged correctly.
+      await creditPoints(challengeId, cType, results);
     }
 
     const root = merkleRoot(payouts.map((p) => payoutLeaf(p.operator, p.amount)));

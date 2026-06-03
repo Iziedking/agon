@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { StandingsEntry, AgentProgress } from "@/lib/live";
+import type { StandingsEntry, AgentProgress, TickMessage } from "@/lib/live";
 
 /// Watches successive standings frames and surfaces a one-line "what just
 /// happened" narrative for the focused /live stage. The line replaces
@@ -18,9 +18,11 @@ const QUIET_FALLBACK_MS = 6000;
 export function useLiveNarrative(
   entries: StandingsEntry[],
   agentName: (id: number) => string,
+  lastTick?: TickMessage | null,
 ): string {
   const prev = useRef<StandingsEntry[]>([]);
   const lastEventAt = useRef<number>(0);
+  const lastTickSeen = useRef<TickMessage | null>(null);
   const [line, setLine] = useState<string>("live · waiting for first frame");
 
   useEffect(() => {
@@ -37,6 +39,23 @@ export function useLiveNarrative(
     }
     prev.current = entries;
   }, [entries, agentName]);
+
+  // Tick scheduler hint: the WS pushes a {type: "tick"} the moment an
+  // agent's per-tick LLM decision lands on chain. Render it immediately
+  // so the narration ticks faster than the next standings broadcast.
+  useEffect(() => {
+    if (!lastTick) return;
+    if (lastTickSeen.current === lastTick) return; // same reference, already handled
+    lastTickSeen.current = lastTick;
+    if (lastTick.action === "HOLD") return; // HOLD ticks aren't worth a narration beat
+    const name = agentName(lastTick.agentId);
+    const where = lastTick.marketId != null ? `#${lastTick.marketId}` : "";
+    const verb =
+      lastTick.action === "OPEN_YES" || lastTick.action === "HEDGE_YES" ? "bet YES" : "bet NO";
+    const flavor = lastTick.action.startsWith("HEDGE") ? "hedged " : "";
+    setLine(`${name} ${flavor}${verb} on ${where}`.trim());
+    lastEventAt.current = Date.now();
+  }, [lastTick, agentName]);
 
   // After a quiet period, soften the line so it doesn't show a stale event
   // as the most-recent thing for minutes on end.

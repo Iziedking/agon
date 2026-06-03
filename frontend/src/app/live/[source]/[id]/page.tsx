@@ -52,7 +52,7 @@ export default function FocusedWatcherPage() {
 }
 
 function ContestFocus({ id }: { id: number }) {
-  const { connected, standings, pinnedArcana } = useContestSocket();
+  const { connected, standings, pinnedArcana, lastTick } = useContestSocket();
   const [c, setC] = useState<Contest | null | undefined>(undefined);
   const [arcanaPins, setArcanaPins] = useState<PinnedMarket[]>([]);
 
@@ -127,6 +127,7 @@ function ContestFocus({ id }: { id: number }) {
                       ? arcanaPins
                       : undefined
                 }
+                lastTick={lastTick && lastTick.source === "contest" && lastTick.eventId === id ? lastTick : null}
               />
             </div>
             <aside className="lg:col-span-4">
@@ -141,7 +142,7 @@ function ContestFocus({ id }: { id: number }) {
 }
 
 function ChallengeFocus({ id }: { id: number }) {
-  const { connected, challengeStandings } = useContestSocket();
+  const { connected, challengeStandings, lastTick } = useContestSocket();
   const [ch, setCh] = useState<Challenge | null | undefined>(undefined);
   const [arcanaPins, setArcanaPins] = useState<PinnedMarket[]>([]);
 
@@ -212,6 +213,7 @@ function ChallengeFocus({ id }: { id: number }) {
                 stageKind={stageKind}
                 eventId={id}
                 pinnedArcanaMarkets={arcanaPins.length > 0 ? arcanaPins : undefined}
+                lastTick={lastTick && lastTick.source === "challenge" && lastTick.eventId === id ? lastTick : null}
               />
             </div>
             <aside className="lg:col-span-4">
@@ -281,6 +283,7 @@ function StageWithNarrative({
   stageKind,
   eventId,
   pinnedArcanaMarkets,
+  lastTick,
 }: {
   entries: StandingsEntry[];
   stageKind: StageKind;
@@ -291,11 +294,14 @@ function StageWithNarrative({
   /// coordinator pinned at open. Lets the stage render the menu before
   /// any agent enters.
   pinnedArcanaMarkets?: import("@/components/redesign/stages/PredictionStage").PinnedMarket[];
+  /// Latest tick from the prediction scheduler scoped to this event.
+  /// Pre-filtered by source + eventId so the hook sees only relevant ticks.
+  lastTick?: import("@/lib/live").TickMessage | null;
 }) {
   const ids = useMemo(() => entries.map((e) => e.agentId), [entries]);
   const names = useAgentNames(ids);
   const nameOf = (id: number) => nameFor(names, id);
-  const narrative = useLiveNarrative(entries, nameOf);
+  const narrative = useLiveNarrative(entries, nameOf, lastTick);
   return (
     <>
       <div className="mb-3 flex flex-wrap items-center gap-3 font-mono text-[11px] uppercase tracking-[0.16em]">

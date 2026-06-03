@@ -12,7 +12,10 @@ import { fetchLlmRuns, type LlmRun } from "@/lib/llmRuns";
 /// viewer to infer it from grid cells. Renders nothing while the contest
 /// is still in the open window (no solves yet).
 
-const POLL_MS = 4000;
+// 8s cadence: standings come in via the WS so the in-flight stage stays
+// real-time; this poll only backfills the audit-row panel underneath which
+// is fine on a slower beat. Halves auth-service load vs the previous 4s.
+const POLL_MS = 8000;
 
 interface Props {
   /// The contest or challenge id. The backend stores both kinds in

@@ -55,10 +55,56 @@ export async function getMarket(id: bigint): Promise<ArcanaMarket> {
   };
 }
 
-/// Best-effort batch read. Falls back to sequential if multicall isn't
-/// available on the RPC. Use this for the live stage and admin heartbeat.
+/// Batch read via viem multicall — single eth_call for the whole list,
+/// instead of N sequential RPC round-trips. Falls back to per-id reads
+/// when multicall isn't available on the RPC (unlikely on Arc but the
+/// fallback keeps dev environments resilient).
 export async function getMarkets(ids: bigint[]): Promise<ArcanaMarket[]> {
-  return Promise.all(ids.map(getMarket));
+  if (ids.length === 0) return [];
+  try {
+    const results = await publicClient.multicall({
+      contracts: ids.map((id) => ({
+        address: ARCANA,
+        abi: arcanaMarketsAbi,
+        functionName: "markets" as const,
+        args: [id] as const,
+      })),
+      allowFailure: true,
+    });
+    return results.map((r, i) => {
+      if (r.status !== "success" || !r.result) {
+        // Multicall succeeded but this slot reverted (id out of range or
+        // similar). Return a placeholder so the caller's array stays
+        // aligned with ids; isOpen() filters it out anyway.
+        return {
+          id: ids[i]!,
+          title: "",
+          category: "",
+          yesPool: 0n,
+          noPool: 0n,
+          endTime: 0n,
+          resolved: false,
+          cancelled: true,
+        };
+      }
+      const m = r.result as unknown as readonly [bigint, string, string, bigint, bigint, bigint, boolean, boolean];
+      return {
+        id: m[0],
+        title: m[1],
+        category: m[2],
+        yesPool: m[3],
+        noPool: m[4],
+        endTime: m[5],
+        resolved: m[6],
+        cancelled: m[7],
+      };
+    });
+  } catch {
+    // Multicall unavailable (extremely rare on Arc). Fall back to
+    // sequential reads so the heartbeat still works in dev environments
+    // with a stripped RPC.
+    return Promise.all(ids.map(getMarket));
+  }
 }
 
 /// Current odds returned by the contract. Both numerator and denominator are

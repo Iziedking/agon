@@ -12,7 +12,7 @@ import type { AgentResult, ContestEntryInput } from "../runners/types.js";
 import { fundHotWallets } from "./contestOps.js";
 import { applyReputation, creditPoints, postValidatorFeedback, qualifiedField } from "./reputation.js";
 import { merkleRoot, payoutLeaf } from "./merkle.js";
-import { computePayouts, computePnlWeightedPayouts, isArcanaResults } from "./payouts.js";
+import { computePayoutsForMode, normalizeScoringMode } from "./payouts.js";
 import { applyTraitMultipliers, awardPlacementTraits, fetchAgentMultipliers } from "./traits.js";
 import {
   applyTrainingMultipliers,
@@ -181,13 +181,45 @@ export async function runContestById(contestId: number, broadcast: (message: unk
 
   const platformFee = (c.prizePool * BigInt(c.platformFeeBps)) / 10_000n;
   const claimable = c.prizePool - platformFee;
-  // Analyst contests that ran through Arcana use the PnL-weighted curve so
-  // any qualifying agent shares the pool, weighted by their realized +
-  // marked-to-market PnL. Other contest types fall back to the rank-based
-  // top-two curve.
-  const payouts = isArcanaResults(results)
-    ? computePnlWeightedPayouts(results, claimable)
-    : computePayouts(results, claimable);
+  // Pick the payout curve based on the creator's scoring_mode (Arcana
+  // contests only — Scout/Solver fall through to the rank-based curve
+  // inside the dispatcher). Default null = pnl_mtm.
+  const modeRow = await query<{ scoring_mode: string | null; end_block: string | null }>(
+    "select scoring_mode, created_block::text as end_block from contests where id = $1",
+    [contestId],
+  );
+  const scoringMode = normalizeScoringMode(modeRow.rows[0]?.scoring_mode);
+
+  // PNL_REALIZED gate: if any pinned market is still unresolved and we're
+  // under the 48h timeout, bail. The autopilot sweeper retries every 60s
+  // and will pick this contest up once markets resolve. Past 48h, we
+  // settle with what's resolved (treat unresolved positions as 0 PnL).
+  if (scoringMode === "pnl_realized") {
+    const { rows: pending } = await query<{ market_id: string; resolved: boolean }>(
+      `select pm.market_id, coalesce(m.resolved, false) as resolved
+         from contest_arcana_markets pm
+         left join arcana_markets m on m.market_id = pm.market_id
+        where pm.contest_id = $1`,
+      [contestId],
+    );
+    const unresolved = pending.filter((r) => !r.resolved);
+    if (unresolved.length > 0) {
+      const elapsedMs = Date.now() - endsAtMs;
+      const TIMEOUT_MS = 48 * 60 * 60 * 1000;
+      if (elapsedMs < TIMEOUT_MS) {
+        const remaining = Math.round((TIMEOUT_MS - elapsedMs) / 1000 / 60);
+        console.log(
+          `contest ${contestId}: PNL_REALIZED waiting on ${unresolved.length} unresolved market(s), ${remaining}min until timeout`,
+        );
+        return;
+      }
+      console.log(
+        `contest ${contestId}: PNL_REALIZED 48h timeout — settling with ${pending.length - unresolved.length} resolved market(s), unresolved positions get 0 PnL`,
+      );
+    }
+  }
+
+  const payouts = computePayoutsForMode(scoringMode, results, claimable);
 
   // Persist the payout tree (in leaf order) so the claim-proof endpoint can
   // rebuild the exact tree and serve each winner their proof.

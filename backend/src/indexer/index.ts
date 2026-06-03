@@ -509,7 +509,11 @@ async function reconcileArcanaMarkets(n: number = 25) {
   console.log(`arcana reconcile: ${markets.length} markets read, ${open} currently open`);
 }
 
-const ARCANA_RECONCILE_EVERY_MS = 60_000;
+// Reconcile runs in the background to pick up new Arcana markets that were
+// created without our indexer seeing an event yet. 5 minutes is plenty
+// because the event subscription already catches activity in real time;
+// reconcile is a safety net for empty markets and resolution backfill.
+const ARCANA_RECONCILE_EVERY_MS = 300_000;
 
 async function arcanaLoop() {
   if (!config.arcana.indexing) {

@@ -599,6 +599,62 @@ app.get("/admin/events", async (c) => {
   return c.json({ events: rows });
 });
 
+// Set the scoring_mode for a contest or challenge after creation. Called
+// by the create-modal once the on-chain tx confirms. Accepts one of:
+// pnl_mtm | pnl_realized | volume. Falls through to pnl_mtm if anything
+// else is provided. Auth-gated so only the creator can set their event.
+app.post("/events/:source/:id/scoring-mode", requireAuth, async (c) => {
+  const operator = (c.get("address") as string).toLowerCase();
+  const source = c.req.param("source");
+  const id = Number(c.req.param("id"));
+  if (!["contest", "challenge"].includes(source) || !Number.isFinite(id)) {
+    return c.json({ error: "bad source or id" }, 400);
+  }
+  const body = await c.req.json<{ mode?: string }>();
+  const allowed = ["pnl_mtm", "pnl_realized", "volume"];
+  const mode = body.mode && allowed.includes(body.mode) ? body.mode : "pnl_mtm";
+
+  if (source === "contest") {
+    const { rows } = await query<{ sponsor: string }>(
+      "select sponsor from contests where id = $1",
+      [id],
+    );
+    if (!rows[0]) return c.json({ error: "contest not found" }, 404);
+    if (rows[0].sponsor.toLowerCase() !== operator) {
+      return c.json({ error: "not the sponsor" }, 403);
+    }
+    await query("update contests set scoring_mode = $1 where id = $2", [mode, id]);
+  } else {
+    const { rows } = await query<{ creator: string }>(
+      "select creator from challenges where id = $1",
+      [id],
+    );
+    if (!rows[0]) return c.json({ error: "challenge not found" }, 404);
+    if (rows[0].creator.toLowerCase() !== operator) {
+      return c.json({ error: "not the creator" }, 403);
+    }
+    await query("update challenges set scoring_mode = $1 where id = $2", [mode, id]);
+  }
+  return c.json({ ok: true, mode });
+});
+
+// Read the scoring_mode for a contest or challenge so the live page can
+// show "scored by mark-to-market PnL" or similar in the eyebrow.
+app.get("/events/:source/:id/scoring-mode", async (c) => {
+  const source = c.req.param("source");
+  const id = Number(c.req.param("id"));
+  if (!["contest", "challenge"].includes(source) || !Number.isFinite(id)) {
+    return c.json({ mode: "pnl_mtm" });
+  }
+  const table = source === "contest" ? "contests" : "challenges";
+  const { rows } = await query<{ scoring_mode: string | null }>(
+    `select scoring_mode from ${table} where id = $1`,
+    [id],
+  );
+  const mode = rows[0]?.scoring_mode ?? "pnl_mtm";
+  return c.json({ mode });
+});
+
 // Pinned Arcana markets for a specific event (contest or challenge). Returns
 // the market list the coordinator pinned at open so the live page can show
 // the round's menu before any agent has placed a trade. Works for both
@@ -1858,10 +1914,24 @@ app.get("/leaderboard", async (c) => {
        pa.id::text             as primary_agent_id,
        pa.skin                 as primary_skin
      from operators op
-     left join (select operator, count(distinct contest_id) as entered from entries group by operator) e
-       on e.operator = op.address
-     left join (select operator, count(distinct contest_id) as wins, sum(amount) as earned from payouts group by operator) p
-       on p.operator = op.address
+     -- Entries: union of contest + challenge participation so the
+     -- "ENTERED" column reflects everything the operator showed up for.
+     left join (
+       select operator, count(*) as entered from (
+         select distinct operator, contest_id::text as event_id, 'c' as src from entries
+         union all
+         select distinct operator, challenge_id::text as event_id, 'h' as src from challenge_entries
+       ) all_entries group by operator
+     ) e on e.operator = op.address
+     -- Wins + earnings: union of contest payouts and challenge payouts so
+     -- challenge winners actually count toward WINS / EARNED.
+     left join (
+       select operator, count(*) as wins, sum(amount) as earned from (
+         select operator, contest_id::text as event_id, amount from payouts
+         union all
+         select operator, challenge_id::text as event_id, amount from challenge_payouts
+       ) all_payouts group by operator
+     ) p on p.operator = op.address
      left join (select owner, sum(reputation) as reputation from agents group by owner) ag
        on ag.owner = op.address
      left join lateral (
@@ -1872,7 +1942,12 @@ app.get("/leaderboard", async (c) => {
         order by a.id
         limit 1
      ) pa on true
-     where op.address in (select distinct operator from entries)
+     -- Include anyone who entered a contest OR a challenge.
+     where op.address in (
+       select distinct operator from entries
+       union
+       select distinct operator from challenge_entries
+     )
      order by earned desc nulls last, wins desc, cycles desc, entered desc
      limit $1`,
     [limit],

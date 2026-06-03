@@ -46,6 +46,11 @@ export type AgentProgress =
   | {
       kind: "analyst";
       calls: Array<{ p: number; outcome: 0 | 1; correct: boolean }>;
+      /// Phase 1 tick model: how many decision ticks the agent has used
+      /// out of their tier-derived budget. Drives the "T 3/8" chip on
+      /// the live stage so viewers see who's spent their decisions.
+      ticksUsed?: number;
+      ticksBudget?: number;
       /// Arcana Markets positions the agent took this round, when the
       /// runner routed through Arcana instead of (or in addition to) the
       /// synthetic Brier-scored question loop. Empty / undefined when the

@@ -83,10 +83,15 @@ export async function creditPoints(contestId: number, cType: number, results: Ag
     const key = s.r.operator.toLowerCase();
     perOp.set(key, (perOp.get(key) ?? 0) + rewardForRank(s.rank).points);
   }
-  try {
-    const wallet = coordinatorWallet();
-    for (const [operator, pts] of perOp) {
-      if (pts <= 0) continue;
+  const wallet = coordinatorWallet();
+  let credited = 0;
+  let failed = 0;
+  // Per-operator try/catch so one revert doesn't poison the rest of the
+  // loop. Failure surfaces the actual revert reason so a missing-role
+  // setup issue is visible in the logs instead of swallowed silently.
+  for (const [operator, pts] of perOp) {
+    if (pts <= 0) continue;
+    try {
       const hash = await wallet.writeContract({
         address: config.contracts.PointsLedger,
         abi: pointsAbi,
@@ -94,11 +99,18 @@ export async function creditPoints(contestId: number, cType: number, results: Ag
         args: [operator as `0x${string}`, BigInt(pts), BigInt(contestId), cType],
       } as never);
       await publicClient.waitForTransactionReceipt({ hash });
+      credited++;
+    } catch (err) {
+      failed++;
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(
+        `contest/challenge ${contestId}: credit ${pts} cycles → ${operator} failed: ${msg.slice(0, 200)}`,
+      );
     }
-    console.log(`contest ${contestId}: credited Cycles to ${perOp.size} operator(s)`);
-  } catch (err) {
-    console.error(`contest ${contestId}: credit points failed:`, err instanceof Error ? err.message : err);
   }
+  console.log(
+    `contest/challenge ${contestId}: credited ${credited}/${perOp.size} operator(s)${failed > 0 ? ` (${failed} failed)` : ""}`,
+  );
 }
 
 /// ERC-8004 feedback from the validator wallet, one call per scored agent. The

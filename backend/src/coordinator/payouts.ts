@@ -1,4 +1,8 @@
 import type { AgentResult } from "../runners/types.js";
+import {
+  volumeWeightedPayouts as scoringVolumePayouts,
+  type ScoringMode,
+} from "../scoring/prediction.js";
 
 /// Turns ranked runner results into the exact (operator, amount) payouts the
 /// merkle tree encodes. The sum must not exceed the claimable pool, or late
@@ -29,6 +33,44 @@ export function computePayouts(results: AgentResult[], claimable: bigint): Payou
 /// settlement path to switch payout curves.
 export function isArcanaResults(results: AgentResult[]): boolean {
   return results.some((r) => (r.detail as { source?: string } | undefined)?.source === "arcana");
+}
+
+/// Normalize a scoring_mode column value (may be null/undefined/unknown
+/// string) into the canonical ScoringMode enum. Unknown / null defaults
+/// to pnl_mtm so existing contests without the column still settle.
+export function normalizeScoringMode(raw: string | null | undefined): ScoringMode {
+  if (raw === "pnl_realized" || raw === "volume" || raw === "pnl_mtm") return raw;
+  return "pnl_mtm";
+}
+
+/// Dispatcher used by runContestById and runChallengeById to pick the
+/// payout curve. Scoring mode wins when results came from Arcana; the
+/// legacy rank-based 60/40 still fires for non-Arcana contests (Scout,
+/// Solver) so this is a no-op for those.
+export function computePayoutsForMode(
+  mode: ScoringMode,
+  results: AgentResult[],
+  claimable: bigint,
+): Payout[] {
+  if (!isArcanaResults(results)) return computePayouts(results, claimable);
+  if (mode === "volume") {
+    // For volume mode, score IS the volume the agent staked. The Arcana
+    // analyst runner already populates score from PnL today, so the
+    // volume mode falls back to the existing per-agent positions count
+    // via detail.marketsTraded when set, or just the score number.
+    // We pass through to scoringVolumePayouts which expects volumeUsdc6.
+    const volumeAgents = results.map((r) => {
+      const det = r.detail as { totalStakeUsdc6?: string } | undefined;
+      const vol = det?.totalStakeUsdc6 ? BigInt(det.totalStakeUsdc6) : BigInt(Math.round(r.score) * 1_000_000);
+      return { operator: r.operator, volumeUsdc6: vol };
+    });
+    return scoringVolumePayouts(volumeAgents, claimable);
+  }
+  // pnl_mtm and pnl_realized both use the same 30/70 curve here; the
+  // difference is WHEN the runner computed the underlying score (mtm
+  // at close vs realized after markets resolve). Phase 3 sweeper gates
+  // the pnl_realized path to wait for resolution.
+  return computePnlWeightedPayouts(results, claimable);
 }
 
 /// PnL-weighted payout for Analyst Arcana contests. Realism plan §"Reward

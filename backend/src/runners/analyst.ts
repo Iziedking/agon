@@ -23,6 +23,7 @@ import {
 import { maybeAutofundAgent } from "../lib/autofund.js";
 import { usdcMinimalAbi, arcanaMarketsAbi } from "../chain/abi.js";
 import { fetchPinnedArcanaMarkets } from "../lib/arcanaPins.js";
+import { tickBudget } from "../scoring/prediction.js";
 
 /// AnalystRunner: agents predict the answer to binary questions about live
 /// Arc chain state (current block number, gas price, ArcRun contest count,
@@ -86,7 +87,22 @@ export class AnalystRunner implements Runner {
     if (arcanaMarkets.length > 0) {
       return runArcanaContest(contestId, entries, arcanaMarkets);
     }
-    return runSyntheticContest(contestId, entries, this.questionCount);
+    // No Arcana markets available. Default behavior: return empty results
+    // so the coordinator cancels and refunds. Legacy synthetic Brier
+    // fallback is gated behind ANALYST_ALLOW_SYNTHETIC for dev/no-Arcana
+    // environments. The "empty results" path returns every entrant with
+    // score 0 and a "no_arcana" marker so the live page can render the
+    // waiting placeholder and settlement skips paying out.
+    if (config.analyst.allowSyntheticFallback) {
+      return runSyntheticContest(contestId, entries, this.questionCount);
+    }
+    return entries.map((e) => ({
+      agentId: e.agentId,
+      operator: e.operator,
+      score: 0,
+      detail: { source: "arcana_unavailable", marketsAvailable: 0 },
+      progress: { kind: "analyst" as const, calls: [] },
+    }));
   }
 }
 
@@ -198,6 +214,16 @@ async function runArcanaContest(
       // Calls array stays empty for the Arcana branch; the live stage uses
       // progress.arcana when present and falls back to calls when not. This
       // keeps the wire shape one union, no contest-flag bool needed.
+      // Count tick budget + ticks used so the live stage shows "T 3/8"
+      // per agent. Ticks consumed live in agent_decisions.
+      const budget = tickBudget(e.tier, stats, equipped);
+      const { rows: tickRows } = await query<{ n: string }>(
+        `select count(*)::text as n from agent_decisions
+          where agent_id = $1 and event_id = $2 and source = 'contest'`,
+        [e.agentId, contestId],
+      );
+      const ticksUsed = Number(tickRows[0]?.n ?? 0);
+
       return {
         agentId: e.agentId,
         operator: e.operator,
@@ -217,6 +243,8 @@ async function runArcanaContest(
         progress: {
           kind: "analyst" as const,
           calls: [],
+          ticksUsed,
+          ticksBudget: budget,
           arcana: positions.map((p) => ({
             marketId: Number(p.marketId),
             title: p.title,
@@ -271,6 +299,12 @@ interface ArcanaPosition {
 /// 2. Within the tier cap, ask the LLM to pick up to N more trades.
 /// 3. Submit approve + buyShares for each pick. Persist agent_positions.
 /// 4. Return the full position list (existing + new) for scoring + progress.
+///
+/// When Phase 1 tick mode is enabled (PREDICTION_TICKS=1, the default),
+/// this function ONLY reads positions for scoring — trade creation lives
+/// in the tick scheduler at coordinator/predictionTicks.ts. The runner
+/// becomes a read-only scoring path; the scheduler owns position
+/// generation. Set PREDICTION_TICKS=0 to revert to single-pass behavior.
 async function runArcanaAgent(
   contestId: number,
   entry: ContestEntryInput,
@@ -299,6 +333,13 @@ async function runArcanaAgent(
       resolved: p.resolved,
     };
   });
+
+  // Tick-mode gate: the tick scheduler is the single writer of new
+  // positions. The runner just returns what's there at scoring time.
+  if (config.analyst.predictionTicks) {
+    return existing;
+  }
+
   const traded = new Set(existing.map((p) => p.marketId.toString()));
 
   const slotsLeft = cap.maxMarkets - existing.length;
