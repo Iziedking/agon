@@ -211,6 +211,12 @@ async function pickScoutStrategy(
     perOp = balance / BigInt(opsCount + 1);
   }
 
+  // Scout "answer" is the chosen strategy in numeric form so the live
+  // cell shows "OPS 8 · $1.25" instead of the strategy prose.
+  const scoutAnswer = verdict === "skipped" || verdict === "error"
+    ? null
+    : `OPS ${opsCount} · $${(Number(perOp) / 1e6).toFixed(2)}`;
+
   await recordLlmRun({
     contestId,
     agentId: entry.agentId,
@@ -222,6 +228,7 @@ async function pickScoutStrategy(
     prompt: userPrompt,
     response,
     expected: null,
+    answer: scoutAnswer,
     verdict,
     latencyMs,
     inputTokens,

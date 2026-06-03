@@ -56,6 +56,7 @@ export class SolverRunner implements Runner {
   async run(contestId: number, entries: ContestEntryInput[]): Promise<AgentResult[]> {
     const puzzles = generatePuzzles(contestId, this.puzzleCount);
     const puzzleKinds = puzzles.map((p) => p.kind);
+    const puzzleCards = puzzles.map((p) => p.presentation);
     const real = llmConfigured();
 
     const results = await Promise.all(
@@ -94,6 +95,7 @@ export class SolverRunner implements Runner {
             total: puzzles.length,
             perPuzzleMs,
             puzzleKinds,
+            puzzleCards,
           },
         };
       }),
@@ -225,6 +227,8 @@ async function runGuessPath(
       prompt: puzzle.prompt,
       response: guess,
       expected: puzzle.expected,
+      // Guess path: the response IS the answer (no reasoning).
+      answer: guess,
       verdict: ok ? "correct" : "wrong",
       latencyMs: ms,
       inputTokens: 0,
@@ -367,6 +371,9 @@ async function runLlmPath(
       prompt: userPrompt,
       response,
       expected: puzzle.expected,
+      // Judge already pulled the final answer out of the response; persist
+      // it so the live cell shows "C" instead of "I need to determine which...".
+      answer: extracted || null,
       verdict,
       latencyMs,
       inputTokens,

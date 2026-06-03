@@ -13,14 +13,41 @@ export const STATS: Stat[] = ["power", "precision", "speed", "endurance", "luck"
 export const MAX_STAT_LEVEL = 20;
 
 /// Cost ladder: level N → N+1 costs (N+1) × 50 Cycles. Hardcoded curve.
-export function cyclesCost(fromLevel: number): bigint {
-  return BigInt((fromLevel + 1) * 50);
+/// Add `speedupSteps` to charge extra at queue time for shaving wall-clock.
+export function cyclesCost(fromLevel: number, speedupSteps = 0): bigint {
+  const base = (fromLevel + 1) * 50;
+  const extra = Math.max(0, speedupSteps) * config.training.speedupCyclesPerStep;
+  return BigInt(base + extra);
 }
 
-/// Time ladder: level N → N+1 takes (N+1) × baseSecondsPerLevel real seconds.
-/// Pulled from env so demo mode can shrink it to 30s/level.
-export function secondsCost(fromLevel: number): number {
-  return (fromLevel + 1) * config.training.baseSecondsPerLevel;
+/// Time ladder: level N → N+1 takes (N+1) × baseSecondsPerLevel real seconds,
+/// minus `speedupSteps × speedupSecondsPerStep`, floored at MIN_SECONDS so a
+/// fully sped-up training still has a visible wait. Pulled from env so demo
+/// mode can shrink the whole thing.
+export function secondsCost(fromLevel: number, speedupSteps = 0): number {
+  const base = (fromLevel + 1) * config.training.baseSecondsPerLevel;
+  const cut = Math.max(0, speedupSteps) * config.training.speedupSecondsPerStep;
+  return Math.max(config.training.minSeconds, base - cut);
+}
+
+/// How many speedup steps can meaningfully reduce the wait at this level.
+/// Anything beyond this just bottoms out at MIN_SECONDS while still charging
+/// cycles, so the endpoint clamps the request at this value.
+export function maxSpeedupSteps(fromLevel: number): number {
+  const base = (fromLevel + 1) * config.training.baseSecondsPerLevel;
+  const span = Math.max(0, base - config.training.minSeconds);
+  return Math.floor(span / config.training.speedupSecondsPerStep);
+}
+
+/// Public shape returned by the GET /training endpoint so the UI can render
+/// the speedup slider without duplicating constants.
+export function speedupParams() {
+  return {
+    cyclesPerStep: config.training.speedupCyclesPerStep,
+    secondsPerStep: config.training.speedupSecondsPerStep,
+    minSeconds: config.training.minSeconds,
+    baseSecondsPerLevel: config.training.baseSecondsPerLevel,
+  };
 }
 
 /// Each level of any stat adds 1% to the agent's score multiplier. Six stats

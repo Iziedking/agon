@@ -5,6 +5,19 @@
 /// the live stage renders real activity (cells solved, calls placed, tx
 /// hashes shipped) instead of deriving visuals from the score number. Mirrors
 /// the AgentProgress union in `backend/src/runners/types.ts`.
+/// Standardized presentation card for a single puzzle. Mirror of the
+/// PuzzleCard interface in backend/src/runners/types.ts. Drives the unified
+/// 6-field puzzle layout on the live stage so every family reads in the same
+/// shape, with the variant only in the question text.
+export interface PuzzleCard {
+  family: string;
+  difficulty: 1 | 2 | 3;
+  format: "integer" | "single_word" | "phrase" | "choice";
+  choices?: readonly string[];
+  timeLimitSec: number;
+  toolsAllowed: "none" | "calc" | "calc+web";
+}
+
 export type AgentProgress =
   | {
       kind: "solver";
@@ -15,8 +28,34 @@ export type AgentProgress =
       /// Per-puzzle kind label ("gas" | "classify" | "route"). Drives the
       /// "PUZZLE TYPES THIS ROUND" header on the stage.
       puzzleKinds?: string[];
+      /// Per-puzzle standardized presentation card. Same order as `correct[]`
+      /// and `puzzleKinds[]`. When present, the live stage renders each
+      /// puzzle through the unified PuzzleCardChrome instead of the legacy
+      /// kind-only label.
+      puzzleCards?: PuzzleCard[];
     }
-  | { kind: "analyst"; calls: Array<{ p: number; outcome: 0 | 1; correct: boolean }> }
+  | {
+      kind: "analyst";
+      calls: Array<{ p: number; outcome: 0 | 1; correct: boolean }>;
+      /// Arcana Markets positions the agent took this round. Present when
+      /// the contest routed through Arcana; undefined / empty when it fell
+      /// back to synthetic predictions.
+      arcana?: Array<{
+        marketId: number;
+        title: string;
+        side: "yes" | "no";
+        stakeUsdc: string;
+        txHash?: string;
+        entryYesProb: number;
+        currentYesProb: number;
+        /// Marked-to-market PnL while open; realized PnL after resolution.
+        /// USDC 6-dec, signed. Sign carries direction.
+        mtmPnLUsdc6: string;
+        /// True after Arcana resolves the market. When true, mtmPnLUsdc6
+        /// is the final on-chain payout (positive on win, negative on loss).
+        resolved?: boolean;
+      }>;
+    }
   | {
       kind: "scout";
       opsCount: number;
@@ -51,6 +90,17 @@ export interface ContestOpenMessage {
   contestId: number;
   contestType?: string;
   endsAt: number; // epoch ms
+  /// For Analyst contests routed through Arcana, the set of markets the
+  /// coordinator pinned at open. Lets the live page show the round's menu
+  /// before any agent enters. Undefined / empty for non-Arcana contests
+  /// and for contests opened when Arcana had no open markets.
+  arcanaMarkets?: Array<{
+    id: number;
+    title: string;
+    category: string;
+    /// Unix seconds.
+    endTime: number;
+  }>;
 }
 
 /// Live preview of a peer challenge while the coordinator scores it. Mirrors the

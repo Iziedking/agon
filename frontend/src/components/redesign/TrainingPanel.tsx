@@ -9,9 +9,12 @@ import {
   cyclesCost,
   fetchTraining,
   finishEarly,
+  maxSpeedupSteps,
+  secondsCost,
   startTraining,
   statDescription,
   type Stat,
+  type SpeedupParams,
   type TrainingState,
 } from "@/lib/training";
 
@@ -30,11 +33,32 @@ function fmtCountdown(target: number): string {
   return `${h}h ${rm.toString().padStart(2, "0")}m`;
 }
 
+/// Fallback speedup params if the server didn't include them (older auth
+/// service). Keeps the UI usable; the server will clamp/reject anyway.
+const FALLBACK_SPEEDUP: SpeedupParams = {
+  cyclesPerStep: 50,
+  secondsPerStep: 900,
+  minSeconds: 60,
+  baseSecondsPerLevel: 3600,
+};
+
+function fmtMinutes(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.round(seconds / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  const rm = m % 60;
+  return rm > 0 ? `${h}h ${rm}m` : `${h}h`;
+}
+
 export function TrainingPanel({ agentId }: { agentId: number }) {
   const [state, setState] = useState<TrainingState | null | "loading">("loading");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [, tick] = useState(0);
+  // Per-stat speedup step count, set by clicking the FAST chip on a row.
+  // Cleared on successful start so the next training picks up at 0.
+  const [speedupByStat, setSpeedupByStat] = useState<Partial<Record<Stat, number>>>({});
 
   const refresh = useCallback(async () => {
     const next = await fetchTraining(agentId);
@@ -74,12 +98,16 @@ export function TrainingPanel({ agentId }: { agentId: number }) {
   const active = state.active;
   const activeCompletesAt = active ? Date.parse(active.completesAt) : 0;
   const isActiveComplete = active ? Date.now() >= activeCompletesAt : false;
+  const speedupParams = state.speedup ?? FALLBACK_SPEEDUP;
 
   async function onStart(stat: Stat) {
     setBusy(true); setError(null);
-    const res = await startTraining(agentId, stat);
+    const steps = speedupByStat[stat] ?? 0;
+    const res = await startTraining(agentId, stat, steps);
     setBusy(false);
     if (!res.ok) { setError(res.error); return; }
+    // Reset the picker for this stat after a successful queue.
+    setSpeedupByStat((prev) => ({ ...prev, [stat]: 0 }));
     await refresh();
   }
   async function onCancel() {
@@ -106,8 +134,18 @@ export function TrainingPanel({ agentId }: { agentId: number }) {
           const isActive = !!active && active.stat === s;
           const trainingTarget = isActive ? active.toLevel : null;
           const trainingPct = trainingTarget ? (trainingTarget / MAX_STAT_LEVEL) * 100 : 0;
-          const cost = cyclesCost(level);
+          const speedupSteps = Math.min(speedupByStat[s] ?? 0, maxSpeedupSteps(level, speedupParams));
+          const cost = cyclesCost(level, speedupSteps, speedupParams.cyclesPerStep);
+          const totalSeconds = secondsCost(level, speedupSteps, speedupParams);
+          const speedupCap = maxSpeedupSteps(level, speedupParams);
           const maxed = level >= MAX_STAT_LEVEL;
+          function cycleSpeedup() {
+            setSpeedupByStat((prev) => {
+              const cur = prev[s] ?? 0;
+              const next = cur >= speedupCap ? 0 : cur + 1;
+              return { ...prev, [s]: next };
+            });
+          }
 
           return (
             <div
@@ -173,13 +211,34 @@ export function TrainingPanel({ agentId }: { agentId: number }) {
                 ) : active ? (
                   <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">LOCKED</span>
                 ) : (
-                  <button
-                    onClick={() => void onStart(s)}
-                    disabled={busy}
-                    className="border border-ink bg-canvas px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-ink hover:bg-canvas-3 disabled:opacity-60"
-                  >
-                    TRAIN · {cost.toLocaleString()} ⊙
-                  </button>
+                  <>
+                    {speedupCap > 0 ? (
+                      <button
+                        onClick={cycleSpeedup}
+                        disabled={busy}
+                        title={
+                          speedupSteps === 0
+                            ? `click to add ${speedupParams.cyclesPerStep}¢ for −${Math.round(speedupParams.secondsPerStep / 60)}m`
+                            : `${speedupSteps}/${speedupCap} speedup applied`
+                        }
+                        className={`border px-2 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] hover:bg-canvas-3 disabled:opacity-60 ${
+                          speedupSteps > 0
+                            ? "border-accent bg-accent text-accent-ink hover:bg-accent-press"
+                            : "border-[color:var(--hairline-strong)] bg-canvas text-ink-2"
+                        }`}
+                      >
+                        {speedupSteps > 0 ? `FAST ${speedupSteps}×` : "+ FAST"}
+                      </button>
+                    ) : null}
+                    <button
+                      onClick={() => void onStart(s)}
+                      disabled={busy}
+                      title={`${fmtMinutes(totalSeconds)} queue`}
+                      className="border border-ink bg-canvas px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-ink hover:bg-canvas-3 disabled:opacity-60"
+                    >
+                      TRAIN · {cost.toLocaleString()} ⊙ · {fmtMinutes(totalSeconds)}
+                    </button>
+                  </>
                 )}
               </div>
             </div>
@@ -190,7 +249,7 @@ export function TrainingPanel({ agentId }: { agentId: number }) {
       {error ? <p className="mt-3 font-mono text-[11px] text-[color:var(--err)]">{error}</p> : null}
       <p className="mt-3 font-mono text-[10px] text-ink-3">
         each level adds 1% to scoring. one training slot per agent. cancel refunds 50% cycles; finish-now charges 2× the
-        un-served time as cycles.
+        un-served time. + FAST adds {speedupParams.cyclesPerStep}¢ per step and shaves {Math.round(speedupParams.secondsPerStep / 60)}m.
       </p>
     </BracketedCell>
   );

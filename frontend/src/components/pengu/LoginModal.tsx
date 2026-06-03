@@ -8,7 +8,7 @@ import { arcTestnet } from "@/lib/arc";
 import { loginWithSigner, signInWithEmail, enrollPasskey } from "@/lib/auth";
 import { useAuth } from "@/hooks/useAuth";
 import { Robot } from "@/components/redesign";
-import { friendlyError } from "@/lib/errors";
+import { friendlyError, rawErrorDetail } from "@/lib/errors";
 import { reportEvent } from "@/lib/report";
 
 /// Login popout, reskinned to arcrun-redesign. Bracketed surface on a warm
@@ -143,7 +143,7 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
   const [circleBusy, setCircleBusy] = useState(false);
   const [enrolling, setEnrolling] = useState(false);
   const [enrolled, setEnrolled] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ friendly: string; raw: string } | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -170,7 +170,7 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
       await refresh();
       reportEvent("login", { context: { method: "wallet" } });
     } catch (e) {
-      setError(friendlyError(e, "sign in failed."));
+      setError({ friendly: friendlyError(e, "sign in failed."), raw: rawErrorDetail(e) });
       reportEvent("login_error", {
         level: "error",
         message: e instanceof Error ? e.message : String(e),
@@ -188,7 +188,7 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
   async function handleEmailSignIn() {
     const trimmed = email.trim();
     if (!trimmed) {
-      setError("enter an email first");
+      setError({ friendly: "enter an email first", raw: "" });
       return;
     }
     setCircleBusy(true);
@@ -199,18 +199,30 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
       reportEvent("login", { context: { method: "email", isNew: result.isNew, seeded: result.seeded } });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
+      const name = e instanceof Error ? e.name : "";
       const lower = msg.toLowerCase();
       let userMsg = friendlyError(e, "couldn't sign in with that email.");
+      // Map the WebAuthn / backend error names to actionable copy. Most
+      // of these mean "you've used this email before but the passkey
+      // doesn't line up", which has a known fix.
       if (lower.includes("not configured")) {
         userMsg = "email login isn't enabled on this server. use a wallet below.";
       } else if (lower.includes("valid email")) {
         userMsg = "that doesn't look like a valid email.";
+      } else if (name === "NotAllowedError" || lower.includes("not allowed")) {
+        userMsg = "cancelled or timed out. try again, or use a different device.";
+      } else if (name === "InvalidStateError" || lower.includes("invalid state")) {
+        userMsg = "this device already has a passkey for this account but it doesn't match our records. clear the site's saved passkey in your password manager and try again, or use a wallet below.";
+      } else if (lower.includes("no credentials") || lower.includes("unknown credential")) {
+        userMsg = "no passkey on this device for this email. sign in on the device you originally registered, then add a passkey here from settings.";
+      } else if (lower.includes("verification failed") || lower.includes("attestation")) {
+        userMsg = "passkey verification failed. clear the saved passkey and try again, or use a wallet below.";
       }
-      setError(userMsg);
+      setError({ friendly: userMsg, raw: rawErrorDetail(e) });
       reportEvent("login_error", {
         level: "error",
         message: msg,
-        context: { method: "email" },
+        context: { method: "email", name },
       });
     } finally {
       setCircleBusy(false);
@@ -236,7 +248,7 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
       } else if (msg.toLowerCase().includes("invalid")) {
         userMsg = "this device already has a passkey for this account.";
       }
-      setError(userMsg);
+      setError({ friendly: userMsg, raw: rawErrorDetail(e) });
       reportEvent("passkey_enroll_error", { level: "error", message: msg });
     } finally {
       setEnrolling(false);
@@ -452,7 +464,14 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
               </AnimatePresence>
 
               {error ? (
-                <p className="mt-4 font-mono text-[11px] text-[color:var(--err)]">{error}</p>
+                <div className="mt-4">
+                  <p className="font-mono text-[11px] text-[color:var(--err)]">{error.friendly}</p>
+                  {error.raw && error.raw !== error.friendly ? (
+                    <p className="mt-1 font-mono text-[10px] leading-[1.4] text-ink-3 break-words">
+                      <span className="text-ink-2">details:</span> {error.raw}
+                    </p>
+                  ) : null}
+                </div>
               ) : null}
             </motion.div>
           </div>

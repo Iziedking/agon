@@ -27,7 +27,9 @@ import {
   STATS,
   MAX_STAT_LEVEL,
   cyclesCost,
+  maxSpeedupSteps,
   secondsCost,
+  speedupParams,
   flushTrainingQueue,
   type Stat,
 } from "../coordinator/training.js";
@@ -184,13 +186,25 @@ app.post("/auth/email/begin", async (c) => {
   const email = readEmail(body);
   if (!email) return c.json({ error: "valid email required" }, 400);
 
-  const credentials = await listCredentialsForEmail(email);
-  if (credentials.length > 0) {
-    const options = await beginAuthentication(email);
-    return c.json({ mode: "login", options });
+  try {
+    const credentials = await listCredentialsForEmail(email);
+    if (credentials.length > 0) {
+      const options = await beginAuthentication(email);
+      return c.json({ mode: "login", options });
+    }
+    const options = await beginRegistration(email);
+    return c.json({ mode: "register", options });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    void logEvent({
+      level: "error",
+      kind: "email_begin_error",
+      message,
+      context: { email },
+      source: "auth",
+    });
+    return c.json({ error: `email begin failed: ${message}` }, 500);
   }
-  const options = await beginRegistration(email);
-  return c.json({ mode: "register", options });
 });
 
 /// Email passkey flow, step 2. The client posts the email, the mode it ran
@@ -585,6 +599,127 @@ app.get("/admin/events", async (c) => {
   return c.json({ events: rows });
 });
 
+// Pinned Arcana markets for a specific event (contest or challenge). Returns
+// the market list the coordinator pinned at open so the live page can show
+// the round's menu before any agent has placed a trade. Works for both
+// contests and challenges because contest_arcana_markets is id-agnostic
+// (contest_id column holds either kind).
+app.get("/events/:source/:id/arcana-pins", async (c) => {
+  const source = c.req.param("source");
+  const id = Number(c.req.param("id"));
+  if (!["contest", "challenge"].includes(source) || !Number.isFinite(id)) {
+    return c.json({ markets: [] });
+  }
+  const { rows } = await query<{
+    market_id: string;
+    title: string;
+    category: string;
+    end_time: string;
+  }>(
+    `select market_id, title, category, extract(epoch from end_time)::bigint::text as end_time
+       from contest_arcana_markets where contest_id = $1 order by market_id asc`,
+    [id],
+  );
+  return c.json({
+    markets: rows.map((r) => ({
+      id: Number(r.market_id),
+      title: r.title,
+      category: r.category,
+      endTime: Number(r.end_time),
+    })),
+  });
+});
+
+// Recent Arcana events feed. Returns the latest N rows from arcana_events
+// for the WHAT'S HAPPENING line and any future debug/admin surface. Public
+// read (events are already on chain).
+app.get("/arcana/feed", async (c) => {
+  const limit = Math.min(Math.max(Number(c.req.query("limit") ?? 20), 1), 100);
+  const { rows } = await query<{
+    event_kind: string;
+    market_id: string;
+    args: Record<string, unknown>;
+    tx_hash: string;
+    block_number: string;
+    created_at: string;
+  }>(
+    `select event_kind, market_id, args, tx_hash, block_number::text, created_at::text
+       from arcana_events order by id desc limit $1`,
+    [limit],
+  );
+  return c.json({
+    events: rows.map((r) => ({
+      kind: r.event_kind,
+      market_id: Number(r.market_id),
+      tx_hash: r.tx_hash,
+      block_number: Number(r.block_number),
+      created_at: r.created_at,
+      args: r.args,
+    })),
+  });
+});
+
+// Arcana Markets heartbeat. Read-only public surface (no admin token needed)
+// so the live page can render an "Arcana status" pip without privileged auth.
+// Returns: contract address, indexer cursor, last reconcile timestamp, open
+// market count, last 5 markets summary. Always responds in under 50ms because
+// everything reads from arcana_markets + arcana_indexer_state (no chain calls).
+app.get("/admin/arcana/state", async (c) => {
+  const [cursorRows, openRows, latestRows, eventCountRows] = await Promise.all([
+    query<{ last_block: string; updated_at: string }>(
+      "select last_block, updated_at from arcana_indexer_state where id = 1",
+    ),
+    query<{ open_count: string }>(
+      `select count(*)::text as open_count from arcana_markets
+        where resolved = false and cancelled = false and end_time > now()`,
+    ),
+    query<{
+      market_id: string;
+      title: string;
+      category: string;
+      end_time: string;
+      yes_pool: string;
+      no_pool: string;
+      resolved: boolean;
+      cancelled: boolean;
+      outcome: boolean | null;
+    }>(
+      `select market_id, title, category, end_time, yes_pool, no_pool, resolved, cancelled, outcome
+         from arcana_markets order by market_id desc limit 5`,
+    ),
+    query<{ total: string; last_event_at: string | null }>(
+      `select count(*)::text as total, max(created_at)::text as last_event_at from arcana_events`,
+    ),
+  ]);
+
+  return c.json({
+    address: config.arcana.address,
+    indexing: config.arcana.indexing,
+    cursor: cursorRows.rows[0]
+      ? {
+          last_block: cursorRows.rows[0].last_block,
+          updated_at: cursorRows.rows[0].updated_at,
+        }
+      : null,
+    open_markets: Number(openRows.rows[0]?.open_count ?? 0),
+    latest: latestRows.rows.map((r) => ({
+      market_id: Number(r.market_id),
+      title: r.title,
+      category: r.category,
+      end_time: r.end_time,
+      yes_pool_usdc: Number(r.yes_pool) / 1e6,
+      no_pool_usdc: Number(r.no_pool) / 1e6,
+      resolved: r.resolved,
+      cancelled: r.cancelled,
+      outcome: r.outcome,
+    })),
+    events: {
+      total: Number(eventCountRows.rows[0]?.total ?? 0),
+      last_event_at: eventCountRows.rows[0]?.last_event_at ?? null,
+    },
+  });
+});
+
 // ----- Claim proofs -----
 
 // Returns the (amount, proof) a winner needs to call claimPrize, rebuilt from
@@ -913,19 +1048,33 @@ app.get("/agents/:id/training", async (c) => {
       }
     : null;
 
-  return c.json({ id: agentId, stats, active, maxLevel: MAX_STAT_LEVEL });
+  return c.json({
+    id: agentId,
+    stats,
+    active,
+    maxLevel: MAX_STAT_LEVEL,
+    speedup: speedupParams(),
+  });
 });
 
 /// Start training a stat. Atomically: validate, debit Cycles from the
 /// operator's row (refused if balance is short), insert into the queue.
+/// `speedupSteps` is optional (default 0): each step adds
+/// TRAINING_SPEEDUP_CYCLES_PER_STEP cycles to the cost and shaves
+/// TRAINING_SPEEDUP_SECONDS_PER_STEP seconds off the wait.
 app.post("/agents/:id/training/start", requireAuth, async (c) => {
   const operator = c.get("address");
   const agentId = Number(c.req.param("id"));
   if (!Number.isFinite(agentId)) return c.json({ error: "invalid agent id" }, 400);
 
-  const { stat } = await c.req.json<{ stat?: string }>();
+  const body = await c.req.json<{ stat?: string; speedupSteps?: number }>();
+  const stat = body.stat;
   if (!stat || !STATS.includes(stat as Stat)) {
     return c.json({ error: `stat must be one of: ${STATS.join(", ")}` }, 400);
+  }
+  const rawSpeedup = Number(body.speedupSteps ?? 0);
+  if (!Number.isFinite(rawSpeedup) || rawSpeedup < 0) {
+    return c.json({ error: "speedupSteps must be a non-negative integer" }, 400);
   }
 
   const ownerErr = await ensureAgentOwnership(operator, agentId);
@@ -946,8 +1095,12 @@ app.post("/agents/:id/training/start", requireAuth, async (c) => {
     return c.json({ error: `${stat} is already at max level (${MAX_STAT_LEVEL})` }, 400);
   }
 
-  const cost = cyclesCost(fromLevel);
-  const secs = secondsCost(fromLevel);
+  // Clamp speedup to whatever still reduces wall-clock at this level. Beyond
+  // the cap, extra cycles only burn budget without improving the time.
+  const cap = maxSpeedupSteps(fromLevel);
+  const speedupSteps = Math.min(Math.floor(rawSpeedup), cap);
+  const cost = cyclesCost(fromLevel, speedupSteps);
+  const secs = secondsCost(fromLevel, speedupSteps);
 
   // Atomic conditional decrement of Cycles. Refused if balance < cost.
   const debit = await query<{ cycles: string }>(
@@ -975,6 +1128,8 @@ app.post("/agents/:id/training/start", requireAuth, async (c) => {
     cyclesSpent: cost.toString(),
     cyclesBalance: debit.rows[0]!.cycles,
     secondsTotal: secs,
+    speedupStepsApplied: speedupSteps,
+    speedupCapAtLevel: cap,
   });
 });
 
@@ -1221,6 +1376,99 @@ import { effectiveStrength, type ContestType, STAT_NAMES as STRENGTH_STAT_NAMES,
 /// the workshop can show "tier × training × traits" with the actual
 /// numbers. Optional ?traits=lucky_charm,puzzle_savant query lets the
 /// user preview a hypothetical loadout.
+// Arcana positions for a single agent. Returns open (unresolved markets),
+// settled (resolved markets with PnL), and aggregate stats. Used by the
+// workshop UI later; safe to expose publicly since each row is already
+// public on the Arcana contract.
+app.get("/agents/:id/arcana-positions", async (c) => {
+  const agentId = Number(c.req.param("id"));
+  if (!Number.isFinite(agentId)) return c.json({ error: "bad agent id" }, 400);
+  const { rows } = await query<{
+    contest_id: string;
+    market_id: string;
+    side: "yes" | "no";
+    stake_usdc: string;
+    entry_yes_pool: string;
+    entry_no_pool: string;
+    tx_hash: string | null;
+    claimed: boolean;
+    claim_tx_hash: string | null;
+    pnl_usdc: string | null;
+    created_at: string;
+    title: string | null;
+    category: string | null;
+    end_time: string | null;
+    resolved: boolean | null;
+    outcome: boolean | null;
+    cur_yes_pool: string | null;
+    cur_no_pool: string | null;
+  }>(
+    `select ap.contest_id, ap.market_id, ap.side, ap.stake_usdc,
+            ap.entry_yes_pool, ap.entry_no_pool, ap.tx_hash, ap.claimed,
+            ap.claim_tx_hash, ap.pnl_usdc, ap.created_at::text,
+            m.title, m.category, m.end_time::text,
+            m.resolved, m.outcome,
+            m.yes_pool as cur_yes_pool, m.no_pool as cur_no_pool
+       from agent_positions ap
+       left join arcana_markets m on m.market_id = ap.market_id
+      where ap.agent_id = $1
+      order by ap.created_at desc
+      limit 200`,
+    [agentId],
+  );
+
+  // Format each row with implied probability deltas the UI can display.
+  const positions = rows.map((r) => {
+    const entryYes = BigInt(r.entry_yes_pool);
+    const entryNo = BigInt(r.entry_no_pool);
+    const entrySum = entryYes + entryNo;
+    const entryYesProb = entrySum > 0n ? Number((entryYes * 10000n) / entrySum) / 10000 : 0.5;
+    const curYes = BigInt(r.cur_yes_pool ?? "0");
+    const curNo = BigInt(r.cur_no_pool ?? "0");
+    const curSum = curYes + curNo;
+    const curYesProb = curSum > 0n ? Number((curYes * 10000n) / curSum) / 10000 : entryYesProb;
+    return {
+      contest_id: Number(r.contest_id),
+      market_id: Number(r.market_id),
+      title: r.title ?? "",
+      category: r.category ?? "",
+      side: r.side,
+      stake_usdc: Number(r.stake_usdc) / 1e6,
+      entry_yes_prob: entryYesProb,
+      current_yes_prob: curYesProb,
+      tx_hash: r.tx_hash,
+      claimed: r.claimed,
+      claim_tx_hash: r.claim_tx_hash,
+      pnl_usdc: r.pnl_usdc != null ? Number(r.pnl_usdc) / 1e6 : null,
+      resolved: r.resolved ?? false,
+      outcome: r.outcome,
+      end_time: r.end_time,
+      created_at: r.created_at,
+    };
+  });
+
+  const open = positions.filter((p) => !p.resolved);
+  const settled = positions.filter((p) => p.resolved);
+  const totalStake = positions.reduce((acc, p) => acc + p.stake_usdc, 0);
+  const realizedPnl = settled.reduce((acc, p) => acc + (p.pnl_usdc ?? 0), 0);
+  const wins = settled.filter((p) => (p.pnl_usdc ?? 0) > 0).length;
+
+  return c.json({
+    agent_id: agentId,
+    open,
+    settled,
+    summary: {
+      positions_total: positions.length,
+      open_count: open.length,
+      settled_count: settled.length,
+      total_stake_usdc: totalStake,
+      realized_pnl_usdc: realizedPnl,
+      win_count: wins,
+      win_rate: settled.length > 0 ? wins / settled.length : null,
+    },
+  });
+});
+
 app.get("/agents/:id/strength", async (c) => {
   const agentId = Number(c.req.param("id"));
   if (!Number.isFinite(agentId)) return c.json({ error: "bad agent id" }, 400);
@@ -1426,6 +1674,7 @@ app.get("/contests/:id/llm-runs", async (c) => {
     prompt: string;
     response: string;
     expected: string | null;
+    answer: string | null;
     verdict: string;
     latency_ms: number;
     input_tokens: number;
@@ -1433,7 +1682,7 @@ app.get("/contests/:id/llm-runs", async (c) => {
     cost_usd: string;
     created_at: Date;
   }>(
-    `select agent_id::text, operator, round_idx, puzzle_idx, kind, model, prompt, response, expected,
+    `select agent_id::text, operator, round_idx, puzzle_idx, kind, model, prompt, response, expected, answer,
             verdict, latency_ms, input_tokens, output_tokens, cost_usd::text, created_at
        from llm_runs
       where contest_id = $1
@@ -1452,6 +1701,7 @@ app.get("/contests/:id/llm-runs", async (c) => {
       prompt: r.prompt,
       response: r.response,
       expected: r.expected,
+      answer: r.answer,
       verdict: r.verdict,
       latencyMs: r.latency_ms,
       inputTokens: r.input_tokens,

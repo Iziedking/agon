@@ -37,6 +37,9 @@ export function friendlyError(e: unknown, fallback = "something went wrong. try 
   if (msg.includes("entity config") || msg.includes("circle is not configured")) {
     return "email sign-in is not available right now.";
   }
+  if (msg.includes("email begin failed") || msg.includes("relation") || msg.includes("does not exist")) {
+    return "the server isn't ready: database migrations haven't run. ask the operator to run npm run migrate.";
+  }
   if (msg.includes("timeout") || msg.includes("timed out") || msg.includes("still pending")) {
     return "the request timed out. it may still land; check arcscan in a minute.";
   }

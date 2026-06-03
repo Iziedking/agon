@@ -7,7 +7,7 @@ import { config } from "../config/index.js";
 import { SolverRunner } from "../runners/solver.js";
 import type { ContestEntryInput } from "../runners/types.js";
 import { merkleRoot, payoutLeaf } from "./merkle.js";
-import { computePayouts } from "./payouts.js";
+import { computePayouts, computePnlWeightedPayouts, isArcanaResults } from "./payouts.js";
 
 /// Runs one full contest on-chain and broadcasts it to the live panel: open and
 /// fund, register agents, score with the Solver, stream standings over the
@@ -106,9 +106,13 @@ export async function runLiveContest(broadcast: (message: unknown) => void): Pro
     await sleep(1500);
   }
 
-  // 6. Settle on-chain with a tiered payout merkle root.
+  // 6. Settle on-chain with a tiered payout merkle root. Arcana-routed
+  // Analyst contests use the PnL-weighted split; everything else falls
+  // back to the rank-based top-two curve.
   const claimable = PRIZE_POOL - (PRIZE_POOL * PLATFORM_FEE_BPS) / 10_000n;
-  const payouts = computePayouts(results, claimable);
+  const payouts = isArcanaResults(results)
+    ? computePnlWeightedPayouts(results, claimable)
+    : computePayouts(results, claimable);
   const leaves = payouts.map((p) => payoutLeaf(p.operator, p.amount));
   const root = merkleRoot(leaves);
   await send(cWallet, { address: engine, abi: engineAbi, functionName: "postScoreRoot", args: [contestId, root] });

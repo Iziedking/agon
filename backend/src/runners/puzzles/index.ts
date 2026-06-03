@@ -13,6 +13,28 @@ import { QUIZ_BANK, type QuizQuestion } from "./quizBank.js";
 
 export type PuzzleKind = "arithmetic" | "classify" | "routing" | "pattern" | "wordcount" | "quiz";
 
+/// Standardized presentation metadata. Every puzzle, regardless of family,
+/// surfaces on the live stage with the same six fields so the audience reads
+/// the same shape every time. The variant is in the question text, not the
+/// chrome. See docs/brandkit/11-realism-plan.md "Solver track".
+export interface PuzzlePresentation {
+  /// Capitalized family tag for the chrome ("QUIZ", "ARITHMETIC", etc).
+  family: string;
+  /// 1 = easy, 2 = medium, 3 = hard. Used by tier-segregated routing.
+  difficulty: 1 | 2 | 3;
+  /// Shape of the expected answer. Drives the answer input on the live stage.
+  format: "integer" | "single_word" | "phrase" | "choice";
+  /// Choice labels when format = "choice"; otherwise undefined.
+  choices?: readonly string[];
+  /// Seconds the agent has before its answer is marked timeout. Pure display
+  /// today; runner enforcement comes with the tier-segregated routing pass.
+  timeLimitSec: number;
+  /// Lowest-tool tier that can answer this honestly. "none" = mental, "calc"
+  /// = code_execution helps, "calc+web" = web_search helps. Used by the
+  /// tier-segregated puzzle router so a tier 1 contest never draws web items.
+  toolsAllowed: "none" | "calc" | "calc+web";
+}
+
 export interface Puzzle {
   /// One of a small set so the stage can display "ARITHMETIC", "ROUTING",
   /// etc. above each panel.
@@ -23,6 +45,9 @@ export interface Puzzle {
   /// strings lowercased + trimmed, etc.) so the LLM has reasonable latitude
   /// in formatting.
   expected: string;
+  /// Standardized presentation for the live stage. Built by each family
+  /// generator so the audience reads one consistent card across all puzzles.
+  presentation: PuzzlePresentation;
 }
 
 /// Build N puzzles for one round. Seed is (contestId * 1009 + roundIdx) so
@@ -78,25 +103,47 @@ function quiz(r: () => number, used: Set<number>): Puzzle {
     kind: "quiz",
     prompt: lines.join("\n"),
     expected: LETTERS[q.correctIndex],
+    presentation: {
+      family: "QUIZ",
+      difficulty: 2,
+      format: "choice",
+      choices: ["A", "B", "C", "D"],
+      timeLimitSec: 30,
+      // Quiz items are factual recall; web_search dominates here, calc adds
+      // nothing. Route quiz items to tier-4-eligible contests only on the
+      // hardcore tier-4-only tier-segregated runs.
+      toolsAllowed: "calc+web",
+    },
   };
 }
 
 // ----- families -----
+
+const ARITHMETIC_PRESENTATION: PuzzlePresentation = {
+  family: "ARITHMETIC",
+  difficulty: 1,
+  format: "integer",
+  timeLimitSec: 20,
+  // Mental math; calc helps but isn't required, no-tool agents can still
+  // win on these.
+  toolsAllowed: "none",
+};
 
 function arithmetic(r: () => number): Puzzle {
   const a = 10 + pick(r, 90);
   const b = 10 + pick(r, 90);
   const op = pick(r, 3);
   if (op === 0) {
-    return { kind: "arithmetic", prompt: `What is ${a} times ${b}? Answer with the integer only.`, expected: String(a * b) };
+    return { kind: "arithmetic", prompt: `What is ${a} times ${b}? Answer with the integer only.`, expected: String(a * b), presentation: ARITHMETIC_PRESENTATION };
   }
   if (op === 1) {
-    return { kind: "arithmetic", prompt: `What is ${a * 100} divided by ${a}? Answer with the integer only.`, expected: String(100) };
+    return { kind: "arithmetic", prompt: `What is ${a * 100} divided by ${a}? Answer with the integer only.`, expected: String(100), presentation: ARITHMETIC_PRESENTATION };
   }
   return {
     kind: "arithmetic",
     prompt: `What is ${a} squared minus ${b}? Answer with the integer only.`,
     expected: String(a * a - b),
+    presentation: ARITHMETIC_PRESENTATION,
   };
 }
 
@@ -119,6 +166,14 @@ function classify(r: () => number): Puzzle {
     kind: "classify",
     prompt: `Classify this Ethereum transaction. The ${hints[label]}. Answer with one word, lowercase: transfer, swap, mint, or bridge.`,
     expected: label,
+    presentation: {
+      family: "CLASSIFY",
+      difficulty: 2,
+      format: "choice",
+      choices: ["transfer", "swap", "mint", "bridge"],
+      timeLimitSec: 25,
+      toolsAllowed: "none",
+    },
   };
 }
 
@@ -139,6 +194,15 @@ function routing(r: () => number): Puzzle {
     kind: "routing",
     prompt: `Routing 100 USDC. ${lines}. Which pool gives the highest output? Answer with one letter: A, B, or C.`,
     expected: pools[bestIdx]!.name,
+    presentation: {
+      family: "ROUTING",
+      difficulty: 2,
+      format: "choice",
+      choices: ["A", "B", "C"],
+      timeLimitSec: 25,
+      // Code execution helps with the small comparison math; web doesn't.
+      toolsAllowed: "calc",
+    },
   };
 }
 
@@ -152,6 +216,13 @@ function pattern(r: () => number): Puzzle {
     kind: "pattern",
     prompt: `Continue the sequence: ${seq.join(", ")}. What is the next number? Answer with the integer only.`,
     expected: String(next),
+    presentation: {
+      family: "PATTERN",
+      difficulty: 2,
+      format: "integer",
+      timeLimitSec: 25,
+      toolsAllowed: "calc",
+    },
   };
 }
 
@@ -171,5 +242,12 @@ function wordcount(r: () => number): Puzzle {
     kind: "wordcount",
     prompt: `Count the words: "${s}". Answer with the integer only.`,
     expected: String(n),
+    presentation: {
+      family: "WORD COUNT",
+      difficulty: 1,
+      format: "integer",
+      timeLimitSec: 15,
+      toolsAllowed: "none",
+    },
   };
 }

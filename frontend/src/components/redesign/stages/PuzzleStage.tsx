@@ -2,7 +2,7 @@
 
 import { BracketedCell, Robot, robotVariantForId } from "@/components/redesign";
 import { nameFor, useAgentNames } from "@/hooks/useAgentNames";
-import type { StandingsEntry } from "@/lib/live";
+import type { PuzzleCard, StandingsEntry } from "@/lib/live";
 
 /// Promoted stage for SOLVER contests and PUZZLE challenges. Shows:
 ///   - top FASTEST agent (highest correct, lowest cumulative ms tiebreak)
@@ -23,12 +23,35 @@ const KIND_LABEL: Record<string, string> = {
   route: "ROUTE",
 };
 
+const FORMAT_LABEL: Record<PuzzleCard["format"], string> = {
+  integer: "INTEGER",
+  single_word: "1 WORD",
+  phrase: "PHRASE",
+  choice: "CHOICE",
+};
+
+const TOOLS_LABEL: Record<PuzzleCard["toolsAllowed"], string> = {
+  none: "NO TOOLS",
+  calc: "CALC",
+  "calc+web": "CALC + WEB",
+};
+
 export function PuzzleStage({ entries }: { entries: StandingsEntry[] }) {
   const names = useAgentNames(entries.map((e) => e.agentId));
   const maxScore = Math.max(...entries.map((e) => e.score), 1);
 
-  // Aggregate the puzzle kinds from whichever entry carries the data first.
-  // Backend sends the same kinds to every agent in a round.
+  // Aggregate puzzle metadata from whichever entry carries the data first.
+  // Backend sends the same puzzles to every agent in a round, so any entry
+  // with progress.puzzleCards will have the same array. Prefer the
+  // standardized cards if present; fall back to puzzleKinds for older runs.
+  const cards = (() => {
+    for (const e of entries) {
+      if (e.progress?.kind === "solver" && e.progress.puzzleCards && e.progress.puzzleCards.length > 0) {
+        return e.progress.puzzleCards;
+      }
+    }
+    return null;
+  })();
   const kinds = (() => {
     for (const e of entries) {
       if (e.progress?.kind === "solver" && e.progress.puzzleKinds && e.progress.puzzleKinds.length > 0) {
@@ -54,8 +77,38 @@ export function PuzzleStage({ entries }: { entries: StandingsEntry[] }) {
 
   return (
     <div className="flex flex-col gap-5">
-      {/* PUZZLE TYPES THIS ROUND */}
-      {kinds ? (
+      {/* THIS ROUND — standardized puzzle cards or fallback to legacy chip strip */}
+      {cards ? (
+        <BracketedCell pad="sm">
+          <div className="flex flex-col gap-2">
+            <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">
+              THIS ROUND
+            </span>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {cards.map((card, i) => (
+                <div
+                  key={i}
+                  className="flex flex-col gap-1 border border-[color:var(--hairline)] p-2 font-mono text-[10px] uppercase tracking-[0.08em]"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-ink">
+                      #{i + 1} {card.family}
+                    </span>
+                    <span className="text-ink-3">D{card.difficulty}</span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-ink-2">
+                    <span>{FORMAT_LABEL[card.format]}</span>
+                    <span>·</span>
+                    <span>{card.timeLimitSec}s</span>
+                    <span>·</span>
+                    <span>{TOOLS_LABEL[card.toolsAllowed]}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </BracketedCell>
+      ) : kinds ? (
         <div className="flex flex-wrap items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em]">
           <span className="text-ink-3">PUZZLE TYPES</span>
           {kinds.map((k, i) => (

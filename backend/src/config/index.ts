@@ -78,10 +78,19 @@ const envSchema = z.object({
   LLM_TESTING: z.coerce.boolean().default(false),
 
   // Agent training. Cost to go from level N to N+1 is (N+1) × 50 Cycles and
-  // (N+1) × this many real seconds. Default 1800 = 30 minutes per level base
-  // (so level 5 takes 2.5h). Set to 30 in the demo environment so a judge
-  // can watch a training cycle finish during the walkthrough.
-  TRAINING_BASE_SECONDS_PER_LEVEL: z.coerce.number().int().positive().default(1800),
+  // (N+1) × this many real seconds. Default 3600 = 60 minutes per level base
+  // (so level 5 takes 6h). Long enough that the speedup ladder is worth
+  // paying for. Set to 30 in the demo environment so a judge can watch a
+  // training cycle finish during the walkthrough.
+  TRAINING_BASE_SECONDS_PER_LEVEL: z.coerce.number().int().positive().default(3600),
+  // Speedup ladder: each +50 cycles spent at start time shaves 15 min off
+  // the queue duration. Lets operators trade Cycles for wall-clock when
+  // they want to enter the next contest without waiting an hour.
+  TRAINING_SPEEDUP_CYCLES_PER_STEP: z.coerce.number().int().positive().default(50),
+  TRAINING_SPEEDUP_SECONDS_PER_STEP: z.coerce.number().int().positive().default(900),
+  // Hard floor so a fully sped-up training still takes 60 seconds (visible
+  // wait, audit row gets a sensible duration).
+  TRAINING_MIN_SECONDS: z.coerce.number().int().positive().default(60),
 
   // Coordinator service
   COORDINATOR_PRIVATE_KEY: z.string().optional(),
@@ -93,6 +102,36 @@ const envSchema = z.object({
   // ERC-8004 validator wallet for on-chain reputation feedback. Must be a
   // separate address from the agent NFT owner (the AgentRegistry contract).
   VALIDATOR_PRIVATE_KEY: z.string().optional(),
+
+  // Arcana Markets (external prediction-market integration). Verified live
+  // contract on Arc Testnet at 0x443a47eF... — owner is a single EOA, currently
+  // resuming market generation per partnership agreement. The indexer
+  // subscribes to its events; the Analyst runner reads open markets here.
+  ARCANA_MARKETS_ADDRESS: z
+    .string()
+    .regex(/^0x[a-fA-F0-9]{40}$/)
+    .default("0x443a47eF1025e047879b1BA08c94e6dedB354D54")
+    .transform((v) => v as `0x${string}`),
+  ARCANA_START_BLOCK: z.coerce.bigint().nonnegative().default(43667548n),
+  ARCANA_INDEXING: z.coerce.boolean().default(true),
+
+  // Analyst autofund. Coordinator drips USDC to an agent's hot wallet when
+  // it enters an Analyst contest and is under-funded, so agents can actually
+  // trade on Arcana. Per-agent: one drip per UTC day. Global: a daily cap so
+  // a misconfigured loop can't drain the coordinator wallet.
+  //
+  // The Circle Arc Testnet faucet refreshes ~$20 USDC per 2 hours
+  // (~$240/day capacity), so the $50/day default cap is well within budget.
+  ANALYST_AUTOFUND: z.coerce.boolean().default(true),
+  // Per-tier drip amounts in whole USDC. Four comma-separated values for
+  // tiers 1..4 (tier 0 is ineligible for Analyst Arcana contests). Defaults
+  // match the tier-cap ladder: T1=5, T2=10, T3=15, T4=25.
+  ANALYST_AUTOFUND_USDC_BY_TIER: z.string().default("5,10,15,25"),
+  // Legacy single-value fallback. If ANALYST_AUTOFUND_USDC_BY_TIER is unset
+  // and this is set, every tier gets the same amount. Kept for back-compat.
+  ANALYST_AUTOFUND_USDC: z.coerce.number().nonnegative().optional(),
+  ANALYST_AUTOFUND_DAILY_USD: z.coerce.number().nonnegative().default(50),
+  ANALYST_AUTOFUND_MIN_BALANCE: z.coerce.number().nonnegative().default(1),
 });
 
 const addr = z
@@ -203,6 +242,9 @@ export const config = {
   },
   training: {
     baseSecondsPerLevel: env.TRAINING_BASE_SECONDS_PER_LEVEL,
+    speedupCyclesPerStep: env.TRAINING_SPEEDUP_CYCLES_PER_STEP,
+    speedupSecondsPerStep: env.TRAINING_SPEEDUP_SECONDS_PER_STEP,
+    minSeconds: env.TRAINING_MIN_SECONDS,
   },
   coordinator: {
     privateKey: normalizePrivateKey(env.COORDINATOR_PRIVATE_KEY),
@@ -233,6 +275,42 @@ export const config = {
     modelTier4: env.LLM_MODEL_TIER4,
     testing: env.LLM_TESTING,
   },
+  arcana: {
+    address: env.ARCANA_MARKETS_ADDRESS,
+    startBlock: env.ARCANA_START_BLOCK,
+    indexing: env.ARCANA_INDEXING,
+  },
+  analystAutofund: {
+    enabled: env.ANALYST_AUTOFUND,
+    /// Per-tier USDC drip amounts. Index 0 = tier 1, index 3 = tier 4.
+    /// Parsed from ANALYST_AUTOFUND_USDC_BY_TIER (4 comma-separated whole
+    /// USDC values). Falls back to the legacy flat value if the per-tier
+    /// var was left at its default and the legacy var is set.
+    dripUsdcByTier: parseDripsByTier(
+      env.ANALYST_AUTOFUND_USDC_BY_TIER,
+      env.ANALYST_AUTOFUND_USDC,
+    ),
+    dailyCapUsd: env.ANALYST_AUTOFUND_DAILY_USD,
+    minBalanceUsdc: env.ANALYST_AUTOFUND_MIN_BALANCE,
+  },
 } as const;
+
+function parseDripsByTier(byTier: string, legacy?: number): [number, number, number, number] {
+  // If the legacy flat var is explicitly set and the per-tier var is at the
+  // default, treat the legacy value as canonical for all tiers.
+  if (legacy !== undefined && byTier === "5,10,15,25") {
+    return [legacy, legacy, legacy, legacy];
+  }
+  const parts = byTier
+    .split(",")
+    .map((s) => Number(s.trim()))
+    .filter((n) => Number.isFinite(n) && n >= 0);
+  // Pad / truncate to exactly four entries so callers can index by tier-1.
+  const t1 = parts[0] ?? 5;
+  const t2 = parts[1] ?? 10;
+  const t3 = parts[2] ?? 15;
+  const t4 = parts[3] ?? 25;
+  return [t1, t2, t3, t4];
+}
 
 export type AppConfig = typeof config;

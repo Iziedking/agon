@@ -52,6 +52,10 @@ scripts/
 # Local-only run guide (contains operational tips, not for distribution)
 docs/run_guide.md
 
+# Brand kit. Drafted for marketing, grant outreach, and Track 4 submission.
+# Kept local until we're ready to publish externally.
+docs/brandkit/
+
 # Circle Developer-Controlled Wallets local secrets. The recovery directory
 # holds the disaster-recovery key for the entity secret; never commit it. The
 # env snippet is just a paste helper produced by circle-bootstrap.ts.

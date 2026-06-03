@@ -7,6 +7,7 @@ import { Footer } from "@/components/redesign/Footer";
 import { BracketedCell, Robot, robotVariantForId, StatusChip, TagButton } from "@/components/redesign";
 import { EventHero, EventStage, normalizeStageKind, RealSolves, type StageKind } from "@/components/redesign/stages";
 import { useContestSocket } from "@/hooks/useContestSocket";
+import { fetchArcanaPins, type PinnedMarket } from "@/lib/arcanaPins";
 import { nameFor, useAgentNames } from "@/hooks/useAgentNames";
 import { useLiveNarrative, progressSummary } from "@/hooks/useLiveNarrative";
 import { useAgentSkins, skinFor } from "@/hooks/useAgentNames";
@@ -51,8 +52,9 @@ export default function FocusedWatcherPage() {
 }
 
 function ContestFocus({ id }: { id: number }) {
-  const { connected, standings } = useContestSocket();
+  const { connected, standings, pinnedArcana } = useContestSocket();
   const [c, setC] = useState<Contest | null | undefined>(undefined);
+  const [arcanaPins, setArcanaPins] = useState<PinnedMarket[]>([]);
 
   useEffect(() => {
     let stopped = false;
@@ -68,6 +70,17 @@ function ContestFocus({ id }: { id: number }) {
     // Refresh every 15s for status flips (open → scoring → settled).
     const t = setInterval(load, 15000);
     return () => { stopped = true; clearInterval(t); };
+  }, [id]);
+
+  // HTTP-fetched pins are the fallback when the WS contest_open frame was
+  // missed (page load mid-contest, refresh, etc). Falls behind the live
+  // standings, which is fine since pins are static once set.
+  useEffect(() => {
+    let stopped = false;
+    void fetchArcanaPins("contest", id).then((markets) => {
+      if (!stopped) setArcanaPins(markets);
+    });
+    return () => { stopped = true; };
   }, [id]);
 
   const live = standings && standings.contestId === id ? standings : null;
@@ -103,7 +116,18 @@ function ContestFocus({ id }: { id: number }) {
 
           <div className="mt-6 grid gap-6 lg:grid-cols-12">
             <div className="lg:col-span-8">
-              <StageWithNarrative entries={entries} stageKind={stageKind} eventId={id} />
+              <StageWithNarrative
+                entries={entries}
+                stageKind={stageKind}
+                eventId={id}
+                pinnedArcanaMarkets={
+                  pinnedArcana?.contestId === id
+                    ? pinnedArcana.markets
+                    : arcanaPins.length > 0
+                      ? arcanaPins
+                      : undefined
+                }
+              />
             </div>
             <aside className="lg:col-span-4">
               <Standings entries={entries} stakedCount={c.entrants} />
@@ -119,6 +143,7 @@ function ContestFocus({ id }: { id: number }) {
 function ChallengeFocus({ id }: { id: number }) {
   const { connected, challengeStandings } = useContestSocket();
   const [ch, setCh] = useState<Challenge | null | undefined>(undefined);
+  const [arcanaPins, setArcanaPins] = useState<PinnedMarket[]>([]);
 
   useEffect(() => {
     let stopped = false;
@@ -133,6 +158,18 @@ function ChallengeFocus({ id }: { id: number }) {
     void load();
     const t = setInterval(load, 15000);
     return () => { stopped = true; clearInterval(t); };
+  }, [id]);
+
+  // Challenges don't get a WS pinned-set frame the way contests do, so HTTP
+  // is the only source. Empty array for non-PREDICTION challenges; the
+  // PredictionStage just won't render the menu, which is correct for
+  // PUZZLE / VOLUME / CUSTOM kinds.
+  useEffect(() => {
+    let stopped = false;
+    void fetchArcanaPins("challenge", id).then((markets) => {
+      if (!stopped) setArcanaPins(markets);
+    });
+    return () => { stopped = true; };
   }, [id]);
 
   const live = challengeStandings && challengeStandings.challengeId === id ? challengeStandings : null;
@@ -170,7 +207,12 @@ function ChallengeFocus({ id }: { id: number }) {
 
           <div className="mt-6 grid gap-6 lg:grid-cols-12">
             <div className="lg:col-span-8">
-              <StageWithNarrative entries={entries} stageKind={stageKind} eventId={id} />
+              <StageWithNarrative
+                entries={entries}
+                stageKind={stageKind}
+                eventId={id}
+                pinnedArcanaMarkets={arcanaPins.length > 0 ? arcanaPins : undefined}
+              />
             </div>
             <aside className="lg:col-span-4">
               <Standings entries={entries} stakedCount={ch.entrants} />
@@ -238,12 +280,17 @@ function StageWithNarrative({
   entries,
   stageKind,
   eventId,
+  pinnedArcanaMarkets,
 }: {
   entries: StandingsEntry[];
   stageKind: StageKind;
   /// Contest or challenge id. Drives the RealSolves audit-trail panel
   /// that surfaces the actual puzzle prompts + each agent's answer.
   eventId: number;
+  /// For Analyst contests routed through Arcana: the market set the
+  /// coordinator pinned at open. Lets the stage render the menu before
+  /// any agent enters.
+  pinnedArcanaMarkets?: import("@/components/redesign/stages/PredictionStage").PinnedMarket[];
 }) {
   const ids = useMemo(() => entries.map((e) => e.agentId), [entries]);
   const names = useAgentNames(ids);
@@ -256,7 +303,7 @@ function StageWithNarrative({
         <span className="text-ink-3">WHAT'S HAPPENING</span>
         <span className="text-ink">{narrative}</span>
       </div>
-      <EventStage kind={stageKind} entries={entries} />
+      <EventStage kind={stageKind} entries={entries} pinnedArcanaMarkets={pinnedArcanaMarkets} />
       {stageKind === "puzzle" ? <RealSolves id={eventId} /> : null}
     </>
   );

@@ -2,7 +2,7 @@
 
 import { PuzzleStage } from "./PuzzleStage";
 import { VolumeStage } from "./VolumeStage";
-import { PredictionStage } from "./PredictionStage";
+import { PredictionStage, type PinnedMarket } from "./PredictionStage";
 import { CustomStage } from "./CustomStage";
 import type { StandingsEntry } from "@/lib/live";
 
@@ -28,11 +28,21 @@ export function normalizeStageKind(raw: string | undefined): StageKind {
 export function EventStage({
   kind,
   entries,
+  pinnedArcanaMarkets,
 }: {
   kind: StageKind;
   entries: StandingsEntry[];
+  /// For prediction (Analyst Arcana) contests: the market set the coordinator
+  /// pinned at open. Lets the stage render the menu before any agent enters.
+  pinnedArcanaMarkets?: PinnedMarket[];
 }) {
+  // Prediction has a richer empty state: when zero entries but the round
+  // is pinned, show the market menu so the audience can read what agents
+  // will trade. Other kinds keep the simple "initializing" line.
   if (entries.length === 0) {
+    if (kind === "prediction" && pinnedArcanaMarkets && pinnedArcanaMarkets.length > 0) {
+      return <PredictionStage entries={entries} pinnedArcanaMarkets={pinnedArcanaMarkets} />;
+    }
     return (
       <div className="border border-[color:var(--hairline-strong)] bg-canvas-2 p-8 text-center">
         <p className="font-mono text-sm text-ink-2">
@@ -43,6 +53,8 @@ export function EventStage({
   }
   if (kind === "puzzle") return <PuzzleStage entries={entries} />;
   if (kind === "volume") return <VolumeStage entries={entries} />;
-  if (kind === "prediction") return <PredictionStage entries={entries} />;
+  if (kind === "prediction") {
+    return <PredictionStage entries={entries} pinnedArcanaMarkets={pinnedArcanaMarkets} />;
+  }
   return <CustomStage entries={entries} />;
 }

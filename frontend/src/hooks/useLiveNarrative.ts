@@ -89,7 +89,27 @@ function diffFrame(
           out.push(`${name} solved ${newCorrect} of ${pa.total}`);
         }
       } else if (pa.kind === "analyst" && pb.kind === "analyst") {
-        if (pa.calls.length > pb.calls.length) {
+        // Arcana branch first — when a real position lands or resolves it's
+        // way more interesting than a synthetic call.
+        const aArc = pa.arcana ?? [];
+        const bArc = pb.arcana ?? [];
+        if (aArc.length > bArc.length) {
+          const fresh = aArc[aArc.length - 1]!;
+          const usd = (Number(BigInt(fresh.stakeUsdc)) / 1e6).toFixed(2);
+          out.push(`${name} bet $${usd} ${fresh.side.toUpperCase()} on #${fresh.marketId}`);
+        } else if (aArc.length === bArc.length && aArc.length > 0) {
+          // No new positions; surface a resolution flip if one landed.
+          for (let i = 0; i < aArc.length; i++) {
+            const aP = aArc[i]!;
+            const bP = bArc[i]!;
+            if (aP.resolved && !bP.resolved) {
+              const pnl = Number(BigInt(aP.mtmPnLUsdc6)) / 1e6;
+              const sign = pnl >= 0 ? "+" : "−";
+              out.push(`${name} settled #${aP.marketId} ${sign}$${Math.abs(pnl).toFixed(2)}`);
+              break;
+            }
+          }
+        } else if (pa.calls.length > pb.calls.length) {
           const latest = pa.calls[pa.calls.length - 1];
           if (latest) {
             out.push(`${name} called ${Math.round(latest.p * 100)}% confidence`);
@@ -140,7 +160,16 @@ function formatUsdc6(raw: string): string {
 export function progressSummary(p: AgentProgress | undefined): string | null {
   if (!p) return null;
   if (p.kind === "solver") return `${p.correct.filter(Boolean).length}/${p.total} solved`;
-  if (p.kind === "analyst") return `${p.calls.length} call${p.calls.length === 1 ? "" : "s"}`;
+  if (p.kind === "analyst") {
+    const arc = p.arcana ?? [];
+    if (arc.length > 0) {
+      const totalStake = arc.reduce((acc, x) => acc + Number(BigInt(x.stakeUsdc)) / 1e6, 0);
+      const totalPnl = arc.reduce((acc, x) => acc + Number(BigInt(x.mtmPnLUsdc6)) / 1e6, 0);
+      const sign = totalPnl >= 0 ? "+" : "−";
+      return `${arc.length} pos · $${totalStake.toFixed(2)} stake · ${sign}$${Math.abs(totalPnl).toFixed(2)}`;
+    }
+    return `${p.calls.length} call${p.calls.length === 1 ? "" : "s"}`;
+  }
   if (p.kind === "scout") return `${p.opsCount} tx`;
   return null;
 }

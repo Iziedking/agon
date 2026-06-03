@@ -54,6 +54,11 @@ create table if not exists llm_runs (
   prompt        text   not null,
   response      text   not null,
   expected      text,
+  -- The agent's final answer, extracted from `response` by the judge. This
+  -- is what the live "REAL SOLVES" cell displays so the audience sees just
+  -- the answer ("C", "9375", "transfer") instead of the full reasoning.
+  -- Hover/tooltip still surfaces the full response text.
+  answer        text,
   verdict       text   not null, -- "correct" | "wrong" | "skipped" | "error"
   latency_ms    int    not null default 0,
   input_tokens  int    not null default 0,
@@ -61,12 +66,27 @@ create table if not exists llm_runs (
   cost_usd      numeric(12, 6) not null default 0,
   created_at    timestamptz not null default now()
 );
+-- Backfill for existing deployments where llm_runs was created without the
+-- answer column. Safe to run repeatedly.
+alter table llm_runs add column if not exists answer text;
 create index if not exists llm_runs_contest_idx on llm_runs(contest_id, agent_id);
 create index if not exists llm_runs_created_idx on llm_runs(created_at desc);
 -- One audit row per (contest, agent, kind, round, puzzle). Without this the
 -- runner duplicates rows every preview pass during the live window, and the
 -- LLM gets called per pass too, so the demo paid for the same solve 40
 -- times. Insert path uses ON CONFLICT DO NOTHING to make re-runs idempotent.
+-- Dedupe any historical bloat first so the unique index can build.
+delete from llm_runs
+where id in (
+  select id from (
+    select id, row_number() over (
+      partition by contest_id, agent_id, kind, round_idx, puzzle_idx
+      order by created_at, id
+    ) as rn
+    from llm_runs
+  ) ranked
+  where rn > 1
+);
 create unique index if not exists llm_runs_unique_idx
   on llm_runs(contest_id, agent_id, kind, round_idx, puzzle_idx);
 
@@ -324,3 +344,124 @@ create table if not exists delisted_agents (
   delisted_at  timestamptz not null default now(),
   reason       text
 );
+
+-- ===========================================================================
+-- Arcana Markets integration (Phase A — read + index)
+-- ===========================================================================
+-- Cached state of every Arcana market the indexer has seen. Updated on
+-- SharesBought (pool deltas), MarketResolved (outcome), and a periodic
+-- reconciliation sweep that re-reads markets(i) for the latest N to catch
+-- new markets created by the Arcana team. `outcome` is null until the market
+-- resolves: true = YES won, false = NO won.
+create table if not exists arcana_markets (
+  market_id     bigint primary key,
+  title         text not null default '',
+  category      text not null default '',
+  end_time      timestamptz not null,
+  yes_pool      numeric(38, 0) not null default 0,
+  no_pool       numeric(38, 0) not null default 0,
+  resolved      boolean not null default false,
+  cancelled     boolean not null default false,
+  outcome       boolean,
+  resolved_at   timestamptz,
+  first_seen    timestamptz not null default now(),
+  last_updated  timestamptz not null default now()
+);
+create index if not exists arcana_markets_open_idx
+  on arcana_markets(end_time)
+  where resolved = false and cancelled = false;
+create index if not exists arcana_markets_resolved_idx
+  on arcana_markets(resolved_at desc)
+  where resolved = true;
+
+-- Every USDC trade an agent places against the Arcana contract. One row per
+-- buyShares call. Linked to the contest round that prompted it so we can
+-- compute per-agent PnL inside a round window. `pnl_usdc` is filled when the
+-- market resolves (positive = won, negative = lost stake to the other pool).
+create table if not exists agent_positions (
+  id              bigserial primary key,
+  contest_id      bigint not null,
+  agent_id        bigint not null,
+  operator        text not null,
+  market_id       bigint not null,
+  side            text not null check (side in ('yes', 'no')),
+  stake_usdc      numeric(38, 0) not null,
+  shares          numeric(38, 0),
+  entry_yes_pool  numeric(38, 0) not null default 0,
+  entry_no_pool   numeric(38, 0) not null default 0,
+  tx_hash         text,
+  block_number    bigint,
+  claimed         boolean not null default false,
+  claim_tx_hash   text,
+  pnl_usdc        numeric(38, 0),
+  created_at      timestamptz not null default now()
+);
+create index if not exists agent_positions_contest_idx
+  on agent_positions(contest_id, agent_id);
+create index if not exists agent_positions_market_idx
+  on agent_positions(market_id);
+create index if not exists agent_positions_unclaimed_idx
+  on agent_positions(market_id, claimed)
+  where claimed = false;
+
+-- Replayable raw event log for the Arcana contract. Kept separate from
+-- events_log (ArcRun-native contracts) so a partner-contract change can be
+-- re-played without touching the rest of the system.
+create table if not exists arcana_events (
+  id            bigserial primary key,
+  block_number  bigint not null,
+  tx_hash       text not null,
+  log_index     int not null,
+  event_kind    text not null,  -- 'SharesBought' | 'MarketResolved' | 'WinningsClaimed'
+  market_id     bigint not null,
+  args          jsonb not null,
+  created_at    timestamptz not null default now(),
+  unique (tx_hash, log_index)
+);
+create index if not exists arcana_events_market_idx
+  on arcana_events(market_id, block_number);
+create index if not exists arcana_events_kind_idx
+  on arcana_events(event_kind, block_number desc);
+
+-- The indexer tracks Arcana progress separately so the existing indexer_state
+-- row keeps describing the ArcRun-contracts indexer. Single row, id=1.
+create table if not exists arcana_indexer_state (
+  id            int primary key,
+  last_block    bigint not null,
+  updated_at    timestamptz not null default now()
+);
+
+-- Per-contest pinned market set. When the coordinator opens an Analyst
+-- contest, it selects N open Arcana markets up-front and persists them
+-- here. The runner reads from this table so every agent in the round sees
+-- the same menu and the round is deterministic. The pool snapshots let
+-- the live page show entry-time odds even after the pools drift.
+create table if not exists contest_arcana_markets (
+  contest_id        bigint not null,
+  market_id         bigint not null,
+  title             text not null default '',
+  category          text not null default '',
+  end_time          timestamptz not null,
+  entry_yes_pool    numeric(38, 0) not null default 0,
+  entry_no_pool     numeric(38, 0) not null default 0,
+  pinned_at         timestamptz not null default now(),
+  primary key (contest_id, market_id)
+);
+create index if not exists contest_arcana_markets_lookup_idx on contest_arcana_markets(contest_id);
+
+-- Coordinator-side autofund tracking. One row per drip sent. The unique
+-- index on (agent_id, drip_day) gives us the one-drip-per-agent-per-day
+-- guarantee at the DB layer; the global daily cap is enforced in the caller
+-- by summing amount_usd for the current drip_day. drip_day is the UTC date
+-- the drip belongs to, so the day boundary matches everywhere.
+create table if not exists analyst_autofund_log (
+  id            bigserial primary key,
+  agent_id      bigint not null,
+  operator      text not null,
+  drip_day      date not null,
+  amount_usd    numeric(10, 2) not null,
+  tx_hash       text not null,
+  created_at    timestamptz not null default now(),
+  unique (agent_id, drip_day)
+);
+create index if not exists analyst_autofund_day_idx on analyst_autofund_log(drip_day desc);

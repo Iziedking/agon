@@ -18,6 +18,11 @@ export interface LlmRun {
   prompt: string;
   response: string;
   expected: string | null;
+  /// Final answer extracted by the backend judge. When present, this is
+  /// the source of truth for the live answer cell. Older rows written
+  /// before the answer column landed will be null; the UI falls back to
+  /// local extraction for those.
+  answer: string | null;
   verdict: Verdict;
   latencyMs: number;
   inputTokens: number;

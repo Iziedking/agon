@@ -129,6 +129,10 @@ export interface AuditRow {
   prompt: string;
   response: string;
   expected: string | null;
+  /// The agent's final answer, already extracted from `response` by the
+  /// runner (typically via the judge). When null, the live UI falls back
+  /// to its own extractor; populating this is the right thing.
+  answer?: string | null;
   verdict: "correct" | "wrong" | "skipped" | "error";
   latencyMs: number;
   inputTokens: number;
@@ -139,8 +143,8 @@ export interface AuditRow {
 export async function recordLlmRun(row: AuditRow): Promise<void> {
   await query(
     `insert into llm_runs
-       (contest_id, agent_id, operator, round_idx, puzzle_idx, kind, model, prompt, response, expected, verdict, latency_ms, input_tokens, output_tokens, cost_usd)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+       (contest_id, agent_id, operator, round_idx, puzzle_idx, kind, model, prompt, response, expected, answer, verdict, latency_ms, input_tokens, output_tokens, cost_usd)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
        on conflict (contest_id, agent_id, kind, round_idx, puzzle_idx) do nothing`,
     [
       row.contestId,
@@ -153,6 +157,7 @@ export async function recordLlmRun(row: AuditRow): Promise<void> {
       row.prompt,
       row.response,
       row.expected,
+      row.answer ?? null,
       row.verdict,
       row.latencyMs,
       row.inputTokens,

@@ -4,10 +4,16 @@ import { useEffect, useState } from "react";
 import type {
   ChallengeSettledMessage,
   ChallengeStandingsMessage,
+  ContestOpenMessage,
   SettledMessage,
   StandingsMessage,
   WsMessage,
 } from "@/lib/live";
+
+type PinnedArcanaMarketSet = {
+  contestId: number;
+  markets: NonNullable<ContestOpenMessage["arcanaMarkets"]>;
+};
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8788";
 
@@ -21,6 +27,10 @@ export function useContestSocket() {
   const [challengeStandings, setChallengeStandings] = useState<ChallengeStandingsMessage | null>(null);
   const [settled, setSettled] = useState<SettledMessage | null>(null);
   const [challengeSettled, setChallengeSettled] = useState<ChallengeSettledMessage | null>(null);
+  /// Arcana markets pinned to the current contest, attached by the coordinator
+  /// at contest_open. Lets the live page render the round's market menu from
+  /// the instant the contest opens, before any agent has placed a trade.
+  const [pinnedArcana, setPinnedArcana] = useState<PinnedArcanaMarketSet | null>(null);
 
   useEffect(() => {
     let ws: WebSocket | null = null;
@@ -49,6 +59,14 @@ export function useContestSocket() {
               endsAt: msg.endsAt,
               entries: [],
             });
+            // Carry the pinned market set (if any) so the live page can show
+            // the round's menu pre-entries. Clear it when a contest_open
+            // arrives without one (non-Arcana contest taking over the slot).
+            if (msg.arcanaMarkets && msg.arcanaMarkets.length > 0) {
+              setPinnedArcana({ contestId: msg.contestId, markets: msg.arcanaMarkets });
+            } else {
+              setPinnedArcana(null);
+            }
           } else if (msg.type === "standings") {
             // Standings frames omit the type; keep the one from the open event.
             setStandings((prev) => ({
@@ -77,5 +95,5 @@ export function useContestSocket() {
     };
   }, []);
 
-  return { connected, standings, challengeStandings, settled, challengeSettled };
+  return { connected, standings, challengeStandings, settled, challengeSettled, pinnedArcana };
 }

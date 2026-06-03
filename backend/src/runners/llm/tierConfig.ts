@@ -143,6 +143,36 @@ export async function loadAgentStats(agentId: number): Promise<Partial<Record<St
   return readAgentStats(agentId);
 }
 
+/// Trade caps for Analyst contests routed through Arcana Markets. Stake is
+/// in USDC 6-dec bigints; "markets" caps how many distinct markets an agent
+/// can take a position in per round. Tier 0 is ineligible; the entry runner
+/// excludes them from Arcana Analyst contests so they don't burn gas for no
+/// payoff. Source: docs/brandkit/11-realism-plan.md "Analyst track".
+export interface ArcanaCap {
+  maxMarkets: number;
+  maxStakeUsdc6: bigint;
+  /// Hard cap on total stake across all markets for one round. Default is
+  /// maxMarkets * maxStakeUsdc6 unless we want to throttle further.
+  totalStakeUsdc6: bigint;
+}
+
+const ARCANA_CAPS: ArcanaCap[] = [
+  // tier 0: not eligible. Encoded as zero so a defensive caller sees no caps.
+  { maxMarkets: 0, maxStakeUsdc6: 0n, totalStakeUsdc6: 0n },
+  // tier 1: 1 market x $2
+  { maxMarkets: 1, maxStakeUsdc6: 2_000_000n, totalStakeUsdc6: 2_000_000n },
+  // tier 2: 2 markets x $5
+  { maxMarkets: 2, maxStakeUsdc6: 5_000_000n, totalStakeUsdc6: 10_000_000n },
+  // tier 3: 3 markets x $15
+  { maxMarkets: 3, maxStakeUsdc6: 15_000_000n, totalStakeUsdc6: 45_000_000n },
+  // tier 4: 5 markets x $50
+  { maxMarkets: 5, maxStakeUsdc6: 50_000_000n, totalStakeUsdc6: 250_000_000n },
+];
+
+export function arcanaCapFor(tier: number): ArcanaCap {
+  return ARCANA_CAPS[Math.min(Math.max(tier, 0), 4)]!;
+}
+
 async function readAgentStats(agentId: number): Promise<Partial<Record<StatName, number>>> {
   const { rows } = await query<{ stat: string; level: number }>(
     "select stat, level from agent_stats where agent_id = $1",

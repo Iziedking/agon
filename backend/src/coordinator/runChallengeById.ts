@@ -11,7 +11,7 @@ import { SolverRunner } from "../runners/solver.js";
 import type { AgentResult, ContestEntryInput } from "../runners/types.js";
 import { fundHotWallets } from "./contestOps.js";
 import { merkleRoot, payoutLeaf } from "./merkle.js";
-import { computePayouts } from "./payouts.js";
+import { computePayouts, computePnlWeightedPayouts, isArcanaResults } from "./payouts.js";
 import { applyTraitMultipliers, awardPlacementTraits, fetchAgentMultipliers } from "./traits.js";
 import {
   applyTrainingMultipliers,
@@ -408,7 +408,12 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
 
       const pot = ch.stake * BigInt(entrants);
       const fee = (pot * BigInt(ch.platformFeeBps)) / 10_000n;
-      payouts = computePayouts(results, pot - fee);
+      // PREDICTION challenges that routed through Arcana split the pot by
+      // realized + marked-to-market PnL (30% participation flat, 70% by
+      // positive PnL weight); everything else uses the rank-based curve.
+      payouts = isArcanaResults(results)
+        ? computePnlWeightedPayouts(results, pot - fee)
+        : computePayouts(results, pot - fee);
       if (payouts.length === 0) {
         // A LOCKED challenge can only be cancelled after its resolve deadline,
         // so leave it; if it never scores, the deadline path above cancels it

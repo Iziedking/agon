@@ -16,6 +16,7 @@ import {
   TagButton,
 } from "@/components/redesign";
 import { TrainingPanel } from "@/components/redesign/TrainingPanel";
+import { ArcanaWalletPanel } from "@/components/redesign/ArcanaWalletPanel";
 import { StrengthBreakdown } from "@/components/pengu/StrengthBreakdown";
 import { AgentAvatar } from "@/components/pengu/AgentAvatar";
 import { AgentTraits } from "@/components/pengu/AgentTraits";
@@ -234,6 +235,9 @@ function WorkshopPageBody() {
             </div>
             <TrainingPanel agentId={active.id} />
             <StrengthBreakdown agentId={active.id} />
+            <div className="mt-6">
+              <ArcanaWalletPanel agentId={active.id} />
+            </div>
           </div>
         ) : null}
       </section>

@@ -14,6 +14,19 @@ export interface ContestEntryInput {
 /// visible state from a score number. Each runner emits its own shape: solver
 /// reports which puzzles were correct, analyst reports each binary call and
 /// its outcome, scout reports the real tx hashes shipped from the hot wallet.
+/// Standardized presentation card for a single puzzle, mirrored from the
+/// backend's PuzzlePresentation so the frontend doesn't have to import from
+/// the puzzles folder. Six fields, identical across every family, drive the
+/// live-stage card layout. Aligned 1:1 with `correct[]` and `puzzleKinds[]`.
+export interface PuzzleCard {
+  family: string;
+  difficulty: 1 | 2 | 3;
+  format: "integer" | "single_word" | "phrase" | "choice";
+  choices?: readonly string[];
+  timeLimitSec: number;
+  toolsAllowed: "none" | "calc" | "calc+web";
+}
+
 export type AgentProgress =
   | {
       kind: "solver";
@@ -25,8 +38,41 @@ export type AgentProgress =
       /// Per-puzzle kind label ("gas" | "classify" | "route") so the stage
       /// can show "PUZZLE TYPES THIS ROUND" without needing the contest id.
       puzzleKinds?: string[];
+      /// Per-puzzle presentation card. Standardized so every family renders
+      /// in the same 6-field shape on the live stage. Same order as the
+      /// other per-puzzle arrays.
+      puzzleCards?: PuzzleCard[];
     }
-  | { kind: "analyst"; calls: Array<{ p: number; outcome: 0 | 1; correct: boolean }> }
+  | {
+      kind: "analyst";
+      calls: Array<{ p: number; outcome: 0 | 1; correct: boolean }>;
+      /// Arcana Markets positions the agent took this round, when the
+      /// runner routed through Arcana instead of (or in addition to) the
+      /// synthetic Brier-scored question loop. Empty / undefined when the
+      /// contest fell back to synthetic predictions.
+      arcana?: Array<{
+        marketId: number;
+        title: string;
+        side: "yes" | "no";
+        /// USDC 6-decimals as a string so it survives the JSON hop.
+        stakeUsdc: string;
+        /// Tx hash of the buyShares call. Optional because the runner may
+        /// have failed to submit (e.g. zero balance) and we still want to
+        /// surface the intent on the stage.
+        txHash?: string;
+        /// Implied YES probability at the moment the agent entered, derived
+        /// from the pools right before the trade.
+        entryYesProb: number;
+        /// Implied YES probability right now (current pools).
+        currentYesProb: number;
+        /// Marked-to-market PnL while open; realized PnL after the market
+        /// resolves. USDC 6-dec as a string. Sign carries direction.
+        mtmPnLUsdc6: string;
+        /// True once Arcana has resolved this market. When true, mtmPnLUsdc6
+        /// is the realized payout (positive on win, negative on loss).
+        resolved?: boolean;
+      }>;
+    }
   | {
       kind: "scout";
       opsCount: number;

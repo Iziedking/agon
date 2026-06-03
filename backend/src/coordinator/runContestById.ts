@@ -12,7 +12,7 @@ import type { AgentResult, ContestEntryInput } from "../runners/types.js";
 import { fundHotWallets } from "./contestOps.js";
 import { applyReputation, creditPoints, postValidatorFeedback, qualifiedField } from "./reputation.js";
 import { merkleRoot, payoutLeaf } from "./merkle.js";
-import { computePayouts } from "./payouts.js";
+import { computePayouts, computePnlWeightedPayouts, isArcanaResults } from "./payouts.js";
 import { applyTraitMultipliers, awardPlacementTraits, fetchAgentMultipliers } from "./traits.js";
 import {
   applyTrainingMultipliers,
@@ -181,7 +181,13 @@ export async function runContestById(contestId: number, broadcast: (message: unk
 
   const platformFee = (c.prizePool * BigInt(c.platformFeeBps)) / 10_000n;
   const claimable = c.prizePool - platformFee;
-  const payouts = computePayouts(results, claimable);
+  // Analyst contests that ran through Arcana use the PnL-weighted curve so
+  // any qualifying agent shares the pool, weighted by their realized +
+  // marked-to-market PnL. Other contest types fall back to the rank-based
+  // top-two curve.
+  const payouts = isArcanaResults(results)
+    ? computePnlWeightedPayouts(results, claimable)
+    : computePayouts(results, claimable);
 
   // Persist the payout tree (in leaf order) so the claim-proof endpoint can
   // rebuild the exact tree and serve each winner their proof.

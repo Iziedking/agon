@@ -47,3 +47,47 @@ export const prizeEscrowEvents = parseAbi([
   "event ChallengePotDeposited(address indexed controller, uint256 indexed poolId, address indexed from, uint256 amount)",
   "event PaidOut(address indexed controller, uint256 indexed poolId, address indexed recipient, uint256 amount)",
 ]);
+
+/// Arcana Markets — external prediction market contract on Arc Testnet.
+/// Source: github.com/stephdrealss/arcana-markets, src/App.js. Parimutuel
+/// YES/NO pool, single-resolver admin model. createMarket / resolveMarket /
+/// cancelMarket are owner-only; buyShares / claimWinnings / refund are open.
+export const arcanaMarketsEvents = parseAbi([
+  "event SharesBought(address indexed buyer, uint256 indexed marketId, bool isYes, uint256 usdcAmount, uint256 shares)",
+  "event MarketResolved(uint256 indexed marketId, bool yesWon)",
+  "event WinningsClaimed(uint256 indexed marketId, address indexed claimer, uint256 amount)",
+]);
+
+/// Full ABI including reads and writes. Use this when calling the contract;
+/// use the events-only variant above when subscribing or decoding logs.
+export const arcanaMarketsAbi = parseAbi([
+  // reads
+  "function marketCount() view returns (uint256)",
+  "function owner() view returns (address)",
+  "function markets(uint256) view returns (uint256 id, string title, string category, uint256 yesPool, uint256 noPool, uint256 endTime, bool resolved, bool cancelled)",
+  "function getMarketOdds(uint256 marketId) view returns (uint256 yesOdds, uint256 noOdds)",
+  "function yesShares(uint256, address) view returns (uint256)",
+  "function noShares(uint256, address) view returns (uint256)",
+  // writes (open to anyone)
+  "function buyShares(uint256 marketId, bool isYes, uint256 usdcAmount)",
+  "function claimWinnings(uint256 marketId)",
+  "function refund(uint256 marketId)",
+  // writes (owner only — calling will revert "Not owner" from non-owner)
+  "function createMarket(string title, string category, uint256 endTime)",
+  "function resolveMarket(uint256 marketId, bool yesWon)",
+  "function cancelMarket(uint256 marketId)",
+  // events
+  "event SharesBought(address indexed buyer, uint256 indexed marketId, bool isYes, uint256 usdcAmount, uint256 shares)",
+  "event MarketResolved(uint256 indexed marketId, bool yesWon)",
+  "event WinningsClaimed(uint256 indexed marketId, address indexed claimer, uint256 amount)",
+]);
+
+/// Minimal ERC-20 ABI covering the surfaces ArcRun calls on USDC: approve
+/// (before buyShares), allowance (preflight), balanceOf (autofund check),
+/// and transfer (coordinator autofund drip).
+export const usdcMinimalAbi = parseAbi([
+  "function approve(address spender, uint256 amount) returns (bool)",
+  "function allowance(address owner, address spender) view returns (uint256)",
+  "function balanceOf(address account) view returns (uint256)",
+  "function transfer(address to, uint256 amount) returns (bool)",
+]);
