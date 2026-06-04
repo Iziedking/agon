@@ -39,10 +39,23 @@ export function RefundsWaiting({ address }: { address: `0x${string}` }) {
     void reload();
   }, [reload]);
 
-  async function doRefund(id: number) {
+  async function doRefund(row: PendingRefund) {
+    const id = row.id;
     setBusyId(id);
     setErr(null);
     try {
+      // Stale-cancellable rows need a cancel tx first; the contract
+      // requires status == CANCELLED before refund() is callable.
+      if (row.action === "cancel_then_refund") {
+        const cancelHash = await writeContractAsync({
+          address: CONTRACTS.ChallengeArena,
+          abi: challengeArenaAbi,
+          functionName: "cancelChallenge",
+          args: [BigInt(id)],
+        });
+        await publicClient.waitForTransactionReceipt({ hash: cancelHash });
+        reportEvent("challenge_cancel", { context: { id, source: "dashboard" }, address });
+      }
       const hash = await writeContractAsync({
         address: CONTRACTS.ChallengeArena,
         abi: challengeArenaAbi,
@@ -84,38 +97,46 @@ export function RefundsWaiting({ address }: { address: `0x${string}` }) {
       </div>
       <BracketedCell pad="sm">
         <p className="px-2 pt-2 font-mono text-[12px] leading-[1.5] text-ink-2">
-          challenges you staked into that were cancelled before settling. pull your stake out below.
+          challenges you staked into that are cancelled (or past their deadline and stuck) show here. pull your stake out below.
           {contests.length > 0
-            ? " cancelled contests you entered also show here — contest entry is free, so there's nothing to pull back."
+            ? " cancelled contests you entered also show here. contest entry is free, so there's nothing to recover."
             : ""}
         </p>
         <ActivityLedger>
-          {challenges.map((r) => (
-            <div
-              key={`ch-${r.id}`}
-              className="flex flex-wrap items-center justify-between gap-3 border-b border-[color:var(--hairline)] py-3 last:border-0"
-            >
-              <div className="min-w-0">
-                <div className="font-mono text-[12px] uppercase tracking-[0.12em] text-ink">
-                  CHALLENGE #{r.id}
+          {challenges.map((r) => {
+            const isStale = r.action === "cancel_then_refund";
+            const subLabel = isStale
+              ? "DEADLINE PASSED · CANCEL TO RECOVER STAKE"
+              : "CANCELLED · STAKE LOCKED";
+            const idle = isStale ? "CANCEL + REFUND" : "REFUND STAKE";
+            const busy = isStale ? "WORKING…" : "REFUNDING…";
+            return (
+              <div
+                key={`ch-${r.id}`}
+                className="flex flex-wrap items-center justify-between gap-3 border-b border-[color:var(--hairline)] py-3 last:border-0"
+              >
+                <div className="min-w-0">
+                  <div className="font-mono text-[12px] uppercase tracking-[0.12em] text-ink">
+                    CHALLENGE #{r.id}
+                  </div>
+                  <div className="font-mono text-[10px] text-ink-3">{subLabel}</div>
                 </div>
-                <div className="font-mono text-[10px] text-ink-3">CANCELLED · STAKE LOCKED</div>
+                <div className="flex items-center gap-3">
+                  <span className="font-mono text-[14px] text-ink">{formatUsdc(r.stake)}</span>
+                  <button
+                    onClick={() => doRefund(r)}
+                    disabled={busyId === r.id}
+                    className="inline-flex items-center gap-2 bg-accent px-3 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-accent-ink transition-colors hover:bg-accent-press disabled:opacity-60"
+                  >
+                    {busyId === r.id ? busy : idle} <span aria-hidden>→</span>
+                  </button>
+                </div>
+                {err && err.id === r.id ? (
+                  <p className="basis-full font-mono text-[11px] text-[color:var(--err)]">{err.friendly}</p>
+                ) : null}
               </div>
-              <div className="flex items-center gap-3">
-                <span className="font-mono text-[14px] text-ink">{formatUsdc(r.stake)}</span>
-                <button
-                  onClick={() => doRefund(r.id)}
-                  disabled={busyId === r.id}
-                  className="inline-flex items-center gap-2 bg-accent px-3 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-accent-ink transition-colors hover:bg-accent-press disabled:opacity-60"
-                >
-                  {busyId === r.id ? "REFUNDING…" : "REFUND STAKE"} <span aria-hidden>→</span>
-                </button>
-              </div>
-              {err && err.id === r.id ? (
-                <p className="basis-full font-mono text-[11px] text-[color:var(--err)]">{err.friendly}</p>
-              ) : null}
-            </div>
-          ))}
+            );
+          })}
           {contests.map((r) => (
             <div
               key={`ct-${r.id}`}

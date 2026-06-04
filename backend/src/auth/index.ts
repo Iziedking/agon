@@ -1829,21 +1829,30 @@ app.get("/operators/:address/refunds-pending", async (c) => {
   }
 
   const [chRes, ctRes] = await Promise.all([
-    query<{ id: string; stake: string }>(
-      `select distinct ch.id::text as id, ch.stake::text as stake
+    // Return ALL non-settled challenges the operator joined, with the
+    // indexer's known status as a hint. The frontend reads chain truth
+    // via getChallenge(id) on each row to handle two real cases the
+    // indexer misses:
+    //   1. ChallengeCancelled event hasn't been processed yet (lag).
+    //   2. Challenge is past joinDeadline / resolveDeadline but nobody
+    //      has called cancelChallenge() yet, so status is still OPEN
+    //      or LOCKED. The operator's stake is recoverable but needs a
+    //      cancel tx first; the frontend renders a CANCEL + REFUND
+    //      flow for these.
+    query<{ id: string; stake: string; status: string }>(
+      `select distinct ch.id::text as id, ch.stake::text as stake, ch.status
          from challenge_entries ce
          join challenges ch on ch.id = ce.challenge_id
         where ce.operator = $1
-          and ch.status = 'cancelled'
+          and ch.status <> 'settled'
         order by ch.id desc`,
       [address],
     ),
     // Contests don't charge an entrant a stake (entry is free for agent
-    // owners), so a cancelled contest the operator entered isn't a refund
-    // claim — there's nothing to pull back. We still surface it here so
-    // the dashboard can show "this contest was cancelled; sponsor was
-    // refunded; you don't need to do anything" instead of the row
-    // vanishing silently.
+    // owners), so a cancelled contest the operator entered isn't a
+    // refund claim — there's nothing to pull back. We still surface it
+    // here so the dashboard can show "this contest was cancelled" and
+    // the row doesn't vanish silently.
     query<{ id: string }>(
       `select distinct ct.id::text as id
          from entries en
@@ -1856,7 +1865,11 @@ app.get("/operators/:address/refunds-pending", async (c) => {
   ]);
 
   return c.json({
-    challenges: chRes.rows.map((r) => ({ id: Number(r.id), stake: r.stake })),
+    challenges: chRes.rows.map((r) => ({
+      id: Number(r.id),
+      stake: r.stake,
+      indexedStatus: r.status,
+    })),
     contests: ctRes.rows.map((r) => ({ id: Number(r.id) })),
   });
 });
