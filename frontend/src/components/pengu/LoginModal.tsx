@@ -5,7 +5,14 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useAccount, useChainId, useConnect, useDisconnect, useSignMessage, useSwitchChain } from "wagmi";
 import { injected } from "wagmi/connectors";
 import { arcTestnet } from "@/lib/arc";
-import { loginWithSigner, signInWithEmail, enrollPasskey } from "@/lib/auth";
+import {
+  enrollPasskey,
+  loginWithSigner,
+  OtpRequiredError,
+  signInWithEmail,
+  startEmailOtp,
+  verifyEmailOtp,
+} from "@/lib/auth";
 import { useAuth } from "@/hooks/useAuth";
 import { ModalClose, Robot } from "@/components/redesign";
 import { friendlyError } from "@/lib/errors";
@@ -137,8 +144,10 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
   const { signMessageAsync } = useSignMessage();
   const { me, refresh, signOut } = useAuth();
 
-  const [view, setView] = useState<"choose" | "email">("choose");
+  const [view, setView] = useState<"choose" | "email" | "otp">("choose");
   const [email, setEmail] = useState("");
+  const [otp, setOtp] = useState("");
+  const [otpBusy, setOtpBusy] = useState(false);
   const [busy, setBusy] = useState(false);
   const [circleBusy, setCircleBusy] = useState(false);
   const [enrolling, setEnrolling] = useState(false);
@@ -149,6 +158,7 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
     if (open) {
       setView("choose");
       setError(null);
+      setOtp("");
     }
   }, [open]);
 
@@ -194,6 +204,20 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
       await refresh();
       reportEvent("login", { context: { method: "email", isNew: result.isNew, seeded: result.seeded } });
     } catch (e) {
+      // First-time signup on a server with EMAIL_OTP_ENABLED. Switch
+      // to the OTP view and trigger the code-send right away so the
+      // user lands on a populated screen, not an empty form.
+      if (e instanceof OtpRequiredError) {
+        setError(null);
+        setView("otp");
+        setOtp("");
+        try {
+          await startEmailOtp(trimmed);
+        } catch (sendErr) {
+          setError(friendlyError(sendErr, "could not send the code, try again."));
+        }
+        return;
+      }
       const msg = e instanceof Error ? e.message : String(e);
       const name = e instanceof Error ? e.name : "";
       const lower = msg.toLowerCase();
@@ -218,6 +242,52 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
       logRawError("login_error", e, { context: { method: "email", name } });
     } finally {
       setCircleBusy(false);
+    }
+  }
+
+  /// Verify the 6-digit OTP, then re-run the email sign-in. The backend
+  /// flags the email as verified for 15 min so the second
+  /// /auth/email/begin call sails through to the passkey-registration
+  /// branch. On any error we keep the OTP view active so the user can
+  /// retry without re-typing their email.
+  async function handleVerifyOtp() {
+    const trimmed = email.trim();
+    const codeTrimmed = otp.trim();
+    if (!/^[0-9]{6}$/.test(codeTrimmed)) {
+      setError("enter the 6-digit code from your email");
+      return;
+    }
+    setOtpBusy(true);
+    setError(null);
+    try {
+      await verifyEmailOtp(trimmed, codeTrimmed);
+      // OTP verified — re-run the email sign-in. This time
+      // /auth/email/begin returns the WebAuthn registration challenge
+      // and the passkey ceremony runs.
+      const result = await signInWithEmail(trimmed);
+      await refresh();
+      reportEvent("login", {
+        context: { method: "email", isNew: result.isNew, seeded: result.seeded, otp: true },
+      });
+    } catch (e) {
+      setError(friendlyError(e, "could not verify the code."));
+      logRawError("otp_verify_error", e, { context: { method: "email" } });
+    } finally {
+      setOtpBusy(false);
+    }
+  }
+
+  async function handleResendOtp() {
+    const trimmed = email.trim();
+    if (!trimmed) return;
+    setOtpBusy(true);
+    setError(null);
+    try {
+      await startEmailOtp(trimmed);
+    } catch (e) {
+      setError(friendlyError(e, "could not resend the code."));
+    } finally {
+      setOtpBusy(false);
     }
   }
 
@@ -398,7 +468,7 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
                         ) : null}
                       </div>
                     </>
-                  ) : (
+                  ) : view === "email" ? (
                     <>
                       <div className="flex items-center gap-4">
                         <Robot variant="pink" size={56} decorative />
@@ -444,6 +514,65 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
                       >
                         ← BACK
                       </button>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-4">
+                        <Robot variant="pink" size={56} decorative />
+                        <div>
+                          <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">
+                            <span aria-hidden className="text-accent">■</span> VERIFY EMAIL
+                          </div>
+                          <h2
+                            className="mt-1 font-stencil uppercase text-ink"
+                            style={{ fontSize: 22, lineHeight: 1, letterSpacing: "-0.01em" }}
+                          >
+                            ENTER YOUR CODE
+                          </h2>
+                        </div>
+                      </div>
+                      <p className="mt-4 font-mono text-[12px] leading-[1.5] text-ink-2">
+                        we sent a 6-digit code to{" "}
+                        <span className="text-ink">{email}</span>. it expires in 10 minutes.
+                      </p>
+                      <input
+                        className="mt-5 w-full border border-[color:var(--hairline-strong)] bg-canvas px-3 py-2.5 text-center font-mono text-2xl tracking-[0.4em] text-ink outline-none transition-colors focus:border-ink"
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        maxLength={6}
+                        placeholder="000000"
+                        value={otp}
+                        onChange={(e) => setOtp(e.target.value.replace(/[^0-9]/g, "").slice(0, 6))}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !otpBusy) void handleVerifyOtp();
+                        }}
+                        disabled={otpBusy}
+                      />
+                      <div className="mt-4 flex flex-col gap-3">
+                        <PrimaryTag disabled={otpBusy || otp.length !== 6} onClick={handleVerifyOtp}>
+                          <span>{otpBusy ? "VERIFYING…" : "VERIFY AND CONTINUE"}</span>
+                        </PrimaryTag>
+                        <button
+                          onClick={handleResendOtp}
+                          disabled={otpBusy}
+                          className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 transition-colors hover:text-ink disabled:opacity-50"
+                        >
+                          RESEND CODE
+                        </button>
+                      </div>
+                      <div className="mt-4 border-t border-[color:var(--hairline)] pt-4">
+                        <button
+                          onClick={() => {
+                            setView("email");
+                            setOtp("");
+                            setError(null);
+                          }}
+                          className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:text-ink"
+                        >
+                          ← USE A DIFFERENT EMAIL
+                        </button>
+                      </div>
                     </>
                   )}
                 </motion.div>

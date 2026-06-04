@@ -98,6 +98,43 @@ export interface EmailLoginResult {
   isNew: boolean;
 }
 
+/// Thrown by signInWithEmail when the backend says this email needs an
+/// OTP step before passkey registration can run. The LoginModal catches
+/// this, switches to the OTP view, and retries signInWithEmail once
+/// the code is verified.
+export class OtpRequiredError extends Error {
+  constructor() {
+    super("otp_required");
+    this.name = "OtpRequiredError";
+  }
+}
+
+export async function startEmailOtp(email: string): Promise<void> {
+  const res = await fetch(`${AUTH_URL}/auth/email/otp/start`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ email }),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? "could not send the code");
+  }
+}
+
+export async function verifyEmailOtp(email: string, code: string): Promise<void> {
+  const res = await fetch(`${AUTH_URL}/auth/email/otp/verify`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ email, code }),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? "could not verify the code");
+  }
+}
+
 export async function signInWithEmail(email: string): Promise<EmailLoginResult> {
   const { startRegistration, startAuthentication } = await import("@simplewebauthn/browser");
 
@@ -111,7 +148,14 @@ export async function signInWithEmail(email: string): Promise<EmailLoginResult> 
     mode?: "register" | "login";
     options?: unknown;
     error?: string;
+    otpRequired?: boolean;
+    code?: string;
   };
+  // First-time signup + EMAIL_OTP_ENABLED on the server: caller must
+  // run /auth/email/otp/start + verify before this call can proceed.
+  if (beginRes.status === 403 && (begin.otpRequired || begin.code === "otp_required")) {
+    throw new OtpRequiredError();
+  }
   if (!beginRes.ok || !begin.mode || !begin.options) {
     throw new Error(begin.error ?? "could not start sign-in");
   }

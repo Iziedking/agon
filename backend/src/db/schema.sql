@@ -226,6 +226,21 @@ create table if not exists syndicate_war_results (
 );
 create index if not exists war_results_week_idx on syndicate_war_results(week_id, rank);
 
+-- Email OTP proof-of-ownership. Required before a never-seen email can
+-- register a passkey for the first time (so an attacker can't claim
+-- someone else's email and mint a Circle wallet under it). Returning
+-- passkey users don't hit this path. Codes hash via sha256+pepper at
+-- rest so a DB dump doesn't leak active codes. `verified_at` non-null
+-- means /auth/email/begin can proceed within OTP_VERIFY_TTL.
+create table if not exists email_otp (
+  email        text primary key,
+  code_hash    text not null,
+  expires_at   timestamptz not null,
+  attempts     int not null default 0,
+  verified_at  timestamptz,
+  created_at   timestamptz not null default now()
+);
+
 create table if not exists challenges (
   id          bigint primary key,
   creator     text,

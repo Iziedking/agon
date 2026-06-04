@@ -30,6 +30,17 @@ const envSchema = z.object({
   DISCORD_CLIENT_SECRET: z.string().optional(),
   DISCORD_CALLBACK_URL: z.string().optional(),
 
+  // Email OTP at first signup. When enabled, a never-seen email must
+  // prove ownership via a 6-digit code before the passkey-enrollment
+  // path runs. Returning passkey users skip this — the passkey itself
+  // is the proof. OTP_PEPPER salts the at-rest code hash so a DB leak
+  // doesn't expose live codes.
+  EMAIL_OTP_ENABLED: z.coerce.boolean().default(false),
+  EMAIL_PROVIDER: z.enum(["console", "resend"]).default("console"),
+  EMAIL_FROM: z.string().optional(),
+  RESEND_API_KEY: z.string().optional(),
+  OTP_PEPPER: z.string().optional(),
+
   // Circle Developer-Controlled Wallets. Used to back ArcRun email logins so
   // operators can ENTER, JOIN, and CLAIM without holding their own keys. The
   // entity secret is registered once via scripts/circle-bootstrap.ts; the
@@ -251,6 +262,13 @@ export const config = {
       clientId: env.DISCORD_CLIENT_ID,
       clientSecret: env.DISCORD_CLIENT_SECRET,
       callbackUrl: env.DISCORD_CALLBACK_URL,
+    },
+    emailOtp: {
+      enabled: env.EMAIL_OTP_ENABLED,
+      provider: env.EMAIL_PROVIDER,
+      from: env.EMAIL_FROM,
+      resendApiKey: env.RESEND_API_KEY,
+      pepper: env.OTP_PEPPER,
     },
   },
   training: {
