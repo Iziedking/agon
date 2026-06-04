@@ -152,3 +152,55 @@ export async function fundHotWallets(agentIds: number[], fundUsdc: number): Prom
     await publicClient.waitForTransactionReceipt({ hash });
   }
 }
+
+/// Counterpart to `fundHotWallets`: after a Scout contest settles, sweep
+/// any remaining USDC out of each agent's hot wallet back to the
+/// coordinator wallet so the float doesn't leak across contests. USDC is
+/// native gas on Arc, so a small dust floor stays behind to keep the
+/// wallet usable for the next round without re-funding.
+///
+/// Reserve floor defaults to 0.05 USDC (50_000 at 6dp). Override with
+/// SCOUT_SWEEP_RESERVE_USDC. Sweeps from the hot wallet's own key so the
+/// transfer is authentic and gas is paid out of the same wallet.
+export async function sweepHotWallets(agentIds: number[]): Promise<void> {
+  if (agentIds.length === 0) return;
+  if (!config.scout.masterMnemonic) return; // nothing to sweep without the mnemonic
+
+  const reserveUsdc = Number(process.env.SCOUT_SWEEP_RESERVE_USDC ?? "0.05");
+  const reserve = BigInt(Math.max(0, Math.round(reserveUsdc * 1e6)));
+  const dest = coordinatorAddress();
+
+  let swept = 0;
+  let total = 0n;
+  for (const id of agentIds) {
+    const account = deriveHotWallet(id);
+    const bal = (await publicClient.readContract({
+      address: config.external.USDC,
+      abi: erc20,
+      functionName: "balanceOf",
+      args: [account.address],
+    })) as bigint;
+    if (bal <= reserve) continue;
+    const amount = bal - reserve;
+    try {
+      const wallet = createWalletClient({ account: account as Account, chain: arcTestnet, transport: http(config.rpcHttp) });
+      const hash = await wallet.writeContract({
+        address: config.external.USDC,
+        abi: erc20,
+        functionName: "transfer",
+        args: [dest, amount],
+      });
+      await publicClient.waitForTransactionReceipt({ hash });
+      swept += 1;
+      total += amount;
+    } catch (err) {
+      console.warn(
+        `sweepHotWallets: agent ${id} sweep failed: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+  if (swept > 0) {
+    const totalUsdc = (Number(total) / 1e6).toFixed(4);
+    console.log(`sweep: pulled ${totalUsdc} USDC back from ${swept} hot wallet(s)`);
+  }
+}

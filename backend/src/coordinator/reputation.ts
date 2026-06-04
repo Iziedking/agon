@@ -113,15 +113,30 @@ export async function creditPoints(contestId: number, cType: number, results: Ag
   );
 }
 
-/// ERC-8004 feedback from the validator wallet, one call per scored agent. The
-/// validator EOA is not the agent NFT owner (the AgentRegistry contract is), so
-/// the no-self-feedback rule is satisfied. Opt-in via VALIDATOR_PRIVATE_KEY.
-export async function postValidatorFeedback(contestId: number, cType: number, results: AgentResult[]): Promise<void> {
+/// ERC-8004 feedback from the validator wallet, one call per scored agent.
+/// The validator EOA is not the agent NFT owner (the AgentRegistry
+/// contract is), so the no-self-feedback rule is satisfied. Opt-in via
+/// VALIDATOR_PRIVATE_KEY.
+///
+/// `source` distinguishes a campaign settlement from a peer-challenge
+/// settlement so the on-chain tag is unambiguous (a contest id and a
+/// challenge id are different namespaces). Tag shape:
+///   contest:   arcrun-{type}-{result}-c{id}
+///   challenge: arcrun-{type}-{result}-ch{id}
+/// Downstream ERC-8004 readers can filter on the prefix.
+export async function postValidatorFeedback(
+  source: "contest" | "challenge",
+  eventId: number,
+  cType: number,
+  results: AgentResult[],
+): Promise<void> {
   if (results.length === 0) return;
   const pk = config.validator.privateKey;
   if (!pk) return;
   const wallet = createWalletClient({ account: privateKeyToAccount(pk) as Account, chain: arcTestnet, transport: http(config.rpcHttp) });
   const typeName = TYPE_NAMES[cType] ?? String(cType);
+  const idPrefix = source === "contest" ? "c" : "ch";
+  const label = source === "contest" ? "contest" : "challenge";
   let posted = 0;
   for (const s of ranked(results)) {
     try {
@@ -134,7 +149,7 @@ export async function postValidatorFeedback(contestId: number, cType: number, re
       const tokenId = agent.erc8004TokenId;
       if (tokenId === 0n) continue;
       const result = s.rank === 1 ? "win" : s.rank <= 3 ? "podium" : "ran";
-      const tag = `arcrun-${typeName}-${result}-c${contestId}`;
+      const tag = `arcrun-${typeName}-${result}-${idPrefix}${eventId}`;
       const feedbackHash = keccak256(toHex(tag));
       const hash = await wallet.writeContract({
         address: config.external.ReputationRegistry,
@@ -145,10 +160,15 @@ export async function postValidatorFeedback(contestId: number, cType: number, re
       await publicClient.waitForTransactionReceipt({ hash });
       posted++;
     } catch (err) {
-      console.error(`contest ${contestId}: giveFeedback for agent ${s.r.agentId} failed:`, err instanceof Error ? err.message : err);
+      console.error(
+        `${label} ${eventId}: giveFeedback for agent ${s.r.agentId} failed:`,
+        err instanceof Error ? err.message : err,
+      );
     }
   }
-  if (posted > 0) console.log(`contest ${contestId}: validator posted ERC-8004 feedback for ${posted} agent(s)`);
+  if (posted > 0) {
+    console.log(`${label} ${eventId}: validator posted ERC-8004 feedback for ${posted} agent(s)`);
+  }
 }
 
 /// Off-chain qualification: drop entrants whose operator holds fewer than

@@ -9,7 +9,7 @@ import { AnalystRunner } from "../runners/analyst.js";
 import { ScoutRunner } from "../runners/scout.js";
 import { SolverRunner } from "../runners/solver.js";
 import type { AgentResult, ContestEntryInput } from "../runners/types.js";
-import { fundHotWallets } from "./contestOps.js";
+import { fundHotWallets, sweepHotWallets } from "./contestOps.js";
 import { applyReputation, creditPoints, postValidatorFeedback, qualifiedField } from "./reputation.js";
 import { merkleRoot, payoutLeaf } from "./merkle.js";
 import { computePayoutsForMode, normalizeScoringMode } from "./payouts.js";
@@ -282,8 +282,19 @@ export async function runContestById(contestId: number, broadcast: (message: unk
   // placement-tagged trait per top-3 finisher.
   await applyReputation(contestId, results);
   await creditPoints(contestId, cType, results);
-  await postValidatorFeedback(contestId, cType, results);
+  await postValidatorFeedback("contest", contestId, cType, results);
   await awardPlacementTraits("contest", contestId, results).catch((err) =>
     console.error(`contest ${contestId}: placement trait awards failed:`, err instanceof Error ? err.message : err),
   );
+
+  // Scout-only: pull any leftover USDC out of each agent's hot wallet
+  // back to the coordinator. fundHotWallets topped them up before
+  // scoring; without a sweep that float leaks across contests. Leaves
+  // a small reserve (SCOUT_SWEEP_RESERVE_USDC, default 0.05) so the
+  // next round can pay gas without re-funding from scratch.
+  if (cType === 0 && field.length > 0 && config.scout.masterMnemonic && config.coordinator.privateKey) {
+    await sweepHotWallets(field.map((e) => e.agentId)).catch((err) =>
+      console.error(`contest ${contestId}: sweep failed: ${err instanceof Error ? err.message : err}`),
+    );
+  }
 }

@@ -170,6 +170,26 @@ alter table contests add column if not exists scoring_mode text;
 alter table entries add column if not exists tier int;
 alter table challenge_entries add column if not exists tier int;
 
+-- Treasury / payout flow from PrizeEscrow.PaidOut. Every USDC outflow
+-- from a pool gets a row here: contest prize claims, challenge payouts,
+-- listing fees to treasury, platform-fee skims. The (controller,
+-- pool_id, recipient) keys let us reconcile this against contests /
+-- challenges / treasury without re-parsing the raw events_log.
+create table if not exists treasury_flow (
+  id           bigserial primary key,
+  controller   text not null,
+  pool_id      numeric not null,
+  recipient    text not null,
+  amount       numeric not null,
+  tx_hash      text not null,
+  block_number bigint not null,
+  log_index    int not null,
+  created_at   timestamptz not null default now(),
+  unique (tx_hash, log_index)
+);
+create index if not exists treasury_flow_recipient_idx on treasury_flow(recipient);
+create index if not exists treasury_flow_pool_idx on treasury_flow(controller, pool_id);
+
 create table if not exists challenges (
   id          bigint primary key,
   creator     text,

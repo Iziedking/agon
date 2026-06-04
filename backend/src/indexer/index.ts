@@ -370,8 +370,32 @@ async function applyDenormalized(client: PoolClient, log: Log) {
       ]);
       break;
 
+    // ----- PrizeEscrow money flow -----
+    case "PaidOut":
+      // Every USDC outflow from a pool: contest claims, challenge
+      // payouts, listing fee to treasury, platform fee skim. We don't
+      // classify by reason here — the (controller, pool_id, recipient)
+      // tuple is enough to reconcile later. Unique (tx_hash, log_index)
+      // keeps this idempotent across indexer restarts.
+      await client.query(
+        `insert into treasury_flow (controller, pool_id, recipient, amount, tx_hash, block_number, log_index)
+         values ($1, $2, $3, $4, $5, $6, $7)
+         on conflict (tx_hash, log_index) do nothing`,
+        [
+          lc(a.controller),
+          s(a.poolId),
+          lc(a.recipient),
+          s(a.amount),
+          log.transactionHash,
+          s(log.blockNumber),
+          Number(log.logIndex),
+        ],
+      );
+      break;
+
     default:
-      // Other events (PointsCredited, PaidOut, etc.) are kept in events_log only.
+      // Other events (PrizePoolDeposited, ChallengePotDeposited, etc.)
+      // stay in events_log only.
       break;
   }
 }

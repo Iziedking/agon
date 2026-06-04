@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { privateKeyToAccount } from "viem/accounts";
 import { config } from "../config/index.js";
 import { broadcast, startWs } from "./ws.js";
 import { defaultOpenHandler, startScheduler } from "./scheduler.js";
@@ -37,6 +38,24 @@ async function main() {
     console.log(`  maxFeePerGas: ${fees.maxFeePerGas} maxPriorityFeePerGas: ${fees.maxPriorityFeePerGas}`);
   } else {
     console.log("no COORDINATOR_PRIVATE_KEY set; running in log-only mode (no on-chain sends)");
+  }
+
+  // ERC-8004 portable reputation. When a key is set, the validator
+  // wallet posts giveFeedback to the on-chain ReputationRegistry at
+  // settle time so other Arc apps can read a player's standing. Must
+  // be a distinct address from the coordinator (no-self-feedback rule).
+  if (config.validator.privateKey) {
+    const v = privateKeyToAccount(config.validator.privateKey);
+    const coordAddr = tx?.account.address.toLowerCase();
+    if (coordAddr && v.address.toLowerCase() === coordAddr) {
+      console.warn(
+        `validator wallet: ${v.address} — SAME ADDRESS AS COORDINATOR. ERC-8004 self-feedback is rejected on-chain; use a distinct key.`,
+      );
+    } else {
+      console.log(`validator wallet: ${v.address} (ERC-8004 feedback enabled)`);
+    }
+  } else {
+    console.log("no VALIDATOR_PRIVATE_KEY set; ERC-8004 feedback disabled (in-game scoring still works)");
   }
 
   // Run a full contest on-chain and stream it to the live panel first, so it

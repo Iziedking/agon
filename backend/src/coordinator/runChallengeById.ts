@@ -9,10 +9,10 @@ import { AnalystRunner } from "../runners/analyst.js";
 import { ScoutRunner } from "../runners/scout.js";
 import { SolverRunner } from "../runners/solver.js";
 import type { AgentResult, ContestEntryInput } from "../runners/types.js";
-import { fundHotWallets } from "./contestOps.js";
+import { fundHotWallets, sweepHotWallets } from "./contestOps.js";
 import { merkleRoot, payoutLeaf } from "./merkle.js";
 import { computePayoutsForMode, normalizeScoringMode } from "./payouts.js";
-import { creditPoints } from "./reputation.js";
+import { creditPoints, postValidatorFeedback } from "./reputation.js";
 import { applyTraitMultipliers, awardPlacementTraits, fetchAgentMultipliers } from "./traits.js";
 import {
   applyTrainingMultipliers,
@@ -494,6 +494,28 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
       // showed 0 cycles on the leaderboard. cType uses the same family
       // mapping as the runner so the on-chain event is tagged correctly.
       await creditPoints(challengeId, cType, results);
+
+      // ERC-8004 portable reputation. Validator wallet posts one
+      // giveFeedback per scored agent to the on-chain ReputationRegistry,
+      // so other Arc apps can read a player's standing without trusting
+      // ArcRun. Opt-in via VALIDATOR_PRIVATE_KEY; falls through cleanly
+      // when unset. In-game challenge rep (the AgentRegistry delta)
+      // isn't applied here — ChallengeArena doesn't hold the
+      // CONTEST_ENGINE_ROLE on AgentRegistry. Queued for the next
+      // contract version with a contract-level cap audit.
+      await postValidatorFeedback("challenge", challengeId, cType, results);
+
+      // Scout-style VOLUME challenges run real on-chain ops from each
+      // entrant's hot wallet, so we sweep any leftover float back to
+      // the coordinator after the run. Other kinds skip the sweep
+      // because they never funded the hot wallets in the first place.
+      if (cType === 0 && results.length > 0 && config.scout.masterMnemonic && config.coordinator.privateKey) {
+        await sweepHotWallets(results.map((r) => r.agentId)).catch((err) =>
+          console.error(
+            `challenge ${challengeId}: sweep failed: ${err instanceof Error ? err.message : err}`,
+          ),
+        );
+      }
     }
 
     const root = merkleRoot(payouts.map((p) => payoutLeaf(p.operator, p.amount)));
