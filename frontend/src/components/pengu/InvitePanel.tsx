@@ -6,8 +6,8 @@ import { useOperatorAddress } from "@/hooks/useAuth";
 import { BracketedCell } from "@/components/redesign";
 import { CONTRACTS, publicClient } from "@/lib/arc";
 import { challengeArenaAbi, fetchChallengeInvites, type ChallengeInvitee } from "@/lib/challenges";
-import { friendlyError, rawErrorDetail } from "@/lib/errors";
-import { reportEvent } from "@/lib/report";
+import { friendlyError } from "@/lib/errors";
+import { logRawError, reportEvent } from "@/lib/report";
 
 /// Invite panel for private challenges. Renders for the creator while the
 /// challenge is OPEN. Accepts a comma or newline separated list of
@@ -35,7 +35,7 @@ export function InvitePanel({ challengeId, creator, isPrivate, status }: Props) 
   const { writeContractAsync } = useArcWrite();
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<{ friendly: string; raw: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [invites, setInvites] = useState<ChallengeInvitee[]>([]);
 
@@ -79,18 +79,18 @@ export function InvitePanel({ challengeId, creator, isPrivate, status }: Props) 
       setNote("LINK COPIED");
       setTimeout(() => setNote(null), 1500);
     } catch {
-      setError({ friendly: "could not copy. select the link manually.", raw: url });
+      setError("could not copy. select the link manually.");
     }
   }
 
   async function sendInvites() {
     const { good, bad } = parseAddresses(input);
     if (good.length === 0) {
-      setError({ friendly: "paste one or more 0x addresses (separated by spaces, commas, or new lines).", raw: "" });
+      setError("paste one or more 0x addresses (separated by spaces, commas, or new lines).");
       return;
     }
     if (bad.length > 0) {
-      setError({ friendly: `not a valid address: ${bad[0]}`, raw: bad.join(" ") });
+      setError(`not a valid address: ${bad[0]}`);
       return;
     }
     setBusy(true);
@@ -112,16 +112,8 @@ export function InvitePanel({ challengeId, creator, isPrivate, status }: Props) 
       setTimeout(() => setNote(null), 1500);
       void reload();
     } catch (e) {
-      setError({
-        friendly: friendlyError(e, "could not invite."),
-        raw: rawErrorDetail(e),
-      });
-      reportEvent("challenge_invite_error", {
-        level: "error",
-        message: e instanceof Error ? e.message : String(e),
-        context: { id: challengeId },
-        address,
-      });
+      setError(friendlyError(e, "could not invite."));
+      logRawError("challenge_invite_error", e, { address, context: { id: challengeId } });
     } finally {
       setBusy(false);
     }
@@ -165,14 +157,7 @@ export function InvitePanel({ challengeId, creator, isPrivate, status }: Props) 
           ) : null}
         </div>
         {error ? (
-          <div className="mt-3">
-            <p className="font-mono text-[11px] text-[#e0466e]">{error.friendly}</p>
-            {error.raw && error.raw !== error.friendly ? (
-              <p className="mt-1 font-mono text-[10px] leading-[1.4] text-ink-3 break-words">
-                <span className="text-ink-2">details:</span> {error.raw}
-              </p>
-            ) : null}
-          </div>
+          <p className="mt-3 font-mono text-[11px] text-[#e0466e]">{error}</p>
         ) : null}
 
         {invites.length > 0 ? (

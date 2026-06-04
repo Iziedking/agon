@@ -1,6 +1,13 @@
 /// Maps raw wallet, viem, and Circle errors to short, friendly messages.
-/// Returns the friendly version; callers can also surface the raw detail
-/// alongside via `rawErrorDetail(e)` when they want a diagnostic line.
+/// Returns the friendly version only. Raw error strings (Connector not
+/// connected, jsonrpc error -32603, viem stack traces, etc.) MUST NEVER
+/// reach the UI. Surfaces that previously printed `details: <raw>`
+/// have been removed; this function is the single contract.
+///
+/// When adding a new branch: prefer matching on the lowercase substring
+/// of the raw message so wallet libraries' phrasing tweaks don't break
+/// the mapping. Always end branches with the friendly message; never
+/// fall through to the raw text.
 export function friendlyError(e: unknown, fallback = "something went wrong. try again."): string {
   const msg = (e instanceof Error ? e.message : String(e ?? "")).toLowerCase();
 
@@ -22,6 +29,18 @@ export function friendlyError(e: unknown, fallback = "something went wrong. try 
   ) {
     return "your wallet is out of usdc for gas. top it up from the arc faucet and try again.";
   }
+  // Wagmi "Connector not connected" surfaces when a stored cookie session
+  // tries to write through wagmi but the wallet didn't auto-reconnect.
+  // AuthProvider should catch this case and sign the user out; this
+  // mapping covers the race where the action fires before the detector.
+  if (
+    msg.includes("connector not connected") ||
+    msg.includes("not connected") ||
+    msg.includes("no connector") ||
+    msg.includes("disconnected")
+  ) {
+    return "your wallet isn't connected. sign in to continue.";
+  }
   if (msg.includes("chain mismatch") || msg.includes("does not match") || (msg.includes("chain") && msg.includes("switch"))) {
     return "wrong network. switch to arc and try again.";
   }
@@ -38,7 +57,7 @@ export function friendlyError(e: unknown, fallback = "something went wrong. try 
     return "email sign-in is not available right now.";
   }
   if (msg.includes("email begin failed") || msg.includes("relation") || msg.includes("does not exist")) {
-    return "the server isn't ready: database migrations haven't run. ask the operator to run npm run migrate.";
+    return "the server is briefly unavailable. try again in a moment.";
   }
   if (msg.includes("timeout") || msg.includes("timed out") || msg.includes("still pending")) {
     return "the request timed out. it may still land; check arcscan in a minute.";
@@ -54,11 +73,21 @@ export function friendlyError(e: unknown, fallback = "something went wrong. try 
   if (msg.includes("no injected") || msg.includes("provider") || msg.includes("no wallet")) {
     return "no wallet found. install a wallet, or use email instead.";
   }
+  // 401-style auth failures from auth-required endpoints.
+  if (msg.includes("unauthorized") || msg.includes("401") || msg.includes("not signed in")) {
+    return "you're signed out. sign in and try again.";
+  }
+  // 4xx / 5xx wrappers without a specific match
+  if (msg.includes("network") || msg.includes("fetch failed") || msg.includes("network error")) {
+    return "network hiccup. try again in a moment.";
+  }
   return fallback;
 }
 
-/// The raw error message, trimmed to a single readable line. Use this when
-/// you want a small diagnostic underneath the friendly summary.
+/// Diagnostic-only: returns the raw error message trimmed to one line.
+/// NEVER render this in the UI. Use only for `console.error` calls, event
+/// logging, or admin diagnostic surfaces gated behind ADMIN_TOKEN. The
+/// UI contract is `friendlyError` only.
 export function rawErrorDetail(e: unknown, max = 180): string {
   const msg = e instanceof Error ? e.message : String(e ?? "");
   const flat = msg.replace(/\s+/g, " ").trim();

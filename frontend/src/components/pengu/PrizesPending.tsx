@@ -6,7 +6,8 @@ import { ActivityLedger, BracketedCell } from "@/components/redesign";
 import { WinShareModal } from "@/components/redesign/WinShareModal";
 import { CHALLENGE_KIND } from "@/lib/challenges";
 import { CONTEST_TYPE, formatUsdc } from "@/lib/contests";
-import { friendlyError, rawErrorDetail } from "@/lib/errors";
+import { friendlyError } from "@/lib/errors";
+import { logRawError } from "@/lib/report";
 import { reportEvent } from "@/lib/report";
 import {
   claimWriteShape,
@@ -34,7 +35,7 @@ export function PrizesPending({ address }: { address: `0x${string}` }) {
   const { writeContractAsync } = useArcWrite();
   const [rows, setRows] = useState<PendingWinning[] | undefined>(undefined);
   const [busyKey, setBusyKey] = useState<string | null>(null);
-  const [err, setErr] = useState<{ key: string; friendly: string; raw: string } | null>(null);
+  const [err, setErr] = useState<{ key: string; friendly: string } | null>(null);
   const [success, setSuccess] = useState<SuccessState | null>(null);
 
   const reload = useCallback(async () => {
@@ -69,17 +70,8 @@ export function PrizesPending({ address }: { address: `0x${string}` }) {
       setRows((prev) => (prev ?? []).filter((r) => `${r.source}-${r.id}` !== key));
       setSuccess({ source: row.source, id: row.id, amount: claim.amount });
     } catch (e) {
-      setErr({
-        key,
-        friendly: friendlyError(e, "could not claim."),
-        raw: rawErrorDetail(e),
-      });
-      reportEvent("prize_claim_error", {
-        level: "error",
-        message: e instanceof Error ? e.message : String(e),
-        context: { source: row.source, id: row.id },
-        address,
-      });
+      setErr({ key, friendly: friendlyError(e, "could not claim.") });
+      logRawError("prize_claim_error", e, { address, context: { source: row.source, id: row.id } });
     } finally {
       setBusyKey(null);
     }
@@ -139,14 +131,7 @@ export function PrizesPending({ address }: { address: `0x${string}` }) {
                     </button>
                   </div>
                   {err && err.key === key ? (
-                    <div className="basis-full">
-                      <p className="font-mono text-[11px] text-[#e0466e]">{err.friendly}</p>
-                      {err.raw && err.raw !== err.friendly ? (
-                        <p className="mt-1 font-mono text-[10px] leading-[1.4] text-ink-3 break-words">
-                          <span className="text-ink-2">details:</span> {err.raw}
-                        </p>
-                      ) : null}
-                    </div>
+                    <p className="basis-full font-mono text-[11px] text-[#e0466e]">{err.friendly}</p>
                   ) : null}
                 </div>
               );

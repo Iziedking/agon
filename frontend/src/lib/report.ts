@@ -20,3 +20,27 @@ export function reportEvent(
     // logging must never break the app
   }
 }
+
+/// Logs the raw error detail to the admin events stream and console while
+/// guaranteeing nothing leaks to the UI. Pair this with friendlyError() at
+/// every catch site: friendlyError → UI, logRawError → admin/console.
+/// The UI contract is "friendly messages only"; this helper makes that
+/// pattern a one-liner.
+export function logRawError(
+  kind: string,
+  e: unknown,
+  ctx?: { address?: string; context?: unknown },
+): void {
+  const message = e instanceof Error ? e.message : String(e ?? "");
+  if (typeof console !== "undefined") {
+    // Surfaces in the browser console for developer-mode diagnostics.
+    // eslint-disable-next-line no-console
+    console.error(`[${kind}]`, e);
+  }
+  reportEvent(kind, {
+    level: "error",
+    message,
+    address: ctx?.address,
+    context: ctx?.context,
+  });
+}

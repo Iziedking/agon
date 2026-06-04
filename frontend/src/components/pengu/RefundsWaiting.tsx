@@ -5,7 +5,8 @@ import { useArcWrite } from "@/hooks/useArcWrite";
 import { CONTRACTS, publicClient } from "@/lib/arc";
 import { challengeArenaAbi, fetchPendingRefunds, type PendingRefund } from "@/lib/challenges";
 import { formatUsdc } from "@/lib/contests";
-import { friendlyError, rawErrorDetail } from "@/lib/errors";
+import { friendlyError } from "@/lib/errors";
+import { logRawError } from "@/lib/report";
 import { reportEvent } from "@/lib/report";
 import { ActivityLedger, BracketedCell } from "@/components/redesign";
 
@@ -20,7 +21,7 @@ export function RefundsWaiting({ address }: { address: `0x${string}` }) {
   const { writeContractAsync } = useArcWrite();
   const [rows, setRows] = useState<PendingRefund[] | undefined>(undefined);
   const [busyId, setBusyId] = useState<number | null>(null);
-  const [err, setErr] = useState<{ id: number; friendly: string; raw: string } | null>(null);
+  const [err, setErr] = useState<{ id: number; friendly: string } | null>(null);
 
   const reload = useCallback(async () => {
     const next = await fetchPendingRefunds(address);
@@ -47,13 +48,8 @@ export function RefundsWaiting({ address }: { address: `0x${string}` }) {
       setRows((prev) => (prev ?? []).filter((r) => r.id !== id));
       void reload();
     } catch (e) {
-      setErr({ id, friendly: friendlyError(e, "could not refund."), raw: rawErrorDetail(e) });
-      reportEvent("challenge_refund_error", {
-        level: "error",
-        message: e instanceof Error ? e.message : String(e),
-        context: { id, source: "dashboard" },
-        address,
-      });
+      setErr({ id, friendly: friendlyError(e, "could not refund.") });
+      logRawError("challenge_refund_error", e, { address, context: { id, source: "dashboard" } });
     } finally {
       setBusyId(null);
     }
@@ -101,14 +97,7 @@ export function RefundsWaiting({ address }: { address: `0x${string}` }) {
                 </button>
               </div>
               {err && err.id === r.id ? (
-                <div className="basis-full">
-                  <p className="font-mono text-[11px] text-[#e0466e]">{err.friendly}</p>
-                  {err.raw && err.raw !== err.friendly ? (
-                    <p className="mt-1 font-mono text-[10px] leading-[1.4] text-ink-3 break-words">
-                      <span className="text-ink-2">details:</span> {err.raw}
-                    </p>
-                  ) : null}
-                </div>
+                <p className="basis-full font-mono text-[11px] text-[#e0466e]">{err.friendly}</p>
               ) : null}
             </div>
           ))}

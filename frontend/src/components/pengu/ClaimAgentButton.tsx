@@ -5,7 +5,8 @@ import { useOperatorAddress } from "@/hooks/useAuth";
 import { useArcWrite } from "@/hooks/useArcWrite";
 import { CONTRACTS, publicClient } from "@/lib/arc";
 import { agentRegistryAbi, fetchAgents, invalidateAgentsCache } from "@/lib/agents";
-import { friendlyError, rawErrorDetail } from "@/lib/errors";
+import { friendlyError } from "@/lib/errors";
+import { logRawError } from "@/lib/report";
 import { reportEvent } from "@/lib/report";
 
 const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL ?? "http://localhost:8082";
@@ -46,7 +47,7 @@ export function ClaimAgentButton({
   const { address } = useOperatorAddress();
   const { writeContractAsync } = useArcWrite();
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<{ friendly: string; raw: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [count, setCount] = useState<number | null>(null);
 
   const refreshCount = async () => {
@@ -82,10 +83,7 @@ export function ClaimAgentButton({
     // The post-refresh state is in the local variable; recompute.
     const latest = count;
     if (latest !== null && latest >= MAX_AGENTS_PER_PROFILE) {
-      setError({
-        friendly: `you already own ${MAX_AGENTS_PER_PROFILE} agents. that's the cap.`,
-        raw: "",
-      });
+      setError(`you already own ${MAX_AGENTS_PER_PROFILE} agents. that's the cap.`);
       return;
     }
     // Server-side gate: in addition to the local count, ask the backend
@@ -94,10 +92,7 @@ export function ClaimAgentButton({
     const prep = await fetchClaimPrep();
     if (!prep.canClaim) {
       setCount(prep.owned);
-      setError({
-        friendly: prep.reason ?? `you already own ${prep.max} agents. that's the cap.`,
-        raw: "",
-      });
+      setError(prep.reason ?? `you already own ${prep.max} agents. that's the cap.`);
       return;
     }
     setBusy(true);
@@ -120,15 +115,8 @@ export function ClaimAgentButton({
       await onClaimed?.();
       await refreshCount();
     } catch (e) {
-      setError({
-        friendly: friendlyError(e, "could not claim your agent."),
-        raw: rawErrorDetail(e),
-      });
-      reportEvent("agent_create_error", {
-        level: "error",
-        message: e instanceof Error ? e.message : String(e),
-        address,
-      });
+      setError(friendlyError(e, "could not claim your agent."));
+      logRawError("agent_create_error", e, { address });
     } finally {
       setBusy(false);
     }
@@ -151,14 +139,7 @@ export function ClaimAgentButton({
               : label}
       </button>
       {error ? (
-        <div>
-          <p className="font-mono text-xs text-[#e0466e]">{error.friendly}</p>
-          {error.raw && error.raw !== error.friendly ? (
-            <p className="mt-1 font-mono text-[10px] leading-[1.4] text-ink-3 break-words">
-              <span className="text-ink-2">details:</span> {error.raw}
-            </p>
-          ) : null}
-        </div>
+        <p className="font-mono text-xs text-[#e0466e]">{error}</p>
       ) : null}
     </div>
   );

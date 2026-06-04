@@ -8,8 +8,8 @@ import { arcTestnet } from "@/lib/arc";
 import { loginWithSigner, signInWithEmail, enrollPasskey } from "@/lib/auth";
 import { useAuth } from "@/hooks/useAuth";
 import { Robot } from "@/components/redesign";
-import { friendlyError, rawErrorDetail } from "@/lib/errors";
-import { reportEvent } from "@/lib/report";
+import { friendlyError } from "@/lib/errors";
+import { logRawError, reportEvent } from "@/lib/report";
 
 /// Login popout, reskinned to arcrun-redesign. Bracketed surface on a warm
 /// canvas, stencil heading, mono body, flat notched pink tag CTAs. Three
@@ -143,7 +143,7 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
   const [circleBusy, setCircleBusy] = useState(false);
   const [enrolling, setEnrolling] = useState(false);
   const [enrolled, setEnrolled] = useState(false);
-  const [error, setError] = useState<{ friendly: string; raw: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -170,12 +170,8 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
       await refresh();
       reportEvent("login", { context: { method: "wallet" } });
     } catch (e) {
-      setError({ friendly: friendlyError(e, "sign in failed."), raw: rawErrorDetail(e) });
-      reportEvent("login_error", {
-        level: "error",
-        message: e instanceof Error ? e.message : String(e),
-        context: { method: "wallet" },
-      });
+      setError(friendlyError(e, "sign in failed."));
+      logRawError("login_error", e, { context: { method: "wallet" } });
     } finally {
       setBusy(false);
     }
@@ -188,7 +184,7 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
   async function handleEmailSignIn() {
     const trimmed = email.trim();
     if (!trimmed) {
-      setError({ friendly: "enter an email first", raw: "" });
+      setError("enter an email first");
       return;
     }
     setCircleBusy(true);
@@ -218,12 +214,8 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
       } else if (lower.includes("verification failed") || lower.includes("attestation")) {
         userMsg = "passkey verification failed. clear the saved passkey and try again, or use a wallet below.";
       }
-      setError({ friendly: userMsg, raw: rawErrorDetail(e) });
-      reportEvent("login_error", {
-        level: "error",
-        message: msg,
-        context: { method: "email", name },
-      });
+      setError(userMsg);
+      logRawError("login_error", e, { context: { method: "email", name } });
     } finally {
       setCircleBusy(false);
     }
@@ -248,8 +240,8 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
       } else if (msg.toLowerCase().includes("invalid")) {
         userMsg = "this device already has a passkey for this account.";
       }
-      setError({ friendly: userMsg, raw: rawErrorDetail(e) });
-      reportEvent("passkey_enroll_error", { level: "error", message: msg });
+      setError(userMsg);
+      logRawError("passkey_enroll_error", e);
     } finally {
       setEnrolling(false);
     }
@@ -464,14 +456,7 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
               </AnimatePresence>
 
               {error ? (
-                <div className="mt-4">
-                  <p className="font-mono text-[11px] text-[color:var(--err)]">{error.friendly}</p>
-                  {error.raw && error.raw !== error.friendly ? (
-                    <p className="mt-1 font-mono text-[10px] leading-[1.4] text-ink-3 break-words">
-                      <span className="text-ink-2">details:</span> {error.raw}
-                    </p>
-                  ) : null}
-                </div>
+                <p className="mt-4 font-mono text-[11px] text-[color:var(--err)]">{error}</p>
               ) : null}
             </motion.div>
           </div>
