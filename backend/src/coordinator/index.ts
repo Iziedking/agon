@@ -7,6 +7,7 @@ import { startAutopilot, startBackgroundServices } from "./autopilot.js";
 import { TxSender } from "./txSender.js";
 import { runLiveContest } from "./runContest.js";
 import { runContestById } from "./runContestById.js";
+import { checkWalletSeparation } from "./walletCheck.js";
 
 /// Coordinator: the WebSocket fanout, the Arc transaction sender, the
 /// contest open-driver, and the long-running background services
@@ -29,6 +30,15 @@ import { runContestById } from "./runContestById.js";
 async function main() {
   startWs(config.coordinator.wsPort);
 
+  // Role-separation sanity check. Logs the four wallet addresses
+  // (coordinator / validator / treasury / scout-master[0]) and warns
+  // on collisions. Under STRICT_WALLET_SEPARATION=true any collision
+  // is a startup failure — set that on production deploys.
+  const ok = await checkWalletSeparation();
+  if (!ok) {
+    process.exit(1);
+  }
+
   let tx: TxSender | undefined;
   if (config.coordinator.privateKey) {
     tx = new TxSender(config.coordinator.privateKey);
@@ -42,18 +52,12 @@ async function main() {
 
   // ERC-8004 portable reputation. When a key is set, the validator
   // wallet posts giveFeedback to the on-chain ReputationRegistry at
-  // settle time so other Arc apps can read a player's standing. Must
-  // be a distinct address from the coordinator (no-self-feedback rule).
+  // settle time so other Arc apps can read a player's standing.
+  // Collision detection (must be distinct from coordinator, treasury,
+  // scout-master) lives in checkWalletSeparation() above.
   if (config.validator.privateKey) {
     const v = privateKeyToAccount(config.validator.privateKey);
-    const coordAddr = tx?.account.address.toLowerCase();
-    if (coordAddr && v.address.toLowerCase() === coordAddr) {
-      console.warn(
-        `validator wallet: ${v.address} — SAME ADDRESS AS COORDINATOR. ERC-8004 self-feedback is rejected on-chain; use a distinct key.`,
-      );
-    } else {
-      console.log(`validator wallet: ${v.address} (ERC-8004 feedback enabled)`);
-    }
+    console.log(`ERC-8004 feedback enabled (validator: ${v.address})`);
   } else {
     console.log("no VALIDATOR_PRIVATE_KEY set; ERC-8004 feedback disabled (in-game scoring still works)");
   }
