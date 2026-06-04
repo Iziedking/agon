@@ -12,7 +12,14 @@ import { fetchLeaderboard, formatReputation, formatUsdcString, short, type Leade
 /// ink otherwise), operator cell shows a 24px flat Robot + truncated
 /// address mono, earned right-aligned in accent.
 
-const COLS = "grid-cols-[3rem_1fr_3.5rem_3.5rem_4rem_4.5rem_7rem]";
+/// On mobile we drop ENTERED, CYCLES and REP to keep the row scannable
+/// inside a 360px viewport. WINS and EARNED carry the ranking, OPERATOR
+/// is the identity. Tablet (sm) brings ENTERED back, desktop (md) adds
+/// CYCLES + REP.
+const COLS =
+  "grid-cols-[2.5rem_1fr_4rem_5.5rem] " +
+  "sm:grid-cols-[3rem_1fr_3rem_3.5rem_5.5rem] " +
+  "md:grid-cols-[3rem_1fr_3.5rem_3.5rem_4rem_4.5rem_7rem]";
 const PER_PAGE = 20;
 
 // Hash an operator address to a Robot variant so each row has a stable
@@ -51,14 +58,14 @@ export default function LeaderboardPage() {
       </section>
 
       <section className="mx-auto max-w-[1600px] px-6 py-10 pb-16">
-        {/* Header row */}
+        {/* Header row. Column visibility tracks the grid breakpoints. */}
         <div className={`grid ${COLS} items-center gap-3 border-b border-[color:var(--hairline-strong)] py-3 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3`}>
           <span>RANK</span>
           <span>OPERATOR</span>
-          <span className="text-right">ENTERED</span>
+          <span className="hidden text-right sm:block">ENTERED</span>
           <span className="text-right">WINS</span>
-          <span className="text-right">CYCLES</span>
-          <span className="text-right">REP</span>
+          <span className="hidden text-right md:block">CYCLES</span>
+          <span className="hidden text-right md:block">REP</span>
           <span className="text-right">EARNED</span>
         </div>
 
@@ -106,10 +113,10 @@ export default function LeaderboardPage() {
                   </span>
                   <span className="truncate font-mono text-[13px] text-ink">{short(r.operator)}</span>
                 </span>
-                <span className="text-right font-mono text-[13px] text-ink-2">{r.entered}</span>
+                <span className="hidden text-right font-mono text-[13px] text-ink-2 sm:block">{r.entered}</span>
                 <span className="text-right font-mono text-[13px] text-ink-2">{r.wins}</span>
-                <span className="text-right font-mono text-[13px] text-ink-2">{r.cycles}</span>
-                <span className="text-right font-mono text-[13px] text-ink-2">{formatReputation(r.reputation)}</span>
+                <span className="hidden text-right font-mono text-[13px] text-ink-2 md:block">{r.cycles}</span>
+                <span className="hidden text-right font-mono text-[13px] text-ink-2 md:block">{formatReputation(r.reputation)}</span>
                 <span className="text-right font-mono text-[13px] text-accent">{formatUsdcString(r.earned)}</span>
               </a>
             );

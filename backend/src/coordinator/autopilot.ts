@@ -205,6 +205,48 @@ async function startRandomChallengeLoop(broadcast: (message: unknown) => void): 
   }
 }
 
+/// Long-running background services that the coordinator needs regardless
+/// of whether contests come from the autopilot hot-loop or the cadence
+/// scheduler: due-sweeper for OPEN contests past their window, challenge
+/// sweeper, optional random-challenge generator, Arcana claim sweeper,
+/// and the per-agent prediction tick scheduler. Splitting these out lets
+/// the cadence scheduler reuse them without re-importing autopilot's
+/// open-loop.
+export async function startBackgroundServices(
+  broadcast: (message: unknown) => void,
+): Promise<void> {
+  void startDueSweeper(broadcast).catch((err) =>
+    console.error(
+      "background sweeper crashed:",
+      err instanceof Error ? err.message : err,
+    ),
+  );
+  void startChallengeSweeper(broadcast).catch((err) =>
+    console.error(
+      "background challenge sweeper crashed:",
+      err instanceof Error ? err.message : err,
+    ),
+  );
+  void startRandomChallengeLoop(broadcast).catch((err) =>
+    console.error(
+      "background random challenges crashed:",
+      err instanceof Error ? err.message : err,
+    ),
+  );
+  void startArcanaClaimerLoop().catch((err) =>
+    console.error(
+      "arcana claimer crashed:",
+      err instanceof Error ? err.message : err,
+    ),
+  );
+  void startTickScheduler(broadcast).catch((err) =>
+    console.error(
+      "tick scheduler crashed:",
+      err instanceof Error ? err.message : err,
+    ),
+  );
+}
+
 export async function startAutopilot(broadcast: (message: unknown) => void): Promise<void> {
   const configured = (process.env.AUTOPILOT_TYPE ?? "rotate").toLowerCase();
   const legacyPool = process.env.AUTOPILOT_POOL_USDC;
@@ -251,35 +293,9 @@ export async function startAutopilot(broadcast: (message: unknown) => void): Pro
     console.error("autopilot: resume scan failed:", err instanceof Error ? err.message : err);
   }
 
-  // Concurrently settle any contest past its window, including ones hosted by
-  // other operators, so their campaigns resolve without the coordinator hosting them.
-  void startDueSweeper(broadcast).catch((err) =>
-    console.error("autopilot sweeper crashed:", err instanceof Error ? err.message : err),
-  );
-
-  // Concurrently lock, resolve, and refund-cancel peer challenges.
-  void startChallengeSweeper(broadcast).catch((err) =>
-    console.error("autopilot challenge sweeper crashed:", err instanceof Error ? err.message : err),
-  );
-
-  // Random peer challenges so the /live lobby is never empty during demos.
-  void startRandomChallengeLoop(broadcast).catch((err) =>
-    console.error("autopilot random challenges crashed:", err instanceof Error ? err.message : err),
-  );
-
-  // Arcana claim sweeper: fires claimWinnings on resolved positions so
-  // winning agents collect their USDC from Arcana without a manual nudge.
-  void startArcanaClaimerLoop().catch((err) =>
-    console.error("arcana claimer crashed:", err instanceof Error ? err.message : err),
-  );
-
-  // Tick scheduler: drives per-agent prediction-market decisions across
-  // the trade window for Analyst contests and Prediction challenges.
-  // Spreads tier-gated ticks evenly so the live page tells a real-time
-  // story (vs the old one-pass-per-contest pattern).
-  void startTickScheduler(broadcast).catch((err) =>
-    console.error("tick scheduler crashed:", err instanceof Error ? err.message : err),
-  );
+  // Sweepers + Arcana claimer + tick scheduler + random challenges. Same
+  // services the cadence scheduler also needs, so they're behind one call.
+  await startBackgroundServices(broadcast);
 
   for (let cycle = 0; ; cycle++) {
     const type = nextType(configured, cycle);

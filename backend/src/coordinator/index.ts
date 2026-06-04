@@ -1,17 +1,29 @@
 import "dotenv/config";
 import { config } from "../config/index.js";
 import { broadcast, startWs } from "./ws.js";
-import { startScheduler } from "./scheduler.js";
-import { startAutopilot } from "./autopilot.js";
+import { defaultOpenHandler, startScheduler } from "./scheduler.js";
+import { startAutopilot, startBackgroundServices } from "./autopilot.js";
 import { TxSender } from "./txSender.js";
 import { runLiveContest } from "./runContest.js";
 import { runContestById } from "./runContestById.js";
 
-/// Coordinator: the WebSocket fanout, the Arc transaction sender, and the
-/// self-driving contest autopilot. With a funded COORDINATOR_PRIVATE_KEY, the
-/// autopilot opens, runs, and settles contests on a loop, so the whole platform
-/// runs from one `docker compose up` with no per-contest commands. Without a key,
-/// it stays in log-only mode. See ARCRUN_PLAN.md section 5.2.
+/// Coordinator: the WebSocket fanout, the Arc transaction sender, the
+/// contest open-driver, and the long-running background services
+/// (sweepers, Arcana claimer, tick scheduler, random challenges).
+///
+/// Three open-driver modes, picked by env in this order:
+///   1. SCHEDULER_MODE=cadence  — per-type BullMQ cron opens Scout/Analyst/Solver
+///                                concurrently at their plan §5.2 cadences.
+///                                Sweepers settle them when their windows close.
+///   2. SCHEDULER_MODE=manual   — log-only stub; no auto-opens. Use this when
+///                                you want to drive contests yourself via the
+///                                npm run open-contest CLI.
+///   3. (default)               — autopilot hot-loop: one rotating contest at
+///                                a time, randomized pool + duration, friendly
+///                                for demos. Same sweepers run underneath.
+///
+/// All three require COORDINATOR_PRIVATE_KEY (the sponsor that funds pools).
+/// Without a key the coordinator stays in log-only mode regardless.
 
 async function main() {
   startWs(config.coordinator.wsPort);
@@ -47,26 +59,52 @@ async function main() {
       .catch((err) => console.error(`contest ${id} run failed:`, err));
   }
 
-  // The autopilot is the real driver: with a key set (and not turned off), it
-  // opens, runs, and settles contests on a loop, no commands needed. Fall back to
-  // the log-only scheduler stub when there is no key or autopilot is disabled.
-  const autopilotOn = Boolean(config.coordinator.privateKey) && process.env.AUTOPILOT !== "0";
-  if (autopilotOn) {
-    void startAutopilot(broadcast).catch((err) => console.error("autopilot failed:", err));
-    console.log("coordinator running (autopilot + ws). Ctrl+C to stop.");
-  } else {
-    if (!config.coordinator.privateKey) {
+  const mode = (process.env.SCHEDULER_MODE ?? "autopilot").toLowerCase();
+  const haveKey = Boolean(config.coordinator.privateKey);
+
+  if (mode === "cadence" && haveKey) {
+    console.log("scheduler: cadence mode on (Scout 48h / Analyst 5m / Solver 7m)");
+    // Background sweepers + Arcana + ticks still run; they're the same
+    // services autopilot uses, just without its single-contest hot-loop.
+    await startBackgroundServices(broadcast);
+    void startScheduler((type) => defaultOpenHandler(type, broadcast)).catch((err) =>
+      console.error("scheduler failed (is Redis up?):", err),
+    );
+    console.log("coordinator running (cadence scheduler + sweepers + ws). Ctrl+C to stop.");
+    return;
+  }
+
+  if (mode === "manual" || !haveKey) {
+    if (!haveKey) {
       console.log("autopilot off: set COORDINATOR_PRIVATE_KEY to open and settle contests automatically");
     } else {
-      console.log("autopilot off: AUTOPILOT=0");
+      console.log("scheduler: manual mode (log-only; drive contests yourself)");
     }
-    // Non-blocking, so a Redis hiccup never blocks the WS feed.
+    // Background sweepers still run so any contests opened manually get settled.
+    if (haveKey) await startBackgroundServices(broadcast);
     void startScheduler((contestType) => {
       console.log(`scheduler: open ${contestType} contest (stub)`);
       broadcast({ type: "contest_open_intent", contestType, at: Date.now() });
     }).catch((err) => console.error("scheduler failed (is Redis up?):", err));
-    console.log("coordinator running (scheduler + ws). Ctrl+C to stop.");
+    console.log("coordinator running (manual scheduler + ws). Ctrl+C to stop.");
+    return;
   }
+
+  // Default: autopilot hot-loop (single rotating contest, demo-friendly).
+  // Honors AUTOPILOT=0 to fall back to manual.
+  if (process.env.AUTOPILOT === "0") {
+    console.log("autopilot off: AUTOPILOT=0, falling back to manual mode");
+    await startBackgroundServices(broadcast);
+    void startScheduler((contestType) => {
+      console.log(`scheduler: open ${contestType} contest (stub)`);
+      broadcast({ type: "contest_open_intent", contestType, at: Date.now() });
+    }).catch((err) => console.error("scheduler failed (is Redis up?):", err));
+    console.log("coordinator running (manual scheduler + ws). Ctrl+C to stop.");
+    return;
+  }
+
+  void startAutopilot(broadcast).catch((err) => console.error("autopilot failed:", err));
+  console.log("coordinator running (autopilot + ws). Ctrl+C to stop.");
 }
 
 main().catch((err) => {

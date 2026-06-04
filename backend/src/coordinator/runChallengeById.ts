@@ -166,18 +166,34 @@ async function ensureArenaAllowance(stake: bigint): Promise<void> {
 }
 
 async function fetchField(challengeId: number, cType: number): Promise<ContestEntryInput[]> {
-  const { rows } = await query<{ agent_id: string; operator: string }>(
-    "select agent_id, operator from challenge_entries where challenge_id = $1 order by agent_id",
+  // Same pattern as the contest runner: prefer the indexer's cached
+  // tier so the hot path skips an RPC per agent per tick. Backfill on
+  // a legacy null row.
+  const { rows } = await query<{ agent_id: string; operator: string; tier: number | null }>(
+    "select agent_id, operator, tier from challenge_entries where challenge_id = $1 order by agent_id",
     [challengeId],
   );
   const field: ContestEntryInput[] = [];
   for (const r of rows) {
-    const tier = (await publicClient.readContract({
-      address: config.contracts.AgentRegistry,
-      abi: registryAbi,
-      functionName: "getTier",
-      args: [BigInt(r.agent_id), cType],
-    })) as number;
+    let tier = r.tier;
+    if (tier === null) {
+      try {
+        tier = Number(
+          (await publicClient.readContract({
+            address: config.contracts.AgentRegistry,
+            abi: registryAbi,
+            functionName: "getTier",
+            args: [BigInt(r.agent_id), cType],
+          })) as number,
+        );
+        await query(
+          "update challenge_entries set tier = $3 where challenge_id = $1 and agent_id = $2",
+          [challengeId, r.agent_id, tier],
+        );
+      } catch {
+        tier = 0;
+      }
+    }
     field.push({ agentId: Number(r.agent_id), operator: r.operator as `0x${string}`, tier: Number(tier) });
   }
   return field;

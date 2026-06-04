@@ -1,6 +1,7 @@
 import "dotenv/config";
 import type { Log } from "viem";
 import type { PoolClient } from "pg";
+import { parseAbi } from "viem";
 
 import { config } from "../config/index.js";
 import { publicClient } from "../chain/arc.js";
@@ -46,6 +47,42 @@ const ONCE = process.env.INDEXER_ONCE === "1";
 
 const lc = (v: unknown) => (typeof v === "string" ? v.toLowerCase() : v);
 const s = (v: unknown) => (v === undefined || v === null ? null : String(v));
+
+// Minimal ABIs the indexer uses for cross-event reads. Kept local so the
+// shared abi.ts stays event-only.
+const engineGetContestAbi = parseAbi([
+  "function getContest(uint256 contestId) view returns ((uint8 contestType,uint8 status,uint16 winnerCutBps,uint16 topN,uint16 platformFeeBps,address sponsor,address protocolTarget,bytes32 metric,uint64 startTime,uint64 endTime,uint256 prizePool,bytes32 finalRoot))",
+]);
+const registryGetTierAbi = parseAbi([
+  "function getTier(uint256 agentId, uint8 cType) view returns (uint16)",
+]);
+
+/// Read the agent's tier for the contest's family from chain. Best-effort:
+/// on any RPC failure we leave the row's tier null and the runner will
+/// fall back to a live read at preview/settle time. Used only on
+/// EntryRegistered so we pay this read once per entry, not every tick.
+async function readEntryTier(contestId: bigint, agentId: bigint): Promise<number | null> {
+  try {
+    const c = await publicClient.readContract({
+      address: config.contracts.ContestEngine,
+      abi: engineGetContestAbi,
+      functionName: "getContest",
+      args: [contestId],
+    });
+    const tier = await publicClient.readContract({
+      address: config.contracts.AgentRegistry,
+      abi: registryGetTierAbi,
+      functionName: "getTier",
+      args: [agentId, Number(c.contestType)],
+    });
+    return Number(tier);
+  } catch (err) {
+    console.warn(
+      `indexer: readEntryTier(${contestId}, ${agentId}) failed: ${err instanceof Error ? err.message : err}`,
+    );
+    return null;
+  }
+}
 
 function bigintReplacer(_key: string, value: unknown) {
   return typeof value === "bigint" ? value.toString() : value;
@@ -170,17 +207,25 @@ async function applyDenormalized(client: PoolClient, log: Log) {
         [s(a.id), lc(a.sponsor), Number(a.cType), lc(a.protocolTarget), s(a.metric), s(a.prizePool), s(log.blockNumber)],
       );
       break;
-    case "EntryRegistered":
+    case "EntryRegistered": {
+      // Snapshot the agent's tier for this contest's family at entry
+      // time. Frozen here so an agent that upgrades mid-window doesn't
+      // suddenly score at the new tier, and the runner's hot path reads
+      // a column instead of a chain call. Best-effort: null on failure
+      // and the runner falls back to live + backfills.
+      const tier = await readEntryTier(BigInt(a.contestId as bigint | string), BigInt(a.agentId as bigint | string));
       await client.query(
-        `insert into entries (contest_id, agent_id, operator, syndicate_id)
-         values ($1, $2, $3, $4) on conflict (contest_id, agent_id) do nothing`,
-        [s(a.contestId), s(a.agentId), lc(a.operator), s(a.syndicateId)],
+        `insert into entries (contest_id, agent_id, operator, syndicate_id, tier)
+         values ($1, $2, $3, $4, $5)
+         on conflict (contest_id, agent_id) do update set tier = coalesce(entries.tier, excluded.tier)`,
+        [s(a.contestId), s(a.agentId), lc(a.operator), s(a.syndicateId), tier],
       );
       await client.query(
         "insert into operators (address) values ($1) on conflict (address) do nothing",
         [lc(a.operator)],
       );
       break;
+    }
     case "ContestScored":
       await client.query("update contests set status = 'scoring', final_root = $2 where id = $1", [
         s(a.contestId),
@@ -235,17 +280,49 @@ async function applyDenormalized(client: PoolClient, log: Log) {
         [s(a.id), lc(a.invitee)],
       );
       break;
-    case "ChallengeJoined":
+    case "ChallengeJoined": {
+      // Snapshot tier at join time. Look up the challenge's kind from
+      // the row the indexer wrote on ChallengeCreated, then map kind →
+      // ContestType family via KIND_TO_CTYPE. Same fallback as contest
+      // entries: null on RPC failure, runner backfills.
+      const kindRow = await client.query<{ kind: number | null }>(
+        "select kind from challenges where id = $1",
+        [s(a.id)],
+      );
+      const kind = kindRow.rows[0]?.kind ?? null;
+      const KIND_TO_CTYPE: Record<number, number> = { 0: 1, 1: 2, 2: 0, 3: 2 };
+      const cType = kind !== null ? KIND_TO_CTYPE[kind] ?? 2 : null;
+      let tier: number | null = null;
+      if (cType !== null) {
+        try {
+          tier = Number(
+            (await publicClient.readContract({
+              address: config.contracts.AgentRegistry,
+              abi: registryGetTierAbi,
+              functionName: "getTier",
+              args: [BigInt(a.agentId as bigint | string), cType],
+            })) as number,
+          );
+        } catch (err) {
+          console.warn(
+            `indexer: readChallengeTier(${a.id}, ${a.agentId}) failed: ${
+              err instanceof Error ? err.message : err
+            }`,
+          );
+        }
+      }
       await client.query(
-        `insert into challenge_entries (challenge_id, agent_id, operator)
-         values ($1, $2, $3) on conflict (challenge_id, agent_id) do nothing`,
-        [s(a.id), s(a.agentId), lc(a.operator)],
+        `insert into challenge_entries (challenge_id, agent_id, operator, tier)
+         values ($1, $2, $3, $4)
+         on conflict (challenge_id, agent_id) do update set tier = coalesce(challenge_entries.tier, excluded.tier)`,
+        [s(a.id), s(a.agentId), lc(a.operator), tier],
       );
       await client.query(
         "insert into operators (address) values ($1) on conflict (address) do nothing",
         [lc(a.operator)],
       );
       break;
+    }
     case "ChallengeLocked":
       await client.query("update challenges set status = 'locked', pot = $2, entrants = $3 where id = $1", [
         s(a.id),

@@ -46,21 +46,43 @@ function coordinatorWallet() {
   return createWalletClient({ account: account as Account, chain: arcTestnet, transport: http(config.rpcHttp) });
 }
 
-/// The real field: every entered agent and its tier for this contest's family.
-/// Entries come from the indexer's `entries` table, so the indexer must be running.
+/// The real field: every entered agent and its tier for this contest's
+/// family. Tier is snapshotted by the indexer on EntryRegistered, so the
+/// row carries it and the hot path (called every 2.5s during the live
+/// window) reads from the row instead of round-tripping to the chain
+/// once per agent per tick. Legacy rows with `tier IS NULL` fall back
+/// to a live read and backfill the row so the next tick uses the
+/// cached value.
 async function fetchField(contestId: number, cType: number): Promise<ContestEntryInput[]> {
-  const { rows } = await query<{ agent_id: string; operator: string }>(
-    "select agent_id, operator from entries where contest_id = $1 order by agent_id",
+  const { rows } = await query<{ agent_id: string; operator: string; tier: number | null }>(
+    "select agent_id, operator, tier from entries where contest_id = $1 order by agent_id",
     [contestId],
   );
   const field: ContestEntryInput[] = [];
   for (const r of rows) {
-    const tier = (await publicClient.readContract({
-      address: config.contracts.AgentRegistry,
-      abi: registryAbi,
-      functionName: "getTier",
-      args: [BigInt(r.agent_id), cType],
-    })) as number;
+    let tier = r.tier;
+    if (tier === null) {
+      try {
+        tier = Number(
+          (await publicClient.readContract({
+            address: config.contracts.AgentRegistry,
+            abi: registryAbi,
+            functionName: "getTier",
+            args: [BigInt(r.agent_id), cType],
+          })) as number,
+        );
+        // Backfill so subsequent ticks read from the row.
+        await query("update entries set tier = $3 where contest_id = $1 and agent_id = $2", [
+          contestId,
+          r.agent_id,
+          tier,
+        ]);
+      } catch {
+        // RPC blip — treat as tier 0 for this tick. The indexer or a
+        // later tick will fix the row.
+        tier = 0;
+      }
+    }
     field.push({ agentId: Number(r.agent_id), operator: r.operator as `0x${string}`, tier: Number(tier) });
   }
   return field;

@@ -14,6 +14,7 @@ import {
   SectionHeader,
   StatBlock,
   TagButton,
+  WorkshopScene,
 } from "@/components/redesign";
 import { TrainingPanel } from "@/components/redesign/TrainingPanel";
 import { ArcanaWalletPanel } from "@/components/redesign/ArcanaWalletPanel";
@@ -268,6 +269,9 @@ function ActiveAgentPanel({ agent, onUpgrade }: { agent: AgentState; onUpgrade: 
           <span aria-hidden className="text-accent">■</span> ACTIVE AGENT
         </span>
         <span className="font-mono text-[11px] text-ink-3">MAX TIER {maxTier}</span>
+      </div>
+      <div className="mb-3">
+        <WorkshopScene maxTier={maxTier} variant={robotVariantForId(agent.id)} />
       </div>
       <BracketedCell>
         <div className="flex flex-col items-center text-center">

@@ -162,6 +162,14 @@ create index if not exists entries_operator_idx on entries(operator);
 -- manual migration. Default null = treat as pnl_mtm at scoring time.
 alter table contests add column if not exists scoring_mode text;
 
+-- Tier snapshot at entry time. The indexer reads getTier(agentId, cType)
+-- once when EntryRegistered fires and stores it here, so the runner's
+-- fetchField (called every 2.5s during the live window) reads from the
+-- row instead of round-tripping N agents × M ticks to the chain. Null
+-- on legacy rows; the runner falls back to a live read and backfills.
+alter table entries add column if not exists tier int;
+alter table challenge_entries add column if not exists tier int;
+
 create table if not exists challenges (
   id          bigint primary key,
   creator     text,
