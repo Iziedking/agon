@@ -46,7 +46,7 @@ export default function LeaderboardPage() {
         <CornerMarkers />
         <SectionHeader
           heading="LEADERBOARD"
-          subDeck={<>ranked by usdc earned, then wins.</>}
+          subDeck={<>ranked by wins, then usdc earned.</>}
         />
       </section>
 

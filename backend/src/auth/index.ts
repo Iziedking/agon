@@ -1824,19 +1824,40 @@ app.get("/operators/:address/winnings-pending", async (c) => {
 
 app.get("/operators/:address/refunds-pending", async (c) => {
   const address = (c.req.param("address") ?? "").toLowerCase();
-  if (!/^0x[a-f0-9]{40}$/.test(address)) return c.json({ challenges: [] });
+  if (!/^0x[a-f0-9]{40}$/.test(address)) {
+    return c.json({ challenges: [], contests: [] });
+  }
 
-  const { rows } = await query<{ id: string; stake: string }>(
-    `select distinct ch.id::text as id, ch.stake::text as stake
-       from challenge_entries ce
-       join challenges ch on ch.id = ce.challenge_id
-      where ce.operator = $1
-        and ch.status = 'cancelled'
-      order by ch.id desc`,
-    [address],
-  );
+  const [chRes, ctRes] = await Promise.all([
+    query<{ id: string; stake: string }>(
+      `select distinct ch.id::text as id, ch.stake::text as stake
+         from challenge_entries ce
+         join challenges ch on ch.id = ce.challenge_id
+        where ce.operator = $1
+          and ch.status = 'cancelled'
+        order by ch.id desc`,
+      [address],
+    ),
+    // Contests don't charge an entrant a stake (entry is free for agent
+    // owners), so a cancelled contest the operator entered isn't a refund
+    // claim — there's nothing to pull back. We still surface it here so
+    // the dashboard can show "this contest was cancelled; sponsor was
+    // refunded; you don't need to do anything" instead of the row
+    // vanishing silently.
+    query<{ id: string }>(
+      `select distinct ct.id::text as id
+         from entries en
+         join contests ct on ct.id = en.contest_id
+        where en.operator = $1
+          and ct.status = 'cancelled'
+        order by ct.id desc`,
+      [address],
+    ),
+  ]);
+
   return c.json({
-    challenges: rows.map((r) => ({ id: Number(r.id), stake: r.stake })),
+    challenges: chRes.rows.map((r) => ({ id: Number(r.id), stake: r.stake })),
+    contests: ctRes.rows.map((r) => ({ id: Number(r.id) })),
   });
 });
 
@@ -1948,7 +1969,7 @@ app.get("/leaderboard", async (c) => {
        union
        select distinct operator from challenge_entries
      )
-     order by earned desc nulls last, wins desc, cycles desc, entered desc
+     order by wins desc nulls last, earned desc nulls last, cycles desc, entered desc
      limit $1`,
     [limit],
   );

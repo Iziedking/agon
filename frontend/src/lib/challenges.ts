@@ -122,21 +122,36 @@ export async function hasClaimedChallenge(id: number, operator: `0x${string}`): 
 /// Cancelled challenges the operator joined that they still have a stake
 /// to pull back. Joins the backend's list (which scans the indexer's
 /// challenge_entries + challenges) with on-chain refunded() reads so rows
-/// already refunded drop out. Used by the dashboard's REFUNDS WAITING
-/// section.
+/// already refunded drop out. Cancelled contests the operator entered
+/// surface here too as informational rows — entry to a contest is free,
+/// so there's no stake to pull back, but the operator should still see
+/// "this one was cancelled" instead of it vanishing.
 export interface PendingRefund {
   id: number;
   stake: bigint;
 }
 
-export async function fetchPendingRefunds(operator: `0x${string}`): Promise<PendingRefund[]> {
+export interface CancelledContestRef {
+  id: number;
+}
+
+export interface PendingRefundsBundle {
+  challenges: PendingRefund[];
+  contests: CancelledContestRef[];
+}
+
+export async function fetchPendingRefunds(operator: `0x${string}`): Promise<PendingRefundsBundle> {
   try {
     const res = await fetch(`${AUTH_URL}/operators/${operator}/refunds-pending`, { cache: "no-store" });
-    if (!res.ok) return [];
-    const data = (await res.json()) as { challenges?: Array<{ id: number; stake: string }> };
-    const rows = data.challenges ?? [];
+    if (!res.ok) return { challenges: [], contests: [] };
+    const data = (await res.json()) as {
+      challenges?: Array<{ id: number; stake: string }>;
+      contests?: Array<{ id: number }>;
+    };
+    const chRows = data.challenges ?? [];
+    const ctRows = data.contests ?? [];
     const refundedFlags = await Promise.all(
-      rows.map((r) =>
+      chRows.map((r) =>
         publicClient.readContract({
           address: CONTRACTS.ChallengeArena,
           abi: challengeArenaAbi,
@@ -145,12 +160,13 @@ export async function fetchPendingRefunds(operator: `0x${string}`): Promise<Pend
         }).catch(() => false) as Promise<boolean>,
       ),
     );
-    return rows
+    const challenges = chRows
       .map((r, i) => ({ id: r.id, stake: BigInt(r.stake), refunded: refundedFlags[i] === true }))
       .filter((r) => !r.refunded)
       .map(({ id, stake }) => ({ id, stake }));
+    return { challenges, contests: ctRows.map((r) => ({ id: r.id })) };
   } catch {
-    return [];
+    return { challenges: [], contests: [] };
   }
 }
 
