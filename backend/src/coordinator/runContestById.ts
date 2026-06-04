@@ -20,6 +20,10 @@ import {
   fetchTrainingMultipliers,
   flushTrainingQueue,
 } from "./training.js";
+import {
+  applySyndicateMultipliers,
+  fetchSyndicateMultipliers,
+} from "./syndicateWar.js";
 
 /// Step 3 and 4 of the multi-user loop: take a real, open contest, assemble the
 /// field of every operator who entered (from the indexer's entries table, with
@@ -142,23 +146,26 @@ export async function runContestById(contestId: number, broadcast: (message: unk
   console.log(`running contest ${contestId} (type ${cType}); entries close at ${new Date(endsAtMs).toISOString()}`);
 
   // Stream standings of the real field while the entry window is open. Each
-  // frame applies trait + training multipliers so the live race visibly
-  // reflects everything the agent brings to the table. Combined multiplier
-  // is capped at 3.5x (MAX_COMBINED_MULTIPLIER).
+  // frame applies trait + training + syndicate-war multipliers so the live
+  // race visibly reflects everything the agent brings to the table. Combined
+  // multiplier is capped at 3.5x (MAX_COMBINED_MULTIPLIER).
   while (Date.now() < endsAtMs) {
     const field = await fetchField(contestId, cType);
     const ids = field.map((e) => e.agentId);
+    const operators = field.map((e) => e.operator);
     // Promote any expired training queue rows before reading multipliers.
     await flushTrainingQueue().catch(() => 0);
     const preview = field.length > 0 ? await previewScores(cType, contestId, field) : [];
     const baselines = new Map(preview.map((r) => [r.agentId, r.score] as const));
-    const [traitMult, trainMult] = await Promise.all([
+    const [traitMult, trainMult, synMult] = await Promise.all([
       fetchAgentMultipliers(ids),
       fetchTrainingMultipliers(ids),
+      fetchSyndicateMultipliers(operators),
     ]);
     const withTraits = applyTraitMultipliers(preview, traitMult);
     const withTraining = applyTrainingMultipliers(withTraits, trainMult);
-    const boosted = clampCombinedMultiplier(withTraining, baselines);
+    const withSyndicate = applySyndicateMultipliers(withTraining, synMult);
+    const boosted = clampCombinedMultiplier(withSyndicate, baselines);
     broadcast({ type: "standings", contestId, endsAt: endsAtMs, entries: standings(boosted) });
     await sleep(2500);
   }
@@ -181,19 +188,22 @@ export async function runContestById(contestId: number, broadcast: (message: unk
   }
 
   const baseResults = await finalScores(cType, contestId, field);
-  // Authoritative scoring picks up trait + training multipliers so the
-  // on-chain payout reflects the same boosts viewers saw on the live race.
-  // Combined multiplier capped at 3.5x.
+  // Authoritative scoring picks up trait + training + syndicate-war
+  // multipliers so the on-chain payout reflects the same boosts viewers
+  // saw on the live race. Combined multiplier capped at 3.5x.
   await flushTrainingQueue().catch(() => 0);
   const ids = field.map((e) => e.agentId);
+  const operators = field.map((e) => e.operator);
   const baselines = new Map(baseResults.map((r) => [r.agentId, r.score] as const));
-  const [traitMult, trainMult] = await Promise.all([
+  const [traitMult, trainMult, synMult] = await Promise.all([
     fetchAgentMultipliers(ids),
     fetchTrainingMultipliers(ids),
+    fetchSyndicateMultipliers(operators),
   ]);
   const withTraits = applyTraitMultipliers(baseResults, traitMult);
   const withTraining = applyTrainingMultipliers(withTraits, trainMult);
-  const results = clampCombinedMultiplier(withTraining, baselines);
+  const withSyndicate = applySyndicateMultipliers(withTraining, synMult);
+  const results = clampCombinedMultiplier(withSyndicate, baselines);
 
   // One final standings frame with the authoritative progress, so Scout's real
   // tx hashes land on the live stage just before the settled banner takes

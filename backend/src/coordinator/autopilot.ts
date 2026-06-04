@@ -9,6 +9,7 @@ import { findActiveChallenges, resolveChallengeById } from "./runChallengeById.j
 import { startArcanaClaimerLoop } from "../lib/arcanaClaimer.js";
 import { pinArcanaMarketsForContest } from "../lib/arcanaPins.js";
 import { startTickScheduler } from "./predictionTicks.js";
+import { startSyndicateWarSettler } from "./syndicateWar.js";
 
 /// Self-driving contest loop. With a funded COORDINATOR_PRIVATE_KEY in place, the
 /// coordinator opens a contest, streams its standings over the window, funds Scout
@@ -242,6 +243,15 @@ export async function startBackgroundServices(
   void startTickScheduler(broadcast).catch((err) =>
     console.error(
       "tick scheduler crashed:",
+      err instanceof Error ? err.message : err,
+    ),
+  );
+  // Hourly syndicate-war settler. Computes the prior-week standings
+  // into syndicate_war_results so the scoring path can read top-3 ranks
+  // without recomputing on every contest.
+  void startSyndicateWarSettler().catch((err) =>
+    console.error(
+      "syndicate war settler crashed:",
       err instanceof Error ? err.message : err,
     ),
   );

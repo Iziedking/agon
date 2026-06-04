@@ -190,6 +190,42 @@ create table if not exists treasury_flow (
 create index if not exists treasury_flow_recipient_idx on treasury_flow(recipient);
 create index if not exists treasury_flow_pool_idx on treasury_flow(controller, pool_id);
 
+-- Per-event log of syndicate ContributionRecorded events so we can roll
+-- contributions up into rolling weekly windows. Existing
+-- syndicates.total_reputation is cumulative all-time; this table is the
+-- raw stream the war settler reads from. Keyed on (tx_hash, log_index)
+-- so re-indexing a block range is idempotent.
+create table if not exists syndicate_contributions (
+  id           bigserial primary key,
+  syndicate_id bigint not null,
+  member       text not null,
+  amount       numeric not null,
+  tx_hash      text not null,
+  block_number bigint not null,
+  log_index    int not null,
+  recorded_at  timestamptz not null default now(),
+  unique (tx_hash, log_index)
+);
+create index if not exists syndicate_contrib_syn_idx on syndicate_contributions(syndicate_id, recorded_at);
+create index if not exists syndicate_contrib_member_idx on syndicate_contributions(member, recorded_at);
+
+-- Weekly war standings snapshot. The coordinator's settle job writes one
+-- row per syndicate per ISO-week with the syndicate's rank and total
+-- contribution that week. The scoring path reads the latest week's row
+-- to apply the top-3 multiplier on the current week's contests.
+-- `week_id` is the ISO-8601 year-week string ("2026-W22") so it's
+-- human-readable and naturally sorts.
+create table if not exists syndicate_war_results (
+  week_id        text not null,
+  syndicate_id   bigint not null,
+  rank           int not null,
+  total          numeric not null,
+  member_count   int not null,
+  settled_at     timestamptz not null default now(),
+  primary key (week_id, syndicate_id)
+);
+create index if not exists war_results_week_idx on syndicate_war_results(week_id, rank);
+
 create table if not exists challenges (
   id          bigint primary key,
   creator     text,

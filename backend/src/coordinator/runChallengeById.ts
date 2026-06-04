@@ -15,6 +15,10 @@ import { computePayoutsForMode, normalizeScoringMode } from "./payouts.js";
 import { creditPoints, postValidatorFeedback } from "./reputation.js";
 import { applyTraitMultipliers, awardPlacementTraits, fetchAgentMultipliers } from "./traits.js";
 import {
+  applySyndicateMultipliers,
+  fetchSyndicateMultipliers,
+} from "./syndicateWar.js";
+import {
   applyTrainingMultipliers,
   clampCombinedMultiplier,
   fetchTrainingMultipliers,
@@ -378,14 +382,16 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
       // shuffles, the final scoring rolls once for the authoritative winner.
       const factor = kindRandomness(Number(ch.kind));
 
-      // Trait + training multipliers are stable across the locked field, so
-      // fetch once and reuse for every preview frame and the authoritative
-      // scoring. Combined multiplier capped at 3.5x.
+      // Trait + training + syndicate-war multipliers are stable across the
+      // locked field, so fetch once and reuse for every preview frame and the
+      // authoritative scoring. Combined multiplier capped at 3.5x.
       const ids = field.map((e) => e.agentId);
+      const operators = field.map((e) => e.operator);
       await flushTrainingQueue().catch(() => 0);
-      const [traitMult, trainMult] = await Promise.all([
+      const [traitMult, trainMult, synMult] = await Promise.all([
         fetchAgentMultipliers(ids),
         fetchTrainingMultipliers(ids),
+        fetchSyndicateMultipliers(operators),
       ]);
 
       // Stream a preview race so the challenge detail board animates before
@@ -405,7 +411,8 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
           const baselines = new Map(preview.map((r) => [r.agentId, r.score] as const));
           const withTraits = applyTraitMultipliers(preview, traitMult);
           const withTraining = applyTrainingMultipliers(withTraits, trainMult);
-          const clamped = clampCombinedMultiplier(withTraining, baselines);
+          const withSyndicate = applySyndicateMultipliers(withTraining, synMult);
+          const clamped = clampCombinedMultiplier(withSyndicate, baselines);
           broadcast({ type: "challenge_standings", challengeId, entries: standings(applyRandomness(clamped, factor)) });
           await sleep(2500);
         }
@@ -415,7 +422,8 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
       const baselines = new Map(baseResults.map((r) => [r.agentId, r.score] as const));
       const withTraits = applyTraitMultipliers(baseResults, traitMult);
       const withTraining = applyTrainingMultipliers(withTraits, trainMult);
-      const clamped = clampCombinedMultiplier(withTraining, baselines);
+      const withSyndicate = applySyndicateMultipliers(withTraining, synMult);
+      const clamped = clampCombinedMultiplier(withSyndicate, baselines);
       const results = applyRandomness(clamped, factor);
 
       // Final standings frame with the authoritative progress so the live

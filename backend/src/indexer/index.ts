@@ -368,6 +368,23 @@ async function applyDenormalized(client: PoolClient, log: Log) {
         s(a.syndicateId),
         s(a.amount),
       ]);
+      // Per-event row so the weekly war settler can compute time-windowed
+      // contributions instead of guessing from the cumulative total.
+      // Idempotent on (tx_hash, log_index) so re-indexing the same range
+      // doesn't double-count.
+      await client.query(
+        `insert into syndicate_contributions (syndicate_id, member, amount, tx_hash, block_number, log_index)
+         values ($1, $2, $3, $4, $5, $6)
+         on conflict (tx_hash, log_index) do nothing`,
+        [
+          s(a.syndicateId),
+          lc(a.member),
+          s(a.amount),
+          log.transactionHash,
+          s(log.blockNumber),
+          Number(log.logIndex),
+        ],
+      );
       break;
 
     // ----- PrizeEscrow money flow -----

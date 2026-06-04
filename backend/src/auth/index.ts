@@ -2312,6 +2312,47 @@ app.post("/auth/discord/unbind", requireAuth, async (c) => {
   return c.json({ ok: true });
 });
 
+// Syndicate war board. Returns the most recently settled week's
+// standings (rank, total, member count, syndicate name) plus the
+// active week id so the frontend can show "last week's standings"
+// alongside "this week's multiplier". Falls back to an empty array
+// before any week has been settled (the scoring path uses the
+// cumulative-rep fallback in that case).
+app.get("/syndicates/war", async (c) => {
+  const latest = await query<{ week_id: string }>(
+    "select week_id from syndicate_war_results order by week_id desc limit 1",
+  );
+  const weekId = latest.rows[0]?.week_id ?? null;
+  if (!weekId) {
+    return c.json({ weekId: null, standings: [], multipliersByRank: { 1: 1.05, 2: 1.03, 3: 1.02 } });
+  }
+  const { rows } = await query<{
+    syndicate_id: string;
+    rank: string;
+    total: string;
+    member_count: string;
+    name: string | null;
+  }>(
+    `select wr.syndicate_id::text, wr.rank::text, wr.total::text, wr.member_count::text, s.name
+       from syndicate_war_results wr
+       left join syndicates s on s.id = wr.syndicate_id
+      where wr.week_id = $1
+      order by wr.rank asc`,
+    [weekId],
+  );
+  return c.json({
+    weekId,
+    standings: rows.map((r) => ({
+      syndicateId: Number(r.syndicate_id),
+      name: r.name,
+      rank: Number(r.rank),
+      total: r.total,
+      memberCount: Number(r.member_count),
+    })),
+    multipliersByRank: { 1: 1.05, 2: 1.03, 3: 1.02 },
+  });
+});
+
 serve({ fetch: app.fetch, port: config.auth.port }, (info) => {
   console.log(`auth service on http://localhost:${info.port}`);
 });

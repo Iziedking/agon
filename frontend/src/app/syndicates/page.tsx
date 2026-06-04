@@ -18,6 +18,22 @@ import {
   type Syndicate,
 } from "@/lib/syndicates";
 
+const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL ?? "http://localhost:8082";
+
+interface WarStanding {
+  syndicateId: number;
+  name: string | null;
+  rank: number;
+  total: string;
+  memberCount: number;
+}
+
+interface WarBoard {
+  weekId: string | null;
+  standings: WarStanding[];
+  multipliersByRank: Record<string, number>;
+}
+
 /// /syndicates per arcrun-redesign §10. Four tube tiles, no emoji icon
 /// chips, no page-level "you are in" pill (leaving is handled by the
 /// active tile's CTA which flips to LEAVE).
@@ -38,6 +54,24 @@ export default function SyndicatesPage() {
   const [current, setCurrent] = useState<number>(0);
   const [busy, setBusy] = useState<number | "leave" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [war, setWar] = useState<WarBoard | null>(null);
+
+  // Pull the last settled war week's standings so we can render the
+  // top-3 multiplier band above the syndicate tiles. Best-effort: if
+  // the auth API is down or no week has settled yet, we skip the band
+  // and the page still works.
+  useEffect(() => {
+    let live = true;
+    fetch(`${AUTH_URL}/syndicates/war`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: WarBoard | null) => {
+        if (live && data) setWar(data);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
@@ -120,6 +154,48 @@ export default function SyndicatesPage() {
 
         {error ? <p className="mt-4 font-mono text-xs text-[var(--err)]">{error}</p> : null}
       </section>
+
+      {war && war.standings.length > 0 ? (
+        <section className="mx-auto max-w-[1600px] px-6 pt-6">
+          <div className="flex flex-wrap items-baseline justify-between gap-3">
+            <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
+              <span aria-hidden className="text-accent">■</span> WEEKLY WAR · {war.weekId}
+            </span>
+            <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3">
+              TOP 3 BOOST THIS WEEK · +5% / +3% / +2%
+            </span>
+          </div>
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            {war.standings.slice(0, 3).map((s) => {
+              const mult = war.multipliersByRank[String(s.rank)];
+              const pct = mult ? `+${((mult - 1) * 100).toFixed(0)}%` : null;
+              return (
+                <div
+                  key={s.syndicateId}
+                  className="flex items-center justify-between border border-[color:var(--hairline-strong)] bg-canvas-2 px-4 py-3"
+                >
+                  <div className="flex items-baseline gap-3">
+                    <span
+                      className="font-stencil text-[22px]"
+                      style={{ color: s.rank === 1 ? "var(--accent)" : "var(--ink)" }}
+                    >
+                      #{s.rank}
+                    </span>
+                    <span className="font-mono text-[12px] uppercase tracking-[0.12em] text-ink">
+                      {s.name ?? `SYNDICATE ${s.syndicateId}`}
+                    </span>
+                  </div>
+                  {pct ? (
+                    <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-accent">
+                      {pct}
+                    </span>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
 
       <section className="mx-auto max-w-[1600px] px-6 py-10">
         {syndicates === null ? (
