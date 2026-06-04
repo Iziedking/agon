@@ -69,38 +69,66 @@ export async function nextChallengeId(): Promise<number> {
   return Number(n);
 }
 
+async function fetchChallengeOnce(id: number): Promise<Challenge | null> {
+  const [ch, entrants] = await Promise.all([
+    publicClient.readContract({ address: CONTRACTS.ChallengeArena, abi: challengeArenaAbi, functionName: "getChallenge", args: [BigInt(id)] }),
+    publicClient.readContract({ address: CONTRACTS.ChallengeArena, abi: challengeArenaAbi, functionName: "entrantCount", args: [BigInt(id)] }),
+  ]);
+  if (ch.creator === ZERO) return null;
+  return {
+    id,
+    creator: ch.creator,
+    kind: Number(ch.kind),
+    status: Number(ch.status),
+    isPrivate: ch.isPrivate,
+    platformFeeBps: Number(ch.platformFeeBps),
+    stake: ch.stake,
+    maxEntrants: Number(ch.maxEntrants),
+    joinDeadline: ch.joinDeadline,
+    resolveDeadline: ch.resolveDeadline,
+    winnerRoot: ch.winnerRoot,
+    entrants: Number(entrants),
+  };
+}
+
+/// Read one challenge with one retry on transient RPC failure. We used to
+/// catch and return null silently, which meant flaky reads (rate limit,
+/// momentary disconnect) made the card vanish from the listing without
+/// any signal. Now a single retry covers most transient cases; only a
+/// genuine "creator is zero" (challenge doesn't exist) returns null.
 export async function fetchChallenge(id: number): Promise<Challenge | null> {
   try {
-    const [ch, entrants] = await Promise.all([
-      publicClient.readContract({ address: CONTRACTS.ChallengeArena, abi: challengeArenaAbi, functionName: "getChallenge", args: [BigInt(id)] }),
-      publicClient.readContract({ address: CONTRACTS.ChallengeArena, abi: challengeArenaAbi, functionName: "entrantCount", args: [BigInt(id)] }),
-    ]);
-    if (ch.creator === ZERO) return null;
-    return {
-      id,
-      creator: ch.creator,
-      kind: Number(ch.kind),
-      status: Number(ch.status),
-      isPrivate: ch.isPrivate,
-      platformFeeBps: Number(ch.platformFeeBps),
-      stake: ch.stake,
-      maxEntrants: Number(ch.maxEntrants),
-      joinDeadline: ch.joinDeadline,
-      resolveDeadline: ch.resolveDeadline,
-      winnerRoot: ch.winnerRoot,
-      entrants: Number(entrants),
-    };
-  } catch {
-    return null;
+    return await fetchChallengeOnce(id);
+  } catch (e1) {
+    await new Promise((r) => setTimeout(r, 250));
+    try {
+      return await fetchChallengeOnce(id);
+    } catch (e2) {
+      // eslint-disable-next-line no-console
+      console.warn(`fetchChallenge(${id}) failed after retry`, e2 ?? e1);
+      return null;
+    }
   }
 }
 
+/// Read every challenge from chain. Used by the challenges grid. The
+/// list grew past 300 entries which means a naive Promise.all over all
+/// ids fires ~600 parallel RPC reads; the public arc rpc rate-limits
+/// past that and individual reads start to drop, which made the tail
+/// of the list (newest challenges) randomly disappear. Chunking caps
+/// concurrency at CHUNK so the RPC stays happy.
+const CHUNK = 30;
 export async function fetchChallenges(): Promise<Challenge[]> {
   const count = (await nextChallengeId()) - 1;
   if (count <= 0) return [];
-  const ids = Array.from({ length: count }, (_, i) => i + 1);
-  const all = await Promise.all(ids.map((id) => fetchChallenge(id)));
-  return all.filter((c): c is Challenge => c !== null).reverse();
+  const ids: number[] = Array.from({ length: count }, (_, i) => i + 1);
+  const out: (Challenge | null)[] = [];
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const slice = ids.slice(i, i + CHUNK);
+    const part = await Promise.all(slice.map((id) => fetchChallenge(id)));
+    out.push(...part);
+  }
+  return out.filter((c): c is Challenge => c !== null).reverse();
 }
 
 export async function hasJoined(id: number, operator: `0x${string}`): Promise<boolean> {

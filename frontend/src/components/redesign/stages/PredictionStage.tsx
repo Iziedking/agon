@@ -9,7 +9,8 @@ import { ArcanaMark, BracketedCell, Robot, robotVariantForId } from "@/component
 /// open and land on the actual contract page.
 const ARCANA_CONTRACT = "0x443a47eF1025e047879b1BA08c94e6dedB354D54";
 const ARCANA_SCAN_URL = `https://arcscan.net/address/${ARCANA_CONTRACT}`;
-const ARCANA_SITE_URL = "https://arcana.markets";
+const ARCANA_SITE_URL = "https://www.arcanamarkets.xyz";
+const ARCANA_SITE_LABEL = "ARCANAMARKETS.XYZ";
 import { nameFor, useAgentNames } from "@/hooks/useAgentNames";
 import type { StandingsEntry } from "@/lib/live";
 
@@ -333,7 +334,7 @@ function ArcanaWaitingPlaceholder({ entryCount }: { entryCount: number }) {
             rel="noreferrer"
             className="inline-flex items-center gap-2 border border-[color:var(--hairline-strong)] bg-canvas px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-ink hover:border-ink hover:text-accent"
           >
-            ARCANA.MARKETS
+            {ARCANA_SITE_LABEL}
             <span aria-hidden>↗</span>
           </a>
           {entryCount > 0 ? (
@@ -377,7 +378,7 @@ function ArcanaBranchHeader() {
             rel="noreferrer"
             className="inline-flex items-center gap-2 border border-[color:var(--hairline)] bg-canvas px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-2 hover:border-ink hover:text-accent"
           >
-            ARCANA.MARKETS
+            {ARCANA_SITE_LABEL}
             <span aria-hidden>↗</span>
           </a>
         </div>
