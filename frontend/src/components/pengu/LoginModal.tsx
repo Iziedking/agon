@@ -7,7 +7,7 @@ import { injected } from "wagmi/connectors";
 import { arcTestnet } from "@/lib/arc";
 import { loginWithSigner, signInWithEmail, enrollPasskey } from "@/lib/auth";
 import { useAuth } from "@/hooks/useAuth";
-import { Robot } from "@/components/redesign";
+import { ModalClose, Robot } from "@/components/redesign";
 import { friendlyError } from "@/lib/errors";
 import { logRawError, reportEvent } from "@/lib/report";
 
@@ -303,13 +303,7 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
             >
               <Bracket pos="tl" /><Bracket pos="tr" /><Bracket pos="bl" /><Bracket pos="br" />
 
-              <button
-                onClick={onClose}
-                aria-label="close"
-                className="absolute right-4 top-4 font-mono text-base text-ink-3 transition-colors hover:text-ink"
-              >
-                ✕
-              </button>
+              <ModalClose onClick={onClose} />
 
               <AnimatePresence mode="wait">
                 <motion.div

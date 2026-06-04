@@ -161,7 +161,7 @@ function PositionRow({ pos }: { pos: Position }) {
       </span>
       <span className="font-mono text-[10px] tabular-nums" style={{ color: pnlColor }}>
         {pnl >= 0 ? "+" : "−"}${Math.abs(pnl).toFixed(2)}
-        {pos.resolved ? " ✓" : ""}
+        {pos.resolved ? " · DONE" : ""}
       </span>
     </div>
   );

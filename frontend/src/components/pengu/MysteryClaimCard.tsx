@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { AgentMascot } from "@/components/pengu/AgentMascot";
+import { BracketedCell, Robot, TagButton } from "@/components/redesign";
 import {
   claimMystery,
   fetchMysteryCooldown,
@@ -15,11 +15,8 @@ import {
 
 /// The mystery card on the dashboard. One UTC day, one claim per operator,
 /// drawn from a finite global pool. Rarity-weighted; some boxes come up empty.
-/// What you win sticks to the active agent and feeds the runner score multiplier
-/// the coordinator applies on the next contest.
-
-const chunkyBtn =
-  "rounded-pill bg-pengu-blue px-6 py-3 font-display text-sm uppercase tracking-wide text-white shadow-[0_4px_0_0_#5b34d6] transition-all duration-100 hover:translate-y-[2px] hover:shadow-[0_2px_0_0_#5b34d6] active:translate-y-[3px] disabled:opacity-60";
+/// What you win sticks to the active agent and feeds the runner score
+/// multiplier the coordinator applies on the next contest.
 
 function fmtRemaining(targetMs: number): string {
   const left = Math.max(0, targetMs - Date.now());
@@ -54,15 +51,12 @@ export function MysteryClaimCard({
 
   useEffect(() => {
     void refresh();
-    // Keep the pool count fresh while the page is open so people see boxes
-    // tick down in close to real time when others are claiming.
     const poll = setInterval(() => {
       void fetchMysteryPool().then((p) => setPool(p));
     }, 10000);
     return () => clearInterval(poll);
   }, [refresh]);
 
-  // Tick once a second so the countdown stays accurate.
   useEffect(() => {
     const t = setInterval(() => tick((n) => n + 1), 1000);
     return () => clearInterval(t);
@@ -99,58 +93,67 @@ export function MysteryClaimCard({
 
   const claimedPct = pool ? Math.min(100, Math.round((pool.claimed / Math.max(1, pool.max)) * 100)) : 0;
 
-  let buttonLabel = "claim mystery";
-  if (busy) buttonLabel = "rolling…";
-  else if (!activeAgentId) buttonLabel = "no active agent";
-  else if (poolDrained) buttonLabel = "pool drained";
-  else if (!operatorReady) buttonLabel = "claimed today";
+  let buttonLabel = "CLAIM MYSTERY";
+  if (busy) buttonLabel = "ROLLING…";
+  else if (!activeAgentId) buttonLabel = "NO ACTIVE AGENT";
+  else if (poolDrained) buttonLabel = "POOL DRAINED";
+  else if (!operatorReady) buttonLabel = "CLAIMED TODAY";
 
   return (
-    <div className="rounded-card border border-pengu-blue/15 bg-pengu-card p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)]">
+    <BracketedCell pad="md">
       <div className="flex flex-wrap items-start gap-5">
-        <span className="flex h-16 w-16 flex-none items-center justify-center overflow-hidden rounded-full border border-pengu-blue/15 bg-pengu-bg">
-          <AgentMascot color="#7c4dff" className="h-[68%] w-auto" />
+        <span className="flex h-16 w-16 flex-none items-center justify-center border border-[color:var(--hairline-strong)] bg-canvas-2">
+          <Robot variant="violet" size={48} decorative />
         </span>
         <div className="min-w-0 flex-1">
-          <div className="font-display text-xs uppercase tracking-wide text-pengu-blue">mystery event</div>
-          <h3 className="mt-1 font-bubble text-xl uppercase text-pengu-dark">claim a trait</h3>
-          <p className="mt-1 max-w-[52ch] text-sm text-pengu-dark/65">
+          <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
+            <span aria-hidden className="text-accent">■</span> MYSTERY EVENT
+          </div>
+          <h3
+            className="mt-2 font-stencil uppercase text-ink"
+            style={{ fontSize: 22, lineHeight: 1, letterSpacing: "-0.01em" }}
+          >
+            CLAIM A TRAIT
+          </h3>
+          <p className="mt-2 max-w-[56ch] font-mono text-[13px] leading-[1.55] text-ink-2">
             a global pool of mystery boxes opens once a day at 01:00 UTC, first come first served. each operator
-            claims one box per day. rarities run common, rare, epic, legendary; some come up empty. anything you win
-            sticks to your active agent and boosts its score in future contests.
+            claims one box per day. rarities run common, rare, epic, legendary; some come up empty. anything you
+            win sticks to your active agent and boosts its score in future contests.
           </p>
         </div>
 
         <div className="flex flex-col items-end gap-2">
-          <button onClick={roll} disabled={!canRoll || busy} className={chunkyBtn}>
+          <TagButton variant="primary" size="md" onClick={roll} disabled={!canRoll || busy} arrow={canRoll && !busy}>
             {buttonLabel}
-          </button>
+          </TagButton>
           {nextReset > Date.now() ? (
-            <span className="font-mono text-[10px] text-pengu-dark/45">
-              resets in {fmtRemaining(nextReset)} (01:00 UTC)
+            <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
+              RESETS IN {fmtRemaining(nextReset)} · 01:00 UTC
             </span>
           ) : null}
           {cd ? (
-            <span className="font-mono text-[10px] text-pengu-dark/40">{cd.totalClaims} total claims</span>
+            <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
+              {cd.totalClaims} TOTAL CLAIMS
+            </span>
           ) : null}
         </div>
       </div>
 
-      {/* Pool meter */}
       {pool ? (
         <div className="mt-5">
           <div className="flex items-baseline justify-between">
-            <span className="font-display text-[11px] uppercase tracking-wide text-pengu-dark/45">today's pool</span>
-            <span className="font-mono text-xs text-pengu-dark/75">
-              {pool.remaining} / {pool.max} left
+            <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">TODAY'S POOL</span>
+            <span className="font-mono text-[12px] tabular-nums text-ink">
+              {pool.remaining} / {pool.max} LEFT
             </span>
           </div>
-          <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-pengu-blue/10">
+          <div className="mt-2 h-2 w-full border border-[color:var(--hairline)] bg-canvas-2">
             <div
-              className={`h-full rounded-full transition-all duration-500 ${
-                poolDrained ? "bg-[#e0466e]" : "bg-pengu-blue"
-              }`}
-              style={{ width: `${claimedPct}%` }}
+              className="h-full transition-[width] duration-500"
+              style={{
+                width: `${claimedPct}%`,
+                backgroundColor: poolDrained ? "var(--err)" : "var(--accent)",
+              }}
             />
           </div>
         </div>
@@ -158,7 +161,7 @@ export function MysteryClaimCard({
 
       {awarded ? (
         <div
-          className="mt-5 flex items-center justify-between gap-4 rounded-2xl border px-4 py-3 animate-stagger-in"
+          className="mt-5 flex items-center justify-between gap-4 border px-4 py-3 animate-stagger-in"
           style={{
             backgroundColor: RARITY_COLOR[awarded.rarity].bg,
             borderColor: RARITY_COLOR[awarded.rarity].border,
@@ -167,38 +170,57 @@ export function MysteryClaimCard({
         >
           <div className="min-w-0">
             <div
-              className="font-display text-[10px] uppercase tracking-wide"
+              className="font-mono text-[10px] uppercase tracking-[0.16em]"
               style={{ color: RARITY_COLOR[awarded.rarity].text }}
             >
-              new · {awarded.rarity}
+              NEW · {awarded.rarity.toUpperCase()}
             </div>
-            <div className="mt-0.5 font-bubble text-lg uppercase" style={{ color: RARITY_COLOR[awarded.rarity].text }}>
+            <div
+              className="mt-1 font-stencil uppercase"
+              style={{
+                color: RARITY_COLOR[awarded.rarity].text,
+                fontSize: 20,
+                lineHeight: 1,
+                letterSpacing: "-0.01em",
+              }}
+            >
               {awarded.name}
             </div>
-            <div className="mt-0.5 font-mono text-xs text-pengu-dark/65">{awarded.body}</div>
+            <div className="mt-1 font-mono text-[12px] leading-[1.5] text-ink-2">{awarded.body}</div>
           </div>
         </div>
       ) : null}
 
       {rugged ? (
         <div
-          className="mt-5 flex items-center gap-4 rounded-2xl border border-[#e0466e]/30 bg-[#e0466e]/8 px-4 py-3 animate-stagger-in"
-          style={{ animationFillMode: "both" }}
+          className="mt-5 flex items-center gap-4 border px-4 py-3 animate-stagger-in"
+          style={{
+            backgroundColor: "rgba(224,52,90,0.06)",
+            borderColor: "rgba(224,52,90,0.30)",
+            animationFillMode: "both",
+          }}
         >
-          <span className="font-display text-[28px]" aria-hidden style={{ color: "#e0466e" }}>
-            ✕
+          <span className="font-stencil text-[24px]" aria-hidden style={{ color: "var(--err)" }}>
+            ■
           </span>
           <div className="min-w-0">
-            <div className="font-display text-[10px] uppercase tracking-wide text-[#e0466e]">rugged</div>
-            <div className="mt-0.5 font-bubble text-lg uppercase text-[#e0466e]">nothing this time</div>
-            <div className="mt-0.5 font-mono text-xs text-pengu-dark/65">
+            <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:var(--err)]">RUGGED</div>
+            <div
+              className="mt-1 font-stencil uppercase text-[color:var(--err)]"
+              style={{ fontSize: 20, lineHeight: 1, letterSpacing: "-0.01em" }}
+            >
+              NOTHING THIS TIME
+            </div>
+            <div className="mt-1 font-mono text-[12px] leading-[1.5] text-ink-2">
               the box was empty. your daily claim is spent; come back at the next reset.
             </div>
           </div>
         </div>
       ) : null}
 
-      {error ? <p className="mt-3 font-mono text-xs text-[#e0466e]">{error}</p> : null}
-    </div>
+      {error ? (
+        <p className="mt-3 font-mono text-[11px] uppercase tracking-[0.12em] text-[color:var(--err)]">{error}</p>
+      ) : null}
+    </BracketedCell>
   );
 }

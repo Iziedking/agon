@@ -1,5 +1,7 @@
 "use client";
 
+import { ModalClose } from "@/components/redesign";
+
 /// The win-share card. Pops the instant the operator's wallet appears in a
 /// settled contest's or challenge's winner list. arcrun-redesign chrome:
 /// bracketed surface, stencil "YOU PLACED" + rank, prize in stencil display
@@ -60,13 +62,7 @@ export function WinShareModal({ source, id, winners, youAddress, onClose }: WinS
         >
           <Bracket pos="tl" /><Bracket pos="tr" /><Bracket pos="bl" /><Bracket pos="br" />
 
-          <button
-            onClick={onClose}
-            aria-label="close"
-            className="absolute right-4 top-4 font-mono text-base text-ink-3 hover:text-ink"
-          >
-            ✕
-          </button>
+          <ModalClose onClick={onClose} />
 
           <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
             <span aria-hidden className="text-accent">■</span>

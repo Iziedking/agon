@@ -9,6 +9,7 @@ import { erc20Abi } from "@/lib/agents";
 import { contestEngineAbi, fetchListingFee, metricForType, nextContestId } from "@/lib/contests";
 import { friendlyError } from "@/lib/errors";
 import { reportEvent } from "@/lib/report";
+import { ModalClose } from "@/components/redesign";
 
 /// Host-campaign modal reskinned to arcrun-redesign. Same flat ink-on-canvas
 /// chrome as CreateChallengeModal: bracketed surface, stencil heading, tag
@@ -94,13 +95,7 @@ export function CreateContestModal({ open, onClose }: { open: boolean; onClose: 
         >
           <Bracket pos="tl" /><Bracket pos="tr" /><Bracket pos="bl" /><Bracket pos="br" />
 
-          <button
-            onClick={onClose}
-            aria-label="close"
-            className="absolute right-4 top-4 font-mono text-base text-ink-3 hover:text-ink"
-          >
-            ✕
-          </button>
+          <ModalClose onClick={onClose} />
 
           <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
             <span aria-hidden className="text-accent">■</span> HOST A CAMPAIGN

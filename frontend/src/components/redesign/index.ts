@@ -16,3 +16,5 @@ export { MicroLabel, CounterStrip } from "./MicroLabel";
 export { SideRail } from "./SideRail";
 export { KineticArena } from "./KineticArena";
 export { ChainTicker } from "./ChainTicker";
+export { ModalClose } from "./ModalClose";
+export { ArcanaMark } from "./ArcanaMark";

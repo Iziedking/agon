@@ -5,13 +5,13 @@ import type { ReactNode } from "react";
 import { useOperatorAddress } from "@/hooks/useAuth";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/pengu/Footer";
-import { SectionLabel, Bubble3D } from "@/components/pengu/atoms";
 import { LoginCTA } from "@/components/pengu/LoginCTA";
 import { ClaimAgentButton } from "@/components/pengu/ClaimAgentButton";
 import { AgentAvatar } from "@/components/pengu/AgentAvatar";
 import { AgentTraits } from "@/components/pengu/AgentTraits";
 import { NftBadge } from "@/components/pengu/NftBadge";
 import { OperatorAvatar } from "@/components/pengu/OperatorAvatar";
+import { BracketedCell, TagButton } from "@/components/redesign";
 import {
   agentDisplayName,
   CONTEST_TYPES,
@@ -28,18 +28,7 @@ import { fetchContests } from "@/lib/contests";
 /// next. State updates live (wallet connects, agent claim confirms, open contest
 /// count refreshes), so the page tracks the user's progress as it happens.
 
-const chunkyBtn =
-  "rounded-pill bg-pengu-blue px-6 py-3 font-display text-sm uppercase tracking-wide text-white shadow-[0_4px_0_0_#5b34d6] transition-all duration-100 hover:translate-y-[2px] hover:shadow-[0_2px_0_0_#5b34d6] active:translate-y-[3px] disabled:opacity-60";
-
 type StepStatus = "locked" | "active" | "done";
-
-function Check() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden>
-      <path d="M5 12l5 5 9-11" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
 
 function Step({
   n,
@@ -54,35 +43,33 @@ function Step({
   status: StepStatus;
   children: ReactNode;
 }) {
-  const borderCls =
+  const opacity = status === "locked" ? "opacity-55" : "";
+  const badgeBg =
     status === "done"
-      ? "border-[#22c55e]/35"
+      ? "bg-[color:var(--ok)] text-[#0A1612]"
       : status === "active"
-        ? "border-pengu-blue/35"
-        : "border-pengu-blue/10";
-  const badgeCls =
-    status === "done"
-      ? "bg-[#22c55e] text-white"
-      : status === "active"
-        ? "bg-pengu-blue text-white"
-        : "bg-pengu-blue/10 text-pengu-blue";
+        ? "bg-accent text-accent-ink"
+        : "border border-[color:var(--hairline-strong)] text-ink-3";
   return (
-    <div
-      className={`rounded-card border bg-pengu-card p-6 shadow-[0_10px_30px_rgba(70,45,150,0.08)] ${borderCls} ${
-        status === "locked" ? "opacity-55" : ""
-      }`}
-    >
+    <BracketedCell pad="md" className={opacity}>
       <div className="flex items-start gap-4">
-        <span className={`flex h-10 w-10 flex-none items-center justify-center rounded-full font-display text-base ${badgeCls}`}>
-          {status === "done" ? <Check /> : n}
+        <span
+          className={`flex h-9 w-9 flex-none items-center justify-center font-stencil text-[18px] ${badgeBg}`}
+        >
+          {status === "done" ? "■" : n}
         </span>
         <div className="min-w-0 flex-1">
-          <h3 className="font-bubble text-xl uppercase text-pengu-dark">{title}</h3>
-          <p className="mt-1 text-sm text-pengu-dark/65">{desc}</p>
+          <h3
+            className="font-stencil uppercase text-ink"
+            style={{ fontSize: 22, lineHeight: 1, letterSpacing: "-0.01em" }}
+          >
+            {title}
+          </h3>
+          <p className="mt-2 font-mono text-[13px] leading-[1.55] text-ink-2">{desc}</p>
           <div className="mt-4">{children}</div>
         </div>
       </div>
-    </div>
+    </BracketedCell>
   );
 }
 
@@ -93,11 +80,6 @@ export default function StartPage() {
   const [openCount, setOpenCount] = useState<number | null>(null);
 
   const refreshAgents = useCallback(async () => {
-    // While wagmi is still hydrating, `address` flashes undefined before the
-    // real value arrives. Treat that as "not yet known" and leave agents at
-    // its current state (undefined on first paint). On a fetch failure (after
-    // the retry inside fetchAgents), keep agents undefined too so we don't
-    // falsely flip the UI to claim for a wallet that already has agents.
     if (!address) return;
     try {
       const list = await fetchAgents(address);
@@ -142,64 +124,81 @@ export default function StartPage() {
   const step3: StepStatus = !isConnected || !hasAgents ? "locked" : "active";
 
   return (
-    <div className="min-h-screen text-pengu-dark">
+    <div className="min-h-screen text-ink">
       <AppHeader />
 
       <section className="mx-auto max-w-[860px] px-6 pb-16 pt-12">
-        <SectionLabel>start here</SectionLabel>
-        <div className="mt-5">
-          <Bubble3D className="text-[clamp(36px,5vw,56px)]">three steps to compete</Bubble3D>
+        <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
+          <span aria-hidden className="text-accent">■</span> START HERE
         </div>
-        <p className="mt-4 max-w-[52ch] text-pengu-dark/65">
+        <h1
+          className="mt-3 font-stencil uppercase text-ink"
+          style={{ fontSize: "clamp(36px, 5vw, 56px)", lineHeight: 1, letterSpacing: "-0.02em" }}
+        >
+          THREE STEPS TO COMPETE
+        </h1>
+        <p className="mt-4 max-w-[56ch] font-mono text-[14px] leading-[1.55] text-ink-2">
           arcrun is built around a wallet, an agent, and a contest. do these three and you are in.
         </p>
-        <p className="mt-3 font-mono text-xs text-pengu-dark/55">
-          prefer a guided walkthrough?{" "}
-          <a href="/onboarding/welcome" className="text-pengu-blue hover:underline">take the tour →</a>
+        <p className="mt-3 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3">
+          PREFER A GUIDED WALKTHROUGH?{" "}
+          <a href="/onboarding/welcome" className="text-accent hover:underline">
+            TAKE THE TOUR →
+          </a>
         </p>
 
         <div className="mt-8 flex flex-col gap-4">
           <Step
             n={1}
-            title="connect your wallet"
+            title="CONNECT YOUR WALLET"
             desc="your wallet is your arcrun identity. no email needed, though email login works too."
             status={step1}
           >
             {isConnected && address ? (
-              <span className="inline-flex items-center gap-2 rounded-full bg-[#22c55e]/10 px-3 py-1.5 font-mono text-xs text-[#22c55e]">
+              <span className="inline-flex items-center gap-2 border border-[color:var(--ok)]/40 bg-[color:var(--ok)]/10 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-[color:var(--ok)]">
                 <OperatorAvatar address={address} className="h-5 w-5" />
-                connected · {address.slice(0, 6)}…{address.slice(-4)}
+                CONNECTED · {address.slice(0, 6)}…{address.slice(-4)}
               </span>
             ) : (
-              <LoginCTA label="connect" className={chunkyBtn} />
+              <LoginCTA label="CONNECT" />
             )}
           </Step>
 
           <Step
             n={2}
-            title="claim your agent"
+            title="CLAIM YOUR AGENT"
             desc="a free default agent gets minted to your wallet. the agent is the piece that competes."
             status={step2}
           >
             {!isConnected ? (
-              <p className="font-mono text-xs text-pengu-dark/45">connect first.</p>
+              <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3">connect first.</p>
             ) : agents === undefined ? (
-              <p className="font-mono text-xs text-pengu-dark/55">checking your agents on arc…</p>
+              <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3">
+                CHECKING YOUR AGENTS ON ARC…
+              </p>
             ) : agents.length > 0 && active ? (
               <>
-                <div className="rounded-2xl border border-pengu-blue/15 bg-pengu-bg px-4 py-3">
+                <div className="border border-[color:var(--hairline-strong)] bg-canvas-2 px-4 py-3">
                   <div className="flex items-center gap-4">
-                    <span className="flex h-14 w-14 flex-none items-center justify-center overflow-hidden rounded-full border border-pengu-blue/15 bg-pengu-card">
+                    <span className="flex h-14 w-14 flex-none items-center justify-center overflow-hidden border border-[color:var(--hairline)] bg-canvas">
                       <AgentAvatar agent={active} className={active.skin ? "h-full w-full" : "h-[68%] w-auto"} />
                     </span>
                     <div className="min-w-0 flex-1">
-                      <div className="font-bubble text-base uppercase text-pengu-dark">{agentDisplayName(active)}</div>
-                      <div className="mt-0.5 font-mono text-xs text-pengu-dark/60">
-                        {CONTEST_TYPES.map((t) => `${t} t${tierOf(active, t)}`).join(" · ")}
+                      <div
+                        className="font-stencil uppercase text-ink"
+                        style={{ fontSize: 18, lineHeight: 1, letterSpacing: "-0.01em" }}
+                      >
+                        {agentDisplayName(active).toUpperCase()}
+                      </div>
+                      <div className="mt-1 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3">
+                        {CONTEST_TYPES.map((t) => `${t} T${tierOf(active, t)}`).join(" · ")}
                       </div>
                     </div>
-                    <a href="/workshop" className="font-mono text-xs text-pengu-blue hover:underline">
-                      workshop →
+                    <a
+                      href="/workshop"
+                      className="font-mono text-[11px] uppercase tracking-[0.12em] text-accent hover:underline"
+                    >
+                      WORKSHOP →
                     </a>
                   </div>
                   <div className="mt-3">
@@ -214,52 +213,54 @@ export default function StartPage() {
                       <button
                         key={a.id}
                         onClick={() => pickAgent(a.id)}
-                        className={`rounded-full px-3 py-1 font-display text-[11px] uppercase tracking-wide transition-colors ${
+                        className={
                           a.id === activeId
-                            ? "bg-pengu-blue text-white"
-                            : "bg-pengu-blue/10 text-pengu-blue hover:bg-pengu-blue/20"
-                        }`}
+                            ? "border border-accent bg-accent px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-accent-ink"
+                            : "border border-ink-3 bg-canvas px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:border-ink hover:text-ink"
+                        }
                       >
-                        {agentDisplayName(a)}
+                        {agentDisplayName(a).toUpperCase()}
                       </button>
                     ))}
                   </div>
                 ) : null}
               </>
             ) : (
-              <ClaimAgentButton className={chunkyBtn} onClaimed={refreshAgents} />
+              <ClaimAgentButton onClaimed={refreshAgents} />
             )}
           </Step>
 
           <Step
             n={3}
-            title="enter a contest"
+            title="ENTER A CONTEST"
             desc="pick a live contest, stake your entry, and let your agent compete for the pool."
             status={step3}
           >
             {step3 === "active" ? (
               <div className="flex flex-wrap items-center gap-3">
-                <a href="/contests" className={chunkyBtn}>
-                  browse contests
-                </a>
+                <TagButton variant="primary" size="md" href="/contests">
+                  BROWSE CONTESTS
+                </TagButton>
                 {openCount !== null ? (
-                  <span className="font-mono text-xs text-pengu-dark/55">{openCount} open right now</span>
+                  <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3">
+                    {openCount} OPEN RIGHT NOW
+                  </span>
                 ) : null}
               </div>
             ) : (
-              <p className="font-mono text-xs text-pengu-dark/45">claim an agent first.</p>
+              <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3">claim an agent first.</p>
             )}
           </Step>
         </div>
 
-        <p className="mt-8 text-center font-mono text-xs text-pengu-dark/45">
-          already set up? jump to{" "}
-          <a href="/contests" className="text-pengu-blue hover:underline">contests</a>,{" "}
-          <a href="/challenges" className="text-pengu-blue hover:underline">challenges</a>, or your{" "}
+        <p className="mt-8 text-center font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3">
+          ALREADY SET UP? JUMP TO{" "}
+          <a href="/contests" className="text-accent hover:underline">CONTESTS</a>,{" "}
+          <a href="/challenges" className="text-accent hover:underline">CHALLENGES</a>, OR YOUR{" "}
           {address ? (
-            <a href={`/operators/${address}`} className="text-pengu-blue hover:underline">profile</a>
+            <a href={`/operators/${address}`} className="text-accent hover:underline">PROFILE</a>
           ) : (
-            <a href="/leaderboard" className="text-pengu-blue hover:underline">leaderboard</a>
+            <a href="/leaderboard" className="text-accent hover:underline">LEADERBOARD</a>
           )}
           .
         </p>

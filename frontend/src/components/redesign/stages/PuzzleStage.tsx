@@ -217,7 +217,7 @@ function PuzzleRow({
             }}
             title={c.ms ? `${c.ms}ms` : ""}
           >
-            {c.hit ? "✓" : i + 1}
+            {c.hit ? "■" : i + 1}
           </span>
         ))}
       </div>

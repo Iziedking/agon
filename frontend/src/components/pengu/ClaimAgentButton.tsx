@@ -8,6 +8,7 @@ import { agentRegistryAbi, fetchAgents, invalidateAgentsCache } from "@/lib/agen
 import { friendlyError } from "@/lib/errors";
 import { logRawError } from "@/lib/report";
 import { reportEvent } from "@/lib/report";
+import { TagButton } from "@/components/redesign";
 
 const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL ?? "http://localhost:8082";
 
@@ -35,11 +36,11 @@ const MAX_AGENTS_PER_PROFILE = 5;
 /// from /workshop and /start so the claim path is identical from either entry.
 export function ClaimAgentButton({
   className,
-  label = "claim agent",
-  busyLabel = "claiming…",
+  label = "CLAIM AGENT",
+  busyLabel = "CLAIMING…",
   onClaimed,
 }: {
-  className: string;
+  className?: string;
   label?: string;
   busyLabel?: string;
   onClaimed?: () => void | Promise<void>;
@@ -122,24 +123,33 @@ export function ClaimAgentButton({
     }
   }
 
+  const disabled = busy || !address || atCap || loading;
+  const labelOut = busy
+    ? busyLabel
+    : loading
+      ? "CHECKING AGENTS…"
+      : atCap
+        ? `${MAX_AGENTS_PER_PROFILE}/${MAX_AGENTS_PER_PROFILE} AGENTS OWNED`
+        : label;
+
   return (
     <div className="flex flex-col gap-2">
-      <button
-        onClick={claim}
-        disabled={busy || !address || atCap || loading}
-        className={className}
-        title={atCap ? `${count} / ${MAX_AGENTS_PER_PROFILE} agents claimed` : undefined}
-      >
-        {busy
-          ? busyLabel
-          : loading
-            ? "checking agents…"
-            : atCap
-              ? `${MAX_AGENTS_PER_PROFILE}/${MAX_AGENTS_PER_PROFILE} agents owned`
-              : label}
-      </button>
+      {className ? (
+        <button
+          onClick={claim}
+          disabled={disabled}
+          className={className}
+          title={atCap ? `${count} / ${MAX_AGENTS_PER_PROFILE} agents claimed` : undefined}
+        >
+          {labelOut}
+        </button>
+      ) : (
+        <TagButton variant="primary" size="md" onClick={claim} disabled={disabled} arrow={!disabled}>
+          {labelOut}
+        </TagButton>
+      )}
       {error ? (
-        <p className="font-mono text-xs text-[#e0466e]">{error}</p>
+        <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-[color:var(--err)]">{error}</p>
       ) : null}
     </div>
   );

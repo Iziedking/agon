@@ -7,6 +7,7 @@ import { CONTRACTS, publicClient } from "@/lib/arc";
 import { challengeArenaAbi, CHALLENGE_KIND, nextChallengeId } from "@/lib/challenges";
 import { friendlyError } from "@/lib/errors";
 import { reportEvent } from "@/lib/report";
+import { ModalClose } from "@/components/redesign";
 
 /// Create-challenge modal reskinned to arcrun-redesign. Flat ink-on-canvas
 /// surface, stencil heading, tag-style kind picker, mono inputs with hairline
@@ -88,13 +89,7 @@ export function CreateChallengeModal({ open, onClose }: { open: boolean; onClose
           {/* corner brackets */}
           <Bracket pos="tl" /><Bracket pos="tr" /><Bracket pos="bl" /><Bracket pos="br" />
 
-          <button
-            onClick={onClose}
-            aria-label="close"
-            className="absolute right-4 top-4 font-mono text-base text-ink-3 hover:text-ink"
-          >
-            ✕
-          </button>
+          <ModalClose onClick={onClose} />
 
           <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
             <span aria-hidden className="text-accent">■</span> START A CHALLENGE

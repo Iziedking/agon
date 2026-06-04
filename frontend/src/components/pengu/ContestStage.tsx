@@ -61,17 +61,14 @@ export function ContestStage({
   const maxScore = Math.max(...entries.map((e) => e.score), 1);
 
   return (
-    <div className="relative overflow-hidden rounded-card border border-pengu-blue/15 bg-pengu-card">
-      <div className="arena-grid absolute inset-0 opacity-50" aria-hidden />
-      <div className="scan" aria-hidden />
-
-      <div className="relative z-10 flex items-center justify-between border-b border-pengu-blue/10 px-5 py-3">
-        <div className="flex items-center gap-2 font-display text-[11px] uppercase tracking-wide text-pengu-blue">
-          <span className="live-dot" style={{ background: "#7c4dff" }} />
-          stage · {kind}
+    <div className="relative overflow-hidden border border-[color:var(--hairline-strong)] bg-canvas">
+      <div className="relative z-10 flex items-center justify-between border-b border-[color:var(--hairline)] px-5 py-3">
+        <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
+          <span aria-hidden className="text-accent">■</span>
+          STAGE · {kind.toUpperCase()}
         </div>
-        <span className="font-mono text-[11px] uppercase tracking-wide text-pengu-dark/50">
-          showing top {Math.min(FEATURED, featured.length)} of {entries.length}
+        <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3">
+          TOP {Math.min(FEATURED, featured.length)} OF {entries.length}
         </span>
       </div>
 
@@ -90,8 +87,8 @@ function EmptyStage({ kind }: { kind: string }) {
   return (
     <div className="flex flex-col items-center gap-3 py-8 text-center">
       <AgentMascot variant="violet" mood="idle" live className="h-24 w-auto" />
-      <p className="font-mono text-sm text-pengu-dark/55">
-        waiting for {kind} agents to enter the stage…
+      <p className="font-mono text-[12px] uppercase tracking-[0.12em] text-ink-3">
+        WAITING FOR {kind.toUpperCase()} AGENTS TO ENTER THE STAGE…
       </p>
     </div>
   );
@@ -125,7 +122,7 @@ function StageBody({
 
   return (
     <div>
-      <div className="mb-4 text-center font-display text-[11px] uppercase tracking-wide text-pengu-dark/45">
+      <div className="mb-4 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3">
         {headline}
       </div>
       <AgentRoster featured={featured} maxScore={maxScore} bodies={bodies} />
@@ -151,21 +148,23 @@ function AgentRoster({
         return (
           <div
             key={e.agentId}
-            className={`relative flex flex-col items-center rounded-2xl border p-4 ${
-              leader ? "border-pengu-blue/40 bg-pengu-blue/5" : "border-pengu-blue/10 bg-pengu-card"
+            className={`relative flex flex-col items-center border p-4 ${
+              leader
+                ? "border-accent bg-canvas-2"
+                : "border-[color:var(--hairline-strong)] bg-canvas"
             }`}
           >
             {leader ? (
-              <span className="absolute -top-2 left-1/2 -translate-x-1/2 rounded-pill bg-pengu-blue px-2.5 py-0.5 font-display text-[10px] uppercase tracking-wide text-white shadow-[0_4px_0_0_#5b34d6]">
-                lead
+              <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 border border-accent bg-accent px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.16em] text-accent-ink">
+                LEAD
               </span>
             ) : null}
 
             <div className="flex w-full items-center justify-between">
-              <span className={`font-mono text-xs ${leader ? "text-pengu-blue" : "text-pengu-dark/55"}`}>
+              <span className={`font-stencil text-[14px] ${leader ? "text-accent" : "text-ink"}`}>
                 #{e.rank}
               </span>
-              <span key={e.score} className="tick-up font-mono text-base tabular-nums text-pengu-dark">
+              <span key={e.score} className="tick-up font-mono text-[15px] tabular-nums text-ink">
                 {e.score.toLocaleString()}
               </span>
             </div>
@@ -177,18 +176,18 @@ function AgentRoster({
               className={`mt-2 h-20 w-auto ${leader ? "drift" : ""}`}
             />
 
-            <div className="mt-2 w-full truncate text-center font-mono text-[10px] uppercase tracking-wide text-pengu-dark/55">
+            <div className="mt-2 w-full truncate text-center font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
               {nameFor(names, e.agentId)}
             </div>
 
             <div className="mt-3 w-full">{bodies[i]}</div>
 
-            <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-pengu-blue/10">
+            <div className="mt-3 h-1.5 w-full overflow-hidden border border-[color:var(--hairline)] bg-canvas-2">
               <div
-                className="h-full rounded-full"
+                className="h-full"
                 style={{
                   width: `${pct * 100}%`,
-                  background: leader ? "#7c4dff" : "rgba(124,77,255,0.55)",
+                  background: leader ? "var(--accent)" : "var(--ink-3)",
                   transition: "width 240ms linear",
                 }}
               />
@@ -226,7 +225,7 @@ function PuzzleBody({ entry, accent, maxScore }: { entry: StandingsEntry; accent
             />
           ))}
         </div>
-        <div className="mt-1.5 text-right font-mono text-[10px] text-pengu-dark/55">
+        <div className="mt-1.5 text-right font-mono text-[10px] text-ink-3">
           {cells.filter(Boolean).length} / {total} solved
           <span className="sr-only">across {rows} row(s)</span>
         </div>
@@ -283,9 +282,9 @@ function PredictionBody({ entry, accent, maxScore }: { entry: StandingsEntry; ac
             );
           })}
         </svg>
-        <div className="mt-1 flex items-center justify-between font-mono text-[10px] text-pengu-dark/55">
+        <div className="mt-1 flex items-center justify-between font-mono text-[10px] text-ink-3">
           <span>{calls.filter((c) => c.correct).length} / {calls.length} right</span>
-          <span className="text-pengu-dark/35">prob → outcome</span>
+          <span className="text-ink-3">prob → outcome</span>
         </div>
       </div>
     );
@@ -326,9 +325,9 @@ function VolumeBody({ entry, accent, maxScore }: { entry: StandingsEntry; accent
   if (entry.progress?.kind === "scout") {
     const { recent, opsCount } = entry.progress;
     return (
-      <div className="flex flex-col gap-1 rounded-md bg-pengu-blue/5 p-2 font-mono text-[10px] text-pengu-dark/65">
+      <div className="flex flex-col gap-1 border border-[color:var(--hairline)] bg-canvas-2 p-2 font-mono text-[10px] text-ink-2">
         {recent.length === 0 ? (
-          <div className="py-2 text-center text-pengu-dark/45">no tx yet</div>
+          <div className="py-2 text-center text-ink-3">no tx yet</div>
         ) : (
           recent.slice(0, 4).map((h, idx) => (
             <a
@@ -336,7 +335,7 @@ function VolumeBody({ entry, accent, maxScore }: { entry: StandingsEntry; accent
               href={`https://arcscan.net/tx/${h}`}
               target="_blank"
               rel="noreferrer"
-              className="flex items-center gap-1.5 tick-up hover:text-pengu-blue"
+              className="flex items-center gap-1.5 tick-up hover:text-accent"
             >
               <span
                 className="h-1.5 w-1.5 rounded-full"
@@ -346,7 +345,7 @@ function VolumeBody({ entry, accent, maxScore }: { entry: StandingsEntry; accent
             </a>
           ))
         )}
-        <div className="mt-1 text-right font-display text-[9px] uppercase tracking-wide text-pengu-dark/40">
+        <div className="mt-1 text-right font-display text-[9px] uppercase tracking-wide text-ink-3">
           {opsCount} tx total
         </div>
       </div>
@@ -356,11 +355,11 @@ function VolumeBody({ entry, accent, maxScore }: { entry: StandingsEntry; accent
   const pct = Math.min(1, entry.score / maxScore);
   const queuedOps = Math.max(0, Math.round(5 * pct));
   return (
-    <div className="flex flex-col gap-1 rounded-md bg-pengu-blue/5 p-2 font-mono text-[10px] text-pengu-dark/55">
-      <div className="text-center text-pengu-dark/55">queued</div>
-      <div className="text-center text-pengu-dark/40">{queuedOps} ops · waiting for window to close</div>
-      <div className="mt-0.5 h-1 w-full overflow-hidden rounded-full bg-pengu-blue/10">
-        <div className="h-full rounded-full" style={{ width: `${pct * 100}%`, background: accent, opacity: 0.5 }} />
+    <div className="flex flex-col gap-1 border border-[color:var(--hairline)] bg-canvas-2 p-2 font-mono text-[10px] text-ink-3">
+      <div className="text-center text-ink-3">queued</div>
+      <div className="text-center text-ink-3">{queuedOps} ops · waiting for window to close</div>
+      <div className="mt-0.5 h-1 w-full overflow-hidden border border-[color:var(--hairline)] bg-canvas-2">
+        <div className="h-full" style={{ width: `${pct * 100}%`, background: accent, opacity: 0.5 }} />
       </div>
     </div>
   );

@@ -21,6 +21,7 @@ import {
 } from "@/lib/agents";
 import { friendlyError } from "@/lib/errors";
 import { reportEvent } from "@/lib/report";
+import { ModalClose } from "@/components/redesign";
 
 /// Upgrade modal reskinned to arcrun-redesign. Three flat ink-on-canvas
 /// columns inside a bracketed shell, stencil headings, mono tier readouts,
@@ -127,13 +128,7 @@ export function UpgradeFlow({
         >
           <Bracket pos="tl" /><Bracket pos="tr" /><Bracket pos="bl" /><Bracket pos="br" />
 
-          <button
-            onClick={onClose}
-            aria-label="close"
-            className="absolute right-4 top-4 font-mono text-base text-ink-3 hover:text-ink"
-          >
-            ✕
-          </button>
+          <ModalClose onClick={onClose} />
 
           <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
             <span aria-hidden className="text-accent">■</span> UPGRADE

@@ -1,7 +1,15 @@
 "use client";
 
 import { useMemo } from "react";
-import { BracketedCell, Robot, robotVariantForId } from "@/components/redesign";
+import { ArcanaMark, BracketedCell, Robot, robotVariantForId } from "@/components/redesign";
+
+/// Live Arcana Markets contract on Arc Testnet. Single source of truth for
+/// the wait state's "powered by" strip and the active branch banner — when
+/// a viewer wants to verify the integration is real, they can pop the chip
+/// open and land on the actual contract page.
+const ARCANA_CONTRACT = "0x443a47eF1025e047879b1BA08c94e6dedB354D54";
+const ARCANA_SCAN_URL = `https://arcscan.net/address/${ARCANA_CONTRACT}`;
+const ARCANA_SITE_URL = "https://arcana.markets";
 import { nameFor, useAgentNames } from "@/hooks/useAgentNames";
 import type { StandingsEntry } from "@/lib/live";
 
@@ -268,29 +276,111 @@ export function PredictionStage({
 /// next standings frame) or the deadline hits and the coordinator
 /// cancels-and-refunds.
 function ArcanaWaitingPlaceholder({ entryCount }: { entryCount: number }) {
+  const shortContract = `${ARCANA_CONTRACT.slice(0, 6)}…${ARCANA_CONTRACT.slice(-4)}`;
   return (
     <BracketedCell pad="md">
-      <div className="flex flex-col items-center gap-3 py-6 text-center">
-        <div className="flex items-center gap-2">
-          <span aria-hidden className="text-accent">■</span>
-          <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">PREDICTION VIA</span>
-          <span className="font-mono text-[12px] uppercase tracking-[0.12em] text-ink">
-            ARCANA MARKETS
+      <div className="flex flex-col gap-5">
+        {/* Brand banner */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color:var(--hairline)] pb-4">
+          <div className="flex items-center gap-3 text-ink">
+            <ArcanaMark size={28} />
+          </div>
+          <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">
+            <span aria-hidden className="text-accent">■</span>
+            POWERED BY
+          </div>
+        </div>
+
+        {/* Big stencil */}
+        <div className="flex flex-col gap-2">
+          <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">
+            PREDICTION ROUND · STATUS
+          </span>
+          <h2
+            className="font-stencil uppercase text-ink"
+            style={{ fontSize: "clamp(28px, 4vw, 40px)", lineHeight: 1, letterSpacing: "-0.02em" }}
+          >
+            WAITING FOR ARCANA TO OPEN MARKETS
+          </h2>
+          <p className="max-w-[640px] font-mono text-[13px] leading-[1.55] text-ink-2">
+            no live prediction markets are open on arcana right now. agents stay
+            parked. when arcana ships markets before the deadline, this round
+            runs automatically. otherwise the round closes and stakes refund.
+          </p>
+        </div>
+
+        {/* Pulsing indicator strip */}
+        <div className="flex flex-wrap items-center gap-3 border border-[color:var(--hairline)] bg-canvas-2 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-2">
+          <span className="live-dot" style={{ background: "var(--accent)" }} />
+          <span>POLLING ARCANA · MARKETS APPEAR HERE THE INSTANT THEY OPEN</span>
+        </div>
+
+        {/* Contract chip + entry line */}
+        <div className="flex flex-wrap items-center gap-3">
+          <a
+            href={ARCANA_SCAN_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-2 border border-[color:var(--hairline-strong)] bg-canvas px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-ink hover:border-ink hover:text-accent"
+          >
+            <span aria-hidden className="text-ink-3">CONTRACT</span>
+            <span>{shortContract}</span>
+            <span aria-hidden>↗</span>
+          </a>
+          <a
+            href={ARCANA_SITE_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-2 border border-[color:var(--hairline-strong)] bg-canvas px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-ink hover:border-ink hover:text-accent"
+          >
+            ARCANA.MARKETS
+            <span aria-hidden>↗</span>
+          </a>
+          {entryCount > 0 ? (
+            <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
+              · {entryCount} AGENT{entryCount === 1 ? "" : "S"} STAKED · REFUND ON CLOSE IF NO MARKET
+            </span>
+          ) : null}
+        </div>
+      </div>
+    </BracketedCell>
+  );
+}
+
+/// Compact "POWERED BY ARCANA MARKETS" header for the active branch.
+/// Sits above the per-agent positions so the brand persists once trading
+/// has started, not just on the waiting state.
+function ArcanaBranchHeader() {
+  const shortContract = `${ARCANA_CONTRACT.slice(0, 6)}…${ARCANA_CONTRACT.slice(-4)}`;
+  return (
+    <BracketedCell pad="sm">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3 text-ink">
+          <ArcanaMark size={20} />
+          <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">
+            ROUND TRADING ON
           </span>
         </div>
-        <p className="max-w-[480px] font-stencil text-[24px] uppercase leading-[1.15] text-ink">
-          waiting for arcana markets
-        </p>
-        <p className="max-w-[520px] font-mono text-[12px] leading-[1.5] text-ink-2">
-          no live prediction markets are open right now. agents stay parked.
-          when arcana ships markets before the deadline, this round runs
-          automatically. otherwise the round closes and stakes refund.
-        </p>
-        {entryCount > 0 ? (
-          <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
-            {entryCount} AGENT{entryCount === 1 ? "" : "S"} STAKED · REFUND ON CLOSE IF NO MARKET
-          </p>
-        ) : null}
+        <div className="flex items-center gap-2">
+          <a
+            href={ARCANA_SCAN_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-2 border border-[color:var(--hairline)] bg-canvas px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-2 hover:border-ink hover:text-accent"
+          >
+            {shortContract}
+            <span aria-hidden>↗</span>
+          </a>
+          <a
+            href={ARCANA_SITE_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-2 border border-[color:var(--hairline)] bg-canvas px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-2 hover:border-ink hover:text-accent"
+          >
+            ARCANA.MARKETS
+            <span aria-hidden>↗</span>
+          </a>
+        </div>
       </div>
     </BracketedCell>
   );
@@ -342,6 +432,8 @@ function ArcanaBranch({
 
   return (
     <div className="flex flex-col gap-5">
+      <ArcanaBranchHeader />
+
       {/* PINNED MARKETS THIS ROUND */}
       <BracketedCell pad="sm">
         <div className="flex flex-col gap-2">
