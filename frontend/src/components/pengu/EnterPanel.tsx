@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useOperatorAddress } from "@/hooks/useAuth";
+import { useAuth, useOperatorAddress } from "@/hooks/useAuth";
 import { useArcWrite } from "@/hooks/useArcWrite";
 import { CONTRACTS, publicClient } from "@/lib/arc";
 import { contestEngineAbi, hasEntered, hasClaimed, fetchPayout, formatUsdc } from "@/lib/contests";
@@ -32,6 +32,7 @@ type Payout = { amount: bigint; proof: `0x${string}`[] };
 /// localStorage via the active-agent helpers in `lib/agents`.
 export function EnterPanel({ contestId, status, endTime }: { contestId: number; status: number; endTime: number }) {
   const { address, isSignedIn: isConnected } = useOperatorAddress();
+  const { me } = useAuth();
   const { writeContractAsync } = useArcWrite();
   const [agents, setAgents] = useState<AgentState[] | undefined>(undefined);
   const [activeId, setActiveId] = useState<number | null>(null);
@@ -221,14 +222,30 @@ export function EnterPanel({ contestId, status, endTime }: { contestId: number; 
       }
       const atLiveCap = capInfo?.atCap ?? false;
       const blockedByOtherAgent = opAlreadyIn && !entered;
-      const disabled = busy || atLiveCap || blockedByOtherAgent;
+      // PointsLedger qualification: when QUALIFY_MIN_POINTS is set on
+      // the backend, the operator's cycles balance has to clear the
+      // floor or the scoring pass drops them at settlement. Block the
+      // entry up front so they don't burn gas on a tx that won't earn.
+      const cyclesShort = Boolean(
+        me &&
+          typeof me.cyclesRequired === "number" &&
+          me.cyclesRequired > 0 &&
+          !me.canEnterContests,
+      );
+      const cyclesNeeded =
+        cyclesShort && me && typeof me.cycles === "number"
+          ? Math.max(0, (me.cyclesRequired ?? 0) - me.cycles)
+          : 0;
+      const disabled = busy || atLiveCap || blockedByOtherAgent || cyclesShort;
       const buttonLabel = busy
         ? "entering…"
-        : atLiveCap
-          ? `${capInfo!.liveCount} / ${capInfo!.maxLive} live entries`
-          : blockedByOtherAgent
-            ? "another agent already entered"
-            : "enter contest";
+        : cyclesShort
+          ? `need ${cyclesNeeded} more cycles`
+          : atLiveCap
+            ? `${capInfo!.liveCount} / ${capInfo!.maxLive} live entries`
+            : blockedByOtherAgent
+              ? "another agent already entered"
+              : "enter contest";
       return (
         <>
           <AgentPicker agents={agents} activeId={active.id} onPick={pick} />

@@ -531,12 +531,20 @@ app.get("/auth/me", requireAuth, async (c) => {
     current_syndicate_id: string | null;
     email: string | null;
     circle_wallet_id: string | null;
+    cycles: string;
   }>(
-    "select address, x_handle, current_syndicate_id, email, circle_wallet_id from operators where address = $1",
+    "select address, x_handle, current_syndicate_id, email, circle_wallet_id, cycles from operators where address = $1",
     [address],
   );
   const op =
-    rows[0] ?? { address, x_handle: null, current_syndicate_id: null, email: null, circle_wallet_id: null };
+    rows[0] ?? {
+      address,
+      x_handle: null,
+      current_syndicate_id: null,
+      email: null,
+      circle_wallet_id: null,
+      cycles: "0",
+    };
   // The wallet is the identity; any authenticated operator can compete. X is an
   // optional social link, not a gate. `walletKind` lets the frontend pick the
   // write path: "circle" => POST /wallet/execute, "wagmi" => useWriteContract.
@@ -550,6 +558,16 @@ app.get("/auth/me", requireAuth, async (c) => {
   );
   const hasPasskey = Number(credCount.rows[0]?.n ?? "0") > 0;
 
+  // PointsLedger qualification gate. Off-chain check: the indexer
+  // mirrors PointsLedger credits into operators.cycles, and entry is
+  // refused below the configured floor. Default 0 = open to everyone
+  // (matches the contract's "qualification enforced off-chain at
+  // scoring time" note). On-chain enforcement on registerEntry needs a
+  // contract redeploy (queued under BEFORE PRODUCTION in todo.md).
+  const minCycles = Number(process.env.QUALIFY_MIN_POINTS ?? "0");
+  const cycles = Number(op.cycles ?? "0");
+  const canEnterContests = minCycles <= 0 || cycles >= minCycles;
+
   return c.json({
     address: op.address,
     x_handle: op.x_handle,
@@ -557,7 +575,9 @@ app.get("/auth/me", requireAuth, async (c) => {
     email: op.email,
     walletKind,
     hasPasskey,
-    canEnterContests: true,
+    canEnterContests,
+    cycles,
+    cyclesRequired: minCycles,
   });
 });
 

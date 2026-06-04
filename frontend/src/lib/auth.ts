@@ -60,6 +60,13 @@ export interface Me {
   /// Drives the "ADD A PASSKEY" vs "PASSKEY ENABLED" affordance in settings.
   hasPasskey?: boolean;
   canEnterContests: boolean;
+  /// Operator's current Cycles balance (from PointsLedger via the indexer).
+  /// Used to surface "you need N more cycles" copy when canEnterContests
+  /// is false.
+  cycles?: number;
+  /// Minimum Cycles required to enter contests, from QUALIFY_MIN_POINTS.
+  /// Zero (the default) means qualification is open to everyone.
+  cyclesRequired?: number;
 }
 
 /// Reads the current session from the auth service via the httpOnly cookie.
