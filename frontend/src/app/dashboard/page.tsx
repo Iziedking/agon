@@ -364,7 +364,7 @@ function ContestActivityRow({ c }: { c: OperatorContest }) {
       label={`CONTEST #${c.contestId}`}
       description={`${typeName} · ${status}`}
       right={right}
-      txHref={`/live/contest/${c.contestId}`}
+      href={`/live/contest/${c.contestId}`}
     />
   );
 }

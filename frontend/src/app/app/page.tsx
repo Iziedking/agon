@@ -111,6 +111,7 @@ export default async function AppHome() {
                     label={`CONTEST #${c.id}`}
                     description={`${contestLabel(c)} · ${contestStatus(c)} · ${c.entrants} entrants`}
                     right={formatUsdc(c.prizePool)}
+                    href={`/live/contest/${c.id}`}
                   />
                 ))}
               </ActivityLedger>
