@@ -1,8 +1,15 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { usePathname } from "next/navigation";
 import { useAccount, useChainId, useSwitchChain } from "wagmi";
 import { arcTestnet } from "@/lib/arc";
+
+/// Routes where the user legitimately needs the wallet on a non-Arc chain.
+/// The bridge UI signs the burn step on whatever source chain the user picks,
+/// so force-switching them back to Arc breaks the flow. ChainGuard turns
+/// itself off on these paths and resumes pinning Arc on every other route.
+const NON_ARC_ROUTES = ["/bridge"];
 
 /// Strict Arc-testnet enforcement. Mounted in the root layout so the moment a
 /// connected wallet is on any chain other than Arc testnet, we prompt a switch
@@ -11,12 +18,14 @@ import { arcTestnet } from "@/lib/arc";
 /// because arcTestnet is fully described in lib/arc.ts. The banner uses a
 /// z-index above the win modal so a wrong-chain warning is never hidden.
 export function ChainGuard() {
+  const pathname = usePathname() ?? "/";
   const { isConnected } = useAccount();
   const chainId = useChainId();
   const { switchChain, isPending, error } = useSwitchChain();
   const autoTried = useRef(false);
 
-  const wrong = isConnected && chainId !== arcTestnet.id;
+  const onBridgeRoute = NON_ARC_ROUTES.some((r) => pathname.startsWith(r));
+  const wrong = isConnected && chainId !== arcTestnet.id && !onBridgeRoute;
 
   useEffect(() => {
     if (wrong && !autoTried.current) {

@@ -36,6 +36,11 @@ export interface BridgeChain {
   /// the chain isn't on llamao yet (Arc Testnet) — the picker falls back to
   /// a brand-color tile.
   iconUrl?: string;
+  /// Gas faucet for this testnet, used by the bridge UI so users can claim
+  /// native gas before signing the burn step. Alchemy hosts most of these.
+  /// Arc Testnet's gas comes from Circle's USDC faucet since USDC is native
+  /// gas on Arc, so this points at faucet.circle.com.
+  gasFaucetUrl?: string;
 }
 
 const ICON_BASE = "https://icons.llamao.fi/icons/chains/rsz_";
@@ -49,7 +54,8 @@ export const BRIDGE_CHAINS: BridgeChain[] = [
     usdcAddress: "0x3600000000000000000000000000000000000000",
     explorer: "https://testnet.arcscan.app",
     // Arc isn't on the llamao CDN yet; we self-host the brand mark in /public.
-    iconUrl: "/brand/arc.png",
+    iconUrl: "/brands/arc.png",
+    gasFaucetUrl: "https://faucet.circle.com",
   },
   {
     id: sepolia.id,
@@ -59,6 +65,7 @@ export const BRIDGE_CHAINS: BridgeChain[] = [
     usdcAddress: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
     explorer: "https://sepolia.etherscan.io",
     iconUrl: `${ICON_BASE}ethereum.jpg`,
+    gasFaucetUrl: "https://www.alchemy.com/faucets/ethereum-sepolia",
   },
   {
     id: baseSepolia.id,
@@ -68,6 +75,7 @@ export const BRIDGE_CHAINS: BridgeChain[] = [
     usdcAddress: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
     explorer: "https://sepolia.basescan.org",
     iconUrl: `${ICON_BASE}base.jpg`,
+    gasFaucetUrl: "https://www.alchemy.com/faucets/base-sepolia",
   },
   {
     id: arbitrumSepolia.id,
@@ -77,6 +85,7 @@ export const BRIDGE_CHAINS: BridgeChain[] = [
     usdcAddress: "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
     explorer: "https://sepolia.arbiscan.io",
     iconUrl: `${ICON_BASE}arbitrum.jpg`,
+    gasFaucetUrl: "https://www.alchemy.com/faucets/arbitrum-sepolia",
   },
   {
     id: optimismSepolia.id,
@@ -86,6 +95,7 @@ export const BRIDGE_CHAINS: BridgeChain[] = [
     usdcAddress: "0x5fd84259d66Cd46123540766Be93DFE6D43130D7",
     explorer: "https://sepolia-optimism.etherscan.io",
     iconUrl: `${ICON_BASE}optimism.jpg`,
+    gasFaucetUrl: "https://www.alchemy.com/faucets/optimism-sepolia",
   },
   {
     id: polygonAmoy.id,
@@ -95,6 +105,7 @@ export const BRIDGE_CHAINS: BridgeChain[] = [
     usdcAddress: "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582",
     explorer: "https://amoy.polygonscan.com",
     iconUrl: `${ICON_BASE}polygon.jpg`,
+    gasFaucetUrl: "https://www.alchemy.com/faucets/polygon-amoy",
   },
   {
     id: avalancheFuji.id,
@@ -104,6 +115,7 @@ export const BRIDGE_CHAINS: BridgeChain[] = [
     usdcAddress: "0x5425890298aed601595a70AB815c96711a31Bc65",
     explorer: "https://testnet.snowtrace.io",
     iconUrl: `${ICON_BASE}avalanche.jpg`,
+    gasFaucetUrl: "https://www.alchemy.com/faucets/avalanche-fuji",
   },
   {
     id: unichainSepolia.id,
@@ -113,6 +125,7 @@ export const BRIDGE_CHAINS: BridgeChain[] = [
     usdcAddress: "0x31d0220469e10c4E71834a79b1f276d740d3768F",
     explorer: "https://sepolia.uniscan.xyz",
     iconUrl: `${ICON_BASE}unichain.jpg`,
+    gasFaucetUrl: "https://www.alchemy.com/faucets/unichain-sepolia",
   },
 ];
 

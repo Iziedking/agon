@@ -41,10 +41,14 @@ function classes(variant: Variant, size: Size, disabled: boolean): string {
   const base =
     "group inline-flex items-center gap-2 font-mono uppercase tracking-[0.12em] transition-transform duration-120 select-none";
   const pad = size === "sm" ? "px-3 py-1.5 text-[11px]" : "px-4 py-2.5 text-[13px]";
+  // Ghost variant inherits its color from the parent so it reads correctly
+  // on every tone the BracketedCell renders. On an ink-filled card the
+  // border and text become cream automatically; on a canvas section they
+  // stay ink. The hover overlay uses opacity so it still works on both.
   const variantCls =
     variant === "primary"
       ? "bg-accent text-accent-ink hover:-translate-y-px hover:bg-accent-press"
-      : "border border-ink text-ink hover:-translate-y-px hover:bg-canvas-3";
+      : "border border-current text-current hover:-translate-y-px hover:opacity-80";
   const disabledCls = disabled ? "opacity-50 cursor-not-allowed pointer-events-none" : "";
   return `${base} ${pad} ${variantCls} ${disabledCls}`;
 }

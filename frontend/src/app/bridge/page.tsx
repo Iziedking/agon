@@ -550,14 +550,14 @@ function ChainIcon({ chain }: { chain: BridgeChain }) {
         loading="lazy"
         decoding="async"
         onError={() => setErrored(true)}
-        className="h-7 w-7 flex-none rounded-full bg-canvas-3 object-cover"
+        className="h-7 w-7 flex-none rounded-md object-cover"
       />
     );
   }
   return (
     <span
       aria-hidden
-      className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-accent font-mono text-[10px] font-medium text-accent-ink"
+      className="flex h-7 w-7 flex-none items-center justify-center rounded-md bg-accent font-mono text-[10px] font-medium text-accent-ink"
     >
       {chain.code.slice(0, 3)}
     </span>
@@ -589,7 +589,7 @@ function FaucetButton({ address }: { address?: `0x${string}` }) {
     ? "GET TESTNET USDC"
     : copied
       ? "ADDRESS COPIED"
-      : "COPY ADDRESS + OPEN FAUCET";
+      : "COPY ADDRESS AND CLAIM FAUCET";
 
   return (
     <button

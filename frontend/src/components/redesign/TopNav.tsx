@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { LoginButton } from "@/components/pengu/LoginButton";
 import { ProfileLink } from "@/components/pengu/ProfileLink";
+import { ArcChainChip } from "@/components/redesign/ArcChainChip";
 import { ArcRunMark } from "@/components/redesign/ArcRunMark";
 
 /// The product nav. Left: ■ ARCRUN mono wordmark with the pink square mark.
@@ -61,6 +62,7 @@ export function TopNav() {
         </nav>
 
         <div className="flex items-center gap-2">
+          <ArcChainChip />
           <LoginButton />
           <button
             type="button"

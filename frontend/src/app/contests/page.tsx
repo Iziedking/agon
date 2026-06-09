@@ -6,6 +6,7 @@ import { Footer } from "@/components/redesign/Footer";
 import {
   BracketedCell,
   CornerMarkers,
+  Countdown,
   MicroLabel,
   SectionHeader,
   StatusChip,
@@ -195,6 +196,12 @@ function ContestCard({ c }: { c: Contest }) {
           <span className="text-ink-3">WINDOW</span>
           <span className="text-ink">{windowLabel(c)}</span>
         </div>
+        {c.status === 1 || c.status === 2 ? (
+          <div className="flex items-center justify-between">
+            <span className="text-ink-3">{c.status === 1 ? "ENTER BY" : "SCORING"}</span>
+            <Countdown targetSec={Number(c.endTime)} className="text-ink" />
+          </div>
+        ) : null}
       </div>
 
       <div className="mt-auto flex items-center justify-between gap-3 border-t border-[color:var(--hairline)] pt-4">

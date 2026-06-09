@@ -6,6 +6,8 @@ export { BracketedCell } from "./BracketedCell";
 export { StatBlock } from "./StatBlock";
 export { StatPanel } from "./StatPanel";
 export { CountingNumber } from "./CountingNumber";
+export { Countdown } from "./Countdown";
+export { ArcChainChip } from "./ArcChainChip";
 export { StatusChip } from "./StatusChip";
 export { ActivityRow, ActivityLedger } from "./ActivityRow";
 export { SectionHeader } from "./SectionHeader";

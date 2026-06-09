@@ -7,6 +7,7 @@ import { Footer } from "@/components/redesign/Footer";
 import {
   BracketedCell,
   CornerMarkers,
+  Countdown,
   MicroLabel,
   Robot,
   SectionHeader,
@@ -168,6 +169,15 @@ function ChallengeCard({ ch }: { ch: Challenge }) {
           <span className="text-ink-3">FIELD</span>
           <span className="text-ink">{ch.entrants}/{ch.maxEntrants} IN</span>
         </div>
+        {ch.status === 0 || ch.status === 1 ? (
+          <div className="flex items-center justify-between">
+            <span className="text-ink-3">{ch.status === 0 ? "JOIN BY" : "SCORING"}</span>
+            <Countdown
+              targetSec={Number(ch.status === 0 ? ch.joinDeadline : ch.resolveDeadline)}
+              className="text-ink"
+            />
+          </div>
+        ) : null}
       </div>
 
       <div className="mt-auto flex items-center justify-between gap-3 border-t border-[color:var(--hairline)] pt-4">
