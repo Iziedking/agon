@@ -40,6 +40,21 @@
   --warn: #FFC93A;
   --err: #E0345A;
 
+  /* Solid-fill card tones. Each pair has a bg + a fg color that drives both
+     text and the corner-bracket vertex inside BracketedCell. Pairs flip in
+     dark mode (see html.dark below) so a black card on a cream canvas
+     becomes a warm-grey card on a near-black canvas rather than disappearing
+     into the background. The bracket vertex always contrasts the card bg by
+     using the fg color. */
+  --card-ink-bg: #1A1612;
+  --card-ink-fg: #F4F1ED;
+  --card-darkgrey-bg: #4D4D4D;
+  --card-darkgrey-fg: #F4F1ED;
+  --card-lightgrey-bg: #DEDEDE;
+  --card-lightgrey-fg: #1A1612;
+  --card-cream-bg: #ECE6DA;
+  --card-cream-fg: #1A1612;
+
   /* === legacy pengu palette (kept while pages transition) === */
   --pengu-bg: 244 241 237;
   --pengu-bg-2: 237 232 225;
@@ -283,6 +298,19 @@ html.dark {
   --ok: #3DDDB0;
   --warn: #FFCC4D;
   --err: #FF5C7B;
+
+  /* Dark-mode card swaps. The "ink" card stops being pure black (it would
+     vanish on a near-black canvas) and lifts to a warm dark surface. Dark
+     grey lifts a notch up. Light grey and cream both become muted dark
+     surfaces so they read as separate panels, not fields of the canvas. */
+  --card-ink-bg: #2A241E;
+  --card-ink-fg: #F4F1ED;
+  --card-darkgrey-bg: #3A332C;
+  --card-darkgrey-fg: #F4F1ED;
+  --card-lightgrey-bg: #2A241E;
+  --card-lightgrey-fg: #F4F1ED;
+  --card-cream-bg: #221C16;
+  --card-cream-fg: #F4F1ED;
 
   /* Legacy pengu palette swapped so any page still reading it doesn't
      read as cream-on-cream. */

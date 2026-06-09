@@ -10,7 +10,7 @@ import type { CSSProperties, ReactNode } from "react";
 /// Hover variant (opt-in) thickens the brackets from 1px to 1.5px over
 /// 120ms. No scale, no shadow.
 
-type Tone = "canvas" | "canvas-alt" | "ink" | "dark-grey" | "light-grey" | "accent";
+type Tone = "canvas" | "canvas-alt" | "cream" | "ink" | "dark-grey" | "light-grey" | "accent";
 
 interface Props {
   /// Legacy boolean. `true` is equivalent to `tone="canvas-alt"`. Kept for
@@ -37,13 +37,17 @@ interface ToneStyle {
   text: string;
 }
 
+// Each tone reads from CSS variables that swap on `html.dark`. The
+// `bracket` color always uses the fg variable so the L-shaped corner mark
+// at every vertex contrasts the card bg, regardless of theme.
 const TONE_STYLE: Record<Tone, ToneStyle> = {
-  canvas:        { bg: "bg-canvas",          border: "border-[color:var(--hairline)]",        bracket: "var(--ink)",     text: "text-ink" },
-  "canvas-alt":  { bg: "bg-canvas-2",        border: "border-[color:var(--hairline)]",        bracket: "var(--ink)",     text: "text-ink" },
-  ink:           { bg: "bg-[#1A1612]",       border: "border-[#1A1612]",                       bracket: "var(--canvas)",  text: "text-canvas" },
-  "dark-grey":   { bg: "bg-[#4D4D4D]",       border: "border-[#4D4D4D]",                       bracket: "var(--canvas)",  text: "text-canvas" },
-  "light-grey":  { bg: "bg-[#DEDEDE]",       border: "border-[color:var(--hairline-strong)]",  bracket: "var(--ink)",     text: "text-ink" },
-  accent:        { bg: "bg-accent",          border: "border-accent",                          bracket: "var(--accent-ink)", text: "text-accent-ink" },
+  canvas:        { bg: "bg-canvas",                          border: "border-[color:var(--hairline)]",       bracket: "var(--ink)",            text: "text-ink" },
+  "canvas-alt":  { bg: "bg-canvas-2",                        border: "border-[color:var(--hairline)]",       bracket: "var(--ink)",            text: "text-ink" },
+  cream:         { bg: "bg-[color:var(--card-cream-bg)]",    border: "border-[color:var(--hairline-strong)]", bracket: "var(--card-cream-fg)",    text: "text-[color:var(--card-cream-fg)]" },
+  ink:           { bg: "bg-[color:var(--card-ink-bg)]",      border: "border-[color:var(--card-ink-bg)]",     bracket: "var(--card-ink-fg)",      text: "text-[color:var(--card-ink-fg)]" },
+  "dark-grey":   { bg: "bg-[color:var(--card-darkgrey-bg)]", border: "border-[color:var(--card-darkgrey-bg)]", bracket: "var(--card-darkgrey-fg)", text: "text-[color:var(--card-darkgrey-fg)]" },
+  "light-grey":  { bg: "bg-[color:var(--card-lightgrey-bg)]", border: "border-[color:var(--hairline-strong)]", bracket: "var(--card-lightgrey-fg)", text: "text-[color:var(--card-lightgrey-fg)]" },
+  accent:        { bg: "bg-accent",                          border: "border-accent",                        bracket: "var(--accent-ink)",     text: "text-accent-ink" },
 };
 
 function Corner({ pos, color }: { pos: "tl" | "tr" | "bl" | "br"; color: string }) {

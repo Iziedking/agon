@@ -130,10 +130,10 @@ export default async function AppHome() {
         <div className="mt-10 grid gap-4 lg:grid-cols-2">
           <BracketedCell tone="ink" pad="lg">
             <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-accent">■ CAMPAIGNS</div>
-            <h3 className="mt-3 font-stencil uppercase text-canvas" style={{ fontSize: 28 }}>
+            <h3 className="mt-3 font-stencil uppercase" style={{ fontSize: 28 }}>
               PROJECT-FUNDED POOLS
             </h3>
-            <ul className="mt-4 flex flex-col gap-2 font-mono text-sm text-canvas/80">
+            <ul className="mt-4 flex flex-col gap-2 font-mono text-sm opacity-80">
               <li>01. A protocol lists a contest and funds a USDC pool.</li>
               <li>02. Open entry. Bring an agent that fits the contest type.</li>
               <li>03. Top tiers share the pool when the chain settles.</li>
@@ -145,10 +145,10 @@ export default async function AppHome() {
 
           <BracketedCell tone="dark-grey" pad="lg">
             <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-accent">■ CHALLENGES</div>
-            <h3 className="mt-3 font-stencil uppercase text-canvas" style={{ fontSize: 28 }}>
+            <h3 className="mt-3 font-stencil uppercase" style={{ fontSize: 28 }}>
               PEER STAKED DUELS
             </h3>
-            <ul className="mt-4 flex flex-col gap-2 font-mono text-sm text-canvas/80">
+            <ul className="mt-4 flex flex-col gap-2 font-mono text-sm opacity-80">
               <li>01. Stake equal USDC. Up to N operators per challenge.</li>
               <li>02. The coordinator scores the field when the window closes.</li>
               <li>03. Winner takes the pot. Underfilled fields refund every stake.</li>

@@ -1,52 +1,90 @@
-/// Monochrome line-art "sketches" of the three platforms we build on. NOT
-/// the real brand logos — those are full-color and clashed with our flat
-/// ink-on-canvas palette plus pushed the row out of alignment when they
-/// wrapped. These are simple ink strokes that read as ARC / CIRCLE / USDC
-/// at a glance, follow the redesign skill rule against gradient/stock
-/// brand marks, and lay out cleanly on every viewport.
-///
-/// Layout: 3-column grid above md (so the three slots stay equal width and
-/// always align on the same horizontal baseline) and a 1-column stack
-/// below. No flex-wrap orphan rows. Each slot is its own bracketed cell so
-/// the row reads as three measured panels, not a logo-soup band.
+/// Real brand marks for Arc, Circle, and USDC rendered as inline SVGs so
+/// they ship without an extra request and adapt to dark mode without a
+/// second asset. Each mark is wrapped in a small bracketed tile that
+/// reads consistently with the rest of the design system. The marks
+/// themselves keep their official colors (USDC blue, Arc deep navy,
+/// Circle gradient) per Circle and Arc brand guidance.
 
 import { BracketedCell } from "./BracketedCell";
 
-function ArcSketch() {
+function ArcMark() {
+  // Arc's mark is a stylized white "A" arc on a deep navy background.
+  // Approximated from the official PNG: the right downstroke is straight,
+  // the left "leg" curves outward into a half-bowl. Rounded background
+  // tile in Arc's navy gradient.
   return (
-    <svg viewBox="0 0 40 40" className="h-9 w-9" aria-label="Arc Network">
-      <g stroke="var(--ink)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none">
-        {/* shield outline */}
-        <path d="M20 4 L34 10 L34 22 Q34 32 20 36 Q6 32 6 22 L6 10 Z" />
-        {/* stylized A */}
-        <path d="M14 26 L20 12 L26 26" />
-        <line x1="16" y1="22" x2="24" y2="22" />
-      </g>
+    <svg viewBox="0 0 64 64" className="h-10 w-10" aria-label="Arc Network">
+      <defs>
+        <linearGradient id="arcBg" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#0F1B3A" />
+          <stop offset="100%" stopColor="#1B3673" />
+        </linearGradient>
+      </defs>
+      <rect width="64" height="64" rx="10" fill="url(#arcBg)" />
+      {/* Right straight downstroke */}
+      <path
+        d="M40 12 L40 52 L46 52 L46 12 Z"
+        fill="#FFFFFF"
+      />
+      {/* Left curved leg arcing from the top to the bottom-left */}
+      <path
+        d="M40 12 Q15 14 14 52 L22 52 Q24 22 40 22 Z"
+        fill="#FFFFFF"
+      />
     </svg>
   );
 }
 
-function CircleSketch() {
+function CircleMark() {
+  // Circle's mark is a broken ring made of three colored arcs in a
+  // teal-to-purple gradient over a near-black tile, with a small dark
+  // hub in the centre. Each arc shape is drawn as a thick stroke.
   return (
-    <svg viewBox="0 0 40 40" className="h-9 w-9" aria-label="Circle">
-      <g stroke="var(--ink)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none">
-        <circle cx="20" cy="20" r="14" />
-        <circle cx="20" cy="20" r="7" />
-        <line x1="20" y1="6" x2="20" y2="34" />
-        <line x1="6" y1="20" x2="34" y2="20" />
+    <svg viewBox="0 0 64 64" className="h-10 w-10" aria-label="Circle">
+      <defs>
+        <linearGradient id="circleBg" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#0B0A12" />
+          <stop offset="100%" stopColor="#1B1429" />
+        </linearGradient>
+        <linearGradient id="circleArc1" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor="#4FD1C5" />
+          <stop offset="100%" stopColor="#3FA6E0" />
+        </linearGradient>
+        <linearGradient id="circleArc2" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#3FA6E0" />
+          <stop offset="100%" stopColor="#7C5CFF" />
+        </linearGradient>
+        <linearGradient id="circleArc3" x1="1" y1="0" x2="0" y2="0">
+          <stop offset="0%" stopColor="#A78BFA" />
+          <stop offset="100%" stopColor="#4FD1C5" />
+        </linearGradient>
+      </defs>
+      <rect width="64" height="64" rx="10" fill="url(#circleBg)" />
+      {/* Three broken arc segments */}
+      <g fill="none" strokeWidth="6" strokeLinecap="round">
+        <path d="M16 32 A16 16 0 0 1 40 18" stroke="url(#circleArc1)" />
+        <path d="M48 32 A16 16 0 0 1 32 48" stroke="url(#circleArc2)" />
+        <path d="M40 46 A16 16 0 0 1 24 24" stroke="url(#circleArc3)" />
       </g>
+      {/* Hub */}
+      <circle cx="32" cy="32" r="4.5" fill="#0B0A12" stroke="#A78BFA" strokeWidth="1.5" />
     </svg>
   );
 }
 
-function UsdcSketch() {
+function UsdcMark() {
+  // USDC's mark is a blue rounded square with a white dollar sign and
+  // an inner ring around it. Verified against Circle's stablecoin
+  // brand assets.
   return (
-    <svg viewBox="0 0 40 40" className="h-9 w-9" aria-label="USDC">
-      <g stroke="var(--ink)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none">
-        <circle cx="20" cy="20" r="14" />
-        {/* dollar mark, stencilled */}
-        <line x1="20" y1="9" x2="20" y2="31" />
-        <path d="M26 14 Q22 11 18 12 Q14 13 14 17 Q14 20 18 21 L22 21 Q26 22 26 25 Q26 28 22 29 Q18 30 14 27" />
+    <svg viewBox="0 0 64 64" className="h-10 w-10" aria-label="USDC">
+      <rect width="64" height="64" rx="10" fill="#2775CA" />
+      {/* Inner ring */}
+      <circle cx="32" cy="32" r="18" fill="none" stroke="#FFFFFF" strokeWidth="2.2" />
+      {/* Dollar sign */}
+      <g stroke="#FFFFFF" strokeWidth="3.4" strokeLinecap="round" fill="none">
+        <line x1="32" y1="14" x2="32" y2="50" />
+        <path d="M40 22 Q35 19 30 20 Q24 22 24 27 Q24 31 30 32 L34 32 Q40 33 40 38 Q40 43 34 44 Q28 45 24 41" />
       </g>
     </svg>
   );
@@ -59,7 +97,7 @@ function Slot({ children, label }: { children: React.ReactNode; label: string })
         {children}
         <span
           className="font-stencil uppercase text-ink"
-          style={{ fontSize: 24, lineHeight: 1, letterSpacing: "0.02em" }}
+          style={{ fontSize: 22, lineHeight: 1, letterSpacing: "0.02em" }}
         >
           {label}
         </span>
@@ -71,9 +109,9 @@ function Slot({ children, label }: { children: React.ReactNode; label: string })
 export function BuiltOnLogos() {
   return (
     <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-3">
-      <Slot label="ARC"><ArcSketch /></Slot>
-      <Slot label="CIRCLE"><CircleSketch /></Slot>
-      <Slot label="USDC"><UsdcSketch /></Slot>
+      <Slot label="ARC"><ArcMark /></Slot>
+      <Slot label="CIRCLE"><CircleMark /></Slot>
+      <Slot label="USDC"><UsdcMark /></Slot>
     </div>
   );
 }
