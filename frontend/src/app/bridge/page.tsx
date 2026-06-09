@@ -278,18 +278,18 @@ function WagmiBridge() {
             <span className="flex flex-wrap items-center gap-3">
               <span aria-hidden className="text-accent">■</span>
               {mode === "transfer" ? "TRANSFER" : "BRIDGE"}
-              <StatusChip tone="ok">{mode === "transfer" ? "SAME CHAIN" : "CCTP V2"}</StatusChip>
+              <StatusChip tone="ok">{mode === "transfer" ? "SAME CHAIN" : "FAST"}</StatusChip>
               <span className="text-ink-3">
-                {mode === "transfer" ? "· direct usdc transfer" : "· 8 chains · forwarder on"}
+                {mode === "transfer" ? "· settles in one transaction" : "· 8 supported chains"}
               </span>
             </span>
           }
           heading={mode === "transfer" ? "TRANSFER USDC" : "BRIDGE USDC"}
           subDeck={
             mode === "transfer" ? (
-              <>send usdc to another address on the same chain. no cctp, just a direct erc-20 transfer.</>
+              <>send usdc to another address on the same chain. one transaction, fast settlement.</>
             ) : (
-              <>move usdc between testnets via circle bridge kit. forwarder service settles the destination side, no destination wallet needed.</>
+              <>move usdc between supported chains. the destination side is handled for you, no extra wallet needed.</>
             )
           }
         />
@@ -323,7 +323,7 @@ function WagmiBridge() {
           {mode === "bridge" && isOutboundFromArc ? (
             <div className="border-l-2 border-accent bg-canvas-2 px-4 py-3 font-mono text-[11px] text-ink-2">
               <span className="text-accent">NOTE</span> · outbound-from-Arc
-              bridges must exceed ~{ARC_OUTBOUND_MIN_USDC} USDC (CCTPv2 max fee).
+              bridges must be at least ~{ARC_OUTBOUND_MIN_USDC} USDC.
             </div>
           ) : null}
 
@@ -594,7 +594,7 @@ function StepStrip({
                 : s.state === "pending"
                   ? "border-[color:var(--warn)] text-ink-2"
                   : "border-[color:var(--hairline)] text-ink-3";
-        const stateLabel = s.state === "forwarded" ? "VIA FORWARDER" : s.state;
+        const stateLabel = s.state === "forwarded" ? "AUTO" : s.state;
         return (
           <div key={s.name} className={`border ${tone} flex flex-col gap-1 px-3 py-3 font-mono`}>
             <div className="flex items-center justify-between">
@@ -673,7 +673,7 @@ function CircleUserBridge() {
     : !validRecipient
       ? "Enter a recipient address."
       : !meetsArcOutboundMin
-        ? `Cross-chain withdrawals must exceed ~${ARC_OUTBOUND_MIN_USDC} USDC (CCTPv2 max fee).`
+        ? `Cross-chain withdrawals must be at least ~${ARC_OUTBOUND_MIN_USDC} USDC.`
         : insufficient
           ? "Wallet doesn't have enough USDC on Arc."
           : null;
@@ -756,8 +756,8 @@ function CircleUserBridge() {
           heading="WITHDRAW USDC"
           subDeck={
             <>
-              your arc wallet signs everything through the backend. transfer to another arc address, or bridge
-              out to ethereum, base, arbitrum, optimism, polygon, avalanche, or unichain through cctp v2.
+              your arc wallet signs everything for you. transfer to another arc address, or bridge out to
+              ethereum, base, arbitrum, optimism, polygon, avalanche, or unichain.
             </>
           }
         />
@@ -881,8 +881,8 @@ function CircleUserBridge() {
             <TagButton variant="ghost" href="/dashboard">DASHBOARD</TagButton>
             <span className="font-mono text-[11px] opacity-70">
               {mode === "same"
-                ? "settles in one tx on arc."
-                : "~8 to 20s for the burn, mint runs on circle's forwarder."}
+                ? "settles in one transaction."
+                : "~8 to 20s on fast routes."}
             </span>
           </div>
 

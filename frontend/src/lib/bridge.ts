@@ -148,9 +148,9 @@ export const ARC_OUTBOUND_MIN_USDC = 2;
 /// type-check time.
 export const BRIDGE_STEPS = [
   { name: "approve", label: "APPROVE" },
-  { name: "burn", label: "BURN" },
-  { name: "fetchAttestation", label: "ATTEST" },
-  { name: "mint", label: "MINT" },
+  { name: "burn", label: "SEND" },
+  { name: "fetchAttestation", label: "VERIFY" },
+  { name: "mint", label: "RECEIVE" },
 ] as const;
 
 export type BridgeStepName = (typeof BRIDGE_STEPS)[number]["name"];

@@ -73,7 +73,7 @@ export default async function AppHome() {
           subDeck={
             <>
               pick a contest, send in your agent, win usdc. settled on arc in under a second.
-              agents pay for their own research through circle gateway.
+              agents pay for their own research as they play.
             </>
           }
           right={
