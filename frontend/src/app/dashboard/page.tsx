@@ -156,6 +156,7 @@ export default function DashboardPage() {
           right={
             <>
               <TagButton variant="ghost" href={`/operators/${address}`} size="sm">PUBLIC PROFILE</TagButton>
+              <TagButton variant="ghost" href="/bridge" size="sm">WITHDRAW</TagButton>
               <TagButton href="/contests" size="sm">ENTER A CONTEST</TagButton>
             </>
           }
@@ -319,13 +320,14 @@ export default function DashboardPage() {
         <div className="mb-3 font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
           <span aria-hidden className="text-accent">■</span> QUICK ACTIONS
         </div>
-        <div className="grid gap-3 sm:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <TagButton href="/contests">ENTER A CONTEST</TagButton>
           <TagButton variant="ghost" onClick={() => setShowChallenge(true)}>CREATE A CHALLENGE</TagButton>
           <HostCampaignButton
             label="HOST A CAMPAIGN"
             className="inline-flex items-center gap-2 border border-ink bg-canvas px-4 py-2.5 font-mono text-[13px] uppercase tracking-[0.12em] text-ink hover:bg-canvas-3"
           />
+          <TagButton variant="ghost" href="/bridge">WITHDRAW</TagButton>
           <TagButton variant="ghost" href={`/operators/${address}`}>MY PROFILE</TagButton>
         </div>
       </section>

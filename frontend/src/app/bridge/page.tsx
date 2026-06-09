@@ -13,6 +13,8 @@ import {
   StatusChip,
   TagButton,
 } from "@/components/redesign";
+import { useAuth } from "@/hooks/useAuth";
+import { CONTRACTS, publicClient } from "@/lib/arc";
 import {
   ARC_OUTBOUND_MIN_USDC,
   BRIDGE_CHAINS,
@@ -33,6 +35,21 @@ const DEFAULT_SOURCE = BRIDGE_CHAINS.find((c) => c.code === "ARC")!;
 const DEFAULT_DEST = BRIDGE_CHAINS.find((c) => c.code === "ARC")!;
 
 export default function BridgePage() {
+  const { me } = useAuth();
+  const isCircle = me?.walletKind === "circle";
+
+  // Email users sign through Circle Dev-Controlled wallets (backend-managed).
+  // The Bridge Kit Viem adapter we use here only signs from injected wagmi
+  // wallets, so the standard flow does not fit them. Show a dedicated panel
+  // with what they actually need: the wallet address, USDC balance on Arc,
+  // and a path to top up.
+  if (isCircle) {
+    return <CircleUserBridge />;
+  }
+  return <WagmiBridge />;
+}
+
+function WagmiBridge() {
   const { address: account, isConnected, chainId: walletChainId } = useAccount();
   const { switchChainAsync } = useSwitchChain();
   const { data: walletClient } = useWalletClient();
@@ -67,8 +84,16 @@ export default function BridgePage() {
   const validAmount = Number.isFinite(amountNum) && amountNum > 0;
   const meetsArcOutboundMin = !isOutboundFromArc || amountNum >= ARC_OUTBOUND_MIN_USDC;
   const sameChain = sourceId === destId;
+  // Ignore the insufficient-balance check while a bridge is mid-flight or
+  // just finished. The burn we already signed dropped the wallet balance,
+  // and we do not want the UI to read "not enough USDC" for a bridge the
+  // user is not even trying to start. Once the balance refresh lands or
+  // they top up, the check resumes.
   const insufficientBalance =
-    balance !== null && validAmount && amountNum > balance;
+    !running &&
+    balance !== null &&
+    validAmount &&
+    amountNum > balance;
   // Same-chain selection means transfer mode; cross-chain means CCTP bridge.
   const mode: "bridge" | "transfer" = sameChain ? "transfer" : "bridge";
   const validRecipient =
@@ -170,6 +195,7 @@ export default function BridgePage() {
     const adapter = await createViemAdapterFromProvider({ provider: provider as never });
 
     const kit = new AppKit();
+    let burnSettled = false;
     const stepHandler = (name: BridgeStepProgress["name"]) => (payload: unknown) => {
       const p = payload as { values?: { state?: BridgeStepProgress["state"]; txHash?: string; explorerUrl?: string; error?: string } };
       updateStep(setSteps, name, {
@@ -178,24 +204,49 @@ export default function BridgePage() {
         explorerUrl: p.values?.explorerUrl,
         error: p.values?.error,
       });
+      // The moment BURN succeeds with the forwarder on, the user's signing
+      // work is done. Mark attest + mint as forwarded so the strip reads
+      // accurately, and unlock the BRIDGE button so the user can queue
+      // another transfer. The kit.bridge() promise keeps running in the
+      // background but its eventual result no longer drives the UI.
+      if (name === "burn" && p.values?.state === "success" && !burnSettled) {
+        burnSettled = true;
+        updateStep(setSteps, "fetchAttestation", { state: "forwarded" });
+        updateStep(setSteps, "mint", { state: "forwarded" });
+        setCompletedTxHash(p.values.txHash ?? null);
+        setRunning(false);
+      }
     };
     kit.on("bridge.approve", stepHandler("approve"));
     kit.on("bridge.burn", stepHandler("burn"));
     kit.on("bridge.fetchAttestation", stepHandler("fetchAttestation"));
     kit.on("bridge.mint", stepHandler("mint"));
 
-    const result = await kit.bridge({
-      from: { adapter, chain: source.appKitChain as never },
-      to: { adapter, chain: dest.appKitChain as never, useForwarder: true },
-      amount,
-    });
-    if ((result as { state?: string }).state === "error") {
-      throw new Error("Bridge failed mid-flight. Check the step strip for which leg failed.");
+    try {
+      const result = await kit.bridge({
+        from: { adapter, chain: source.appKitChain as never },
+        to: { adapter, chain: dest.appKitChain as never, useForwarder: true },
+        amount,
+      });
+      // If the burn-handler already settled the UI (forwarder path), the
+      // user has seen the success state. Skip the post-burn checks so a
+      // later forwarder hiccup does not flip the UI to error after the
+      // fact.
+      if (burnSettled) return;
+      if ((result as { state?: string }).state === "error") {
+        throw new Error("Bridge failed mid-flight. Check the step strip for which leg failed.");
+      }
+      const lastSuccess = ((result as { steps?: Array<{ state: string; txHash?: string }> }).steps ?? [])
+        .filter((s) => s.state === "success" && s.txHash)
+        .at(-1);
+      setCompletedTxHash(lastSuccess?.txHash ?? null);
+    } catch (err) {
+      // Same guard for the throw path: if the burn was locked in and the
+      // user has already moved on, swallow whatever the forwarder polling
+      // raised. Otherwise propagate so onPrimary's catch surfaces it.
+      if (burnSettled) return;
+      throw err;
     }
-    const lastSuccess = ((result as { steps?: Array<{ state: string; txHash?: string }> }).steps ?? [])
-      .filter((s) => s.state === "success" && s.txHash)
-      .at(-1);
-    setCompletedTxHash(lastSuccess?.txHash ?? null);
   }
 
   function friendlyError(err: unknown): string {
@@ -290,8 +341,8 @@ export default function BridgePage() {
               {action === "switch"
                 ? `wallet on ${bridgeChainById(walletChainId)?.label ?? `chain ${walletChainId}`}, source needs ${source.label}.`
                 : mode === "transfer"
-                  ? "settles in one tx. no bridge fee."
-                  : "~8 to 20s on fast routes. fee shown on each step."}
+                  ? "settles in one tx."
+                  : "~8 to 20s on fast routes."}
             </span>
           </div>
         </BracketedCell>
@@ -497,17 +548,20 @@ function StepStrip({
         const tone =
           s.state === "success"
             ? "border-accent bg-canvas-2 text-ink"
-            : s.state === "error"
-              ? "border-[color:var(--err)] text-ink"
-              : s.state === "pending"
-                ? "border-[color:var(--warn)] text-ink-2"
-                : "border-[color:var(--hairline)] text-ink-3";
+            : s.state === "forwarded"
+              ? "border-[color:var(--ok)] bg-canvas-2 text-ink"
+              : s.state === "error"
+                ? "border-[color:var(--err)] text-ink"
+                : s.state === "pending"
+                  ? "border-[color:var(--warn)] text-ink-2"
+                  : "border-[color:var(--hairline)] text-ink-3";
+        const stateLabel = s.state === "forwarded" ? "VIA FORWARDER" : s.state;
         return (
           <div key={s.name} className={`border ${tone} flex flex-col gap-1 px-3 py-3 font-mono`}>
             <div className="flex items-center justify-between">
               <span className="text-[11px] uppercase tracking-[0.12em]">{label}</span>
               <span className="text-[10px] uppercase tracking-[0.12em] text-ink-3">
-                {s.state}
+                {stateLabel}
               </span>
             </div>
             {s.txHash && s.explorerUrl ? (
@@ -532,6 +586,309 @@ function StepStrip({
 
 // Silence unused-import lint when only parseUnits is referenced through types.
 void parseUnits;
+
+/// Email-user withdrawal flow. Dev-Controlled wallets sign through the
+/// backend, so we expose two modes:
+///   1. ARC TO ARC — direct USDC.transfer via /wallet/execute
+///   2. ARC TO OTHER CHAIN — CCTPv2 bridge via /wallet/bridge, which runs
+///      Circle Wallets adapter + App Kit server-side, Forwarder Service on
+///      so the destination chain mint is handled for the user.
+function CircleUserBridge() {
+  const { me } = useAuth();
+  const address = me?.address as `0x${string}` | undefined;
+  const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL ?? "http://localhost:8082";
+
+  const { data: arcBalanceWei } = useReadContract({
+    abi: erc20Abi,
+    address: "0x3600000000000000000000000000000000000000",
+    chainId: publicClient.chain.id as never,
+    functionName: "balanceOf",
+    args: address ? [address] : undefined,
+    query: { enabled: Boolean(address), refetchInterval: 12_000 },
+  });
+  const arcBalanceNum =
+    typeof arcBalanceWei === "bigint" ? Number(formatUnits(arcBalanceWei, 6)) : null;
+  const arcBalance = arcBalanceNum === null ? "—" : arcBalanceNum.toFixed(4);
+
+  const [mode, setMode] = useState<"same" | "cross">("same");
+  const [destId, setDestId] = useState<number>(
+    BRIDGE_CHAINS.find((c) => c.code === "BASE")!.id,
+  );
+  const [amount, setAmount] = useState<string>("1.00");
+  const [recipient, setRecipient] = useState<string>("");
+  const [busy, setBusy] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  const dest = bridgeChainById(destId)!;
+  const amountNum = Number(amount);
+  const validAmount = Number.isFinite(amountNum) && amountNum > 0;
+  const meetsArcOutboundMin = mode === "same" || amountNum >= ARC_OUTBOUND_MIN_USDC;
+  const validRecipient =
+    recipient.trim().length > 0 && isAddress(recipient.trim());
+  const insufficient =
+    arcBalanceNum !== null && validAmount && amountNum > arcBalanceNum;
+
+  const blocker = !validAmount
+    ? "Enter an amount greater than 0."
+    : !validRecipient
+      ? "Enter a recipient address."
+      : !meetsArcOutboundMin
+        ? `Cross-chain withdrawals must exceed ~${ARC_OUTBOUND_MIN_USDC} USDC (CCTPv2 max fee).`
+        : insufficient
+          ? "Wallet doesn't have enough USDC on Arc."
+          : null;
+
+  async function onSubmit() {
+    if (blocker) return;
+    setBusy(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    try {
+      if (mode === "same") {
+        // USDC.transfer via /wallet/execute. Same endpoint every other
+        // Circle write uses; USDC is on the allowlist.
+        const res = await fetch(`${AUTH_URL}/wallet/execute`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            contractAddress: "0x3600000000000000000000000000000000000000",
+            abiFunctionSignature: "transfer(address,uint256)",
+            abiParameters: [
+              recipient.trim(),
+              String(parseUnits(amount, 6)),
+            ],
+          }),
+        });
+        const data = (await res.json().catch(() => ({}))) as { error?: string; id?: string };
+        if (!res.ok) throw new Error(data.error ?? `transfer failed (${res.status})`);
+        setSuccessMsg(`Transfer submitted. Circle tx id: ${data.id ?? "queued"}.`);
+      } else {
+        // CCTPv2 bridge via /wallet/bridge. Backend uses adapter-circle-wallets
+        // + App Kit with the forwarder on.
+        const res = await fetch(`${AUTH_URL}/wallet/bridge`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            destChain: dest.appKitChain,
+            amount,
+            recipientAddress: recipient.trim(),
+          }),
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          error?: string;
+          state?: string;
+          steps?: Array<{ name: string; state: string; txHash?: string }>;
+        };
+        if (!res.ok) throw new Error(data.error ?? `bridge failed (${res.status})`);
+        const lastTx = (data.steps ?? [])
+          .filter((s) => s.state === "success" && s.txHash)
+          .at(-1)?.txHash;
+        setSuccessMsg(
+          lastTx
+            ? `Bridge submitted. Last tx ${lastTx.slice(0, 10)}…${lastTx.slice(-6)}.`
+            : "Bridge submitted; check Circle for status.",
+        );
+      }
+    } catch (err) {
+      const m = err instanceof Error ? err.message : String(err);
+      setErrorMsg(m);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-canvas text-ink">
+      <AppHeader />
+
+      <section className="relative mx-auto max-w-[1200px] px-6 pt-16">
+        <CornerMarkers />
+        <SectionHeader
+          eyebrow={
+            <span className="flex flex-wrap items-center gap-3">
+              <span aria-hidden className="text-accent">■</span> WITHDRAW
+              <StatusChip tone="ok">EMAIL ACCOUNT</StatusChip>
+              <span className="text-ink-3">· your wallet lives on arc</span>
+            </span>
+          }
+          heading="WITHDRAW USDC"
+          subDeck={
+            <>
+              your arc wallet signs everything through the backend. transfer to another arc address, or bridge
+              out to ethereum, base, arbitrum, optimism, polygon, avalanche, or unichain through cctp v2.
+            </>
+          }
+        />
+      </section>
+
+      <section className="mx-auto max-w-[1200px] px-6 py-10">
+        <BracketedCell tone="cream" pad="lg" className="flex flex-col gap-6">
+          <div className="grid gap-6 sm:grid-cols-2">
+            <div>
+              <div className="font-mono text-[11px] uppercase tracking-[0.12em] opacity-70">YOUR ARC WALLET</div>
+              <div className="mt-2 break-all font-mono text-[13px]">{address ?? "loading…"}</div>
+            </div>
+            <div>
+              <div className="font-mono text-[11px] uppercase tracking-[0.12em] opacity-70">USDC ON ARC</div>
+              <div className="mt-2 font-stencil leading-none" style={{ fontSize: "clamp(36px, 5vw, 56px)" }}>
+                {arcBalance}
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t border-[color:var(--hairline-strong)] pt-5">
+            <div className="mb-3 font-mono text-[11px] uppercase tracking-[0.12em] opacity-70">MODE</div>
+            <div className="flex flex-wrap gap-2">
+              <ModePill active={mode === "same"} onClick={() => setMode("same")}>
+                ARC TO ARC
+              </ModePill>
+              <ModePill active={mode === "cross"} onClick={() => setMode("cross")}>
+                ARC TO OTHER CHAIN
+              </ModePill>
+            </div>
+          </div>
+
+          <div>
+            <div className="mb-2 flex items-center justify-between font-mono text-[11px] uppercase tracking-[0.12em] opacity-70">
+              <span>AMOUNT</span>
+              {arcBalanceNum !== null ? (
+                <button
+                  type="button"
+                  onClick={() => setAmount(String(arcBalanceNum))}
+                  className="text-accent hover:opacity-80"
+                >
+                  MAX
+                </button>
+              ) : null}
+            </div>
+            <div className="flex items-center gap-3 border border-[color:var(--hairline-strong)] bg-canvas px-4 py-3">
+              <input
+                type="text"
+                inputMode="decimal"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))}
+                className="w-full bg-transparent font-stencil text-[36px] outline-none"
+                aria-label="Amount"
+              />
+              <span className="font-mono text-[12px] uppercase tracking-[0.12em] opacity-70">USDC</span>
+            </div>
+          </div>
+
+          {mode === "cross" ? (
+            <div>
+              <div className="mb-2 font-mono text-[11px] uppercase tracking-[0.12em] opacity-70">TO CHAIN</div>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {BRIDGE_CHAINS.filter((c) => c.code !== "ARC").map((c) => {
+                  const sel = c.id === destId;
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => setDestId(c.id)}
+                      className={[
+                        "flex items-center gap-3 border px-3 py-3 text-left font-mono transition-colors",
+                        sel
+                          ? "border-accent bg-canvas"
+                          : "border-[color:var(--hairline)] bg-canvas hover:bg-canvas-2",
+                      ].join(" ")}
+                    >
+                      <ChainIcon chain={c} />
+                      <div className="min-w-0">
+                        <div className="text-[11px] uppercase tracking-[0.12em]">{c.code}</div>
+                        <div className="truncate text-[10px] opacity-70">{c.label}</div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+
+          <div>
+            <div className="mb-2 flex items-center justify-between font-mono text-[11px] uppercase tracking-[0.12em] opacity-70">
+              <span>RECIPIENT</span>
+              {address ? (
+                <button
+                  type="button"
+                  onClick={() => setRecipient(address)}
+                  className="text-accent hover:opacity-80"
+                >
+                  SELF
+                </button>
+              ) : null}
+            </div>
+            <input
+              type="text"
+              spellCheck={false}
+              value={recipient}
+              onChange={(e) => setRecipient(e.target.value)}
+              placeholder="0x..."
+              className="w-full border border-[color:var(--hairline-strong)] bg-canvas px-4 py-3 font-mono text-[13px] outline-none placeholder:opacity-50"
+              aria-label="Recipient address"
+            />
+          </div>
+
+          {blocker ? (
+            <p className="font-mono text-[11px] uppercase tracking-[0.12em] opacity-70">{blocker}</p>
+          ) : null}
+
+          <div className="flex flex-wrap items-center gap-3">
+            <TagButton onClick={onSubmit} disabled={busy || Boolean(blocker)}>
+              {busy ? (mode === "same" ? "TRANSFERRING…" : "BRIDGING…") : mode === "same" ? "TRANSFER" : "BRIDGE"}
+            </TagButton>
+            <TagButton variant="ghost" href="/dashboard">DASHBOARD</TagButton>
+            <span className="font-mono text-[11px] opacity-70">
+              {mode === "same"
+                ? "settles in one tx on arc."
+                : "~8 to 20s for the burn, mint runs on circle's forwarder."}
+            </span>
+          </div>
+
+          {errorMsg ? (
+            <div className="border-l-2 border-[color:var(--err)] bg-canvas px-4 py-3 font-mono text-[12px]">
+              <span className="text-accent">HEADS UP</span> · {errorMsg}
+            </div>
+          ) : null}
+          {successMsg ? (
+            <div className="border-l-2 border-[color:var(--ok)] bg-canvas px-4 py-3 font-mono text-[12px]">
+              <span style={{ color: "var(--ok)" }}>OK</span> · {successMsg}
+            </div>
+          ) : null}
+        </BracketedCell>
+      </section>
+
+      <Footer />
+    </div>
+  );
+}
+
+function ModePill({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        "border px-4 py-2 font-mono text-[11px] uppercase tracking-[0.12em] transition-colors",
+        active
+          ? "border-accent bg-accent text-accent-ink"
+          : "border-[color:var(--hairline-strong)] bg-canvas hover:bg-canvas-2",
+      ].join(" ")}
+    >
+      {children}
+    </button>
+  );
+}
 
 /// Round chain icon for the picker. Uses llamao.fi's CDN (same source
 /// chainlist.org uses) for the standard chains. Arc gets a brand-color tile

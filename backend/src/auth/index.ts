@@ -587,6 +587,94 @@ app.post("/wallet/execute", requireAuth, async (c) => {
   }
 });
 
+/// CCTPv2 bridge for email users. Their Dev-Controlled wallet on Arc signs the
+/// approve + burn server-side; Circle's Forwarder Service mints to the
+/// recipient on the destination chain. The frontend posts (destChain, amount,
+/// recipientAddress) and gets back the same step-array shape the wagmi bridge
+/// UI renders, so the UI can light up approve / burn / attest / mint live.
+const bridgeBodySchema = {
+  parse(body: unknown): {
+    destChain: string;
+    amount: string;
+    recipientAddress: `0x${string}`;
+  } {
+    if (!body || typeof body !== "object") throw new Error("body must be an object");
+    const b = body as Record<string, unknown>;
+    if (typeof b.destChain !== "string" || b.destChain.length === 0) {
+      throw new Error("destChain required (e.g. Base_Sepolia)");
+    }
+    if (typeof b.amount !== "string" || !/^\d+(\.\d+)?$/.test(b.amount) || Number(b.amount) <= 0) {
+      throw new Error("amount must be a positive decimal string");
+    }
+    if (typeof b.recipientAddress !== "string" || !/^0x[a-fA-F0-9]{40}$/.test(b.recipientAddress)) {
+      throw new Error("recipientAddress must be a 0x address");
+    }
+    return {
+      destChain: b.destChain,
+      amount: b.amount,
+      recipientAddress: b.recipientAddress as `0x${string}`,
+    };
+  },
+};
+
+app.post("/wallet/bridge", requireAuth, async (c) => {
+  if (!circleDevConfigured()) {
+    return c.json({ error: "Circle Dev-Controlled wallets are not configured on this server" }, 503);
+  }
+
+  const operator = c.get("address");
+  const { rows } = await query<{ circle_wallet_id: string | null }>(
+    "select circle_wallet_id from operators where address = $1",
+    [operator],
+  );
+  const walletId = rows[0]?.circle_wallet_id;
+  if (!walletId) {
+    return c.json(
+      { error: "this session is not a Circle-managed wallet; web3 wallet users bridge through the frontend SDK." },
+      400,
+    );
+  }
+
+  let body: ReturnType<typeof bridgeBodySchema.parse>;
+  try {
+    body = bridgeBodySchema.parse(await c.req.json());
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 400);
+  }
+
+  try {
+    const { circleBridge } = await import("../chain/circleBridge.js");
+    const result = await circleBridge({
+      sourceChain: "Arc_Testnet",
+      destChain: body.destChain,
+      amount: body.amount,
+      recipientAddress: body.recipientAddress,
+    });
+    void logEvent({
+      kind: "wallet_bridge",
+      address: operator,
+      context: {
+        destChain: body.destChain,
+        amount: body.amount,
+        recipient: body.recipientAddress,
+        state: result.state,
+      },
+      source: "auth",
+    });
+    return c.json(result);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    void logEvent({
+      kind: "wallet_bridge_failed",
+      level: "error",
+      address: operator,
+      message,
+      source: "auth",
+    });
+    return c.json({ error: message }, 502);
+  }
+});
+
 app.get("/wallet/tx/:id", requireAuth, async (c) => {
   if (!circleDevConfigured()) {
     return c.json({ error: "Circle Dev-Controlled wallets are not configured on this server" }, 503);

@@ -157,7 +157,11 @@ export type BridgeStepName = (typeof BRIDGE_STEPS)[number]["name"];
 
 export interface BridgeStepProgress {
   name: BridgeStepName;
-  state: "idle" | "pending" | "success" | "error";
+  /// `forwarded` means the step is handled by Circle's forwarder service
+  /// off-chain from the user's perspective. The UI treats it like a
+  /// terminal success but labels it differently so users know they did not
+  /// miss a wallet prompt for that step.
+  state: "idle" | "pending" | "success" | "error" | "forwarded";
   txHash?: string;
   explorerUrl?: string;
   error?: string;
