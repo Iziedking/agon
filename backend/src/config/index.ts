@@ -150,6 +150,40 @@ const envSchema = z.object({
   ANALYST_AUTOFUND_DAILY_USD: z.coerce.number().nonnegative().default(50),
   ANALYST_AUTOFUND_MIN_BALANCE: z.coerce.number().nonnegative().default(1),
 
+  // Nanopayments (Circle Gateway + x402). Lets the Solver runner pay for
+  // research per puzzle. Shells to `circle services pay` so the CLI must be
+  // installed on the runtime image (`npm i -g @circle-fin/cli`). Per-tier
+  // budgets cap spend per puzzle. Tier 0 is the cheapest; tier 4 has the
+  // biggest research budget. Caps are enforced in the runner because
+  // Circle's `wallet limit set` policy is mainnet-only.
+  NANOPAY_ENABLED: z.coerce.boolean().default(false),
+  NANOPAY_CLI_PATH: z.string().default("circle"),
+  // Circle Agent wallet address that pays for x402 research. Created via
+  // `circle wallet create --type agent`, funded via `circle gateway deposit`.
+  // The wallet's keys live with the user's CLI login session — the backend
+  // shells to `circle services pay --address <this>` and the CLI signs.
+  // Distinct identity system from Circle Dev-Controlled wallets (the SDK
+  // path used for email-login operators). Required when NANOPAY_ENABLED=true.
+  NANOPAY_WALLET_ADDRESS: z
+    .string()
+    .regex(/^0x[a-fA-F0-9]{40}$/, "expected an address")
+    .optional()
+    .transform((v) => (v ? (v as `0x${string}`) : undefined)),
+  // Per-puzzle research budget in USDC (decimal). Tier 0 cheapest, tier 4
+  // most. Defaults reflect the "agents that can afford better data win"
+  // mechanic the demo leans on.
+  NANOPAY_TIER_0_BUDGET_USDC: z.coerce.number().nonnegative().default(0.01),
+  NANOPAY_TIER_1_BUDGET_USDC: z.coerce.number().nonnegative().default(0.05),
+  NANOPAY_TIER_2_BUDGET_USDC: z.coerce.number().nonnegative().default(0.25),
+  NANOPAY_TIER_3_BUDGET_USDC: z.coerce.number().nonnegative().default(1.0),
+  NANOPAY_TIER_4_BUDGET_USDC: z.coerce.number().nonnegative().default(5.0),
+  // Chain to settle x402 payments on. Most paid endpoints accept Polygon
+  // (MATIC) via Gateway; the tier-pool wallets deposit on Arc and Gateway
+  // routes the spend. Override per-environment as the marketplace shifts.
+  NANOPAY_SETTLEMENT_CHAIN: z.string().default("MATIC"),
+  // Hard ceiling per call so a runaway prompt can't burn the pool.
+  NANOPAY_MAX_PER_CALL_USDC: z.coerce.number().positive().default(2.0),
+
   // Phase 1 prediction-tick scheduler. When true (default), agents make
   // multiple tier-gated decisions across the trade window via the
   // coordinator's tick scheduler. The legacy single-pass analyst runner
@@ -314,6 +348,21 @@ export const config = {
   analyst: {
     allowSyntheticFallback: env.ANALYST_ALLOW_SYNTHETIC,
     predictionTicks: env.PREDICTION_TICKS,
+  },
+  nanopay: {
+    enabled: env.NANOPAY_ENABLED,
+    cliPath: env.NANOPAY_CLI_PATH,
+    /// Per-tier per-puzzle research budget in USDC (decimal). Index 0 = tier 0.
+    perPuzzleByTier: [
+      env.NANOPAY_TIER_0_BUDGET_USDC,
+      env.NANOPAY_TIER_1_BUDGET_USDC,
+      env.NANOPAY_TIER_2_BUDGET_USDC,
+      env.NANOPAY_TIER_3_BUDGET_USDC,
+      env.NANOPAY_TIER_4_BUDGET_USDC,
+    ] as const,
+    settlementChain: env.NANOPAY_SETTLEMENT_CHAIN,
+    maxPerCallUsdc: env.NANOPAY_MAX_PER_CALL_USDC,
+    walletAddress: env.NANOPAY_WALLET_ADDRESS,
   },
   analystAutofund: {
     enabled: env.ANALYST_AUTOFUND,

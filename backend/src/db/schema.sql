@@ -584,3 +584,46 @@ create table if not exists analyst_autofund_log (
   unique (agent_id, drip_day)
 );
 create index if not exists analyst_autofund_day_idx on analyst_autofund_log(drip_day desc);
+
+-- Nanopayments: every paid x402 call made by an agent during a contest.
+-- One row per call, regardless of HTTP status. status='settled' means the
+-- usdc moved and the response payload arrived. 'rejected' means the call
+-- was budget-blocked before any USDC moved. 'failed' means the call paid
+-- but the upstream API returned an error after settlement.
+create table if not exists nanopayments (
+  id                bigserial primary key,
+  agent_id          bigint not null,
+  contest_id        bigint,
+  challenge_id      bigint,
+  puzzle_idx        int not null default 0,
+  tier              int not null,
+  endpoint          text not null,
+  endpoint_label    text,
+  -- USDC 6-decimal as a string so we don't lose precision through json.
+  usdc_amount_6     text not null default '0',
+  chain             text not null default 'ARC',
+  tx_hash           text,
+  status            text not null default 'pending',
+  response_summary  text,
+  error_message     text,
+  budget_remaining_6 text,
+  created_at        timestamptz not null default now()
+);
+create index if not exists nanopayments_agent_idx on nanopayments(agent_id);
+create index if not exists nanopayments_contest_idx on nanopayments(contest_id, puzzle_idx);
+create index if not exists nanopayments_challenge_idx on nanopayments(challenge_id, puzzle_idx);
+create index if not exists nanopayments_recent_idx on nanopayments(created_at desc);
+
+-- Tier-pool Gateway state. One row per tier (0..4). Tracks the wallet
+-- address, Gateway-deposited USDC balance snapshot, and the cumulative
+-- spend across contests. Coordinator refreshes balance_usdc_6 on each
+-- top-up and after each settlement sweep.
+create table if not exists tier_pool_state (
+  tier                int primary key,
+  wallet_address      text not null,
+  wallet_id           text,
+  balance_usdc_6      text not null default '0',
+  lifetime_spend_6    text not null default '0',
+  per_puzzle_cap_6    text not null default '0',
+  last_updated_at     timestamptz not null default now()
+);

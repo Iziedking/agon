@@ -29,6 +29,8 @@ export function judge(puzzle: Puzzle, raw: string): JudgeOutcome {
       return judgeOneOf(cleaned, ["a", "b", "c"], puzzle.expected.toLowerCase());
     case "quiz":
       return judgeOneOf(cleaned, ["a", "b", "c", "d"], puzzle.expected.toLowerCase());
+    case "research":
+      return judgeOneOf(cleaned, ["none", "few", "some", "many"], puzzle.expected.toLowerCase());
     default:
       return assertNever(puzzle.kind);
   }

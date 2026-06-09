@@ -42,6 +42,16 @@ export type AgentProgress =
       /// in the same 6-field shape on the live stage. Same order as the
       /// other per-puzzle arrays.
       puzzleCards?: PuzzleCard[];
+      /// Per-puzzle nanopayment spend in USDC (6-decimal as a string so it
+      /// survives the JSON hop). Aligned 1:1 with `correct[]`. Zero when
+      /// the agent didn't spend on that puzzle. Surfaced on the live stage
+      /// as "spent $0.0136 on Predexon for this puzzle" — the visible proof
+      /// that the agentic economy is moving real USDC.
+      spent?: string[];
+      /// Per-puzzle nanopayment endpoint label (e.g. "Predexon prediction
+      /// markets", "Crypto market data"). Aligned 1:1 with `spent[]`.
+      /// Empty string when no spend.
+      spentLabels?: string[];
     }
   | {
       kind: "analyst";

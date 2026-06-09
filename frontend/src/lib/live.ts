@@ -33,6 +33,13 @@ export type AgentProgress =
       /// puzzle through the unified PuzzleCardChrome instead of the legacy
       /// kind-only label.
       puzzleCards?: PuzzleCard[];
+      /// Per-puzzle nanopayment spend in USDC (6-decimal as a string).
+      /// Aligned 1:1 with `correct[]`. Zero ("0") when the agent didn't
+      /// spend on that puzzle. PuzzleStage shows this next to the grid.
+      spent?: string[];
+      /// Per-puzzle nanopayment endpoint label. Aligned 1:1 with `spent[]`.
+      /// Empty string when no spend.
+      spentLabels?: string[];
     }
   | {
       kind: "analyst";

@@ -1,5 +1,6 @@
 import { seededRng, pick } from "../rng.js";
 import { QUIZ_BANK, type QuizQuestion } from "./quizBank.js";
+import { researchPuzzle } from "./research.js";
 
 /// Puzzle templates for the Solver contest. Generated deterministically from
 /// a (contestId, roundIdx) seed so every agent in a round faces the same
@@ -11,7 +12,7 @@ import { QUIZ_BANK, type QuizQuestion } from "./quizBank.js";
 /// deterministic so the contest itself doesn't burn budget before agents
 /// even start.
 
-export type PuzzleKind = "arithmetic" | "classify" | "routing" | "pattern" | "wordcount" | "quiz";
+export type PuzzleKind = "arithmetic" | "classify" | "routing" | "pattern" | "wordcount" | "quiz" | "research";
 
 /// Standardized presentation metadata. Every puzzle, regardless of family,
 /// surfaces on the live stage with the same six fields so the audience reads
@@ -65,15 +66,36 @@ export function generatePuzzles(seed: number, count: number): Puzzle[] {
   // pick the same quiz question twice. Cross-round duplicates are still
   // possible but at low probability with a 60+ bank.
   const usedQuizIndices = new Set<number>();
+  // Track research items used so a round doesn't repeat one. Distinct set
+  // from the quiz dedupe because research keys live in their own namespace.
+  const usedResearch = new Set<string>();
+  // Research weight is opt-in via NANOPAY_ENABLED. When off, the generator
+  // falls back to the legacy mix so testnet dev without Circle CLI still
+  // produces a complete round. When on, research items take 4 of 12 slots
+  // so a typical round shows the spend mechanic prominently.
+  const includeResearch = process.env.NANOPAY_ENABLED === "true" || process.env.NANOPAY_ENABLED === "1";
   for (let i = 0; i < count; i++) {
-    // 10 buckets: 5 quiz, 1 each for arithmetic/classify/routing/pattern/wordcount.
-    const k = pick(r, 10);
-    if (k < 5) out.push(quiz(r, usedQuizIndices));
-    else if (k === 5) out.push(arithmetic(r));
-    else if (k === 6) out.push(classify(r));
-    else if (k === 7) out.push(routing(r));
-    else if (k === 8) out.push(pattern(r));
-    else out.push(wordcount(r));
+    if (includeResearch) {
+      // 12 buckets: 4 research, 4 quiz, 1 each for arithmetic / classify /
+      // routing / pattern. Wordcount drops out so the mix doesn't bloat.
+      const k = pick(r, 12);
+      if (k < 4) out.push(researchPuzzle(r, usedResearch));
+      else if (k < 8) out.push(quiz(r, usedQuizIndices));
+      else if (k === 8) out.push(arithmetic(r));
+      else if (k === 9) out.push(classify(r));
+      else if (k === 10) out.push(routing(r));
+      else out.push(pattern(r));
+    } else {
+      // Legacy mix: 10 buckets, 5 quiz, 1 each for the five locally-solvable
+      // families. Identical to the pre-Nanopay generator.
+      const k = pick(r, 10);
+      if (k < 5) out.push(quiz(r, usedQuizIndices));
+      else if (k === 5) out.push(arithmetic(r));
+      else if (k === 6) out.push(classify(r));
+      else if (k === 7) out.push(routing(r));
+      else if (k === 8) out.push(pattern(r));
+      else out.push(wordcount(r));
+    }
   }
   return out;
 }

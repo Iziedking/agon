@@ -21,6 +21,12 @@ const KIND_LABEL: Record<string, string> = {
   gas: "GAS PICK",
   classify: "CLASSIFY",
   route: "ROUTE",
+  research: "RESEARCH",
+  quiz: "QUIZ",
+  arithmetic: "MATH",
+  routing: "ROUTING",
+  pattern: "PATTERN",
+  wordcount: "COUNT",
 };
 
 const FORMAT_LABEL: Record<PuzzleCard["format"], string> = {
@@ -36,9 +42,47 @@ const TOOLS_LABEL: Record<PuzzleCard["toolsAllowed"], string> = {
   "calc+web": "CALC + WEB",
 };
 
+/// 6-decimal USDC string ("13600") → human "$0.0136". Falls back to "$0"
+/// for empty/invalid inputs so the cell never reads NaN.
+function formatSpentUsdc(spent6: string | undefined): string {
+  if (!spent6) return "$0";
+  let n: bigint;
+  try {
+    n = BigInt(spent6);
+  } catch {
+    return "$0";
+  }
+  if (n <= 0n) return "$0";
+  const dollars = Number(n) / 1_000_000;
+  return `$${dollars.toFixed(4)}`;
+}
+
+/// Sum a string[] of 6-dec USDC values into a single bigint for the
+/// per-agent and round totals.
+function sumSpent6(spent?: string[]): bigint {
+  if (!spent) return 0n;
+  let total = 0n;
+  for (const s of spent) {
+    try {
+      total += BigInt(s);
+    } catch {
+      // skip
+    }
+  }
+  return total;
+}
+
 export function PuzzleStage({ entries }: { entries: StandingsEntry[] }) {
   const names = useAgentNames(entries.map((e) => e.agentId));
   const maxScore = Math.max(...entries.map((e) => e.score), 1);
+
+  // Round-total nanopayment spend, summed across every agent. Drives the
+  // "■ NANOPAYMENTS" chip at the top of the stage so judges read "the
+  // arena spent $X.XX on research this round" at a glance.
+  const roundSpent6 = entries.reduce((acc, e) => {
+    if (e.progress?.kind === "solver") return acc + sumSpent6(e.progress.spent);
+    return acc;
+  }, 0n);
 
   // Aggregate puzzle metadata from whichever entry carries the data first.
   // Backend sends the same puzzles to every agent in a round, so any entry
@@ -77,6 +121,15 @@ export function PuzzleStage({ entries }: { entries: StandingsEntry[] }) {
 
   return (
     <div className="flex flex-col gap-5">
+      {/* NANOPAYMENTS chip — total round research spend, only when > 0 */}
+      {roundSpent6 > 0n ? (
+        <div className="flex flex-wrap items-center gap-3 font-mono text-[11px] uppercase tracking-[0.16em]">
+          <span aria-hidden className="text-accent">■</span>
+          <span className="text-ink-3">NANOPAYMENTS</span>
+          <span className="text-ink">{formatSpentUsdc(roundSpent6.toString())} spent on research this round</span>
+        </div>
+      ) : null}
+
       {/* THIS ROUND — standardized puzzle cards or fallback to legacy chip strip */}
       {cards ? (
         <BracketedCell pad="sm">
@@ -169,6 +222,17 @@ export function PuzzleStage({ entries }: { entries: StandingsEntry[] }) {
                     <div className="font-mono text-[10px] text-ink-3">
                       {solver ? `${correctCount}/${solver.total} solved` : "queued"}
                       {totalMs ? ` · ${(totalMs / 1000).toFixed(2)}s` : ""}
+                      {(() => {
+                        const agentSpent6 = solver ? sumSpent6(solver.spent) : 0n;
+                        return agentSpent6 > 0n ? (
+                          <>
+                            {" · "}
+                            <span className="text-accent">
+                              spent {formatSpentUsdc(agentSpent6.toString())}
+                            </span>
+                          </>
+                        ) : null;
+                      })()}
                     </div>
                   </div>
                 </div>
@@ -199,27 +263,55 @@ function PuzzleRow({
   maxScore: number;
 }) {
   if (entry.progress?.kind === "solver") {
-    const { correct, total, perPuzzleMs } = entry.progress;
-    const cells = Array.from({ length: total }, (_, i) => ({
-      hit: correct[i] ?? false,
-      ms: perPuzzleMs?.[i] ?? null,
-    }));
+    const { correct, total, perPuzzleMs, spent, spentLabels } = entry.progress;
+    const cells = Array.from({ length: total }, (_, i) => {
+      const spent6 = spent?.[i];
+      let spentN = 0n;
+      try {
+        spentN = spent6 ? BigInt(spent6) : 0n;
+      } catch {
+        spentN = 0n;
+      }
+      return {
+        hit: correct[i] ?? false,
+        ms: perPuzzleMs?.[i] ?? null,
+        spent6: spentN,
+        label: spentLabels?.[i] ?? "",
+      };
+    });
     return (
       <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${Math.min(total, 6)}, 1fr)` }}>
-        {cells.map((c, i) => (
-          <span
-            key={i}
-            className="relative flex aspect-square items-center justify-center text-[9px] font-mono"
-            style={{
-              background: c.hit ? accent : "transparent",
-              border: c.hit ? `1px solid ${accent}` : "1px solid var(--hairline)",
-              color: c.hit ? "#fff" : "var(--ink-3)",
-            }}
-            title={c.ms ? `${c.ms}ms` : ""}
-          >
-            {c.hit ? "■" : i + 1}
-          </span>
-        ))}
+        {cells.map((c, i) => {
+          const titleParts: string[] = [];
+          if (c.ms) titleParts.push(`${c.ms}ms`);
+          if (c.spent6 > 0n) {
+            const spendStr = formatSpentUsdc(c.spent6.toString());
+            titleParts.push(c.label ? `${spendStr} on ${c.label}` : spendStr);
+          }
+          return (
+            <span
+              key={i}
+              className="relative flex aspect-square items-center justify-center text-[9px] font-mono"
+              style={{
+                background: c.hit ? accent : "transparent",
+                border: c.hit ? `1px solid ${accent}` : "1px solid var(--hairline)",
+                color: c.hit ? "#fff" : "var(--ink-3)",
+              }}
+              title={titleParts.join(" · ")}
+            >
+              {c.hit ? "■" : i + 1}
+              {c.spent6 > 0n ? (
+                <span
+                  aria-hidden
+                  className="absolute -top-1 -right-1 flex h-2.5 w-2.5 items-center justify-center rounded-full bg-accent text-[7px] font-mono leading-none text-canvas"
+                  style={{ lineHeight: 0 }}
+                >
+                  $
+                </span>
+              ) : null}
+            </span>
+          );
+        })}
       </div>
     );
   }

@@ -14,6 +14,60 @@ import {
   type CallResult,
 } from "./llm/client.js";
 import { resolveRuntimeParams, loadAgentStats, type RuntimeParams } from "./llm/tierConfig.js";
+import {
+  getTierPool,
+  recordTierPoolSpend,
+  type TierPool,
+} from "../coordinator/tierPools.js";
+import { payX402 } from "../nanopayments/index.js";
+import { config } from "../config/index.js";
+import { extractSearchTerm, buildResearchUrl } from "./puzzles/research.js";
+
+/// Maps a puzzle kind to its preferred x402 research endpoint. Returning null
+/// means the runner skips the research-spend step for that puzzle. The
+/// research family is the demo's marquee: it points at NANOPAY_PREDICTION_ENDPOINT
+/// (Predexon by default) and reliably pays per call so judges see real spend.
+function researchEndpointFor(
+  kind: PuzzleKind,
+): { url: string; label: string } | null {
+  const url = (() => {
+    switch (kind) {
+      case "research":
+        return process.env.NANOPAY_PREDICTION_ENDPOINT;
+      case "quiz":
+        return process.env.NANOPAY_QUIZ_ENDPOINT;
+      case "classify":
+        return process.env.NANOPAY_CLASSIFY_ENDPOINT;
+      case "routing":
+        return process.env.NANOPAY_ROUTING_ENDPOINT;
+      default:
+        return undefined;
+    }
+  })();
+  if (!url) return null;
+  const labelEnv =
+    kind === "research"
+      ? process.env.NANOPAY_PREDICTION_LABEL
+      : process.env[`NANOPAY_${kind.toUpperCase()}_LABEL`];
+  const label = labelEnv ?? `${kind} research`;
+  return { url, label };
+}
+
+/// Per-kind URL + payload shaper. Research puzzles bake the search term into
+/// the URL as a query string (Predexon's GET routes 404 when params live in
+/// the body). Other kinds keep the POST-style envelope until we hit them.
+function shapeResearchCall(
+  kind: PuzzleKind,
+  baseUrl: string,
+  prompt: string,
+): { url: string; payload?: Record<string, unknown> } {
+  if (kind === "research") {
+    const term = extractSearchTerm(prompt);
+    if (term) return { url: buildResearchUrl(baseUrl, term) };
+    return { url: baseUrl };
+  }
+  return { url: baseUrl, payload: { question: prompt, kind } };
+}
 
 /// SolverRunner: every agent in a contest faces the same seeded puzzle set
 /// (deterministic from contestId), and is graded on correctness and speed.
@@ -47,6 +101,11 @@ interface SolveOutcome {
   perPuzzleMs: number[];
   /// Total $ this agent spent in LLM calls (0 on guess and fallback paths).
   costUsd: number;
+  /// Per-puzzle nanopayment spend in USDC 6-decimal as a string. Aligned 1:1
+  /// with perPuzzle. "0" when no research-spend happened on that puzzle.
+  spent?: string[];
+  /// Per-puzzle endpoint label aligned with spent[]. Empty string for no spend.
+  spentLabels?: string[];
 }
 
 export class SolverRunner implements Runner {
@@ -73,7 +132,7 @@ export class SolverRunner implements Runner {
         const rawScore = solverScore(solve);
         const finalScore = applyRouting(rawScore, strength, contestId * 1000 + e.agentId);
 
-        const { perPuzzle, perPuzzleMs, costUsd: _unused, ...detail } = solve;
+        const { perPuzzle, perPuzzleMs, costUsd: _unused, spent, spentLabels, ...detail } = solve;
         return {
           agentId: e.agentId,
           operator: e.operator,
@@ -96,6 +155,8 @@ export class SolverRunner implements Runner {
             perPuzzleMs,
             puzzleKinds,
             puzzleCards,
+            spent: spent ?? puzzles.map(() => "0"),
+            spentLabels: spentLabels ?? puzzles.map(() => ""),
           },
         };
       }),
@@ -150,7 +211,16 @@ function reconstructSolve(
     elapsedMs += ms;
     costUsd += row?.costUsd ?? 0;
   }
-  return { correct, total: puzzles.length, elapsedMs, perPuzzle, perPuzzleMs, costUsd };
+  return {
+    correct,
+    total: puzzles.length,
+    elapsedMs,
+    perPuzzle,
+    perPuzzleMs,
+    costUsd,
+    spent: puzzles.map(() => "0"),
+    spentLabels: puzzles.map(() => ""),
+  };
 }
 
 /// Apply the strength multiplier and (when present) the routing trait's
@@ -237,7 +307,16 @@ async function runGuessPath(
     }).catch(() => { /* audit row best-effort */ });
   }
 
-  return { correct, total: puzzles.length, elapsedMs, perPuzzle, perPuzzleMs, costUsd: 0 };
+  return {
+    correct,
+    total: puzzles.length,
+    elapsedMs,
+    perPuzzle,
+    perPuzzleMs,
+    costUsd: 0,
+    spent: puzzles.map(() => "0"),
+    spentLabels: puzzles.map(() => ""),
+  };
 }
 
 /// Pick a concrete answer from the puzzle's choice space and report
@@ -282,6 +361,7 @@ function guessChoices(puzzle: Puzzle): string[] | null {
     case "classify": return ["transfer", "swap", "mint", "bridge"];
     case "routing":  return ["A", "B", "C"];
     case "quiz":     return ["A", "B", "C", "D"];
+    case "research": return ["NONE", "FEW", "SOME", "MANY"];
     case "arithmetic":
     case "pattern":
     case "wordcount":
@@ -303,14 +383,42 @@ async function runLlmPath(
 ): Promise<SolveOutcome> {
   const perPuzzle: boolean[] = [];
   const perPuzzleMs: number[] = [];
+  const spent: string[] = [];
+  const spentLabels: string[] = [];
   let correct = 0;
   let elapsedMs = 0;
   let costUsd = 0;
 
+  // Resolve the tier's nanopayment pool once per agent. When NANOPAY is off,
+  // CLI is absent, or the pool failed to provision, this stays null and the
+  // research-spend block becomes a no-op.
+  const tierPool: TierPool | null = config.nanopay.enabled ? getTierPool(entry.tier) : null;
+
   for (let i = 0; i < puzzles.length; i++) {
     const puzzle = puzzles[i]!;
     const systemPrompt = buildSystemPrompt(params);
-    const userPrompt = puzzle.prompt;
+
+    // Optional research-spend. When a paid endpoint is configured for this
+    // puzzle kind and the tier pool has budget remaining for the per-puzzle
+    // cap, pay for context BEFORE the LLM call so the model has data the
+    // bare prompt doesn't carry. The result is prepended to the user prompt
+    // as a "RESEARCH:" block; the LLM keeps the same instructions.
+    let userPrompt = puzzle.prompt;
+    let puzzleSpent6 = 0n;
+    let puzzleSpentLabel = "";
+    const research = await maybeResearchSpend({
+      tierPool,
+      puzzle,
+      puzzleIdx: i,
+      contestId,
+      agentId: entry.agentId,
+      tier: entry.tier,
+    });
+    if (research) {
+      puzzleSpent6 = research.usdcAmount6;
+      puzzleSpentLabel = research.label;
+      userPrompt = `RESEARCH (${research.label}):\n${research.summary}\n\n${puzzle.prompt}`;
+    }
 
     let response = "";
     let extracted = "";
@@ -359,6 +467,8 @@ async function runLlmPath(
     perPuzzleMs.push(latencyMs || 1500);
     elapsedMs += latencyMs || 1500;
     costUsd += cost;
+    spent.push(puzzleSpent6.toString());
+    spentLabels.push(puzzleSpentLabel);
 
     await recordLlmRun({
       contestId,
@@ -387,6 +497,8 @@ async function runLlmPath(
       for (let j = i + 1; j < puzzles.length; j++) {
         perPuzzle.push(false);
         perPuzzleMs.push(0);
+        spent.push("0");
+        spentLabels.push("");
       }
       break;
     }
@@ -398,7 +510,112 @@ async function runLlmPath(
     elapsedMs = Math.max(1, Math.round(elapsedMs * (1 - params.luckBonus * 0.1)));
   }
 
-  return { correct, total: puzzles.length, elapsedMs, perPuzzle, perPuzzleMs, costUsd };
+  return { correct, total: puzzles.length, elapsedMs, perPuzzle, perPuzzleMs, costUsd, spent, spentLabels };
+}
+
+/// Calls payX402 when a research endpoint is configured for the puzzle kind
+/// AND the tier pool has enough budget for the per-puzzle cap. Returns the
+/// USDC amount actually charged (6-decimal) plus a short summary that gets
+/// inlined into the LLM prompt. Returns null on any reason to skip.
+async function maybeResearchSpend(opts: {
+  tierPool: TierPool | null;
+  puzzle: Puzzle;
+  puzzleIdx: number;
+  contestId: number;
+  agentId: number;
+  tier: number;
+}): Promise<{ usdcAmount6: bigint; label: string; summary: string } | null> {
+  const { tierPool, puzzle, puzzleIdx, contestId, agentId, tier } = opts;
+  if (!tierPool) return null;
+  const endpoint = researchEndpointFor(puzzle.kind);
+  if (!endpoint) return null;
+  // Per-puzzle cap is the smaller of the tier's cap and whatever the pool
+  // has left. A drained pool short-circuits to no spend.
+  const capCandidate = tierPool.perPuzzleCap6;
+  const remaining = tierPool.balanceUsdc6 < capCandidate ? tierPool.balanceUsdc6 : capCandidate;
+  if (remaining <= 0n) return null;
+
+  const shaped = shapeResearchCall(puzzle.kind, endpoint.url, puzzle.prompt);
+  const result = await payX402({
+    agentId,
+    contestId,
+    puzzleIdx,
+    tier,
+    endpoint: shaped.url,
+    endpointLabel: endpoint.label,
+    payload: shaped.payload,
+    budgetRemaining6: remaining,
+    walletAddress: tierPool.walletAddress,
+  });
+  if (result.status !== "settled") return null;
+
+  // Decrement the in-memory pool balance and persist lifetime spend so the
+  // next puzzle starts with the right number.
+  tierPool.balanceUsdc6 = tierPool.balanceUsdc6 - result.usdcAmount6;
+  void recordTierPoolSpend(tier, result.usdcAmount6);
+
+  return {
+    usdcAmount6: result.usdcAmount6,
+    label: endpoint.label,
+    summary: summarizeResearch(result.response, puzzle.kind),
+  };
+}
+
+/// Reduces a paid endpoint response to a compact prompt snippet. For the
+/// research kind we extract just the count + status breakdown so the LLM
+/// can bucket without parsing 50 KB of JSON. For other kinds we fall back
+/// to a truncated stringify.
+function summarizeResearch(response: unknown, kind: PuzzleKind): string {
+  if (response === undefined || response === null) return "no data";
+  if (kind === "research") {
+    const r = summarizePredexonMarkets(response);
+    if (r) return r;
+  }
+  try {
+    if (typeof response === "string") return response.slice(0, 600);
+    return JSON.stringify(response).slice(0, 600);
+  } catch {
+    return String(response).slice(0, 600);
+  }
+}
+
+/// Predexon's markets endpoint returns `{markets: [...], pagination: {count,
+/// has_more, ...}}` (often wrapped under `data.response`). We walk a few
+/// likely paths and emit a one-line summary the LLM can act on directly.
+function summarizePredexonMarkets(response: unknown): string | null {
+  const root = response as Record<string, unknown> | null | undefined;
+  if (!root || typeof root !== "object") return null;
+  // Common wrapper paths surfaced by Circle CLI / Predexon.
+  const candidates: unknown[] = [
+    root,
+    (root as { data?: { response?: unknown } }).data?.response,
+    (root as { response?: unknown }).response,
+    (root as { data?: unknown }).data,
+  ];
+  for (const c of candidates) {
+    if (!c || typeof c !== "object") continue;
+    const obj = c as { markets?: unknown; pagination?: { count?: unknown; has_more?: unknown } };
+    const list = Array.isArray(obj.markets) ? (obj.markets as Array<Record<string, unknown>>) : null;
+    if (!list) continue;
+    const total = list.length;
+    let openCount = 0;
+    let closedCount = 0;
+    for (const m of list) {
+      const s = String(m["status"] ?? "").toLowerCase();
+      if (s === "open") openCount++;
+      else if (s === "closed" || s === "resolved") closedCount++;
+    }
+    const hasMore = Boolean(obj.pagination?.has_more);
+    const sampleTitles = list
+      .slice(0, 3)
+      .map((m) => String(m["title"] ?? "").slice(0, 80))
+      .filter(Boolean);
+    return [
+      `Predexon returned ${total} matching markets (open: ${openCount}, closed: ${closedCount}, has_more: ${hasMore}).`,
+      sampleTitles.length > 0 ? `Top examples: ${sampleTitles.map((t) => `"${t}"`).join("; ")}.` : "",
+    ].filter(Boolean).join(" ");
+  }
+  return null;
 }
 
 function buildSystemPrompt(params: RuntimeParams): string {
@@ -441,5 +658,14 @@ function guessOnlySolve(puzzles: Puzzle[], tier: number, seed: number): SolveOut
   }
   // satisfy unused-var lint: pick() exists in this module for legacy code
   void pick;
-  return { correct, total: puzzles.length, elapsedMs, perPuzzle, perPuzzleMs, costUsd: 0 };
+  return {
+    correct,
+    total: puzzles.length,
+    elapsedMs,
+    perPuzzle,
+    perPuzzleMs,
+    costUsd: 0,
+    spent: puzzles.map(() => "0"),
+    spentLabels: puzzles.map(() => ""),
+  };
 }

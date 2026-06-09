@@ -8,6 +8,7 @@ import { TxSender } from "./txSender.js";
 import { runLiveContest } from "./runContest.js";
 import { runContestById } from "./runContestById.js";
 import { checkWalletSeparation } from "./walletCheck.js";
+import { ensureTierPools } from "./tierPools.js";
 
 /// Coordinator: the WebSocket fanout, the Arc transaction sender, the
 /// contest open-driver, and the long-running background services
@@ -61,6 +62,14 @@ async function main() {
   } else {
     console.log("no VALIDATOR_PRIVATE_KEY set; ERC-8004 feedback disabled (in-game scoring still works)");
   }
+
+  // Nanopayments tier pools (one Circle Dev-Controlled wallet per tier).
+  // Solver uses these to pay for research per puzzle via Circle's x402
+  // marketplace. Idempotent — re-runs on boot are cheap, only mints
+  // wallets that don't already exist in tier_pool_state.
+  await ensureTierPools().catch((err) => {
+    console.warn(`[tier-pools] provisioning encountered an error: ${err instanceof Error ? err.message : err}`);
+  });
 
   // Run a full contest on-chain and stream it to the live panel first, so it
   // never depends on the scheduler or Redis. Off by default; set RUN_CONTEST=1.

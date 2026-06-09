@@ -1,14 +1,42 @@
 import { createConfig, http } from "wagmi";
+import {
+  arbitrumSepolia,
+  arcTestnet,
+  avalancheFuji,
+  baseSepolia,
+  optimismSepolia,
+  polygonAmoy,
+  sepolia,
+  unichainSepolia,
+} from "wagmi/chains";
 import { injected } from "wagmi/connectors";
-import { arcTestnet } from "./arc";
 
-/// wagmi config for Arc testnet. Uses the injected connector (MetaMask and
-/// similar) so no WalletConnect project id is needed. Modular Wallet and
-/// passkeys via Circle App Kit are a later upgrade that needs a kit key.
+/// wagmi config. arcTestnet is the home chain for everything ArcRun-native
+/// (contests, agents, settlement). The other testnets are registered so the
+/// /bridge page can switch the user's wallet to a source chain and bridge
+/// USDC to Arc via Circle Bridge Kit. Each chain uses its default public RPC.
 export const config = createConfig({
-  chains: [arcTestnet],
+  chains: [
+    arcTestnet,
+    sepolia,
+    baseSepolia,
+    arbitrumSepolia,
+    optimismSepolia,
+    polygonAmoy,
+    avalancheFuji,
+    unichainSepolia,
+  ],
   connectors: [injected()],
-  transports: { [arcTestnet.id]: http() },
+  transports: {
+    [arcTestnet.id]: http(),
+    [sepolia.id]: http(),
+    [baseSepolia.id]: http(),
+    [arbitrumSepolia.id]: http(),
+    [optimismSepolia.id]: http(),
+    [polygonAmoy.id]: http(),
+    [avalancheFuji.id]: http(),
+    [unichainSepolia.id]: http(),
+  },
   ssr: true,
 });
 
