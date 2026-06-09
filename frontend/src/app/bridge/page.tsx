@@ -732,11 +732,33 @@ function CircleUserBridge() {
         );
       }
     } catch (err) {
-      const m = err instanceof Error ? err.message : String(err);
-      setErrorMsg(m);
+      const raw = err instanceof Error ? err.message : String(err);
+      setErrorMsg(humanizeWithdrawError(raw));
     } finally {
       setBusy(false);
     }
+  }
+
+  /// Map the chunkier backend error strings to copy a user can actually
+  /// act on. Anything technical (module names, ESM export details, raw
+  /// status codes) gets a friendly replacement; everything else passes
+  /// through.
+  function humanizeWithdrawError(raw: string): string {
+    const m = raw.toLowerCase();
+    if (m.includes("developer-controlled-wallets") || m.includes("circle-fin/adapter")) {
+      return "Cross-chain withdrawal is being finalized for email accounts. Same-chain transfer on Arc is live; cross-chain bridging will be available shortly.";
+    }
+    if (m.includes("not a circle-managed")) {
+      return "This account is not managed by Circle. Reconnect through email sign-in to enable backend signing.";
+    }
+    if (m.includes("not configured")) {
+      return "Backend wallet signing is not configured yet. Contact support if this persists.";
+    }
+    if (m.includes("insufficient") || m.includes("not enough")) {
+      return "Your Arc wallet does not have enough USDC for this transfer.";
+    }
+    if (raw.length > 200) return raw.slice(0, 200) + "…";
+    return raw;
   }
 
   return (
