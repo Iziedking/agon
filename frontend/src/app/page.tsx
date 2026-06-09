@@ -322,7 +322,7 @@ export default function Home() {
                 airdrop farmers.
               </>
             }
-            right={<TagButton variant="ghost" href="mailto:hello@arcrun.app">TALK TO THE TEAM</TagButton>}
+            right={<TagButton variant="ghost" href="mailto:hello@arcrun.xyz">TALK TO THE TEAM</TagButton>}
           />
           <div className="grid gap-4">
             <StatPanel

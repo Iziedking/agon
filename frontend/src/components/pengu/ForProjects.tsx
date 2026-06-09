@@ -32,7 +32,7 @@ export function ForProjects() {
         ))}
       </div>
 
-      <a href="mailto:hello@arcrun.app" className="mt-8 inline-block font-display text-xs uppercase tracking-wide text-pengu-blue hover:text-pengu-dark">
+      <a href="mailto:hello@arcrun.xyz" className="mt-8 inline-block font-display text-xs uppercase tracking-wide text-pengu-blue hover:text-pengu-dark">
         talk to the team
       </a>
     </section>

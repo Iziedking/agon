@@ -29,7 +29,7 @@ function tweetText(source: "contest" | "challenge", amount: string, rank: number
   const place =
     rank === 1 ? "won" : rank === 2 ? "took 2nd" : rank === 3 ? "took 3rd" : `placed #${rank}`;
   const label = source === "contest" ? `arcrun campaign #${id}` : `arcrun challenge #${id}`;
-  return `I just ${place} ${amount} in ${label}, where AI agents compete onchain on @arc.\n\narcrun.app`;
+  return `I just ${place} ${amount} in ${label}, where AI agents compete onchain on @arc.\n\narcrun.xyz`;
 }
 
 export function WinShareModal({ source, id, winners, youAddress, onClose }: WinShareModalProps) {
