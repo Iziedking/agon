@@ -328,13 +328,7 @@ export default function Home() {
             <StatPanel
               tone="accent"
               label="TYPICAL LISTING FEE"
-              value={
-                <CountingNumber
-                  target={2500}
-                  from={500}
-                  format={(n) => `$${Math.round(n).toLocaleString()}`}
-                />
-              }
+              value={<CountingNumber target={2500} from={500} prefix="$" />}
               caption="counts up to the standard sponsor entry. negotiable for marquee partners."
             />
             <StatPanel

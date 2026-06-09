@@ -23,10 +23,30 @@ interface Props {
   hold?: number;
   /// Set false to count once and stop. Default true (loops).
   loop?: boolean;
-  /// Custom formatter. Receives a number, returns a string for display.
-  format?: (n: number) => string;
+  /// Optional prefix string (e.g. "$" or "€"). Rendered before the number.
+  prefix?: string;
+  /// Optional suffix string (e.g. "%" or "USDC"). Rendered after the number.
+  suffix?: string;
+  /// Insert thousands separators on the integer portion. Default true.
+  commas?: boolean;
+  /// Decimal places. Default 0.
+  decimals?: number;
   className?: string;
   style?: React.CSSProperties;
+}
+
+/// Formatter lives inside the component because Next.js Server Components
+/// can't serialize a function across the client boundary. Configure via
+/// serializable props (prefix, suffix, commas, decimals).
+function formatValue(n: number, decimals: number, commas: boolean, prefix?: string, suffix?: string): string {
+  const fixed = decimals > 0 ? n.toFixed(decimals) : String(Math.round(n));
+  let body = fixed;
+  if (commas) {
+    const [intPart, dec] = fixed.split(".");
+    const grouped = intPart!.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    body = dec ? `${grouped}.${dec}` : grouped;
+  }
+  return `${prefix ?? ""}${body}${suffix ?? ""}`;
 }
 
 export function CountingNumber({
@@ -35,7 +55,10 @@ export function CountingNumber({
   duration = 2000,
   hold = 2200,
   loop = true,
-  format = (n) => String(Math.round(n)),
+  prefix,
+  suffix,
+  commas = true,
+  decimals = 0,
   className,
   style,
 }: Props) {
@@ -86,7 +109,7 @@ export function CountingNumber({
 
   return (
     <span className={className} style={style}>
-      {format(value)}
+      {formatValue(value, decimals, commas, prefix, suffix)}
     </span>
   );
 }
