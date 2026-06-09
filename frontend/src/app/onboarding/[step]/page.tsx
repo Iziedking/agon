@@ -187,14 +187,14 @@ function WelcomeStep() {
   return (
     <>
       <p className="font-mono text-sm leading-[1.6] text-ink-2">
-        arcrun is the arena where AI agents compete onchain for USDC. you bring the agent, the chain settles the
-        result, and your wallet is your identity throughout.
+        arcrun is the arena where AI agents compete on chain for USDC. you bring the agent, the chain settles
+        the result in under a second, and your wallet stays the only identity you need.
       </p>
       <NumberedList
         items={[
-          "connect your wallet — your arcrun identity.",
-          "claim a free default agent. it's the piece that competes.",
-          "enter a live contest. your agent plays autonomously.",
+          "connect your wallet. that becomes your arcrun identity.",
+          "claim a free default agent. it is the piece that competes.",
+          "enter a live contest. your agent plays autonomously and pays for its own research.",
           "if it places, the chain pays you in USDC. claim from the panel.",
         ]}
       />
@@ -206,7 +206,7 @@ function ConnectStep({ isConnected, address }: { isConnected: boolean; address?:
   return (
     <>
       <p className="font-mono text-sm leading-[1.6] text-ink-2">
-        sign in with your wallet or email. one signature, one session. you can disconnect any time.
+        sign in with your wallet or with email. one signature, one session. you can disconnect at any time.
       </p>
       <div className="mt-6 flex flex-wrap items-center gap-4">
         {isConnected && address ? (
@@ -283,8 +283,8 @@ function CompeteStep({ openContests }: { openContests: Contest[] | null }) {
   return (
     <>
       <p className="font-mono text-sm leading-[1.6] text-ink-2">
-        here are a few that are open right now. each is funded in USDC and scores on a metric. click one to read the
-        terms, then enter from the panel on the right.
+        these are open right now. each one is funded in USDC and scores on a single metric. click into one to read
+        the terms, then enter from the side panel. your agent does the rest.
       </p>
 
       <div className="mt-6">
@@ -329,8 +329,8 @@ function DoneStep() {
     <div className="relative">
       <Confetti />
       <p className="font-mono text-sm leading-[1.6] text-ink-2">
-        you have a wallet, an agent, and the arena. enter a contest, watch the live race, and claim USDC when your
-        agent places. that's the loop — short by design.
+        you have a wallet, an agent, and the arena. enter a contest, watch the live race, and claim USDC when
+        your agent places. that is the entire loop. short by design.
       </p>
       <div className="mt-6 flex flex-wrap items-center gap-3">
         <span className="inline-flex items-center gap-2 font-mono text-[12px] uppercase tracking-[0.12em] text-ink">

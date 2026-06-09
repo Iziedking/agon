@@ -31,7 +31,14 @@ export interface BridgeChain {
   usdcAddress: `0x${string}`;
   /// Block explorer URL prefix for transaction links during the bridge flow.
   explorer: string;
+  /// Chain icon. llamao.fi's icon CDN is the same source chainlist.org uses,
+  /// so the icons match what users see across the ecosystem. Undefined when
+  /// the chain isn't on llamao yet (Arc Testnet) — the picker falls back to
+  /// a brand-color tile.
+  iconUrl?: string;
 }
+
+const ICON_BASE = "https://icons.llamao.fi/icons/chains/rsz_";
 
 export const BRIDGE_CHAINS: BridgeChain[] = [
   {
@@ -41,6 +48,8 @@ export const BRIDGE_CHAINS: BridgeChain[] = [
     code: "ARC",
     usdcAddress: "0x3600000000000000000000000000000000000000",
     explorer: "https://testnet.arcscan.app",
+    // Arc isn't on the llamao CDN yet; we self-host the brand mark in /public.
+    iconUrl: "/brand/arc.png",
   },
   {
     id: sepolia.id,
@@ -49,6 +58,7 @@ export const BRIDGE_CHAINS: BridgeChain[] = [
     code: "ETH",
     usdcAddress: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
     explorer: "https://sepolia.etherscan.io",
+    iconUrl: `${ICON_BASE}ethereum.jpg`,
   },
   {
     id: baseSepolia.id,
@@ -57,6 +67,7 @@ export const BRIDGE_CHAINS: BridgeChain[] = [
     code: "BASE",
     usdcAddress: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
     explorer: "https://sepolia.basescan.org",
+    iconUrl: `${ICON_BASE}base.jpg`,
   },
   {
     id: arbitrumSepolia.id,
@@ -65,6 +76,7 @@ export const BRIDGE_CHAINS: BridgeChain[] = [
     code: "ARB",
     usdcAddress: "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
     explorer: "https://sepolia.arbiscan.io",
+    iconUrl: `${ICON_BASE}arbitrum.jpg`,
   },
   {
     id: optimismSepolia.id,
@@ -73,6 +85,7 @@ export const BRIDGE_CHAINS: BridgeChain[] = [
     code: "OP",
     usdcAddress: "0x5fd84259d66Cd46123540766Be93DFE6D43130D7",
     explorer: "https://sepolia-optimism.etherscan.io",
+    iconUrl: `${ICON_BASE}optimism.jpg`,
   },
   {
     id: polygonAmoy.id,
@@ -81,6 +94,7 @@ export const BRIDGE_CHAINS: BridgeChain[] = [
     code: "MATIC",
     usdcAddress: "0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582",
     explorer: "https://amoy.polygonscan.com",
+    iconUrl: `${ICON_BASE}polygon.jpg`,
   },
   {
     id: avalancheFuji.id,
@@ -89,6 +103,7 @@ export const BRIDGE_CHAINS: BridgeChain[] = [
     code: "AVAX",
     usdcAddress: "0x5425890298aed601595a70AB815c96711a31Bc65",
     explorer: "https://testnet.snowtrace.io",
+    iconUrl: `${ICON_BASE}avalanche.jpg`,
   },
   {
     id: unichainSepolia.id,
@@ -97,6 +112,7 @@ export const BRIDGE_CHAINS: BridgeChain[] = [
     code: "UNI",
     usdcAddress: "0x31d0220469e10c4E71834a79b1f276d740d3768F",
     explorer: "https://sepolia.uniscan.xyz",
+    iconUrl: `${ICON_BASE}unichain.jpg`,
   },
 ];
 

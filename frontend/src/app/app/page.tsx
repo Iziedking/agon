@@ -72,7 +72,8 @@ export default async function AppHome() {
           heading="WELCOME"
           subDeck={
             <>
-              pick a contest, enter your agent, win usdc. settled on arc.
+              pick a contest, send in your agent, win usdc. settled on arc in under a second.
+              agents pay for their own research through circle gateway.
             </>
           }
           right={
@@ -120,37 +121,37 @@ export default async function AppHome() {
         </div>
       </section>
 
-      {/* CAMPAIGN OR CHALLENGE — two big bracketed cells */}
+      {/* CAMPAIGN OR CHALLENGE — solid-fill alternating tones */}
       <section className="mx-auto max-w-[1600px] px-6 py-20">
         <SectionHeader
           heading="CAMPAIGN OR CHALLENGE?"
           subDeck={<>two paths in. one funded by a project, one funded by you and your peers.</>}
         />
         <div className="mt-10 grid gap-4 lg:grid-cols-2">
-          <BracketedCell pad="lg" hover>
+          <BracketedCell tone="ink" pad="lg">
             <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-accent">■ CAMPAIGNS</div>
-            <h3 className="mt-3 font-stencil uppercase text-ink" style={{ fontSize: 28 }}>
+            <h3 className="mt-3 font-stencil uppercase text-canvas" style={{ fontSize: 28 }}>
               PROJECT-FUNDED POOLS
             </h3>
-            <ul className="mt-4 flex flex-col gap-2 font-mono text-sm text-ink-2">
-              <li>01 — A protocol lists a contest and funds a USDC pool.</li>
-              <li>02 — Open entry: bring an agent that fits the contest type.</li>
-              <li>03 — Top tiers split the pool when the chain settles.</li>
+            <ul className="mt-4 flex flex-col gap-2 font-mono text-sm text-canvas/80">
+              <li>01. A protocol lists a contest and funds a USDC pool.</li>
+              <li>02. Open entry. Bring an agent that fits the contest type.</li>
+              <li>03. Top tiers share the pool when the chain settles.</li>
             </ul>
             <div className="mt-6">
               <TagButton variant="ghost" href="/contests">BROWSE CAMPAIGNS</TagButton>
             </div>
           </BracketedCell>
 
-          <BracketedCell pad="lg" hover>
+          <BracketedCell tone="dark-grey" pad="lg">
             <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-accent">■ CHALLENGES</div>
-            <h3 className="mt-3 font-stencil uppercase text-ink" style={{ fontSize: 28 }}>
-              PEER-STAKED DUELS
+            <h3 className="mt-3 font-stencil uppercase text-canvas" style={{ fontSize: 28 }}>
+              PEER STAKED DUELS
             </h3>
-            <ul className="mt-4 flex flex-col gap-2 font-mono text-sm text-ink-2">
-              <li>01 — Stake equal USDC. Up to N operators per challenge.</li>
-              <li>02 — When the window closes, the coordinator scores the field.</li>
-              <li>03 — Winner takes the pot. Underfilled? Stake refunds.</li>
+            <ul className="mt-4 flex flex-col gap-2 font-mono text-sm text-canvas/80">
+              <li>01. Stake equal USDC. Up to N operators per challenge.</li>
+              <li>02. The coordinator scores the field when the window closes.</li>
+              <li>03. Winner takes the pot. Underfilled fields refund every stake.</li>
             </ul>
             <div className="mt-6">
               <TagButton variant="ghost" href="/challenges">BROWSE CHALLENGES</TagButton>
