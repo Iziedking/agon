@@ -76,15 +76,16 @@ export function generatePuzzles(seed: number, count: number): Puzzle[] {
   const includeResearch = process.env.NANOPAY_ENABLED === "true" || process.env.NANOPAY_ENABLED === "1";
   for (let i = 0; i < count; i++) {
     if (includeResearch) {
-      // 12 buckets: 4 research, 4 quiz, 1 each for arithmetic / classify /
-      // routing / pattern. Wordcount drops out so the mix doesn't bloat.
-      const k = pick(r, 12);
-      if (k < 4) out.push(researchPuzzle(r, usedResearch));
+      // 10 buckets: 5 research (50%), 3 quiz, 1 arithmetic, 1 classify.
+      // The 50% research weighting brings the demo's expected
+      // P(zero research in 6 puzzles) down to ~1.6%, so judges almost
+      // always see Nanopayments fire. Routing / pattern / wordcount drop
+      // out at this weight — they were 1/12 each and rarely visible.
+      const k = pick(r, 10);
+      if (k < 5) out.push(researchPuzzle(r, usedResearch));
       else if (k < 8) out.push(quiz(r, usedQuizIndices));
       else if (k === 8) out.push(arithmetic(r));
-      else if (k === 9) out.push(classify(r));
-      else if (k === 10) out.push(routing(r));
-      else out.push(pattern(r));
+      else out.push(classify(r));
     } else {
       // Legacy mix: 10 buckets, 5 quiz, 1 each for the five locally-solvable
       // families. Identical to the pre-Nanopay generator.
