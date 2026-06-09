@@ -2316,7 +2316,10 @@ app.get("/auth/x/callback", async (c) => {
 
   await query("update operators set x_handle = $2 where address = $1", [address, me.data.username]);
 
-  const redirectTo = new URL(config.auth.appUrl);
+  // Return the user to their own operator page so the freshly-linked X
+  // handle is visible immediately. Landing the redirect on the root
+  // (the prior behaviour) felt like the OAuth had failed.
+  const redirectTo = new URL(`/operators/${address}`, config.auth.appUrl);
   redirectTo.searchParams.set("x_bound", me.data.username);
   return c.redirect(redirectTo.toString());
 });

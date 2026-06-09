@@ -168,7 +168,8 @@ export default function OperatorPage() {
               <SocialRow
                 label="X"
                 handle={profile !== "loading" && profile?.xHandle ? `@${profile.xHandle}` : null}
-                hint="oauth2"
+                avatarUrl={profile !== "loading" && profile?.xHandle ? `https://unavatar.io/x/${profile.xHandle}` : undefined}
+                hint="sign in with X to link your handle"
                 isMe={isMe}
                 connectHref={`${AUTH_URL}/auth/x/start`}
                 onUnbind={unbindX}
@@ -255,6 +256,7 @@ function SocialRow({
   isMe,
   connectHref,
   onUnbind,
+  avatarUrl,
 }: {
   label: string;
   handle: string | null;
@@ -262,13 +264,28 @@ function SocialRow({
   isMe: boolean;
   connectHref: string;
   onUnbind: () => void | Promise<void>;
+  avatarUrl?: string;
 }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color:var(--hairline)] py-3 last:border-0">
-      <div className="min-w-0">
-        <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">{label}</div>
-        <div className="mt-1 font-mono text-sm text-ink">{handle ?? "NOT LINKED"}</div>
-        <div className="mt-0.5 font-mono text-[11px] text-ink-3">{hint}</div>
+      <div className="flex min-w-0 items-center gap-3">
+        {handle && avatarUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={avatarUrl}
+            alt=""
+            width={36}
+            height={36}
+            loading="lazy"
+            decoding="async"
+            className="h-9 w-9 flex-none rounded-full bg-canvas-3 object-cover"
+          />
+        ) : null}
+        <div className="min-w-0">
+          <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">{label}</div>
+          <div className="mt-1 font-mono text-sm text-ink">{handle ?? "NOT LINKED"}</div>
+          <div className="mt-0.5 font-mono text-[11px] text-ink-3">{hint}</div>
+        </div>
       </div>
       {isMe ? (
         handle ? (
@@ -588,14 +605,31 @@ function TelegramRow({
   }, [isMe, handle, configured, botUsername]);
 
   const displayHandle = handle ? `@${handle}` : telegramId ? `ID ${telegramId}` : "NOT LINKED";
+  const avatarUrl = handle ? `https://unavatar.io/telegram/${handle}` : null;
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color:var(--hairline)] py-3 last:border-0">
-      <div className="min-w-0">
-        <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">TELEGRAM</div>
-        <div className="mt-1 font-mono text-sm text-ink">{displayHandle}</div>
-        <div className="mt-0.5 font-mono text-[11px] text-ink-3">
-          {configured === false ? "telegram bot not configured" : "verified by telegram login widget"}
+      <div className="flex min-w-0 items-center gap-3">
+        {handle && avatarUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={avatarUrl}
+            alt=""
+            width={36}
+            height={36}
+            loading="lazy"
+            decoding="async"
+            className="h-9 w-9 flex-none rounded-full bg-canvas-3 object-cover"
+          />
+        ) : null}
+        <div className="min-w-0">
+          <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">TELEGRAM</div>
+          <div className="mt-1 font-mono text-sm text-ink">{displayHandle}</div>
+          <div className="mt-0.5 font-mono text-[11px] text-ink-3">
+            {configured === false
+              ? "Coming soon."
+              : "Tap the widget to link your Telegram account."}
+          </div>
         </div>
       </div>
 
@@ -610,12 +644,9 @@ function TelegramRow({
         ) : configured ? (
           <div ref={widgetMount} />
         ) : (
-          <button
-            disabled
-            className="cursor-not-allowed border border-[color:var(--hairline-strong)] px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3"
-          >
-            UNAVAILABLE
-          </button>
+          <span className="inline-flex items-center border border-[color:var(--hairline-strong)] bg-canvas-2 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3">
+            COMING SOON
+          </span>
         )
       ) : null}
     </div>
@@ -631,12 +662,29 @@ function DiscordRow({
   handle: string | null;
   onUnbind: () => Promise<void>;
 }) {
+  const avatarUrl = handle ? `https://unavatar.io/discord/${handle}` : null;
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color:var(--hairline)] py-3 last:border-0">
-      <div className="min-w-0">
-        <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">DISCORD</div>
-        <div className="mt-1 font-mono text-sm text-ink">{handle ? handle : "NOT LINKED"}</div>
-        <div className="mt-0.5 font-mono text-[11px] text-ink-3">oauth2 identify scope</div>
+      <div className="flex min-w-0 items-center gap-3">
+        {handle && avatarUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={avatarUrl}
+            alt=""
+            width={36}
+            height={36}
+            loading="lazy"
+            decoding="async"
+            className="h-9 w-9 flex-none rounded-full bg-canvas-3 object-cover"
+          />
+        ) : null}
+        <div className="min-w-0">
+          <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">DISCORD</div>
+          <div className="mt-1 font-mono text-sm text-ink">{handle ? handle : "NOT LINKED"}</div>
+          <div className="mt-0.5 font-mono text-[11px] text-ink-3">
+            {handle ? "Linked through Discord sign-in." : "Sign in with Discord to link your handle."}
+          </div>
+        </div>
       </div>
 
       {isMe ? (

@@ -377,9 +377,48 @@ function WagmiBridge() {
             </div>
           </BracketedCell>
         ) : null}
+
+        <GasFaucetCard />
       </section>
 
       <Footer />
+    </div>
+  );
+}
+
+/// Strip with one quick link per supported chain to that chain's testnet
+/// faucet. Bridges can fail at the burn step if the source wallet has no
+/// native gas; this card cuts the friction by giving the user a one-click
+/// path to top up every chain we support.
+function GasFaucetCard() {
+  return (
+    <div className="mt-8">
+      <div className="mb-3 flex items-center justify-between font-mono text-[11px] uppercase tracking-[0.16em]">
+        <span><span aria-hidden className="text-accent">■</span> NEED GAS?</span>
+        <span className="text-ink-3">claim native testnet gas per chain</span>
+      </div>
+      <BracketedCell pad="sm">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {BRIDGE_CHAINS.map((c) =>
+            c.gasFaucetUrl ? (
+              <a
+                key={c.id}
+                href={c.gasFaucetUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="group flex items-center gap-3 border border-[color:var(--hairline)] bg-canvas px-3 py-3 transition-colors hover:bg-canvas-2"
+              >
+                <ChainIcon chain={c} />
+                <div className="min-w-0 flex-1">
+                  <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink">{c.code}</div>
+                  <div className="truncate font-mono text-[10px] text-ink-3">{c.label}</div>
+                </div>
+                <span aria-hidden className="font-mono text-[12px] text-ink-3 group-hover:text-accent">↗</span>
+              </a>
+            ) : null,
+          )}
+        </div>
+      </BracketedCell>
     </div>
   );
 }

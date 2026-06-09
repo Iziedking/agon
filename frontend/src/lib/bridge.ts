@@ -89,7 +89,7 @@ export const BRIDGE_CHAINS: BridgeChain[] = [
   },
   {
     id: optimismSepolia.id,
-    appKitChain: "OP_Sepolia",
+    appKitChain: "Optimism_Sepolia",
     label: "OP Sepolia",
     code: "OP",
     usdcAddress: "0x5fd84259d66Cd46123540766Be93DFE6D43130D7",
