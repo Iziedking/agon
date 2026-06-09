@@ -169,9 +169,10 @@ export default function OperatorPage() {
                 label="X"
                 handle={profile !== "loading" && profile?.xHandle ? `@${profile.xHandle}` : null}
                 avatarUrl={profile !== "loading" && profile?.xHandle ? `https://unavatar.io/x/${profile.xHandle}` : undefined}
-                hint="sign in with X to link your handle"
+                hint="Connect your X account."
                 isMe={isMe}
                 connectHref={`${AUTH_URL}/auth/x/start`}
+                connectLabel="CONNECT X"
                 onUnbind={unbindX}
               />
               <TelegramRow
@@ -255,6 +256,7 @@ function SocialRow({
   hint,
   isMe,
   connectHref,
+  connectLabel,
   onUnbind,
   avatarUrl,
 }: {
@@ -263,6 +265,7 @@ function SocialRow({
   hint: string;
   isMe: boolean;
   connectHref: string;
+  connectLabel?: string;
   onUnbind: () => void | Promise<void>;
   avatarUrl?: string;
 }) {
@@ -284,7 +287,9 @@ function SocialRow({
         <div className="min-w-0">
           <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">{label}</div>
           <div className="mt-1 font-mono text-sm text-ink">{handle ?? "NOT LINKED"}</div>
-          <div className="mt-0.5 font-mono text-[11px] text-ink-3">{hint}</div>
+          {!handle ? (
+            <div className="mt-0.5 font-mono text-[11px] text-ink-3">{hint}</div>
+          ) : null}
         </div>
       </div>
       {isMe ? (
@@ -300,7 +305,7 @@ function SocialRow({
             href={connectHref}
             className="inline-flex items-center gap-2 bg-accent px-4 py-2 font-mono text-[12px] uppercase tracking-[0.12em] text-accent-ink hover:bg-accent-press"
           >
-            LINK <span aria-hidden>→</span>
+            {connectLabel ?? "CONNECT"} <span aria-hidden>→</span>
           </a>
         )
       ) : null}
@@ -588,8 +593,19 @@ function TelegramRow({
     return () => { live = false; };
   }, []);
 
+  // Telegram's widget binds to the domain registered with BotFather. If we
+  // load it from a host that does not match (localhost during dev), the
+  // widget renders "Bot domain invalid" inside its iframe. Detect that
+  // case and skip mounting; the row falls back to the COMING SOON chip.
+  const hostMatchesProd = (() => {
+    if (typeof window === "undefined") return false;
+    const h = window.location.hostname;
+    return h !== "localhost" && h !== "127.0.0.1" && !h.endsWith(".local");
+  })();
+
   useEffect(() => {
     if (!isMe || handle || !configured || !botUsername || !widgetMount.current) return;
+    if (!hostMatchesProd) return;
     const host = widgetMount.current;
     host.innerHTML = "";
     const script = document.createElement("script");
@@ -625,11 +641,13 @@ function TelegramRow({
         <div className="min-w-0">
           <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">TELEGRAM</div>
           <div className="mt-1 font-mono text-sm text-ink">{displayHandle}</div>
-          <div className="mt-0.5 font-mono text-[11px] text-ink-3">
-            {configured === false
-              ? "Coming soon."
-              : "Tap the widget to link your Telegram account."}
-          </div>
+          {!handle ? (
+            <div className="mt-0.5 font-mono text-[11px] text-ink-3">
+              {configured === false || !hostMatchesProd
+                ? "Coming soon."
+                : "Connect Telegram for alerts when your agent places or a new contest opens."}
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -641,7 +659,7 @@ function TelegramRow({
           >
             UNBIND
           </button>
-        ) : configured ? (
+        ) : configured && hostMatchesProd ? (
           <div ref={widgetMount} />
         ) : (
           <span className="inline-flex items-center border border-[color:var(--hairline-strong)] bg-canvas-2 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3">
@@ -662,28 +680,29 @@ function DiscordRow({
   handle: string | null;
   onUnbind: () => Promise<void>;
 }) {
-  const avatarUrl = handle ? `https://unavatar.io/discord/${handle}` : null;
+  // Discord avatars are keyed by numeric user id, not handle, so unavatar
+  // can't resolve from the username. Until the backend surfaces discord_id
+  // to the profile, render a brand-color initial avatar instead of a
+  // broken image.
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color:var(--hairline)] py-3 last:border-0">
       <div className="flex min-w-0 items-center gap-3">
-        {handle && avatarUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={avatarUrl}
-            alt=""
-            width={36}
-            height={36}
-            loading="lazy"
-            decoding="async"
-            className="h-9 w-9 flex-none rounded-full bg-canvas-3 object-cover"
-          />
+        {handle ? (
+          <span
+            aria-hidden
+            className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-[#5865F2] font-mono text-[13px] font-medium text-white"
+          >
+            {handle.slice(0, 1).toUpperCase()}
+          </span>
         ) : null}
         <div className="min-w-0">
           <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">DISCORD</div>
           <div className="mt-1 font-mono text-sm text-ink">{handle ? handle : "NOT LINKED"}</div>
-          <div className="mt-0.5 font-mono text-[11px] text-ink-3">
-            {handle ? "Linked through Discord sign-in." : "Sign in with Discord to link your handle."}
-          </div>
+          {!handle ? (
+            <div className="mt-0.5 font-mono text-[11px] text-ink-3">
+              Connect your Discord account.
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -700,7 +719,7 @@ function DiscordRow({
             href={`${AUTH_URL}/auth/discord/start`}
             className="inline-flex items-center gap-2 bg-accent px-4 py-2 font-mono text-[12px] uppercase tracking-[0.12em] text-accent-ink hover:bg-accent-press"
           >
-            LINK <span aria-hidden>→</span>
+            CONNECT DISCORD <span aria-hidden>→</span>
           </a>
         )
       ) : null}
