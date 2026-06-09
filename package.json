@@ -13,5 +13,9 @@
     "coordinator": "cd backend && npm run coordinator",
     "build:contracts": "cd contracts && forge build",
     "test:contracts": "cd contracts && forge test"
+  },
+  "dependencies": {
+    "@circle-fin/adapter-viem-v2": "^1.11.2",
+    "@circle-fin/app-kit": "^1.7.0"
   }
 }

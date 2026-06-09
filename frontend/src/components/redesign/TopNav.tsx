@@ -20,6 +20,7 @@ const ROUTES = [
   { href: "/contests", label: "CONTESTS" },
   { href: "/challenges", label: "CHALLENGES" },
   { href: "/live", label: "LIVE" },
+  { href: "/bridge", label: "BRIDGE" },
   { href: "/leaderboard", label: "LEADERBOARD" },
   { href: "/syndicates", label: "SYNDICATES" },
 ];
