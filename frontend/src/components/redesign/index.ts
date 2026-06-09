@@ -8,6 +8,7 @@ export { StatPanel } from "./StatPanel";
 export { CountingNumber } from "./CountingNumber";
 export { Countdown } from "./Countdown";
 export { ArcChainChip } from "./ArcChainChip";
+export { ChainBalanceChip } from "./ChainBalanceChip";
 export { StatusChip } from "./StatusChip";
 export { ActivityRow, ActivityLedger } from "./ActivityRow";
 export { SectionHeader } from "./SectionHeader";
