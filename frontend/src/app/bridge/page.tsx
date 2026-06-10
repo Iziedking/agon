@@ -59,6 +59,9 @@ function WagmiBridge() {
   const [destId, setDestId] = useState<number>(DEFAULT_DEST.id);
   const [amount, setAmount] = useState<string>("1.00");
   const [recipient, setRecipient] = useState<string>("");
+  // Cross-chain bridges mint to the connected wallet by default. Flip this on
+  // to send the bridged USDC to a different address on the destination chain.
+  const [useCustomRecipient, setUseCustomRecipient] = useState(false);
   const [steps, setSteps] = useState<BridgeStepProgress[]>(initialSteps());
   const [running, setRunning] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -97,10 +100,18 @@ function WagmiBridge() {
     amountNum > balance;
   // Same-chain selection means transfer mode; cross-chain means CCTP bridge.
   const mode: "bridge" | "transfer" = sameChain ? "transfer" : "bridge";
+  const recipientIsAddress = recipient.trim().length > 0 && isAddress(recipient.trim());
+  // Transfer always needs a recipient. A bridge only needs one when the user
+  // opted into a custom destination wallet; otherwise it mints to self.
   const validRecipient =
     mode === "transfer"
-      ? recipient.trim().length > 0 && isAddress(recipient.trim())
-      : true;
+      ? recipientIsAddress
+      : !useCustomRecipient || recipientIsAddress;
+  // The address the bridge mints to on the destination chain.
+  const bridgeRecipient: `0x${string}` | undefined =
+    useCustomRecipient && recipientIsAddress
+      ? (recipient.trim() as `0x${string}`)
+      : account;
   const onWrongChain = isConnected && walletChainId !== source.id;
 
   // Order matters: when the wallet is on the wrong chain we surface the
@@ -116,7 +127,9 @@ function WagmiBridge() {
             ? "Connect a wallet first."
             : mode === "transfer" && !validRecipient
               ? "Enter a recipient address."
-              : null;
+              : mode === "bridge" && !validRecipient
+                ? "Enter a valid destination wallet, or send to your own."
+                : null;
 
   // What the primary CTA actually does, by priority.
   type Action = "switch" | "bridge" | "transfer" | "disabled";
@@ -226,7 +239,13 @@ function WagmiBridge() {
     try {
       const result = await kit.bridge({
         from: { adapter, chain: source.appKitChain as never },
-        to: { adapter, chain: dest.appKitChain as never, useForwarder: true },
+        to: {
+          adapter,
+          chain: dest.appKitChain as never,
+          useForwarder: true,
+          // Mints to the connected wallet unless a custom destination is set.
+          ...(bridgeRecipient ? { recipientAddress: bridgeRecipient } : {}),
+        },
         amount,
       });
       // If the burn-handler already settled the UI (forwarder path), the
@@ -318,6 +337,17 @@ function WagmiBridge() {
               value={recipient}
               onChange={setRecipient}
               onSelf={account ? () => setRecipient(account) : undefined}
+            />
+          ) : null}
+
+          {mode === "bridge" ? (
+            <BridgeRecipient
+              account={account}
+              useCustom={useCustomRecipient}
+              setUseCustom={setUseCustomRecipient}
+              value={recipient}
+              onChange={setRecipient}
+              invalid={useCustomRecipient && recipient.trim().length > 0 && !isAddress(recipient.trim())}
             />
           ) : null}
 
@@ -523,6 +553,64 @@ function RecipientInput({
         className="w-full border border-[color:var(--hairline-strong)] bg-canvas-2 px-4 py-3 font-mono text-[14px] text-ink outline-none placeholder:text-ink-3"
         aria-label="Recipient address"
       />
+    </div>
+  );
+}
+
+/// Destination wallet for a cross-chain bridge. Defaults to the connected
+/// wallet (the bridged USDC lands back with the sender). The user can opt
+/// into a custom address to send the funds to someone else on the
+/// destination chain.
+function BridgeRecipient({
+  account,
+  useCustom,
+  setUseCustom,
+  value,
+  onChange,
+  invalid,
+}: {
+  account?: `0x${string}`;
+  useCustom: boolean;
+  setUseCustom: (v: boolean) => void;
+  value: string;
+  onChange: (v: string) => void;
+  invalid: boolean;
+}) {
+  const short = account ? `${account.slice(0, 6)}…${account.slice(-4)}` : "your wallet";
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3">
+        <span>DESTINATION WALLET</span>
+        <button
+          type="button"
+          onClick={() => setUseCustom(!useCustom)}
+          className="text-accent hover:text-ink"
+        >
+          {useCustom ? "USE MY WALLET" : "SEND TO ANOTHER WALLET"}
+        </button>
+      </div>
+      {useCustom ? (
+        <>
+          <input
+            type="text"
+            spellCheck={false}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder="0x... destination address"
+            className="w-full border border-[color:var(--hairline-strong)] bg-canvas-2 px-4 py-3 font-mono text-[14px] text-ink outline-none placeholder:text-ink-3"
+            aria-label="Destination wallet address"
+          />
+          {invalid ? (
+            <p className="mt-1 font-mono text-[10px] text-accent">that doesn&apos;t look like a valid address.</p>
+          ) : null}
+        </>
+      ) : (
+        <div className="flex items-center gap-2 border border-[color:var(--hairline)] bg-canvas-2 px-4 py-3 font-mono text-[13px] text-ink-2">
+          <span aria-hidden className="text-accent">■</span>
+          <span>minted to your connected wallet</span>
+          <span className="text-ink">{short}</span>
+        </div>
+      )}
     </div>
   );
 }
