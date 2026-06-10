@@ -676,3 +676,13 @@ create table if not exists event_tier_gates (
   created_at  timestamptz not null default now(),
   primary key (surface, event_id)
 );
+
+-- Per-agent daily swap budget for the Scout real-swap path. Every tier gets
+-- the same daily cap, so a lower-tier agent (smaller funding) has to swap
+-- more times to match the volume of a higher-tier agent. Keyed by UTC day.
+create table if not exists scout_swap_budget (
+  agent_id    bigint not null,
+  day         date not null,
+  used        int not null default 0,
+  primary key (agent_id, day)
+);

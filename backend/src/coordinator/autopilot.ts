@@ -162,10 +162,17 @@ async function startRandomChallengeLoop(broadcast: (message: unknown) => void): 
     transport: http(config.rpcHttp),
   });
 
+  // Alternate the tier gate each cycle: even cycles open a lower-tier
+  // challenge (0-2), odd cycles a higher-tier one (3-4) with a larger stake.
+  const highStakeMult = Number(process.env.AUTOPILOT_CHALLENGE_HIGH_TIER_STAKE_MULT ?? "5");
+  let chCycle = 0;
   for (;;) {
     try {
+      const highTier = chCycle % 2 === 1;
+      const gate = highTier ? { min: 3, max: 4 } : { min: 0, max: 2 };
       const kind = kinds[Math.floor(Math.random() * kinds.length)]!;
-      const stakeUsdc = Math.round((stakeMin + Math.random() * (stakeMax - stakeMin)) * 100) / 100;
+      const baseStake = Math.round((stakeMin + Math.random() * (stakeMax - stakeMin)) * 100) / 100;
+      const stakeUsdc = highTier ? Math.round(baseStake * highStakeMult * 100) / 100 : baseStake;
       const stake = BigInt(Math.round(stakeUsdc * 1e6));
       const joinSecs = randInt(joinMin, joinMax);
       const now = Math.floor(Date.now() / 1000);
@@ -188,8 +195,9 @@ async function startRandomChallengeLoop(broadcast: (message: unknown) => void): 
         args: [kind, stake, 2n, joinDeadline, resolveDeadline, false],
       });
       await publicClient.waitForTransactionReceipt({ hash });
+      await setTierGate("challenge", Number(claimingId), gate.min, gate.max).catch(() => {});
       console.log(
-        `autopilot: random challenge created id=${claimingId}, kind ${kind}, stake ${stakeUsdc} USDC, join ${joinSecs}s`,
+        `autopilot: random challenge created id=${claimingId}, kind ${kind}, tier ${gate.min}-${gate.max}, stake ${stakeUsdc} USDC, join ${joinSecs}s`,
       );
 
       // PREDICTION challenges pin an Arcana market set at create time so
@@ -206,6 +214,7 @@ async function startRandomChallengeLoop(broadcast: (message: unknown) => void): 
     } catch (err) {
       console.error("autopilot random challenge failed:", err instanceof Error ? err.message : err);
     }
+    chCycle++;
     await sleep(cycleSecs * 1000);
   }
 }
@@ -322,13 +331,19 @@ export async function startAutopilot(broadcast: (message: unknown) => void): Pro
   const hi = Math.max(poolMin, poolMax);
   // Each contest in a tier-gated pair gets its own pool and window.
   const randomPool = () => Math.round((lo + Math.random() * (hi - lo)) * 100) / 100;
+  // Higher-tier campaigns carry larger pools, since tier 3-4 agents put more
+  // funding to work. Multiplier is env-tunable.
+  const highTierPoolMult = Number(process.env.AUTOPILOT_HIGH_TIER_POOL_MULT ?? "5");
 
   // Opens one contest, pins Arcana markets when analyst, records the tier
   // gate, broadcasts contest_open, and kicks off the streaming run WITHOUT
   // blocking the loop (so a second contest can open 15 min later). The run
   // settles itself; failures are logged.
   async function openGated(type: "scout" | "analyst" | "solver", gate: { min: number; max: number }) {
-    const poolUsdc = randomPool();
+    // Tier 3-4 pools scale up so the higher-tier pool is worth competing for.
+    const poolUsdc = gate.min >= 3
+      ? Math.round(randomPool() * highTierPoolMult * 100) / 100
+      : randomPool();
     const durationSeconds = randInt(durationMin, durationMax);
     const contestId = await openContest({ type, poolUsdc, durationSeconds });
     await setTierGate("contest", contestId, gate.min, gate.max).catch(() => {});

@@ -106,6 +106,22 @@ const envSchema = z.object({
 
   // Scout runner: master mnemonic for deriving per-agent hot wallets
   SCOUT_MASTER_MNEMONIC: z.string().optional(),
+  // Scout real DEX swaps (Circle App Kit Swap on Arc). Needs CIRCLE_KIT_KEY
+  // and the @circle-fin/adapter-viem-v2 package installed. When off or
+  // unconfigured, Scout self-transfers USDC instead.
+  SCOUT_REAL_SWAPS: z.coerce.boolean().default(false),
+  CIRCLE_KIT_KEY: z.string().optional(),
+  SCOUT_SWAP_TOKEN_IN: z.string().default("USDC"),
+  SCOUT_SWAP_TOKEN_OUT: z.string().default("EURC"),
+  // Generic daily swap budget shared by every tier.
+  SCOUT_DAILY_SWAP_CAP: z.coerce.number().int().positive().default(1024),
+  // How many swaps a single contest run performs (bounded by the daily cap).
+  SCOUT_SWAPS_PER_RUN: z.coerce.number().int().positive().default(24),
+  // Per-tier funding ceiling in whole USDC, comma-separated, index 0..4.
+  SCOUT_FUNDING_BY_TIER: z
+    .string()
+    .default("50,150,500,1500,5000")
+    .transform((s) => s.split(",").map((n) => Number(n.trim()))),
 
   // ERC-8004 validator wallet for on-chain reputation feedback. Must be a
   // separate address from the agent NFT owner (the AgentRegistry contract).
@@ -336,6 +352,20 @@ export const config = {
   },
   scout: {
     masterMnemonic: env.SCOUT_MASTER_MNEMONIC?.trim() || undefined,
+    // Real DEX swaps via Circle App Kit Swap (USDC/EURC/cirBTC on Arc).
+    // When off, or the kit key / adapter are missing, Scout falls back to
+    // USDC self-transfers so the runner always produces volume.
+    realSwaps: env.SCOUT_REAL_SWAPS,
+    kitKey: env.CIRCLE_KIT_KEY,
+    swapTokenIn: env.SCOUT_SWAP_TOKEN_IN,
+    swapTokenOut: env.SCOUT_SWAP_TOKEN_OUT,
+    dailySwapCap: env.SCOUT_DAILY_SWAP_CAP,
+    swapsPerRun: env.SCOUT_SWAPS_PER_RUN,
+    // Per-agent funding ceiling by tier (index 0..4), in whole USDC. Tier
+    // caps how much an agent can put to work; the daily swap budget is the
+    // same for every tier, so a smaller agent must swap more to match the
+    // volume of a higher tier.
+    fundingByTier: env.SCOUT_FUNDING_BY_TIER,
   },
   validator: {
     privateKey: normalizePrivateKey(env.VALIDATOR_PRIVATE_KEY, "VALIDATOR_PRIVATE_KEY"),

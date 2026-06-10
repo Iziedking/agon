@@ -15,6 +15,7 @@ import { computePayoutsForMode, normalizeScoringMode } from "./payouts.js";
 import { creditPoints, postValidatorFeedback } from "./reputation.js";
 import { applyTraitMultipliers, awardPlacementTraits, fetchAgentMultipliers } from "./traits.js";
 import { notify } from "../notifications/index.js";
+import { getTierGate, tierAllowed } from "../lib/tierGate.js";
 import {
   applySyndicateMultipliers,
   fetchSyndicateMultipliers,
@@ -200,6 +201,17 @@ async function fetchField(challengeId: number, cType: number): Promise<ContestEn
       }
     }
     field.push({ agentId: Number(r.agent_id), operator: r.operator as `0x${string}`, tier: Number(tier) });
+  }
+  // Enforce the tier gate: drop any entry whose agent tier is out of range so
+  // it can't score or take the pot. The frontend blocks out-of-range agents
+  // before they stake; this is the settlement-side backstop.
+  const gate = await getTierGate("challenge", challengeId);
+  if (gate) {
+    const allowed = field.filter((e) => tierAllowed(gate, e.tier));
+    if (allowed.length !== field.length) {
+      console.log(`challenge ${challengeId}: tier gate ${gate.minTier}-${gate.maxTier} dropped ${field.length - allowed.length} out-of-range entr${field.length - allowed.length === 1 ? "y" : "ies"}`);
+    }
+    return allowed;
   }
   return field;
 }

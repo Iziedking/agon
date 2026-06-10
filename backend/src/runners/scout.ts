@@ -1,9 +1,11 @@
-import { createWalletClient, http, parseAbi } from "viem";
+import { createWalletClient, http, parseAbi, toHex } from "viem";
 import type { Account, Hash } from "viem";
 import { mnemonicToAccount } from "viem/accounts";
 
 import { arcTestnet, publicClient } from "../chain/arc.js";
 import { config } from "../config/index.js";
+import { query } from "../db/pool.js";
+import { swapEnabled, executeSwap } from "../chain/appKitSwap.js";
 import { scoutScore } from "../scoring/index.js";
 import type { AgentResult, ContestEntryInput, Runner } from "./types.js";
 import { callModel, llmConfigured, recordLlmRun, readExistingRuns, DailyKillError } from "./llm/client.js";
@@ -83,6 +85,16 @@ export async function executeScout(
   tier: number,
   opts?: { ops?: number; perOpUsdc6?: bigint },
 ): Promise<ScoutExecution> {
+  // Real DEX swaps when configured. Returns null (and falls through to
+  // self-transfers) if the adapter isn't installed or nothing swapped.
+  if (swapEnabled()) {
+    const swapped = await executeScoutSwaps(agentId, tier).catch((err) => {
+      console.warn(`[scout] real-swap path failed, falling back: ${err instanceof Error ? err.message : err}`);
+      return null;
+    });
+    if (swapped) return swapped;
+  }
+
   const limit = tierLimit(tier);
   const account = deriveHotWallet(agentId);
   const wallet = createWalletClient({ account, chain: arcTestnet, transport: http(config.rpcHttp) });
@@ -124,6 +136,91 @@ export async function executeScout(
     txHashes,
     txVolumesUsdc6,
   };
+}
+
+/// Per-tier funding ceiling in whole USDC. Tier caps how much an agent puts to
+/// work per swap; the daily swap budget is the same for every tier, so a
+/// smaller agent has to swap more times to reach the same volume.
+function fundingCapUsdc(tier: number): number {
+  const t = Math.min(Math.max(Math.floor(tier), 0), 4);
+  return config.scout.fundingByTier[t] ?? 50;
+}
+
+/// How many swaps this agent has left in today's shared budget.
+async function dailySwapsRemaining(agentId: number): Promise<number> {
+  const { rows } = await query<{ used: string }>(
+    "select used::text from scout_swap_budget where agent_id = $1 and day = (now() at time zone 'utc')::date",
+    [agentId],
+  );
+  const used = Number(rows[0]?.used ?? 0);
+  return Math.max(0, config.scout.dailySwapCap - used);
+}
+
+async function recordSwaps(agentId: number, n: number): Promise<void> {
+  if (n <= 0) return;
+  await query(
+    `insert into scout_swap_budget (agent_id, day, used)
+       values ($1, (now() at time zone 'utc')::date, $2)
+       on conflict (agent_id, day) do update set used = scout_swap_budget.used + excluded.used`,
+    [agentId, n],
+  );
+}
+
+/// Real-swap execution: alternates the configured token pair (USDC/EURC by
+/// default) to produce genuine DEX volume. Per-swap size is capped by the
+/// tier funding ceiling; swap count is bounded by the shared daily budget and
+/// the per-run cap. Returns null when no swap landed (adapter missing) so the
+/// caller falls back to self-transfers.
+async function executeScoutSwaps(agentId: number, tier: number): Promise<ScoutExecution | null> {
+  if (!config.scout.masterMnemonic) return null;
+  // Re-derive as an HD account so we can extract the private key the App Kit
+  // viem adapter needs (deriveHotWallet's return type is the generic Account).
+  const account = mnemonicToAccount(config.scout.masterMnemonic, { addressIndex: agentId });
+  const pkBytes = account.getHdKey().privateKey;
+  if (!pkBytes) return null;
+  const privateKey = toHex(pkBytes) as `0x${string}`;
+
+  const balance = await publicClient.readContract({
+    address: config.external.USDC,
+    abi: USDC_ABI,
+    functionName: "balanceOf",
+    args: [account.address],
+  });
+  const balanceUsdc = Number(balance) / 1e6;
+  const perSwapUsdc = Math.min(fundingCapUsdc(tier), balanceUsdc);
+  if (perSwapUsdc <= 0) {
+    return { address: account.address, volumeUsdc6: 0n, opsCount: 0, txHashes: [], txVolumesUsdc6: [] };
+  }
+
+  const remaining = await dailySwapsRemaining(agentId);
+  const swapsThisRun = Math.min(config.scout.swapsPerRun, remaining);
+  if (swapsThisRun <= 0) {
+    return { address: account.address, volumeUsdc6: 0n, opsCount: 0, txHashes: [], txVolumesUsdc6: [] };
+  }
+
+  let tokenIn = config.scout.swapTokenIn;
+  let tokenOut = config.scout.swapTokenOut;
+  const amountIn = perSwapUsdc.toFixed(2);
+  const txHashes: Hash[] = [];
+  const txVolumesUsdc6: string[] = [];
+  let volume = 0n;
+  let done = 0;
+
+  for (let i = 0; i < swapsThisRun; i++) {
+    const res = await executeSwap({ privateKey, tokenIn, tokenOut, amountIn });
+    if (!res) break; // adapter missing: let the caller self-transfer instead
+    if (res.txHash) txHashes.push(res.txHash as Hash);
+    const vol6 = BigInt(Math.round(perSwapUsdc * 1e6));
+    txVolumesUsdc6.push(vol6.toString());
+    volume += vol6;
+    done++;
+    // Alternate direction so the principal recirculates (USDC -> EURC -> USDC).
+    [tokenIn, tokenOut] = [tokenOut, tokenIn];
+  }
+
+  if (done === 0) return null;
+  await recordSwaps(agentId, done).catch(() => {});
+  return { address: account.address, volumeUsdc6: volume, opsCount: done, txHashes, txVolumesUsdc6 };
 }
 
 /// LLM-picked execution strategy. Tier 0/1 skip the LLM and use defaults
