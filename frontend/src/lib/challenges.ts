@@ -133,6 +133,17 @@ export async function hasJoined(id: number, operator: `0x${string}`): Promise<bo
   }
 }
 
+/// On-chain check: is this operator in a private challenge's invited set?
+/// Always true-effective for public challenges (the join path skips the
+/// invited gate), so callers only consult this when isPrivate.
+export async function isInvited(id: number, operator: `0x${string}`): Promise<boolean> {
+  try {
+    return (await publicClient.readContract({ address: CONTRACTS.ChallengeArena, abi: challengeArenaAbi, functionName: "invited", args: [BigInt(id), operator] })) as boolean;
+  } catch {
+    return false;
+  }
+}
+
 export async function hasClaimedChallenge(id: number, operator: `0x${string}`): Promise<boolean> {
   try {
     return (await publicClient.readContract({ address: CONTRACTS.ChallengeArena, abi: challengeArenaAbi, functionName: "payoutClaimed", args: [BigInt(id), operator] })) as boolean;

@@ -7,6 +7,7 @@ import { ProfileLink } from "@/components/pengu/ProfileLink";
 import { ArcChainChip } from "@/components/redesign/ArcChainChip";
 import { ChainBalanceChip } from "@/components/redesign/ChainBalanceChip";
 import { ArcRunMark } from "@/components/redesign/ArcRunMark";
+import { NotificationBell } from "@/components/redesign/NotificationBell";
 
 /// The product nav. Left: ■ ARCRUN mono wordmark with the pink square mark.
 /// Center: mono caps route links separated by 32px on desktop. Right: the
@@ -65,6 +66,7 @@ export function TopNav() {
         <div className="flex items-center gap-2">
           <ChainBalanceChip />
           <ArcChainChip />
+          <NotificationBell />
           <LoginButton />
           <button
             type="button"

@@ -110,6 +110,15 @@ export function InvitePanel({ challengeId, creator, isPrivate, status }: Props) 
       setNote(`INVITED ${good.length}`);
       setInput("");
       setTimeout(() => setNote(null), 1500);
+      // Optimistically merge the just-invited addresses so the creator sees
+      // confirmation immediately, before the indexer catches the event.
+      setInvites((prev) => {
+        const seen = new Set(prev.map((i) => i.address.toLowerCase()));
+        const fresh = good
+          .filter((g) => !seen.has(g.toLowerCase()))
+          .map((g) => ({ address: g, invitedAt: new Date().toISOString() }));
+        return [...prev, ...fresh];
+      });
       void reload();
     } catch (e) {
       setError(friendlyError(e, "could not invite."));

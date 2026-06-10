@@ -17,6 +17,7 @@ import {
 } from "../chain/abi.js";
 import { getLatestMarkets, isOpen } from "../lib/arcana.js";
 import { pinArcanaMarketsForContest } from "../lib/arcanaPins.js";
+import { notify } from "../notifications/index.js";
 
 /// Polls eth_getLogs over block ranges, writes raw events to events_log, and
 /// updates the denormalized read tables. Resumes from the last processed block
@@ -273,13 +274,32 @@ async function applyDenormalized(client: PoolClient, log: Log) {
         }
       }
       break;
-    case "ChallengeInvited":
+    case "ChallengeInvited": {
       await client.query(
         `insert into challenge_invites (challenge_id, invitee)
          values ($1, $2) on conflict do nothing`,
         [s(a.id), lc(a.invitee)],
       );
+      // Notify the invitee, unless they are the creator (a creator is
+      // auto-invited to their own private challenge and should not get a
+      // "you've been invited" line for it).
+      const invitee = String(lc(a.invitee));
+      const creatorRow = await client.query<{ creator: string }>(
+        "select creator from challenges where id = $1",
+        [s(a.id)],
+      );
+      const creator = creatorRow.rows[0]?.creator?.toLowerCase();
+      if (creator !== invitee) {
+        void notify(invitee, {
+          kind: "challenge_invite",
+          title: "You were invited to a private challenge",
+          body: `challenge #${s(a.id)}. stake in before the join window closes.`,
+          href: `/challenges/${s(a.id)}`,
+          context: { challengeId: Number(a.id) },
+        });
+      }
       break;
+    }
     case "ChallengeJoined": {
       // Snapshot tier at join time. Look up the challenge's kind from
       // the row the indexer wrote on ChallengeCreated, then map kind →

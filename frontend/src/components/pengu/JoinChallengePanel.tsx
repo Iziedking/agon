@@ -18,6 +18,7 @@ import {
   hasClaimedChallenge,
   hasJoined,
   hasRefunded,
+  isInvited,
 } from "@/lib/challenges";
 import { formatUsdc } from "@/lib/contests";
 import { friendlyError } from "@/lib/errors";
@@ -43,15 +44,24 @@ export function JoinChallengePanel({
   status,
   stake,
   joinDeadline,
+  isPrivate = false,
+  creator,
 }: {
   id: number;
   status: number;
   stake: string; // USDC wei, as a string (bigint is not serializable across the boundary)
   joinDeadline: number; // epoch seconds
+  isPrivate?: boolean;
+  creator?: string;
 }) {
   const { address, isSignedIn: isConnected } = useOperatorAddress();
   const { writeContractAsync } = useArcWrite();
   const stakeWei = BigInt(stake);
+  const isCreator = !!address && !!creator && address.toLowerCase() === creator.toLowerCase();
+  // For private challenges, joining requires being in the on-chain invited
+  // set. The creator is not auto-invited at creation, so we track this to
+  // both gate non-invited operators and auto-invite the creator on join.
+  const [invited, setInvited] = useState(false);
   const [agents, setAgents] = useState<AgentState[] | undefined>(undefined);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [joined, setJoined] = useState(false);
@@ -100,6 +110,9 @@ export function JoinChallengePanel({
       const resolved = resolveActiveAgent(list, address);
       setActiveId(resolved?.id ?? null);
       setJoined(await hasJoined(id, address as `0x${string}`));
+      if (isPrivate) {
+        setInvited(await isInvited(id, address as `0x${string}`));
+      }
     } else if (status === 2) {
       setPayout(await fetchChallengePayout(id, address));
       setClaimed(await hasClaimedChallenge(id, address as `0x${string}`));
@@ -107,7 +120,7 @@ export function JoinChallengePanel({
       setJoined(await hasJoined(id, address as `0x${string}`));
       setRefunded(await hasRefunded(id, address as `0x${string}`));
     }
-  }, [address, id, status]);
+  }, [address, id, status, isPrivate]);
 
   useEffect(() => {
     void load();
@@ -124,6 +137,22 @@ export function JoinChallengePanel({
     setBusy(true);
     setError(null);
     try {
+      // Private challenges gate join on the on-chain invited set. The
+      // creator is never auto-invited at creation, so if they are joining
+      // their own private challenge, invite themselves first (creator-only
+      // call) so the join doesn't revert with NotInvited.
+      if (isPrivate && isCreator && !invited) {
+        setStep("unlocking your seat…");
+        const ih = await writeContractAsync({
+          address: CONTRACTS.ChallengeArena,
+          abi: challengeArenaAbi,
+          functionName: "invite",
+          args: [BigInt(id), [address as `0x${string}`]],
+        });
+        await publicClient.waitForTransactionReceipt({ hash: ih });
+        setInvited(true);
+      }
+
       setStep("approving usdc…");
       const ah = await writeContractAsync({
         address: USDC,
@@ -250,6 +279,14 @@ export function JoinChallengePanel({
           <AgentPicker agents={agents} activeId={active.id} onPick={pick} />
           <p className="mt-3 text-sm text-ink-2">{agentDisplayName(active)} is staked in. results come when the window closes.</p>
         </>
+      );
+    }
+    // Private challenge, this wallet is neither the host nor invited.
+    if (isPrivate && !isCreator && !invited) {
+      return (
+        <p className="mt-3 text-sm text-ink-2">
+          this is an invite-only challenge. ask the host to add your wallet, then refresh.
+        </p>
       );
     }
     const atLiveCap = capInfo?.atCap ?? false;

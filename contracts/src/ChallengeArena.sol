@@ -160,6 +160,14 @@ contract ChallengeArena is AccessControl, ReentrancyGuard {
             winnerRoot: bytes32(0)
         });
 
+        // The creator is allowed to join their own private challenge. Without
+        // this they would be locked out of a private pool they opened, since
+        // joinChallenge gates on the invited set.
+        if (isPrivate) {
+            invited[id][msg.sender] = true;
+            emit ChallengeInvited(id, msg.sender);
+        }
+
         emit ChallengeCreated(id, msg.sender, kind, stake);
     }
 

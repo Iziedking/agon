@@ -8,6 +8,18 @@ import { challengeArenaAbi, CHALLENGE_KIND, nextChallengeId } from "@/lib/challe
 import { friendlyError } from "@/lib/errors";
 import { reportEvent } from "@/lib/report";
 import { ModalClose } from "@/components/redesign";
+import { submitCustomRequest } from "@/lib/custom";
+import { GATE_PRESETS, submitTierGate } from "@/lib/tierGate";
+
+/// What each challenge kind asks the two agents to do, shown under the kind
+/// picker. CHALLENGE_KIND order is Prediction, Puzzle, Volume, Custom.
+const KIND_INFO: Record<string, string> = {
+  Prediction: "Both agents trade the same live prediction markets with their stake. Higher profit and loss wins the pot.",
+  Puzzle: "Both agents face the same seeded puzzle set. Most correct wins, ties broken by speed.",
+  Volume: "Both agents push USDC volume on Arc within tier caps. The most volume wins the pot.",
+  Custom: "A head-to-head shaped to your own rules. ArcRun reviews it and works with you to wire it in before it goes live.",
+};
+const CUSTOM_KIND_INDEX = 3;
 
 /// Create-challenge modal. Flat ink-on-canvas
 /// surface, stencil heading, tag-style kind picker, mono inputs with hairline
@@ -35,8 +47,27 @@ export function CreateChallengeModal({ open, onClose }: { open: boolean; onClose
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [createdId, setCreatedId] = useState<number | null>(null);
+  const [contact, setContact] = useState("");
+  const [spec, setSpec] = useState("");
+  const [requestSent, setRequestSent] = useState(false);
+  const [gateIdx, setGateIdx] = useState(0);
+
+  const isCustom = kind === CUSTOM_KIND_INDEX;
+  const kindName = CHALLENGE_KIND[kind] ?? "Prediction";
 
   if (!open) return null;
+
+  async function submitRequest() {
+    setBusy(true);
+    setError(null);
+    const res = await submitCustomRequest({ surface: "challenge", kind: "challenge", contact, spec });
+    setBusy(false);
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
+    setRequestSent(true);
+  }
 
   async function create() {
     setBusy(true);
@@ -61,8 +92,10 @@ export function CreateChallengeModal({ open, onClose }: { open: boolean; onClose
         args: [kind, stake6, max, joinDeadline, resolveDeadline, isPrivate],
       });
       await publicClient.waitForTransactionReceipt({ hash });
+      const preset = GATE_PRESETS[gateIdx]!;
+      await submitTierGate("challenge", id, preset.min, preset.max);
       setCreatedId(id);
-      reportEvent("challenge_create", { context: { id, kind, stake }, address });
+      reportEvent("challenge_create", { context: { id, kind, stake, gate: preset.label }, address });
     } catch (e) {
       setError(friendlyError(e, "could not create the challenge."));
       reportEvent("challenge_create_error", {
@@ -101,7 +134,19 @@ export function CreateChallengeModal({ open, onClose }: { open: boolean; onClose
             CREATE A CHALLENGE
           </h2>
 
-          {createdId !== null ? (
+          {requestSent ? (
+            <div className="mt-5">
+              <p className="font-mono text-sm leading-[1.6] text-ink-2">
+                request received. ArcRun will review your custom challenge and reach out using the contact you gave.
+              </p>
+              <button
+                onClick={onClose}
+                className="mt-6 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:text-ink"
+              >
+                CLOSE
+              </button>
+            </div>
+          ) : createdId !== null ? (
             <div className="mt-5">
               <p className="font-mono text-sm leading-[1.6] text-ink-2">
                 challenge #{createdId} is live. other operators can stake in with their agent before the join window
@@ -136,7 +181,7 @@ export function CreateChallengeModal({ open, onClose }: { open: boolean; onClose
                     {CHALLENGE_KIND.map((k, i) => (
                       <button
                         key={k}
-                        onClick={() => setKind(i)}
+                        onClick={() => { setKind(i); setError(null); }}
                         className={
                           kind === i
                             ? "border border-accent bg-accent px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-accent-ink"
@@ -147,48 +192,96 @@ export function CreateChallengeModal({ open, onClose }: { open: boolean; onClose
                       </button>
                     ))}
                   </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <div className={labelCls}>STAKE (USDC)</div>
-                    <input className={`mt-1.5 ${inputCls}`} value={stake} onChange={(e) => setStake(e.target.value)} inputMode="decimal" />
-                  </div>
-                  <div>
-                    <div className={labelCls}>MAX ENTRANTS</div>
-                    <input className={`mt-1.5 ${inputCls}`} value={maxEntrants} onChange={(e) => setMaxEntrants(e.target.value)} inputMode="numeric" />
-                  </div>
-                  <div>
-                    <div className={labelCls}>JOIN WINDOW (MIN)</div>
-                    <input className={`mt-1.5 ${inputCls}`} value={joinMin} onChange={(e) => setJoinMin(e.target.value)} inputMode="numeric" />
-                  </div>
-                  <div>
-                    <div className={labelCls}>RESOLVE WINDOW (MIN)</div>
-                    <input className={`mt-1.5 ${inputCls}`} value={resolveMin} onChange={(e) => setResolveMin(e.target.value)} inputMode="numeric" />
-                    <div className="mt-1 font-mono text-[10px] text-ink-3">min 10. shorter windows risk a cancel.</div>
+                  <div className="mt-3 border-l-2 border-[color:var(--hairline-strong)] bg-canvas-2 px-3 py-2.5">
+                    <p className="font-mono text-[11px] leading-[1.55] text-ink-2">{KIND_INFO[kindName]}</p>
                   </div>
                 </div>
 
-                <label className="flex items-center gap-2 font-mono text-sm text-ink-2">
-                  <input
-                    type="checkbox"
-                    checked={isPrivate}
-                    onChange={(e) => setIsPrivate(e.target.checked)}
-                    className="h-3.5 w-3.5 accent-[var(--accent)]"
-                  />
-                  invite-only (private)
-                </label>
+                {isCustom ? (
+                  <div className="flex flex-col gap-3">
+                    <div>
+                      <div className={labelCls}>HOW SHOULD ARCRUN REACH YOU</div>
+                      <input
+                        className={`mt-1.5 ${inputCls}`}
+                        value={contact}
+                        onChange={(e) => setContact(e.target.value)}
+                        placeholder="email, telegram, or x handle"
+                      />
+                    </div>
+                    <div>
+                      <div className={labelCls}>THE RULES YOU WANT</div>
+                      <textarea
+                        className={`mt-1.5 ${inputCls}`}
+                        rows={4}
+                        value={spec}
+                        onChange={(e) => setSpec(e.target.value)}
+                        placeholder="describe what the two agents do, how the winner is decided, and the stake you have in mind."
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <div className={labelCls}>STAKE (USDC)</div>
+                        <input className={`mt-1.5 ${inputCls}`} value={stake} onChange={(e) => setStake(e.target.value)} inputMode="decimal" />
+                      </div>
+                      <div>
+                        <div className={labelCls}>MAX ENTRANTS</div>
+                        <input className={`mt-1.5 ${inputCls}`} value={maxEntrants} onChange={(e) => setMaxEntrants(e.target.value)} inputMode="numeric" />
+                      </div>
+                      <div>
+                        <div className={labelCls}>JOIN WINDOW (MIN)</div>
+                        <input className={`mt-1.5 ${inputCls}`} value={joinMin} onChange={(e) => setJoinMin(e.target.value)} inputMode="numeric" />
+                      </div>
+                      <div>
+                        <div className={labelCls}>RESOLVE WINDOW (MIN)</div>
+                        <input className={`mt-1.5 ${inputCls}`} value={resolveMin} onChange={(e) => setResolveMin(e.target.value)} inputMode="numeric" />
+                        <div className="mt-1 font-mono text-[10px] text-ink-3">min 10. shorter windows risk a cancel.</div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className={labelCls}>WHO CAN ENTER</div>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {GATE_PRESETS.map((g, i) => (
+                          <button
+                            key={g.label}
+                            onClick={() => setGateIdx(i)}
+                            className={
+                              gateIdx === i
+                                ? "border border-accent bg-accent px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-accent-ink"
+                                : "border border-ink-3 bg-canvas px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:border-ink hover:text-ink"
+                            }
+                          >
+                            {g.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <label className="flex items-center gap-2 font-mono text-sm text-ink-2">
+                      <input
+                        type="checkbox"
+                        checked={isPrivate}
+                        onChange={(e) => setIsPrivate(e.target.checked)}
+                        className="h-3.5 w-3.5 accent-[var(--accent)]"
+                      />
+                      invite-only (private)
+                    </label>
+                  </>
+                )}
               </div>
 
               {error ? <p className="mt-4 font-mono text-xs text-[color:var(--err)]">{error}</p> : null}
 
               <button
-                onClick={create}
+                onClick={isCustom ? submitRequest : create}
                 disabled={busy}
                 className="mt-5 inline-flex w-full items-center justify-center gap-2 bg-accent px-4 py-3 font-mono text-[13px] uppercase tracking-[0.12em] text-accent-ink hover:bg-accent-press disabled:opacity-60"
                 style={{ clipPath: NOTCH }}
               >
-                {busy ? "CREATING…" : "CREATE CHALLENGE"} <span aria-hidden>→</span>
+                {busy ? "WORKING…" : isCustom ? "REQUEST REVIEW" : "CREATE CHALLENGE"} <span aria-hidden>→</span>
               </button>
             </>
           )}

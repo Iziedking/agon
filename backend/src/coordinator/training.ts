@@ -1,5 +1,6 @@
 import { config } from "../config/index.js";
 import { query } from "../db/pool.js";
+import { notify } from "../notifications/index.js";
 import type { AgentResult } from "../runners/types.js";
 
 /// Agent training: six stats, each 0..20, each level adds 1% to the relevant
@@ -150,6 +151,22 @@ export async function flushTrainingQueue(agentId?: number): Promise<number> {
     );
     // Drop from the queue.
     await query("delete from training_queue where agent_id = $1", [aid]);
+    // Notify the owner that training finished.
+    const ownerRow = await query<{ owner: string; name: string | null }>(
+      "select owner, name from agents where id = $1",
+      [aid],
+    );
+    const owner = ownerRow.rows[0]?.owner;
+    if (owner) {
+      const agentName = ownerRow.rows[0]?.name || `agent #${aid}`;
+      void notify(owner, {
+        kind: "training_done",
+        title: "Training complete",
+        body: `${agentName} reached ${r.stat} level ${r.to_level}. ready for the next contest.`,
+        href: "/workshop",
+        context: { agentId: aid, stat: r.stat, level: r.to_level },
+      });
+    }
   }
   return rows.length;
 }

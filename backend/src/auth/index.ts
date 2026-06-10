@@ -10,6 +10,8 @@ import { config } from "../config/index.js";
 import { publicClient } from "../chain/arc.js";
 import { query } from "../db/pool.js";
 import { logEvent } from "../events.js";
+import { notify } from "../notifications/index.js";
+import { setTierGate, getTierGate, type GateSurface } from "../lib/tierGate.js";
 import { merkleProof, payoutLeaf } from "../coordinator/merkle.js";
 import { redis } from "../redis.js";
 import { issueToken, requireAuth, SESSION_COOKIE } from "./jwt.js";
@@ -1605,8 +1607,182 @@ app.post("/mystery/claim", requireAuth, async (c) => {
     [agentId, trait.id],
   );
   void logEvent({ kind: "mystery_claim", address: operator, context: { agentId, traitId: trait.id, rarity: trait.rarity }, source: "auth" });
+  void notify(operator, {
+    kind: "mystery_win",
+    title: "Mystery box: you won a trait",
+    body: `${trait.name} (${trait.rarity}). equip it before your next entry.`,
+    href: "/workshop",
+    context: { traitId: trait.id, rarity: trait.rarity, agentId },
+  });
 
   return c.json({ rugged: false, trait, agentId });
+});
+
+// ----- Notifications -----
+
+/// Per-operator notification feed. Newest first, capped. `?unreadOnly=1`
+/// returns just the unread ones (used for the bell badge count).
+app.get("/notifications", requireAuth, async (c) => {
+  const operator = c.get("address").toLowerCase();
+  const unreadOnly = c.req.query("unreadOnly") === "1";
+  const { rows } = await query<{
+    id: string; kind: string; title: string; body: string | null;
+    href: string | null; read: boolean; created_at: Date;
+  }>(
+    `select id::text, kind, title, body, href, read, created_at
+       from notifications
+      where operator = $1 ${unreadOnly ? "and read = false" : ""}
+      order by created_at desc
+      limit 50`,
+    [operator],
+  );
+  const unread = rows.filter((r) => !r.read).length;
+  return c.json({
+    unread,
+    items: rows.map((r) => ({
+      id: Number(r.id),
+      kind: r.kind,
+      title: r.title,
+      body: r.body,
+      href: r.href,
+      read: r.read,
+      createdAt: r.created_at,
+    })),
+  });
+});
+
+/// Mark notifications read. Body { ids?: number[] }; omit ids to mark all.
+app.post("/notifications/read", requireAuth, async (c) => {
+  const operator = c.get("address").toLowerCase();
+  let ids: number[] = [];
+  try {
+    const body = await c.req.json<{ ids?: number[] }>();
+    ids = Array.isArray(body.ids) ? body.ids.filter((n) => Number.isFinite(n)) : [];
+  } catch { /* mark-all */ }
+  if (ids.length > 0) {
+    await query(
+      "update notifications set read = true where operator = $1 and id = any($2::bigint[])",
+      [operator, ids],
+    );
+  } else {
+    await query("update notifications set read = true where operator = $1 and read = false", [operator]);
+  }
+  return c.json({ ok: true });
+});
+
+// ----- Tier gates -----
+
+/// Record the tier gate a host chose for a contest or challenge they created.
+/// Verifies the caller is the on-chain creator before storing, so one
+/// operator can't re-gate another's campaign.
+app.post("/tier-gates", requireAuth, async (c) => {
+  const operator = c.get("address").toLowerCase();
+  let body: { surface?: string; eventId?: number; minTier?: number; maxTier?: number };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "bad json" }, 400);
+  }
+  const surface: GateSurface = body.surface === "challenge" ? "challenge" : "contest";
+  const eventId = Number(body.eventId);
+  if (!Number.isFinite(eventId) || eventId <= 0) return c.json({ error: "eventId required" }, 400);
+
+  // Creator check against chain truth.
+  try {
+    if (surface === "contest") {
+      const c2 = (await publicClient.readContract({
+        address: config.contracts.ContestEngine,
+        abi: [{ name: "getContest", type: "function", stateMutability: "view", inputs: [{ type: "uint256" }], outputs: [{ type: "tuple", components: [
+          { name: "contestType", type: "uint8" }, { name: "status", type: "uint8" }, { name: "winnerCutBps", type: "uint16" },
+          { name: "topN", type: "uint16" }, { name: "platformFeeBps", type: "uint16" }, { name: "sponsor", type: "address" },
+          { name: "protocolTarget", type: "address" }, { name: "metric", type: "bytes32" }, { name: "startTime", type: "uint64" },
+          { name: "endTime", type: "uint64" }, { name: "prizePool", type: "uint256" }, { name: "finalRoot", type: "bytes32" },
+        ] }] }] as const,
+        functionName: "getContest",
+        args: [BigInt(eventId)],
+      })) as { sponsor: string };
+      if (c2.sponsor.toLowerCase() !== operator) return c.json({ error: "only the host can gate this campaign" }, 403);
+    } else {
+      const ch = (await publicClient.readContract({
+        address: config.contracts.ChallengeArena,
+        abi: [{ name: "getChallenge", type: "function", stateMutability: "view", inputs: [{ type: "uint256" }], outputs: [{ type: "tuple", components: [
+          { name: "creator", type: "address" }, { name: "kind", type: "uint8" }, { name: "status", type: "uint8" },
+          { name: "isPrivate", type: "bool" }, { name: "platformFeeBps", type: "uint16" }, { name: "stake", type: "uint128" },
+          { name: "maxEntrants", type: "uint64" }, { name: "joinDeadline", type: "uint64" }, { name: "resolveDeadline", type: "uint64" },
+          { name: "winnerRoot", type: "bytes32" },
+        ] }] }] as const,
+        functionName: "getChallenge",
+        args: [BigInt(eventId)],
+      })) as { creator: string };
+      if (ch.creator.toLowerCase() !== operator) return c.json({ error: "only the host can gate this challenge" }, 403);
+    }
+  } catch {
+    return c.json({ error: "could not verify the campaign" }, 400);
+  }
+
+  await setTierGate(surface, eventId, Number(body.minTier ?? 0), Number(body.maxTier ?? 4));
+  return c.json({ ok: true });
+});
+
+/// Public read of a campaign's tier gate. Null when open to all tiers.
+app.get("/tier-gates/:surface/:id", async (c) => {
+  const surface: GateSurface = c.req.param("surface") === "challenge" ? "challenge" : "contest";
+  const eventId = Number(c.req.param("id"));
+  if (!Number.isFinite(eventId)) return c.json({ gate: null });
+  const gate = await getTierGate(surface, eventId);
+  return c.json({ gate });
+});
+
+// ----- Custom contest/challenge requests -----
+
+/// A project submits a custom-campaign request. ArcRun reviews it offline and
+/// coordinates the wiring. Persists the request, confirms to the operator,
+/// and flags it for admin review.
+app.post("/custom-requests", requireAuth, async (c) => {
+  const operator = c.get("address").toLowerCase();
+  let body: { surface?: string; kind?: string; contact?: string; spec?: string };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "bad json" }, 400);
+  }
+  const surface = body.surface === "challenge" ? "challenge" : "contest";
+  const contact = (body.contact ?? "").trim();
+  const spec = (body.spec ?? "").trim();
+  if (contact.length < 3) return c.json({ error: "add a contact so ArcRun can reach you" }, 400);
+  if (spec.length < 20) return c.json({ error: "describe the metric and rules in a bit more detail" }, 400);
+
+  const { rows } = await query<{ id: string }>(
+    `insert into custom_requests (operator, surface, kind, contact, spec)
+     values ($1, $2, $3, $4, $5) returning id::text`,
+    [operator, surface, (body.kind ?? "").trim() || null, contact, spec.slice(0, 4000)],
+  );
+  const id = Number(rows[0]?.id ?? 0);
+  void logEvent({ kind: "custom_request", address: operator, context: { id, surface }, source: "auth" });
+  void notify(operator, {
+    kind: "custom_request",
+    title: "Custom campaign request received",
+    body: "ArcRun will review it and reach out using the contact you gave.",
+    href: "/contests",
+    context: { id, surface },
+  });
+  return c.json({ ok: true, id });
+});
+
+/// Admin: list custom requests. Token-gated, newest first.
+app.get("/admin/custom-requests", async (c) => {
+  const adminToken = config.adminToken;
+  if (!adminToken) return c.json({ error: "admin disabled (set ADMIN_TOKEN)" }, 503);
+  if (c.req.header("x-admin-token") !== adminToken) return c.json({ error: "unauthorized" }, 401);
+  const status = c.req.query("status");
+  const { rows } = await query(
+    `select id::text, operator, surface, kind, contact, spec, status, created_at
+       from custom_requests
+      ${status ? "where status = $1" : ""}
+      order by created_at desc limit 200`,
+    status ? [status] : [],
+  );
+  return c.json({ requests: rows });
 });
 
 // ----- Strength breakdown (workshop panel) -----

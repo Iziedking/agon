@@ -10,6 +10,7 @@ import { startArcanaClaimerLoop } from "../lib/arcanaClaimer.js";
 import { pinArcanaMarketsForContest } from "../lib/arcanaPins.js";
 import { startTickScheduler } from "./predictionTicks.js";
 import { startSyndicateWarSettler } from "./syndicateWar.js";
+import { setTierGate } from "../lib/tierGate.js";
 
 /// Self-driving contest loop. With a funded COORDINATOR_PRIVATE_KEY in place, the
 /// coordinator opens a contest, streams its standings over the window, funds Scout
@@ -42,8 +43,10 @@ function randInt(min: number, max: number): number {
 const ROTATION = ["solver", "analyst", "scout"] as const;
 const TYPE_NAMES = ["scout", "analyst", "solver"]; // contract index to name
 
-function nextType(configured: string, cycle: number): string {
-  return configured === "rotate" ? ROTATION[cycle % ROTATION.length]! : configured;
+type ContestKind = (typeof ROTATION)[number];
+function nextType(configured: string, cycle: number): ContestKind {
+  if (configured === "scout" || configured === "analyst" || configured === "solver") return configured;
+  return ROTATION[cycle % ROTATION.length]!;
 }
 
 /// Contests currently being run, so the main loop and the due-sweeper never act
@@ -134,12 +137,13 @@ async function startRandomChallengeLoop(broadcast: (message: unknown) => void): 
   const stakeMax = Number(process.env.AUTOPILOT_CHALLENGE_STAKE_MAX ?? "2");
   // Join window: random per cycle inside [min, max]. Legacy single-value
   // env (AUTOPILOT_CHALLENGE_JOIN_SECONDS) is honored as both bounds for
-  // back-compat. Default range matches the contest autopilot: 3-25 min.
+  // back-compat. Default 15-45 min so operators get a real window to join.
   const legacyJoin = process.env.AUTOPILOT_CHALLENGE_JOIN_SECONDS;
-  const joinMin = Number(process.env.AUTOPILOT_CHALLENGE_JOIN_SECONDS_MIN ?? legacyJoin ?? "180");
-  const joinMax = Number(process.env.AUTOPILOT_CHALLENGE_JOIN_SECONDS_MAX ?? legacyJoin ?? "1500");
+  const joinMin = Number(process.env.AUTOPILOT_CHALLENGE_JOIN_SECONDS_MIN ?? legacyJoin ?? "900");
+  const joinMax = Number(process.env.AUTOPILOT_CHALLENGE_JOIN_SECONDS_MAX ?? legacyJoin ?? "2700");
   const resolveSecs = Number(process.env.AUTOPILOT_CHALLENGE_RESOLVE_SECONDS ?? "1800");
-  const cycleSecs = Number(process.env.AUTOPILOT_CHALLENGE_CYCLE_SECONDS ?? "600");
+  // One challenge per cycle. Default 1 hour between creations.
+  const cycleSecs = Number(process.env.AUTOPILOT_CHALLENGE_CYCLE_SECONDS ?? "3600");
   const kinds = (process.env.AUTOPILOT_CHALLENGE_KINDS ?? "0,1,2,3")
     .split(",")
     .map((s) => Number(s.trim()))
@@ -267,12 +271,19 @@ export async function startAutopilot(broadcast: (message: unknown) => void): Pro
   // back-compat. Default 3-25 min so the live lobby has time to gather
   // entries without every contest looking identical.
   const legacyDuration = process.env.AUTOPILOT_DURATION_SECONDS;
-  const durationMin = Number(process.env.AUTOPILOT_DURATION_SECONDS_MIN ?? legacyDuration ?? "180");
-  const durationMax = Number(process.env.AUTOPILOT_DURATION_SECONDS_MAX ?? legacyDuration ?? "1500");
-  const gapSeconds = Number(process.env.AUTOPILOT_GAP_SECONDS ?? "360");
+  // Join/run window per contest: random in [min, max]. Default 20-40 min.
+  const durationMin = Number(process.env.AUTOPILOT_DURATION_SECONDS_MIN ?? legacyDuration ?? "1200");
+  const durationMax = Number(process.env.AUTOPILOT_DURATION_SECONDS_MAX ?? legacyDuration ?? "2400");
+  // Cadence: target one new contest per this interval, measured from the
+  // start of each cycle. Default 1 hour. The loop sleeps whatever is left
+  // of the cadence after the contest's window elapses, so the window length
+  // does not change how often contests open. gapSeconds is the minimum gap
+  // when a contest runs nearly the whole cadence.
+  const cadenceSeconds = Number(process.env.AUTOPILOT_CADENCE_SECONDS ?? "3600");
+  const gapSeconds = Number(process.env.AUTOPILOT_GAP_SECONDS ?? "60");
 
   console.log(
-    `autopilot on: ${configured} contests, pool ${poolMin}-${poolMax} USDC, window ${durationMin}-${durationMax}s, ${gapSeconds}s gap`,
+    `autopilot on: ${configured} contests, pool ${poolMin}-${poolMax} USDC, window ${durationMin}-${durationMax}s, cadence ${cadenceSeconds}s`,
   );
 
   // A Scout rotation needs the master mnemonic to fund hot wallets; warn once.
@@ -307,58 +318,65 @@ export async function startAutopilot(broadcast: (message: unknown) => void): Pro
   // services the cadence scheduler also needs, so they're behind one call.
   await startBackgroundServices(broadcast);
 
-  for (let cycle = 0; ; cycle++) {
-    const type = nextType(configured, cycle);
-    // Randomize the pool per cycle so the activity feed reads as varied campaigns
-    // instead of identical pools. Two-decimal precision keeps amounts readable.
-    const lo = Math.min(poolMin, poolMax);
-    const hi = Math.max(poolMin, poolMax);
-    const poolUsdc = Math.round((lo + Math.random() * (hi - lo)) * 100) / 100;
-    // Randomize the join window per cycle too, so back-to-back contests
-    // don't all close at the same offset from open. Operators see a mix
-    // of quick races and longer-form windows.
+  const lo = Math.min(poolMin, poolMax);
+  const hi = Math.max(poolMin, poolMax);
+  // Each contest in a tier-gated pair gets its own pool and window.
+  const randomPool = () => Math.round((lo + Math.random() * (hi - lo)) * 100) / 100;
+
+  // Opens one contest, pins Arcana markets when analyst, records the tier
+  // gate, broadcasts contest_open, and kicks off the streaming run WITHOUT
+  // blocking the loop (so a second contest can open 15 min later). The run
+  // settles itself; failures are logged.
+  async function openGated(type: "scout" | "analyst" | "solver", gate: { min: number; max: number }) {
+    const poolUsdc = randomPool();
     const durationSeconds = randInt(durationMin, durationMax);
-    try {
-      const contestId = await openContest({ type, poolUsdc, durationSeconds });
-      console.log(
-        `autopilot: opened ${type} contest ${contestId} with ${poolUsdc} USDC pool, ${durationSeconds}s window`,
-      );
+    const contestId = await openContest({ type, poolUsdc, durationSeconds });
+    await setTierGate("contest", contestId, gate.min, gate.max).catch(() => {});
+    console.log(
+      `autopilot: opened ${type} contest ${contestId} (tier ${gate.min}-${gate.max}), ${poolUsdc} USDC, ${durationSeconds}s window`,
+    );
 
-      // For analyst contests, pin a set of Arcana markets up front so every
-      // entrant sees the same menu. Pinning is best-effort: if Arcana has
-      // no open markets, the runner falls back to the synthetic Brier
-      // branch and the contest still runs.
-      let arcanaMarkets: Array<{ id: number; title: string; category: string; endTime: number }> | undefined;
-      if (type === "analyst") {
-        const pinned = await pinArcanaMarketsForContest(contestId, 5).catch((err) => {
-          console.error(`autopilot: pin arcana failed for contest ${contestId}: ${err instanceof Error ? err.message : err}`);
-          return [];
-        });
-        if (pinned.length > 0) {
-          arcanaMarkets = pinned.map((m) => ({
-            id: Number(m.marketId),
-            title: m.title,
-            category: m.category,
-            endTime: Number(m.endTime),
-          }));
-          console.log(`autopilot: pinned ${pinned.length} arcana market(s) to contest ${contestId}`);
-        }
+    let arcanaMarkets: Array<{ id: number; title: string; category: string; endTime: number }> | undefined;
+    if (type === "analyst") {
+      const pinned = await pinArcanaMarketsForContest(contestId, 5).catch(() => []);
+      if (pinned.length > 0) {
+        arcanaMarkets = pinned.map((m) => ({
+          id: Number(m.marketId), title: m.title, category: m.category, endTime: Number(m.endTime),
+        }));
       }
+    }
 
-      broadcast({
-        type: "contest_open",
-        contestId,
-        contestType: type,
-        endsAt: Date.now() + durationSeconds * 1000,
-        ...(arcanaMarkets ? { arcanaMarkets } : {}),
-      });
+    broadcast({
+      type: "contest_open",
+      contestId,
+      contestType: type,
+      endsAt: Date.now() + durationSeconds * 1000,
+      ...(arcanaMarkets ? { arcanaMarkets } : {}),
+    });
 
-      // Streams standings over the window, then settles (or refunds if empty).
-      await runOnce(contestId, broadcast);
-      console.log(`autopilot: contest ${contestId} complete`);
+    void runOnce(contestId, broadcast)
+      .then(() => console.log(`autopilot: contest ${contestId} complete`))
+      .catch((err) => console.error(`autopilot: contest ${contestId} run failed:`, err instanceof Error ? err.message : err));
+  }
+
+  // Two contests per cadence window: one gated to lower-tier agents (0-2) and
+  // one to higher tiers (3-4), opened 15 minutes apart so tier 0 agents have a
+  // pool of their own instead of standing no chance against a tier 4.
+  for (let cycle = 0; ; cycle++) {
+    const cycleStart = Date.now();
+    try {
+      await openGated(nextType(configured, cycle * 2), { min: 0, max: 2 });
+      await sleep(LOW_HIGH_GAP_MS);
+      await openGated(nextType(configured, cycle * 2 + 1), { min: 3, max: 4 });
     } catch (err) {
       console.error("autopilot cycle failed:", err instanceof Error ? err.message : err);
     }
-    await sleep(gapSeconds * 1000);
+    // Pace to the cadence so the pair repeats roughly once per cadence window.
+    const elapsedSeconds = (Date.now() - cycleStart) / 1000;
+    const remaining = Math.max(gapSeconds, cadenceSeconds - elapsedSeconds);
+    await sleep(remaining * 1000);
   }
 }
+
+/// Gap between the lower-tier and higher-tier contest in each pair.
+const LOW_HIGH_GAP_MS = Number(process.env.AUTOPILOT_TIER_PAIR_GAP_SECONDS ?? "900") * 1000;

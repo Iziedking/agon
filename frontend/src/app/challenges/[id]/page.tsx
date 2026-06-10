@@ -159,6 +159,8 @@ export default async function ChallengePage({ params }: { params: Promise<{ id: 
                 status={ch.status}
                 stake={ch.stake.toString()}
                 joinDeadline={Number(ch.joinDeadline)}
+                isPrivate={ch.isPrivate}
+                creator={ch.creator}
               />
             </div>
           </aside>

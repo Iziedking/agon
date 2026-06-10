@@ -14,6 +14,8 @@ import { applyReputation, creditPoints, postValidatorFeedback, qualifiedField } 
 import { merkleRoot, payoutLeaf } from "./merkle.js";
 import { computePayoutsForMode, normalizeScoringMode } from "./payouts.js";
 import { applyTraitMultipliers, awardPlacementTraits, fetchAgentMultipliers } from "./traits.js";
+import { notify } from "../notifications/index.js";
+import { getTierGate, tierAllowed } from "../lib/tierGate.js";
 import {
   applyTrainingMultipliers,
   clampCombinedMultiplier,
@@ -87,6 +89,18 @@ async function fetchField(contestId: number, cType: number): Promise<ContestEntr
       }
     }
     field.push({ agentId: Number(r.agent_id), operator: r.operator as `0x${string}`, tier: Number(tier) });
+  }
+  // Enforce the tier gate: drop any entry whose agent tier falls outside the
+  // host's chosen range so an on-chain bypass can't score or win. Contest
+  // entries carry no stake, so there is nothing to refund.
+  const gate = await getTierGate("contest", contestId);
+  if (gate) {
+    const before = field.length;
+    const allowed = field.filter((e) => tierAllowed(gate, e.tier));
+    if (allowed.length !== before) {
+      console.log(`contest ${contestId}: tier gate ${gate.minTier}-${gate.maxTier} dropped ${before - allowed.length} out-of-range entr${before - allowed.length === 1 ? "y" : "ies"}`);
+    }
+    return allowed;
   }
   return field;
 }
@@ -285,6 +299,18 @@ export async function runContestById(contestId: number, broadcast: (message: unk
     contestId,
     winners: payouts.map((p, i) => ({ rank: i + 1, operator: p.operator, amount: p.amount.toString() })),
   });
+
+  // Notify each winner that they placed and can claim.
+  for (let i = 0; i < payouts.length; i++) {
+    const p = payouts[i]!;
+    void notify(p.operator, {
+      kind: "contest_win",
+      title: `You placed #${i + 1} in contest #${contestId}`,
+      body: `prize ${(Number(p.amount) / 1e6).toFixed(2)} USDC. claim it from the contest page.`,
+      href: `/contests/${contestId}`,
+      context: { contestId, rank: i + 1, amount: p.amount.toString() },
+    });
+  }
 
   // Post-settlement rewards (best-effort, each logs on failure):
   // in-game reputation, Cycles, ERC-8004 validator feedback, and one

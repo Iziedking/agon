@@ -14,6 +14,7 @@ import { merkleRoot, payoutLeaf } from "./merkle.js";
 import { computePayoutsForMode, normalizeScoringMode } from "./payouts.js";
 import { creditPoints, postValidatorFeedback } from "./reputation.js";
 import { applyTraitMultipliers, awardPlacementTraits, fetchAgentMultipliers } from "./traits.js";
+import { notify } from "../notifications/index.js";
 import {
   applySyndicateMultipliers,
   fetchSyndicateMultipliers,
@@ -546,5 +547,15 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
       challengeId,
       winners: payouts.map((p, i) => ({ rank: i + 1, operator: p.operator, amount: p.amount.toString() })),
     });
+    for (let i = 0; i < payouts.length; i++) {
+      const p = payouts[i]!;
+      void notify(p.operator, {
+        kind: "challenge_win",
+        title: `You won challenge #${challengeId}`,
+        body: `pot ${(Number(p.amount) / 1e6).toFixed(2)} USDC. claim it from the challenge page.`,
+        href: `/challenges/${challengeId}`,
+        context: { challengeId, rank: i + 1, amount: p.amount.toString() },
+      });
+    }
   }
 }

@@ -627,3 +627,52 @@ create table if not exists tier_pool_state (
   per_puzzle_cap_6    text not null default '0',
   last_updated_at     timestamptz not null default now()
 );
+
+-- Custom contest/challenge requests. A project that wants a campaign shaped
+-- to its own metric submits one here; ArcRun reviews it and coordinates the
+-- wiring offline. status moves pending -> reviewing -> accepted | declined.
+create table if not exists custom_requests (
+  id          bigserial primary key,
+  operator    text,
+  surface     text not null,            -- 'contest' | 'challenge'
+  kind        text,                     -- requested type/kind label
+  contact     text not null,            -- how ArcRun reaches the project
+  spec        text not null,            -- the metric and rules described
+  status      text not null default 'pending',
+  created_at  timestamptz not null default now()
+);
+create index if not exists custom_requests_status_idx on custom_requests(status, created_at desc);
+create index if not exists custom_requests_operator_idx on custom_requests(operator);
+
+-- In-app notifications. One row per operator-targeted event (new contest,
+-- private invite, win, balance change, training done, mystery win, custom
+-- request update). The auth API serves a per-operator feed; the coordinator
+-- and auth service insert rows and push them over the WebSocket. `kind`
+-- drives the icon and sound on the client; `body` is the rendered line.
+create table if not exists notifications (
+  id          bigserial primary key,
+  operator    text not null,
+  kind        text not null,
+  title       text not null,
+  body        text,
+  href        text,
+  context     jsonb,
+  read        boolean not null default false,
+  created_at  timestamptz not null default now()
+);
+create index if not exists notifications_operator_idx on notifications(operator, created_at desc);
+create index if not exists notifications_unread_idx on notifications(operator, read);
+
+-- Tier gates on contests and challenges. The contracts don't store a tier
+-- restriction, so the gate lives here: the host records it at creation, the
+-- entry UI blocks out-of-range agents, and the coordinator excludes any
+-- out-of-range entry at settlement so an on-chain bypass can't win. Absent
+-- row means open to all tiers (0..4).
+create table if not exists event_tier_gates (
+  surface     text not null,            -- 'contest' | 'challenge'
+  event_id    bigint not null,
+  min_tier    int not null default 0,
+  max_tier    int not null default 4,
+  created_at  timestamptz not null default now(),
+  primary key (surface, event_id)
+);
