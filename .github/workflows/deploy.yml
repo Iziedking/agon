@@ -36,7 +36,22 @@ jobs:
     needs: typecheck
     runs-on: ubuntu-latest
     steps:
+      # Skip the deploy until the VPS secrets exist, so pushes stay green
+      # before the server is provisioned. Configuring VPS_HOST (see
+      # first_deploy.md) enables this automatically with no workflow change.
+      - name: Check VPS is configured
+        id: gate
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          if [ -z "$VPS_HOST" ]; then
+            echo "VPS secrets not set yet; skipping deploy."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
       - name: Redeploy stack on the VPS
+        if: steps.gate.outputs.ready == 'true'
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.VPS_HOST }}
