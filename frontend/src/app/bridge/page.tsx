@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useAccount, useReadContract, useSwitchChain, useWalletClient } from "wagmi";
+import { useAccount, useBalance, useReadContract, useSwitchChain, useWalletClient } from "wagmi";
 import { erc20Abi, formatUnits, isAddress, parseUnits } from "viem";
 
 import { AppHeader } from "@/components/pengu/AppHeader";
@@ -15,6 +15,7 @@ import {
 } from "@/components/redesign";
 import { useAuth } from "@/hooks/useAuth";
 import { CONTRACTS, publicClient } from "@/lib/arc";
+import type { config as wagmiConfig } from "@/lib/wagmi";
 import {
   ARC_OUTBOUND_MIN_USDC,
   BRIDGE_CHAINS,
@@ -378,7 +379,7 @@ function WagmiBridge() {
           </BracketedCell>
         ) : null}
 
-        <GasFaucetCard />
+        <GasFaucetCard chain={source} />
       </section>
 
       <Footer />
@@ -386,37 +387,43 @@ function WagmiBridge() {
   );
 }
 
-/// Strip with one quick link per supported chain to that chain's testnet
-/// faucet. Bridges can fail at the burn step if the source wallet has no
-/// native gas; this card cuts the friction by giving the user a one-click
-/// path to top up every chain we support.
-function GasFaucetCard() {
+/// One compact card linking to the selected source chain's testnet faucet.
+/// Only surfaces when the connected wallet has no native gas on that chain,
+/// since that's the moment the send would fail.
+const GAS_DUST_THRESHOLD = 0.0005;
+
+function GasFaucetCard({ chain }: { chain: BridgeChain }) {
+  const { address } = useAccount();
+  const { data: native } = useBalance({
+    address,
+    chainId: chain.id as (typeof wagmiConfig)["chains"][number]["id"],
+    query: { enabled: Boolean(address), refetchInterval: 15_000 },
+  });
+  if (!chain.gasFaucetUrl || !address || !native) return null;
+  const hasGas = Number(formatUnits(native.value, native.decimals)) >= GAS_DUST_THRESHOLD;
+  if (hasGas) return null;
   return (
     <div className="mt-8">
-      <div className="mb-3 flex items-center justify-between font-mono text-[11px] uppercase tracking-[0.16em]">
-        <span><span aria-hidden className="text-accent">■</span> NEED GAS?</span>
-        <span className="text-ink-3">claim native testnet gas per chain</span>
-      </div>
       <BracketedCell pad="sm">
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
-          {BRIDGE_CHAINS.map((c) =>
-            c.gasFaucetUrl ? (
-              <a
-                key={c.id}
-                href={c.gasFaucetUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="group flex items-center gap-3 border border-[color:var(--hairline)] bg-canvas px-3 py-3 transition-colors hover:bg-canvas-2"
-              >
-                <ChainIcon chain={c} />
-                <div className="min-w-0 flex-1">
-                  <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink">{c.code}</div>
-                  <div className="truncate font-mono text-[10px] text-ink-3">{c.label}</div>
-                </div>
-                <span aria-hidden className="font-mono text-[12px] text-ink-3 group-hover:text-accent">↗</span>
-              </a>
-            ) : null,
-          )}
+        <div className="flex flex-wrap items-center gap-3 px-1 py-1">
+          <ChainIcon chain={chain} />
+          <div className="min-w-0 flex-1">
+            <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
+              <span aria-hidden className="text-accent">■</span> NEED GAS?
+            </div>
+            <div className="truncate font-mono text-[10px] text-ink-3">
+              claim free testnet gas on {chain.label.toLowerCase()}
+            </div>
+          </div>
+          <a
+            href={chain.gasFaucetUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="group flex items-center gap-2 border border-[color:var(--hairline)] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-ink transition-colors hover:bg-canvas-2"
+          >
+            CLAIM FAUCET
+            <span aria-hidden className="text-ink-3 group-hover:text-accent">↗</span>
+          </a>
         </div>
       </BracketedCell>
     </div>

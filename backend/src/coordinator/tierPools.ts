@@ -22,9 +22,10 @@ type Tier = (typeof TIERS)[number];
 export interface TierPool {
   tier: Tier;
   walletAddress: `0x${string}`;
-  /// Gateway-tracked spend doesn't reach a per-wallet on-chain balance, so
-  /// we don't snapshot a number here. The CLI refuses calls when the agent
-  /// wallet's Gateway balance can't cover the seller's price.
+  /// Session research budget remaining, seeded from
+  /// NANOPAY_SESSION_BUDGET_USDC at provisioning and decremented by the
+  /// runners as calls settle. Soft cap only — the CLI refuses calls when
+  /// the agent wallet's Gateway balance can't cover the seller's price.
   balanceUsdc6: bigint;
   perPuzzleCap6: bigint;
 }
@@ -54,12 +55,13 @@ export async function ensureTierPools(): Promise<void> {
   }
 
   const next = new Map<Tier, TierPool>();
+  const sessionBudget6 = usdcToInt6(config.nanopay.sessionBudgetUsdc);
   for (const tier of TIERS) {
     const perPuzzleCap6 = usdcToInt6(config.nanopay.perPuzzleByTier[tier] ?? 0);
     const pool: TierPool = {
       tier,
       walletAddress: wallet,
-      balanceUsdc6: 0n,
+      balanceUsdc6: sessionBudget6,
       perPuzzleCap6,
     };
     next.set(tier, pool);

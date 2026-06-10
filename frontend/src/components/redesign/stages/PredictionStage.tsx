@@ -496,6 +496,15 @@ function ArcanaBranch({
                           T {analyst.ticksUsed ?? 0}/{analyst.ticksBudget}
                         </span>
                       ) : null}
+                      {analyst?.researchSpent6 && BigInt(analyst.researchSpent6) > 0n ? (
+                        <span
+                          className="border border-[color:var(--hairline-strong)] px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em] text-accent"
+                          title={`paid ${analyst.researchLabel ?? "research"} before trading`}
+                        >
+                          ${(Number(BigInt(analyst.researchSpent6)) / 1e6).toFixed(4)}
+                          {analyst.researchLabel ? ` · ${analyst.researchLabel}` : " RESEARCH"}
+                        </span>
+                      ) : null}
                     </div>
                     <div className="font-mono text-[10px] text-ink-3">
                       {positions.length > 0

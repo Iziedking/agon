@@ -112,22 +112,16 @@ export async function fetchChallenge(id: number): Promise<Challenge | null> {
 }
 
 /// Read every challenge from chain. Used by the challenges grid. The
-/// list grew past 300 entries which means a naive Promise.all over all
-/// ids fires ~600 parallel RPC reads; the public arc rpc rate-limits
-/// past that and individual reads start to drop, which made the tail
-/// of the list (newest challenges) randomly disappear. Chunking caps
-/// concurrency at CHUNK so the RPC stays happy.
-const CHUNK = 30;
+/// publicClient batches all reads scheduled in the same tick through
+/// Multicall3 (see lib/arc.ts), so this Promise.all lands on the RPC as a
+/// few aggregate calls instead of ~600 individual reads. The old manual
+/// CHUNK=30 loop predates batching and is gone: its sequential awaits
+/// blocked the batcher and made the page crawl one chunk at a time.
 export async function fetchChallenges(): Promise<Challenge[]> {
   const count = (await nextChallengeId()) - 1;
   if (count <= 0) return [];
   const ids: number[] = Array.from({ length: count }, (_, i) => i + 1);
-  const out: (Challenge | null)[] = [];
-  for (let i = 0; i < ids.length; i += CHUNK) {
-    const slice = ids.slice(i, i + CHUNK);
-    const part = await Promise.all(slice.map((id) => fetchChallenge(id)));
-    out.push(...part);
-  }
+  const out = await Promise.all(ids.map((id) => fetchChallenge(id)));
   return out.filter((c): c is Challenge => c !== null).reverse();
 }
 

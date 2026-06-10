@@ -11,6 +11,11 @@ import { resolveRuntimeParams, loadAgentStats, type RuntimeParams } from "./llm/
 import { effectiveStrength } from "../scoring/strength.js";
 import { getLoadout } from "../auth/loadouts.js";
 import { applyRouting } from "./solver.js";
+import {
+  paidAgentResearch,
+  buildPriceUrl,
+  summarizePrices,
+} from "../nanopayments/research.js";
 
 /// ScoutRunner: each agent has a deterministic hot wallet derived from the
 /// master mnemonic by agentId. The agent performs tier-limited real USDC
@@ -130,6 +135,10 @@ interface ScoutStrategy {
   opsCount: number;
   perOpUsdc6: bigint;
   rationale: string;
+  /// Settled research spend (USDC 6-dec) made before picking, when the
+  /// tier unlocked the paid market check. Surfaced on the live stage.
+  researchSpent6?: bigint;
+  researchLabel?: string;
 }
 
 async function pickScoutStrategy(
@@ -164,6 +173,23 @@ async function pickScoutStrategy(
     return { opsCount: defaultOps, perOpUsdc6: defaultPerOp, rationale: "tier default" };
   }
 
+  // Tier-gated paid market check before committing the strategy. The
+  // Scout buys current spot prices so its sizing decision reflects market
+  // conditions instead of a blind default. Null means proceed without.
+  let research: { usdcAmount6: bigint; label: string; summary: string } | null = null;
+  if (config.nanopay.scoutPriceEndpoint) {
+    research = await paidAgentResearch({
+      agentId: entry.agentId,
+      contestId,
+      puzzleIdx: 0,
+      tier: entry.tier,
+      endpoint: buildPriceUrl(config.nanopay.scoutPriceEndpoint, ["ETH", "USDC"]),
+      label: config.nanopay.scoutPriceLabel,
+      chain: config.nanopay.scoutPriceChain,
+      summarize: summarizePrices,
+    }).catch(() => null);
+  }
+
   const systemPrompt = [
     "You are an ArcRun scout agent picking a USDC volume execution strategy.",
     "Choose how many self-transfer ops to run and how much USDC to move per op.",
@@ -172,6 +198,7 @@ async function pickScoutStrategy(
     "PER_OP_USDC: <decimal>",
   ].join(" ");
   const userPrompt = [
+    ...(research ? [`MARKET (${research.label}): ${research.summary}`] : []),
     `You control a hot wallet with ${Number(balance) / 1_000_000} USDC.`,
     `Tier cap: at most ${limit.maxOps} ops, at most ${Number(limit.maxPerOpUsdc6) / 1_000_000} USDC per op.`,
     "Pick ops + per_op_usdc to maximize total volume while leaving headroom for gas.",
@@ -240,6 +267,8 @@ async function pickScoutStrategy(
     opsCount,
     perOpUsdc6: perOp,
     rationale: response.slice(0, 200),
+    researchSpent6: research?.usdcAmount6,
+    researchLabel: research?.label,
   };
 }
 
@@ -321,7 +350,18 @@ export class ScoutRunner implements Runner {
             traits: Number(strength.traits.toFixed(3)),
           },
         },
-        progress: { kind: "scout" as const, opsCount: exec.opsCount, recent, recentVolumes },
+        progress: {
+          kind: "scout" as const,
+          opsCount: exec.opsCount,
+          recent,
+          recentVolumes,
+          researchSpent6: strategy.researchSpent6 && strategy.researchSpent6 > 0n
+            ? strategy.researchSpent6.toString()
+            : undefined,
+          researchLabel: strategy.researchSpent6 && strategy.researchSpent6 > 0n
+            ? strategy.researchLabel
+            : undefined,
+        },
       });
     }
     return results;

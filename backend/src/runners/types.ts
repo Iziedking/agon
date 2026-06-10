@@ -61,6 +61,12 @@ export type AgentProgress =
       /// the live stage so viewers see who's spent their decisions.
       ticksUsed?: number;
       ticksBudget?: number;
+      /// Total settled x402 research spend this round (USDC 6-dec as a
+      /// string). Top-tier analysts pay for news headlines before picking
+      /// trades; this surfaces the spend on the live stage.
+      researchSpent6?: string;
+      /// Endpoint label for the research spend (e.g. "Gloria AI news").
+      researchLabel?: string;
       /// Arcana Markets positions the agent took this round, when the
       /// runner routed through Arcana instead of (or in addition to) the
       /// synthetic Brier-scored question loop. Empty / undefined when the
@@ -95,6 +101,11 @@ export type AgentProgress =
       /// USDC amount (6-decimals string) per recent tx, aligned 1:1 with
       /// `recent[]`. Lets the live tape show value-weighted activity.
       recentVolumes?: string[];
+      /// Settled x402 research spend before the strategy pick (USDC 6-dec
+      /// as a string). Top-tier scouts pay for spot prices before sizing.
+      researchSpent6?: string;
+      /// Endpoint label for the research spend (e.g. "Alchemy prices").
+      researchLabel?: string;
     };
 
 export interface AgentResult {

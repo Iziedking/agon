@@ -215,7 +215,7 @@ export default function OperatorPage() {
               <SettingRow
                 k="theme"
                 label="THEME"
-                hint="warm paper canvas or deep ink."
+                hint="Select your preferred theme."
                 options={[
                   { value: "light", label: "LIGHT" },
                   { value: "dark", label: "DARK" },

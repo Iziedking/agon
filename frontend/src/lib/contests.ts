@@ -90,26 +90,40 @@ export function statusClass(status: number): string {
   return "";
 }
 
+async function fetchContestOnce(id: number): Promise<Contest | null> {
+  const [c, entrants] = await Promise.all([
+    publicClient.readContract({
+      address: CONTRACTS.ContestEngine,
+      abi: contestEngineAbi,
+      functionName: "getContest",
+      args: [BigInt(id)],
+    }),
+    publicClient.readContract({
+      address: CONTRACTS.ContestEngine,
+      abi: contestEngineAbi,
+      functionName: "entryCount",
+      args: [BigInt(id)],
+    }),
+  ]);
+  if (c.sponsor === ZERO) return null;
+  return { id, ...c, entrants: Number(entrants) };
+}
+
+/// Read one contest with one retry on transient RPC failure. A silent
+/// catch-to-null here made throttled reads drop cards from the grid with
+/// no signal; only a genuine "sponsor is zero" returns null now.
 export async function fetchContest(id: number): Promise<Contest | null> {
   try {
-    const [c, entrants] = await Promise.all([
-      publicClient.readContract({
-        address: CONTRACTS.ContestEngine,
-        abi: contestEngineAbi,
-        functionName: "getContest",
-        args: [BigInt(id)],
-      }),
-      publicClient.readContract({
-        address: CONTRACTS.ContestEngine,
-        abi: contestEngineAbi,
-        functionName: "entryCount",
-        args: [BigInt(id)],
-      }),
-    ]);
-    if (c.sponsor === ZERO) return null;
-    return { id, ...c, entrants: Number(entrants) };
-  } catch {
-    return null;
+    return await fetchContestOnce(id);
+  } catch (e1) {
+    await new Promise((r) => setTimeout(r, 250));
+    try {
+      return await fetchContestOnce(id);
+    } catch (e2) {
+      // eslint-disable-next-line no-console
+      console.warn(`fetchContest(${id}) failed after retry`, e2 ?? e1);
+      return null;
+    }
   }
 }
 

@@ -183,6 +183,30 @@ const envSchema = z.object({
   NANOPAY_SETTLEMENT_CHAIN: z.string().default("MATIC"),
   // Hard ceiling per call so a runaway prompt can't burn the pool.
   NANOPAY_MAX_PER_CALL_USDC: z.coerce.number().positive().default(2.0),
+  // Research spend is a premium ability: only agents at this tier or above
+  // pay for outside data. The upgrade pitch is literal — buy tier 3 and
+  // your agent starts buying market intelligence.
+  NANOPAY_MIN_RESEARCH_TIER: z.coerce.number().int().min(0).max(4).default(3),
+  // Session-lifetime research budget per tier pool in USDC (decimal). The
+  // in-memory pool starts at this number and drains as calls settle; the
+  // CLI's Gateway balance check is the hard backstop behind it.
+  NANOPAY_SESSION_BUDGET_USDC: z.coerce.number().nonnegative().default(2.0),
+  // Default chain for solver web-search research (Exa sells on Base).
+  NANOPAY_RESEARCH_CHAIN: z.string().default("BASE"),
+  // Analyst research: paid crypto news headlines fetched before trade
+  // picks. Gloria AI sells 20 sentiment-tagged headlines per keyword for
+  // $0.05, settled as plain on-chain USDC on Base (the agent wallet's
+  // Base USDC balance pays, NOT the Gateway pool — keep it topped up).
+  NANOPAY_ANALYST_NEWS_ENDPOINT: z.string().optional(),
+  NANOPAY_ANALYST_NEWS_LABEL: z.string().default("Gloria AI news"),
+  NANOPAY_ANALYST_NEWS_CHAIN: z.string().default("BASE"),
+  // Scout research: paid spot prices fetched before the volume strategy.
+  // AIsa's CoinGecko proxy sells prices for $0.008 and settles on Polygon
+  // (MATIC) — the same Gateway domain the eco deposit funds, so it draws
+  // from the existing pool. Smoke-tested live 2026-06-10.
+  NANOPAY_SCOUT_PRICE_ENDPOINT: z.string().optional(),
+  NANOPAY_SCOUT_PRICE_LABEL: z.string().default("AIsa market prices"),
+  NANOPAY_SCOUT_PRICE_CHAIN: z.string().default("MATIC"),
 
   // Phase 1 prediction-tick scheduler. When true (default), agents make
   // multiple tier-gated decisions across the trade window via the
@@ -363,6 +387,15 @@ export const config = {
     settlementChain: env.NANOPAY_SETTLEMENT_CHAIN,
     maxPerCallUsdc: env.NANOPAY_MAX_PER_CALL_USDC,
     walletAddress: env.NANOPAY_WALLET_ADDRESS,
+    minResearchTier: env.NANOPAY_MIN_RESEARCH_TIER,
+    sessionBudgetUsdc: env.NANOPAY_SESSION_BUDGET_USDC,
+    researchChain: env.NANOPAY_RESEARCH_CHAIN,
+    analystNewsEndpoint: env.NANOPAY_ANALYST_NEWS_ENDPOINT,
+    analystNewsLabel: env.NANOPAY_ANALYST_NEWS_LABEL,
+    analystNewsChain: env.NANOPAY_ANALYST_NEWS_CHAIN,
+    scoutPriceEndpoint: env.NANOPAY_SCOUT_PRICE_ENDPOINT,
+    scoutPriceLabel: env.NANOPAY_SCOUT_PRICE_LABEL,
+    scoutPriceChain: env.NANOPAY_SCOUT_PRICE_CHAIN,
   },
   analystAutofund: {
     enabled: env.ANALYST_AUTOFUND,

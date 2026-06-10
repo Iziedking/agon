@@ -132,7 +132,9 @@ export function VolumeStage({ entries }: { entries: StandingsEntry[] }) {
               const accent = VARIANT_COLOR[variant]!;
               const total = totalsByAgent.get(e.agentId) ?? 0n;
               const pct = maxTotal > 0n ? Number((total * 100n) / maxTotal) : 0;
-              const ops = e.progress?.kind === "scout" ? e.progress.opsCount : 0;
+              const scout = e.progress?.kind === "scout" ? e.progress : null;
+              const ops = scout?.opsCount ?? 0;
+              const research6 = scout?.researchSpent6 ? BigInt(scout.researchSpent6) : 0n;
               return (
                 <div
                   key={e.agentId}
@@ -154,7 +156,18 @@ export function VolumeStage({ entries }: { entries: StandingsEntry[] }) {
                   </div>
                   <div className="mt-1 flex items-center justify-between font-mono text-[10px] text-ink-3">
                     <span>RANK #{e.rank}</span>
-                    <span>{ops} OPS</span>
+                    <span className="flex items-center gap-2">
+                      {research6 > 0n ? (
+                        <span
+                          className="text-accent"
+                          title={`paid ${scout?.researchLabel ?? "research"} before sizing this run`}
+                        >
+                          ${(Number(research6) / 1e6).toFixed(4)}
+                          {scout?.researchLabel ? ` · ${scout.researchLabel.toUpperCase()}` : " RESEARCH"}
+                        </span>
+                      ) : null}
+                      <span>{ops} OPS</span>
+                    </span>
                   </div>
                 </div>
               );

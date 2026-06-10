@@ -24,7 +24,19 @@ export function nftLink(tokenId: bigint | number | string): string {
 export const USDC = "0x3600000000000000000000000000000000000000" as const;
 
 /// Read-only client for fetching on-chain state (no wallet needed).
-export const publicClient = createPublicClient({ chain: arcTestnet, transport: http() });
+///
+/// `batch.multicall` is the load-bearing line: list pages read every contest
+/// and challenge ever created (2 eth_calls each, hundreds of items), and
+/// firing those as individual RPC requests rate-limits the public Arc RPC —
+/// pages crawled and throttled reads silently dropped cards from the grid.
+/// With batching on, viem aggregates all reads scheduled in the same tick
+/// through Multicall3 (deployed on Arc at the canonical address), so a full
+/// list load is a handful of RPC round-trips instead of 600.
+export const publicClient = createPublicClient({
+  chain: arcTestnet,
+  transport: http(),
+  batch: { multicall: { wait: 16, batchSize: 4_096 } },
+});
 
 /// Deployed ArcRun contracts on Arc testnet. Public addresses; the canonical
 /// record is contracts/deployments/arc-testnet.json.

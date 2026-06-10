@@ -24,6 +24,13 @@ import { maybeAutofundAgent } from "../lib/autofund.js";
 import { usdcMinimalAbi, arcanaMarketsAbi } from "../chain/abi.js";
 import { fetchPinnedArcanaMarkets } from "../lib/arcanaPins.js";
 import { tickBudget } from "../scoring/prediction.js";
+import {
+  paidAgentResearch,
+  sumAgentResearchSpend,
+  newsKeywordFor,
+  buildNewsUrl,
+  summarizeNews,
+} from "../nanopayments/research.js";
 
 /// AnalystRunner: agents predict the answer to binary questions about live
 /// Arc chain state (current block number, gas price, ArcRun contest count,
@@ -224,6 +231,11 @@ async function runArcanaContest(
       );
       const ticksUsed = Number(tickRows[0]?.n ?? 0);
 
+      // Research spend happens in the tick scheduler (or the legacy pick
+      // pass), so the scoring pass reads the audit rows back to surface
+      // "this agent paid $X for news" on the live stage.
+      const research = await sumAgentResearchSpend(contestId, e.agentId);
+
       return {
         agentId: e.agentId,
         operator: e.operator,
@@ -245,6 +257,8 @@ async function runArcanaContest(
           calls: [],
           ticksUsed,
           ticksBudget: budget,
+          researchSpent6: research.total6 > 0n ? research.total6.toString() : undefined,
+          researchLabel: research.total6 > 0n ? (research.label ?? undefined) : undefined,
           arcana: positions.map((p) => ({
             marketId: Number(p.marketId),
             title: p.title,
@@ -539,11 +553,33 @@ async function pickArcanaTrades(
     "PICK <market_id> <YES|NO> <stake_usdc>",
     "End with one line: DONE",
   ].join(" ");
+
+  // Tier-gated paid news pull (same mechanic as the tick scheduler) for
+  // the legacy single-pass path. Null means trade on priors alone.
+  let newsBlock = "";
+  if (config.nanopay.analystNewsEndpoint) {
+    const keyword = newsKeywordFor(menu.map((m) => m.title));
+    const research = await paidAgentResearch({
+      agentId: entry.agentId,
+      contestId,
+      puzzleIdx: 0,
+      tier: entry.tier,
+      endpoint: buildNewsUrl(config.nanopay.analystNewsEndpoint, keyword),
+      label: config.nanopay.analystNewsLabel,
+      chain: config.nanopay.analystNewsChain,
+      summarize: summarizeNews,
+    }).catch(() => null);
+    if (research) {
+      newsBlock = `NEWS (${research.label}, keyword "${keyword}"):\n${research.summary}\n`;
+    }
+  }
+
   const userPrompt = [
+    newsBlock,
     `Open markets you may trade (${menu.length}):`,
     menuLines,
     `Pick at most ${slotsLeft} markets. Be selective — pass on a market by not picking it.`,
-  ].join("\n");
+  ].filter(Boolean).join("\n");
 
   let response = "";
   let verdict: "correct" | "wrong" | "skipped" | "error" = "correct";

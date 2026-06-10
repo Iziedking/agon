@@ -21,6 +21,12 @@ import {
   hedgeCostMultiplier,
   impliedYesProb,
 } from "../scoring/prediction.js";
+import {
+  paidAgentResearch,
+  newsKeywordFor,
+  buildNewsUrl,
+  summarizeNews,
+} from "../nanopayments/research.js";
 
 /// Phase 1: tick-driven prediction model.
 ///
@@ -222,8 +228,32 @@ export async function fireAgentTick(ctx: TickContext): Promise<TickOutcome | nul
     "REASON <short why>",
   ].join(" ");
 
+  // Tier-gated paid news pull. Top-tier analysts buy fresh headlines about
+  // whatever the pinned markets are about before deciding — the upgrade
+  // mechanic in its purest form. Null (lower tier, no endpoint, drained
+  // budget, payment rejected) means the tick proceeds on priors alone.
+  let newsBlock: string[] = [];
+  if (params?.llmEnabled && config.nanopay.analystNewsEndpoint) {
+    const keyword = newsKeywordFor(pinned.map((m) => m.title));
+    const research = await paidAgentResearch({
+      agentId: ctx.agentId,
+      contestId: ctx.source === "contest" ? ctx.eventId : undefined,
+      challengeId: ctx.source === "challenge" ? ctx.eventId : undefined,
+      puzzleIdx: eligibility.ticksUsed,
+      tier: ctx.tier,
+      endpoint: buildNewsUrl(config.nanopay.analystNewsEndpoint, keyword),
+      label: config.nanopay.analystNewsLabel,
+      chain: config.nanopay.analystNewsChain,
+      summarize: summarizeNews,
+    }).catch(() => null);
+    if (research) {
+      newsBlock = [`NEWS (${research.label}, keyword "${keyword}"):`, research.summary];
+    }
+  }
+
   const userPrompt = [
     `tick ${eligibility.ticksUsed + 1} of ${eligibility.budget}`,
+    ...newsBlock,
     "MARKETS:",
     ...marketLines,
     "YOUR PRIOR DECISIONS:",

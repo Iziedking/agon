@@ -14,12 +14,8 @@ import {
   type CallResult,
 } from "./llm/client.js";
 import { resolveRuntimeParams, loadAgentStats, type RuntimeParams } from "./llm/tierConfig.js";
-import {
-  getTierPool,
-  recordTierPoolSpend,
-  type TierPool,
-} from "../coordinator/tierPools.js";
-import { payX402 } from "../nanopayments/index.js";
+import { getTierPool, type TierPool } from "../coordinator/tierPools.js";
+import { paidAgentResearch, summarizeNews } from "../nanopayments/research.js";
 import { config } from "../config/index.js";
 import { extractSearchTerm, buildResearchUrl } from "./puzzles/research.js";
 
@@ -55,16 +51,25 @@ function researchEndpointFor(
 
 /// Per-kind URL + payload shaper. Research puzzles bake the search term into
 /// the URL as a query string (Predexon's GET routes 404 when params live in
-/// the body). Other kinds keep the POST-style envelope until we hit them.
+/// the body). Exa's search endpoint takes a POST with a `query` body, so any
+/// kind pointed at api.exa.ai reshapes the prompt into that envelope. Other
+/// kinds keep the generic POST envelope until we hit them.
 function shapeResearchCall(
   kind: PuzzleKind,
   baseUrl: string,
   prompt: string,
-): { url: string; payload?: Record<string, unknown> } {
+): { url: string; payload?: Record<string, unknown>; chain?: string } {
   if (kind === "research") {
     const term = extractSearchTerm(prompt);
     if (term) return { url: buildResearchUrl(baseUrl, term) };
     return { url: baseUrl };
+  }
+  if (baseUrl.includes("api.exa.ai")) {
+    return {
+      url: baseUrl,
+      payload: { query: prompt.slice(0, 300), numResults: 3 },
+      chain: config.nanopay.researchChain,
+    };
   }
   return { url: baseUrl, payload: { question: prompt, kind } };
 }
@@ -529,54 +534,36 @@ async function maybeResearchSpend(opts: {
   if (!tierPool) return null;
   const endpoint = researchEndpointFor(puzzle.kind);
   if (!endpoint) return null;
-  // Per-puzzle cap is the smaller of the tier's cap and whatever the pool
-  // has left. A drained pool short-circuits to no spend.
-  const capCandidate = tierPool.perPuzzleCap6;
-  const remaining = tierPool.balanceUsdc6 < capCandidate ? tierPool.balanceUsdc6 : capCandidate;
-  if (remaining <= 0n) return null;
 
   const shaped = shapeResearchCall(puzzle.kind, endpoint.url, puzzle.prompt);
-  const result = await payX402({
+  // Tier gate, pool budget, payment, and spend bookkeeping all live in the
+  // shared helper so the three runners stay behaviorally identical.
+  return paidAgentResearch({
     agentId,
     contestId,
     puzzleIdx,
     tier,
     endpoint: shaped.url,
-    endpointLabel: endpoint.label,
-    payload: shaped.payload,
-    budgetRemaining6: remaining,
-    walletAddress: tierPool.walletAddress,
-  });
-  if (result.status !== "settled") return null;
-
-  // Decrement the in-memory pool balance and persist lifetime spend so the
-  // next puzzle starts with the right number.
-  tierPool.balanceUsdc6 = tierPool.balanceUsdc6 - result.usdcAmount6;
-  void recordTierPoolSpend(tier, result.usdcAmount6);
-
-  return {
-    usdcAmount6: result.usdcAmount6,
     label: endpoint.label,
-    summary: summarizeResearch(result.response, puzzle.kind),
-  };
+    payload: shaped.payload,
+    chain: shaped.chain,
+    summarize: (response) => summarizeResearch(response, puzzle.kind),
+  });
 }
 
 /// Reduces a paid endpoint response to a compact prompt snippet. For the
 /// research kind we extract just the count + status breakdown so the LLM
-/// can bucket without parsing 50 KB of JSON. For other kinds we fall back
-/// to a truncated stringify.
+/// can bucket without parsing 50 KB of JSON. Other kinds (quiz/classify
+/// pointed at a web-search seller like Exa) extract result titles via the
+/// shared headline summarizer, which itself falls back to a truncated
+/// stringify when no title-shaped array is present.
 function summarizeResearch(response: unknown, kind: PuzzleKind): string {
   if (response === undefined || response === null) return "no data";
   if (kind === "research") {
     const r = summarizePredexonMarkets(response);
     if (r) return r;
   }
-  try {
-    if (typeof response === "string") return response.slice(0, 600);
-    return JSON.stringify(response).slice(0, 600);
-  } catch {
-    return String(response).slice(0, 600);
-  }
+  return summarizeNews(response);
 }
 
 /// Predexon's markets endpoint returns `{markets: [...], pagination: {count,

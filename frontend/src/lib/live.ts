@@ -48,6 +48,11 @@ export type AgentProgress =
       /// "T 3/8" chip per agent so viewers see decision pacing.
       ticksUsed?: number;
       ticksBudget?: number;
+      /// Total settled x402 research spend this round (USDC 6-dec string).
+      /// Top-tier analysts buy news headlines before picking trades.
+      researchSpent6?: string;
+      /// Endpoint label for the research spend (e.g. "Gloria AI news").
+      researchLabel?: string;
       /// Arcana Markets positions the agent took this round. Present when
       /// the contest routed through Arcana; undefined / empty when it fell
       /// back to synthetic predictions.
@@ -73,6 +78,11 @@ export type AgentProgress =
       recent: string[];
       /// USDC amount (6-decimals string) per recent tx, aligned with `recent[]`.
       recentVolumes?: string[];
+      /// Settled x402 research spend before the strategy pick (USDC 6-dec
+      /// string). Top-tier scouts buy spot prices before sizing.
+      researchSpent6?: string;
+      /// Endpoint label for the research spend (e.g. "Alchemy prices").
+      researchLabel?: string;
     };
 
 export interface StandingsEntry {
