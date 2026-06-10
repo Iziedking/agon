@@ -28,6 +28,11 @@ coverage/
 *.key
 **/keystore/
 
+# Production deploy secrets and backups (live only on the VPS)
+deploy/.env
+backups/
+**/backups/
+
 # Editor / OS
 .vscode/
 .idea/
@@ -45,6 +50,8 @@ yarn-debug.log*
 .claude/
 done.md
 todo.md
+deploy.md
+first_deploy.md
 docs/images
 # Local-only operator scripts (admin keys, role grants, etc.)
 scripts/

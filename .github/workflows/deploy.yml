@@ -1,0 +1,53 @@
+name: deploy backend
+
+# Frontend deploys are handled by Vercel's own GitHub integration. This
+# workflow owns the backend: it type-checks, then redeploys the VPS stack
+# over SSH. It runs only when something the backend cares about changes.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "contracts/deployments/**"
+      - "deploy/**"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-backend
+  cancel-in-progress: false
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install backend deps
+        working-directory: backend
+        run: npm install --no-audit --no-fund
+      - name: Type-check backend
+        working-directory: backend
+        run: npm run typecheck
+
+  deploy:
+    needs: typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Redeploy stack on the VPS
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_SSH_PORT || 22 }}
+          script: |
+            set -e
+            cd /opt/arcrun
+            git fetch --all --prune
+            git reset --hard origin/main
+            git submodule update --init --recursive
+            docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build --remove-orphans
+            docker image prune -f

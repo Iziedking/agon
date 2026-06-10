@@ -1,0 +1,120 @@
+# Local development stack. One `docker compose -f docker-compose.local.yml up
+# --build` from the backend folder spins up the whole thing on one machine:
+# Postgres, Redis, the schema migration, the indexer, the auth service, the
+# coordinator, and the frontend. Secrets and chain config come from
+# backend/.env; the DB and Redis hosts are overridden to the in-network
+# service names.
+#
+# Production uses deploy/docker-compose.yml instead (Caddy TLS, no frontend
+# container, Postgres and Redis kept off the host network). See deploy.md.
+
+x-backend: &backend
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: arcrun-backend:local
+  env_file: .env
+  environment:
+    DATABASE_URL: postgres://arcrun:arcrun@postgres:5432/arcrun
+    REDIS_URL: redis://redis:6379
+  volumes:
+    # config reads ../contracts/deployments/arc-testnet.json relative to /app/backend.
+    - ../contracts/deployments:/app/contracts/deployments:ro
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: arcrun-postgres-local
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: arcrun
+      POSTGRES_PASSWORD: arcrun
+      POSTGRES_DB: arcrun
+    ports:
+      - "5434:5432"
+    volumes:
+      - arcrun_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U arcrun -d arcrun"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: arcrun-redis-local
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    volumes:
+      - arcrun_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    <<: *backend
+    container_name: arcrun-migrate-local
+    command: npm run migrate
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  indexer:
+    <<: *backend
+    container_name: arcrun-indexer-local
+    command: npm run indexer
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  auth:
+    <<: *backend
+    container_name: arcrun-auth-local
+    command: npm run auth
+    ports:
+      - "8082:8082"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  coordinator:
+    <<: *backend
+    container_name: arcrun-coordinator-local
+    command: npm run coordinator
+    ports:
+      - "8788:8788"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    image: arcrun-frontend:local
+    container_name: arcrun-frontend-local
+    ports:
+      - "3000:3000"
+    depends_on:
+      - auth
+      - coordinator
+    restart: unless-stopped
+
+volumes:
+  arcrun_pgdata:
+  arcrun_redisdata:

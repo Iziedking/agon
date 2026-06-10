@@ -115,7 +115,8 @@ export const BRIDGE_CHAINS: BridgeChain[] = [
     usdcAddress: "0x5425890298aed601595a70AB815c96711a31Bc65",
     explorer: "https://testnet.snowtrace.io",
     iconUrl: `${ICON_BASE}avalanche.jpg`,
-    gasFaucetUrl: "https://www.alchemy.com/faucets/avalanche-fuji",
+    // Alchemy doesn't host a Fuji faucet; QuickNode dispenses AVAX.
+    gasFaucetUrl: "https://faucet.quicknode.com/avalanche/fuji",
   },
   {
     id: unichainSepolia.id,
@@ -125,7 +126,8 @@ export const BRIDGE_CHAINS: BridgeChain[] = [
     usdcAddress: "0x31d0220469e10c4E71834a79b1f276d740d3768F",
     explorer: "https://sepolia.uniscan.xyz",
     iconUrl: `${ICON_BASE}unichain.jpg`,
-    gasFaucetUrl: "https://www.alchemy.com/faucets/unichain-sepolia",
+    // Alchemy doesn't host a Unichain faucet; QuickNode dispenses gas (ETH).
+    gasFaucetUrl: "https://faucet.quicknode.com/unichain/sepolia",
   },
 ];
 

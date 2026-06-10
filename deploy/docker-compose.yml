@@ -1,19 +1,23 @@
-# One `docker compose up --build` spins up the whole stack: Postgres, Redis, the
-# schema migration, the indexer, the auth service, the coordinator, and the
-# frontend. Secrets and chain config come from backend/.env; the DB and Redis
-# hosts are overridden to the in-network service names.
+# Production backend stack for the VPS. The frontend is hosted on Vercel and
+# is not part of this file. Caddy terminates TLS for the api and ws
+# subdomains; Postgres and Redis stay on the internal Docker network with no
+# host ports. Secrets come from deploy/.env (gitignored, created once on the
+# host). See deploy.md for first-time setup and the backup/recovery runbook.
+#
+# The GitHub Actions deploy job runs, over SSH on the VPS:
+#   docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build
 
 x-backend: &backend
   build:
-    context: .
+    context: ../backend
     dockerfile: Dockerfile
-  image: arcrun-backend:local
+  image: arcrun-backend:prod
   env_file: .env
   environment:
-    DATABASE_URL: postgres://arcrun:arcrun@postgres:5432/arcrun
+    NODE_ENV: production
+    DATABASE_URL: postgres://arcrun:${POSTGRES_PASSWORD}@postgres:5432/arcrun
     REDIS_URL: redis://redis:6379
   volumes:
-    # config reads ../contracts/deployments/arc-testnet.json relative to /app/backend.
     - ../contracts/deployments:/app/contracts/deployments:ro
   restart: unless-stopped
 
@@ -24,10 +28,8 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: arcrun
-      POSTGRES_PASSWORD: arcrun
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: arcrun
-    ports:
-      - "5434:5432"
     volumes:
       - arcrun_pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -40,8 +42,6 @@ services:
     image: redis:7-alpine
     container_name: arcrun-redis
     restart: unless-stopped
-    ports:
-      - "6380:6379"
     volumes:
       - arcrun_redisdata:/data
     healthcheck:
@@ -73,8 +73,8 @@ services:
     <<: *backend
     container_name: arcrun-auth
     command: npm run auth
-    ports:
-      - "8082:8082"
+    expose:
+      - "8082"
     depends_on:
       postgres:
         condition: service_healthy
@@ -87,8 +87,8 @@ services:
     <<: *backend
     container_name: arcrun-coordinator
     command: npm run coordinator
-    ports:
-      - "8788:8788"
+    expose:
+      - "8788"
     depends_on:
       postgres:
         condition: service_healthy
@@ -97,19 +97,23 @@ services:
       migrate:
         condition: service_completed_successfully
 
-  frontend:
-    build:
-      context: ../frontend
-      dockerfile: Dockerfile
-    image: arcrun-frontend:local
-    container_name: arcrun-frontend
+  caddy:
+    image: caddy:2-alpine
+    container_name: arcrun-caddy
+    restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
     depends_on:
       - auth
       - coordinator
-    restart: unless-stopped
 
 volumes:
   arcrun_pgdata:
   arcrun_redisdata:
+  caddy_data:
+  caddy_config:

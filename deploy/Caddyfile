@@ -1,0 +1,14 @@
+# Reverse proxy for the ArcRun backend. Caddy fetches and renews TLS
+# certificates automatically through Let's Encrypt. For that to work, ports
+# 80 and 443 must be open on the VPS and both subdomains must resolve to this
+# host's public IP. The frontend (arcrun.xyz) lives on Vercel and is not
+# served here.
+
+api.arcrun.xyz {
+	reverse_proxy auth:8082
+}
+
+# WebSocket upgrades are handled transparently by reverse_proxy.
+ws.arcrun.xyz {
+	reverse_proxy coordinator:8788
+}

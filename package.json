@@ -6,6 +6,9 @@
   "scripts": {
     "dev:frontend": "cd frontend && npm run dev",
     "build:frontend": "cd frontend && npm run build",
+    "stack:up": "docker compose -f backend/docker-compose.local.yml up --build -d",
+    "stack:down": "docker compose -f backend/docker-compose.local.yml down",
+    "stack:logs": "docker compose -f backend/docker-compose.local.yml logs -f",
     "migrate": "cd backend && npm run migrate",
     "indexer": "cd backend && npm run indexer",
     "indexer:dev": "cd backend && npm run indexer:dev",
