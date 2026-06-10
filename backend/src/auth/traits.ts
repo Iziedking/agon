@@ -62,37 +62,41 @@ export const TRAITS: Trait[] = [
   { id: "circle_protocol",  name: "Circle Protocol",   rarity: "legendary", body: "calibrated scoring across the board." },
 ];
 
-/// Rarity weights for the mystery picker. Re-balanced from 60/25/12/3 so
-/// commons aren't every other roll. Combined with the adaptive rug chance
-/// below, a user who has cleared all the commons now feels the difference
-/// when their pool is rare-and-above.
+/// Rarity weights for the mystery picker. Skewed toward commons so a winning
+/// roll is usually a light buff, and the trophies stay scarce. Placements are
+/// the better path to epics and legendaries (see RANK_WEIGHTS in
+/// coordinator/traits.ts): a contest win carries far higher odds of a rare
+/// drop than the mystery box does.
 const RARITY_WEIGHT: Record<Rarity, number> = {
-  common: 45,
-  rare: 28,
-  epic: 18,
-  legendary: 9,
+  common: 56,
+  rare: 26,
+  epic: 13,
+  legendary: 5,
 };
 
-/// Base rug chance. The active value scales with how many traits the user
-/// already owns so completing the set is earned rather than handed out.
-/// Read via `rugChanceFor(ownedCount)`; the export here stays for any
-/// UI surface that wants a "typical" number.
+/// Base rug chance: how often a roll returns nothing. Traits are meant to be
+/// scarce, so even a fresh operator loses close to half their rolls. The
+/// active value scales up with how many traits the operator already owns, so
+/// completing the set is a grind rather than a handout. Read via
+/// `rugChanceFor(ownedCount)`; the export here is the "typical" number a UI
+/// can show. Override with MYSTERY_RUG_CHANCE (0..1).
 export const RUG_CHANCE: number = (() => {
   const raw = Number(process.env.MYSTERY_RUG_CHANCE);
-  if (!Number.isFinite(raw) || raw < 0 || raw > 1) return 0.15;
+  if (!Number.isFinite(raw) || raw < 0 || raw > 1) return 0.45;
   return raw;
 })();
 
-/// Adaptive rug chance per how many traits the user already owns. Early
-/// game feels rewarding, late game feels earned. Override the base via
-/// MYSTERY_RUG_CHANCE; the multipliers below stack on top.
+/// Adaptive rug chance by how many traits the operator already owns. A
+/// fresh roll loses ~45% of the time; by the time they hold most of the
+/// catalogue, rolls lose ~85% of the time. The multipliers stack on the
+/// base, and the result is capped so a roll always keeps some chance.
 export function rugChanceFor(ownedCount: number): number {
   const base = RUG_CHANCE;
   let factor = 1.0;
-  if (ownedCount >= 4) factor = 1.4;
-  if (ownedCount >= 8) factor = 2.2;
-  if (ownedCount >= 16) factor = 3.0;
-  return Math.min(0.7, base * factor);
+  if (ownedCount >= 4) factor = 1.25;
+  if (ownedCount >= 8) factor = 1.55;
+  if (ownedCount >= 16) factor = 1.9;
+  return Math.min(0.9, base * factor);
 }
 
 /// Pick one trait at random, weighted by rarity. Returns null if the list is
