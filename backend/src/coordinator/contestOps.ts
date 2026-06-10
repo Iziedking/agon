@@ -128,14 +128,37 @@ export async function findDueContests(lookback = 100): Promise<OpenContestInfo[]
 
 /// Top each agent's Scout hot wallet up to `fundUsdc` from the coordinator wallet.
 /// Skips wallets that already hold enough. One USDC balance covers gas and transfers on Arc.
-export async function fundHotWallets(agentIds: number[], fundUsdc: number): Promise<void> {
-  if (agentIds.length === 0) return;
+/// Fund each agent's hot wallet up to its tier funding cap, bounded by the
+/// affordability ceiling (SCOUT_FUND_MAX_USDC) so the coordinator wallet
+/// isn't drained on testnet. Pass `{agentId, tier}` so higher-tier agents
+/// get bigger wallets (and so bigger swaps and transfers); a flat number is
+/// still accepted for callers that don't carry tiers.
+export async function fundHotWallets(
+  agents: Array<{ agentId: number; tier: number }> | number[],
+  flatFundUsdc?: number,
+): Promise<void> {
+  if (agents.length === 0) return;
   if (!config.scout.masterMnemonic) throw new Error("SCOUT_MASTER_MNEMONIC required to derive hot wallets");
 
+  const fundMax = config.scout.fundMaxUsdc;
+  const tierCap = (tier: number) => {
+    const t = Math.min(Math.max(Math.floor(tier), 0), 4);
+    return config.scout.fundingByTier[t] ?? 50;
+  };
+  // Normalize to {agentId, fundUsdc}. A flat list funds everyone the same.
+  const targets =
+    typeof agents[0] === "number"
+      ? (agents as number[]).map((agentId) => ({ agentId, fundUsdc: flatFundUsdc ?? fundMax }))
+      : (agents as Array<{ agentId: number; tier: number }>).map((e) => ({
+          agentId: e.agentId,
+          fundUsdc: Math.min(tierCap(e.tier), fundMax),
+        }));
+
   const wallet = coordinatorWallet();
-  const fund = BigInt(Math.round(fundUsdc * 1e6));
-  for (const id of agentIds) {
-    const w = deriveHotWallet(id);
+  for (const { agentId, fundUsdc } of targets) {
+    const fund = BigInt(Math.round(fundUsdc * 1e6));
+    if (fund <= 0n) continue;
+    const w = deriveHotWallet(agentId);
     const bal = (await publicClient.readContract({
       address: config.external.USDC,
       abi: erc20,
@@ -147,7 +170,7 @@ export async function fundHotWallets(agentIds: number[], fundUsdc: number): Prom
       address: config.external.USDC,
       abi: erc20,
       functionName: "transfer",
-      args: [w.address, fund],
+      args: [w.address, fund - bal],
     });
     await publicClient.waitForTransactionReceipt({ hash });
   }

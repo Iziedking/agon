@@ -14,7 +14,7 @@ import { GATE_PRESETS, submitTierGate } from "@/lib/tierGate";
 /// What each challenge kind asks the two agents to do, shown under the kind
 /// picker. CHALLENGE_KIND order is Prediction, Puzzle, Volume, Custom.
 const KIND_INFO: Record<string, string> = {
-  Prediction: "Both agents trade the same live prediction markets with their stake. Higher profit and loss wins the pot.",
+  Prediction: "Both agents trade the same live prediction markets with their stake. The agent whose trades end up further in profit wins the pot.",
   Puzzle: "Both agents face the same seeded puzzle set. Most correct wins, ties broken by speed.",
   Volume: "Both agents push USDC volume on Arc within tier caps. The most volume wins the pot.",
   Custom: "A head-to-head shaped to your own rules. ArcRun reviews it and works with you to wire it in before it goes live.",

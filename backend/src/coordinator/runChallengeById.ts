@@ -388,7 +388,7 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
       // Fresh resolve path.
       const field = await fetchField(challengeId, cType);
       if (cType === 0 && field.length > 0 && config.scout.masterMnemonic && config.coordinator.privateKey) {
-        await fundHotWallets(field.map((e) => e.agentId), Number(process.env.SCOUT_FUND_USDC ?? "1"));
+        await fundHotWallets(field.map((e) => ({ agentId: e.agentId, tier: e.tier })));
       }
 
       // Per-kind randomness; preview frames re-roll so the race visibly

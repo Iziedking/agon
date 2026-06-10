@@ -22,7 +22,7 @@ const TYPE_INFO: Record<string, { blurb: string; metric: string }> = {
   },
   ANALYST: {
     blurb: "Agents trade live binary prediction markets with real USDC and manage positions across the window.",
-    metric: "Scored on profit and loss. Best for forecasting and market-making campaigns.",
+    metric: "Scored on net trading result: the agent that ends furthest in profit ranks first. Best for forecasting and market-making campaigns.",
   },
   SOLVER: {
     blurb: "Agents solve a seeded set of puzzles: arithmetic, classification, routing, and market research.",

@@ -195,9 +195,8 @@ export async function runContestById(contestId: number, broadcast: (message: unk
   // those wallets need USDC first. Top them up from the coordinator wallet (one
   // Arc USDC balance covers gas and transfers). Pure contests skip this.
   if (cType === 0 && field.length > 0 && config.scout.masterMnemonic && config.coordinator.privateKey) {
-    const fundUsdc = Number(process.env.SCOUT_FUND_USDC ?? "1");
-    console.log(`contest ${contestId}: topping up ${field.length} Scout hot wallet(s) to ${fundUsdc} USDC`);
-    await fundHotWallets(field.map((e) => e.agentId), fundUsdc);
+    console.log(`contest ${contestId}: topping up ${field.length} Scout hot wallet(s) to their tier funding cap (max ${config.scout.fundMaxUsdc} USDC)`);
+    await fundHotWallets(field.map((e) => ({ agentId: e.agentId, tier: e.tier })));
   }
 
   const baseResults = await finalScores(cType, contestId, field);

@@ -117,11 +117,20 @@ const envSchema = z.object({
   SCOUT_DAILY_SWAP_CAP: z.coerce.number().int().positive().default(1024),
   // How many swaps a single contest run performs (bounded by the daily cap).
   SCOUT_SWAPS_PER_RUN: z.coerce.number().int().positive().default(24),
-  // Per-tier funding ceiling in whole USDC, comma-separated, index 0..4.
+  // Per-tier hot-wallet funding in whole USDC, comma-separated, index 0..4.
+  // This is how much USDC the coordinator puts into each agent's hot wallet
+  // before a Scout/Volume round, so it sets the size of swaps and transfers.
+  // The float is swept back after settlement, so a higher number costs only
+  // gas/swap fees, not the principal. Custom campaigns can raise an agent's
+  // working balance further when their requirements are wired in.
   SCOUT_FUNDING_BY_TIER: z
     .string()
-    .default("50,150,500,1500,5000")
+    .default("10,25,50,100,200")
     .transform((s) => s.split(",").map((n) => Number(n.trim()))),
+  // Safety ceiling on the per-round transfer, so a misconfigured tier value
+  // can't drain the coordinator wallet before the sweep returns the float.
+  // Set above the largest tier amount so it never clips normal funding.
+  SCOUT_FUND_MAX_USDC: z.coerce.number().nonnegative().default(200),
 
   // ERC-8004 validator wallet for on-chain reputation feedback. Must be a
   // separate address from the agent NFT owner (the AgentRegistry contract).
@@ -361,6 +370,7 @@ export const config = {
     swapTokenOut: env.SCOUT_SWAP_TOKEN_OUT,
     dailySwapCap: env.SCOUT_DAILY_SWAP_CAP,
     swapsPerRun: env.SCOUT_SWAPS_PER_RUN,
+    fundMaxUsdc: env.SCOUT_FUND_MAX_USDC,
     // Per-agent funding ceiling by tier (index 0..4), in whole USDC. Tier
     // caps how much an agent can put to work; the daily swap budget is the
     // same for every tier, so a smaller agent must swap more to match the
