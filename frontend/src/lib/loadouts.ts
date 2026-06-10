@@ -100,13 +100,38 @@ export interface EntryCaps {
   atCap: boolean;
 }
 
-export async function fetchEntryCaps(address: string): Promise<EntryCaps> {
+/// The live-entry cap is 3 per surface: 3 live contests AND 3 live
+/// challenges. Pass the surface so the count is scoped to it.
+export async function fetchEntryCaps(
+  address: string,
+  surface?: "contest" | "challenge",
+): Promise<EntryCaps> {
+  const q = surface ? `?surface=${surface}` : "";
   try {
-    const res = await fetch(`${AUTH_URL}/operators/${address}/entry-caps`, { cache: "no-store" });
+    const res = await fetch(`${AUTH_URL}/operators/${address}/entry-caps${q}`, { cache: "no-store" });
     if (!res.ok) return { liveCount: 0, maxLive: 3, atCap: false };
     return (await res.json()) as EntryCaps;
   } catch {
     return { liveCount: 0, maxLive: 3, atCap: false };
+  }
+}
+
+export interface SwapBudget {
+  enabled: boolean;
+  remaining: number;
+  cap: number;
+}
+
+/// Scout daily swap budget for one agent, shared across every contest and
+/// challenge. When `enabled` and `remaining` is 0, the agent can't run a
+/// volume event until the UTC reset.
+export async function fetchSwapBudget(agentId: number): Promise<SwapBudget> {
+  try {
+    const res = await fetch(`${AUTH_URL}/scout/swap-budget/${agentId}`, { cache: "no-store" });
+    if (!res.ok) return { enabled: false, remaining: 1024, cap: 1024 };
+    return (await res.json()) as SwapBudget;
+  } catch {
+    return { enabled: false, remaining: 1024, cap: 1024 };
   }
 }
 

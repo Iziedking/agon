@@ -161,6 +161,7 @@ export default async function ChallengePage({ params }: { params: Promise<{ id: 
                 joinDeadline={Number(ch.joinDeadline)}
                 isPrivate={ch.isPrivate}
                 creator={ch.creator}
+                kind={ch.kind}
               />
             </div>
           </aside>

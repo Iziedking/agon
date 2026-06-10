@@ -17,7 +17,7 @@ import { reportEvent } from "@/lib/report";
 import { LoginCTA } from "@/components/pengu/LoginCTA";
 import { AgentPicker } from "@/components/pengu/AgentPicker";
 import { EquipTraitsPanel } from "@/components/pengu/EquipTraitsPanel";
-import { fetchEntryCaps, fetchInEvent } from "@/lib/loadouts";
+import { fetchEntryCaps, fetchInEvent, fetchSwapBudget } from "@/lib/loadouts";
 
 const card =
   "relative border border-[color:var(--hairline)] bg-canvas p-6 lg:sticky lg:top-20";
@@ -30,7 +30,7 @@ type Payout = { amount: bigint; proof: `0x${string}`[] };
 /// connected wallet and at least one agent. When the operator owns more than one
 /// agent, a picker lets them choose which agent enters; the choice persists in
 /// localStorage via the active-agent helpers in `lib/agents`.
-export function EnterPanel({ contestId, status, endTime }: { contestId: number; status: number; endTime: number }) {
+export function EnterPanel({ contestId, status, endTime, contestType }: { contestId: number; status: number; endTime: number; contestType?: number }) {
   const { address, isSignedIn: isConnected } = useOperatorAddress();
   const { me } = useAuth();
   const { writeContractAsync } = useArcWrite();
@@ -43,6 +43,7 @@ export function EnterPanel({ contestId, status, endTime }: { contestId: number; 
   const [error, setError] = useState<string | null>(null);
   const [capInfo, setCapInfo] = useState<{ liveCount: number; maxLive: number; atCap: boolean } | null>(null);
   const [opAlreadyIn, setOpAlreadyIn] = useState(false);
+  const [outOfSwaps, setOutOfSwaps] = useState(false);
 
   // Fall back to the first agent when the active-id resolution is racing
   // the agents fetch. Without this fallback the panel briefly renders the
@@ -54,7 +55,7 @@ export function EnterPanel({ contestId, status, endTime }: { contestId: number; 
     if (!address || status !== 1) return;
     let live = true;
     void Promise.all([
-      fetchEntryCaps(address),
+      fetchEntryCaps(address, "contest"),
       fetchInEvent(address, "contest", contestId),
     ]).then(([caps, inEvent]) => {
       if (!live) return;
@@ -63,6 +64,19 @@ export function EnterPanel({ contestId, status, endTime }: { contestId: number; 
     });
     return () => { live = false; };
   }, [address, contestId, status, entered]);
+
+  // Scout contests run real swaps; gate on the agent's shared daily budget.
+  useEffect(() => {
+    if (status !== 1 || contestType !== 0 || activeId == null) {
+      setOutOfSwaps(false);
+      return;
+    }
+    let live = true;
+    void fetchSwapBudget(activeId).then((b) => {
+      if (live) setOutOfSwaps(b.enabled && b.remaining <= 0);
+    });
+    return () => { live = false; };
+  }, [status, contestType, activeId, entered]);
 
   const load = useCallback(async () => {
     if (!address) {
@@ -236,16 +250,18 @@ export function EnterPanel({ contestId, status, endTime }: { contestId: number; 
         cyclesShort && me && typeof me.cycles === "number"
           ? Math.max(0, (me.cyclesRequired ?? 0) - me.cycles)
           : 0;
-      const disabled = busy || atLiveCap || blockedByOtherAgent || cyclesShort;
+      const disabled = busy || atLiveCap || blockedByOtherAgent || cyclesShort || outOfSwaps;
       const buttonLabel = busy
         ? "entering…"
         : cyclesShort
           ? `need ${cyclesNeeded} more cycles`
           : atLiveCap
-            ? `${capInfo!.liveCount} / ${capInfo!.maxLive} live entries`
+            ? `${capInfo!.liveCount} / ${capInfo!.maxLive} live contests`
             : blockedByOtherAgent
               ? "another agent already entered"
-              : "enter contest";
+              : outOfSwaps
+                ? "agent out of swaps today"
+                : "enter contest";
       return (
         <>
           <AgentPicker agents={agents} activeId={active.id} onPick={pick} />

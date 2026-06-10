@@ -136,6 +136,32 @@ export async function liveEntryCount(operator: string): Promise<number> {
   return Number(rows[0]?.n ?? "0");
 }
 
+/// Live entries for one surface only. The cap is 3 live contests AND 3 live
+/// challenges per operator (counted separately), so a busy operator can hold
+/// up to six live entries total, three of each kind.
+export async function liveEntryCountForSurface(
+  operator: string,
+  surface: "contest" | "challenge",
+): Promise<number> {
+  const op = operator.toLowerCase();
+  if (surface === "contest") {
+    const { rows } = await query<{ n: string }>(
+      `select count(*)::text as n from entries e
+         join contests c on c.id = e.contest_id
+        where e.operator = $1 and (c.status = 'open' or c.status = 'scoring')`,
+      [op],
+    );
+    return Number(rows[0]?.n ?? "0");
+  }
+  const { rows } = await query<{ n: string }>(
+    `select count(*)::text as n from challenge_entries ce
+       join challenges ch on ch.id = ce.challenge_id
+      where ce.operator = $1 and (ch.status = 'open' or ch.status = 'locked')`,
+    [op],
+  );
+  return Number(rows[0]?.n ?? "0");
+}
+
 /// True if this operator already has any agent entered in this event.
 export async function hasAgentInEvent(
   source: "contest" | "challenge",

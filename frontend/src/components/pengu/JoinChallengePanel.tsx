@@ -26,7 +26,7 @@ import { reportEvent } from "@/lib/report";
 import { LoginCTA } from "@/components/pengu/LoginCTA";
 import { AgentPicker } from "@/components/pengu/AgentPicker";
 import { EquipTraitsPanel } from "@/components/pengu/EquipTraitsPanel";
-import { fetchEntryCaps, fetchInEvent } from "@/lib/loadouts";
+import { fetchEntryCaps, fetchInEvent, fetchSwapBudget } from "@/lib/loadouts";
 
 const card =
   "relative border border-[color:var(--hairline)] bg-canvas p-6 lg:sticky lg:top-20";
@@ -46,6 +46,7 @@ export function JoinChallengePanel({
   joinDeadline,
   isPrivate = false,
   creator,
+  kind,
 }: {
   id: number;
   status: number;
@@ -53,6 +54,7 @@ export function JoinChallengePanel({
   joinDeadline: number; // epoch seconds
   isPrivate?: boolean;
   creator?: string;
+  kind?: number; // 0 prediction, 1 puzzle, 2 volume, 3 custom
 }) {
   const { address, isSignedIn: isConnected } = useOperatorAddress();
   const { writeContractAsync } = useArcWrite();
@@ -73,12 +75,13 @@ export function JoinChallengePanel({
   const [error, setError] = useState<string | null>(null);
   const [capInfo, setCapInfo] = useState<{ liveCount: number; maxLive: number; atCap: boolean } | null>(null);
   const [opAlreadyIn, setOpAlreadyIn] = useState(false);
+  const [outOfSwaps, setOutOfSwaps] = useState(false);
 
   useEffect(() => {
     if (!address || status !== 0) return;
     let live = true;
     void Promise.all([
-      fetchEntryCaps(address),
+      fetchEntryCaps(address, "challenge"),
       fetchInEvent(address, "challenge", id),
     ]).then(([caps, inEvent]) => {
       if (!live) return;
@@ -87,6 +90,20 @@ export function JoinChallengePanel({
     });
     return () => { live = false; };
   }, [address, id, status, joined]);
+
+  // Volume challenges run real swaps; if this agent has spent its shared daily
+  // swap budget on other events, it can't run another one until the reset.
+  useEffect(() => {
+    if (status !== 0 || kind !== 2 || activeId == null) {
+      setOutOfSwaps(false);
+      return;
+    }
+    let live = true;
+    void fetchSwapBudget(activeId).then((b) => {
+      if (live) setOutOfSwaps(b.enabled && b.remaining <= 0);
+    });
+    return () => { live = false; };
+  }, [status, kind, activeId, joined]);
 
   // Fall back to the first agent when the active-id resolution is racing
   // the agents fetch. Without this fallback the panel briefly renders the
@@ -291,14 +308,16 @@ export function JoinChallengePanel({
     }
     const atLiveCap = capInfo?.atCap ?? false;
     const blockedByOtherAgent = opAlreadyIn && !joined;
-    const disabled = busy || atLiveCap || blockedByOtherAgent;
+    const disabled = busy || atLiveCap || blockedByOtherAgent || outOfSwaps;
     const buttonLabel = busy
       ? (step ?? "working…")
       : atLiveCap
-        ? `${capInfo!.liveCount} / ${capInfo!.maxLive} live entries`
+        ? `${capInfo!.liveCount} / ${capInfo!.maxLive} live challenges`
         : blockedByOtherAgent
           ? "another agent already joined"
-          : `join for ${formatUsdc(stakeWei)}`;
+          : outOfSwaps
+            ? "agent out of swaps today"
+            : `join for ${formatUsdc(stakeWei)}`;
     return (
       <>
         <AgentPicker agents={agents} activeId={active.id} onPick={pick} />
@@ -315,6 +334,11 @@ export function JoinChallengePanel({
         <button onClick={join} disabled={disabled} className={`mt-5 ${chunky}`}>
           {buttonLabel}
         </button>
+        {outOfSwaps ? (
+          <p className="mt-3 font-mono text-xs text-ink-2">
+            this agent used its daily swap budget on other events. it can enter another volume event after the daily reset, or pick a different agent.
+          </p>
+        ) : null}
       </>
     );
   }

@@ -64,6 +64,7 @@ import {
   ownedTraitPool,
   TRAIT_CATALOGUE,
   liveEntryCount,
+  liveEntryCountForSurface,
   hasAgentInEvent,
 } from "./loadouts.js";
 import type { RegistrationResponseJSON, AuthenticationResponseJSON } from "@simplewebauthn/server";
@@ -2049,12 +2050,39 @@ app.post("/loadouts/:source/:eventId", requireAuth, async (c) => {
 /// ENTER button with a clear message instead of letting the tx fire.
 app.get("/operators/:address/entry-caps", async (c) => {
   const address = (c.req.param("address") ?? "").toLowerCase();
+  const maxLive = 3;
   if (!/^0x[a-f0-9]{40}$/.test(address)) {
-    return c.json({ liveCount: 0, maxLive: 3, atCap: false });
+    return c.json({ liveCount: 0, maxLive, atCap: false });
+  }
+  // The cap is 3 per surface (3 live contests AND 3 live challenges). When a
+  // surface is given, count just that one; otherwise fall back to the
+  // combined count for older callers.
+  const surfaceParam = c.req.query("surface");
+  if (surfaceParam === "contest" || surfaceParam === "challenge") {
+    const liveCount = await liveEntryCountForSurface(address, surfaceParam);
+    return c.json({ liveCount, maxLive, atCap: liveCount >= maxLive, surface: surfaceParam });
   }
   const liveCount = await liveEntryCount(address);
-  const maxLive = 3;
   return c.json({ liveCount, maxLive, atCap: liveCount >= maxLive });
+});
+
+/// Scout daily swap budget for one agent. The budget is shared across every
+/// contest and challenge the agent runs, so an agent that has spent its swaps
+/// elsewhere can't run another volume event until the UTC reset. `enabled` is
+/// false when real swaps are off (Scout self-transfers, no budget to gate on).
+app.get("/scout/swap-budget/:agentId", async (c) => {
+  const agentId = Number(c.req.param("agentId"));
+  const enabled = Boolean(config.scout.realSwaps && config.scout.kitKey);
+  const cap = config.scout.dailySwapCap;
+  if (!enabled || !Number.isFinite(agentId) || agentId <= 0) {
+    return c.json({ enabled, remaining: cap, cap });
+  }
+  const { rows } = await query<{ used: string }>(
+    "select used::text from scout_swap_budget where agent_id = $1 and day = (now() at time zone 'utc')::date",
+    [agentId],
+  );
+  const used = Number(rows[0]?.used ?? 0);
+  return c.json({ enabled, remaining: Math.max(0, cap - used), cap });
 });
 
 /// True if this operator already has any agent entered in (source, id).

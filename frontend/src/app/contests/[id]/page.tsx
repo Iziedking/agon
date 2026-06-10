@@ -164,7 +164,7 @@ export default async function ContestDetail({ params }: { params: Promise<{ id: 
               <span aria-hidden className="text-accent">■</span> {c.status === 3 ? "CLAIM" : "ENTER"}
             </div>
             <div className="lg:sticky lg:top-20">
-              <EnterPanel contestId={c.id} status={c.status} endTime={Number(c.endTime)} />
+              <EnterPanel contestId={c.id} status={c.status} endTime={Number(c.endTime)} contestType={c.contestType} />
             </div>
           </aside>
         </div>

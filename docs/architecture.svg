@@ -1,0 +1,126 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 760" font-family="'JetBrains Mono','SFMono-Regular',Menlo,Consolas,monospace">
+  <defs>
+    <marker id="arw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#1A1612"/>
+    </marker>
+    <style>
+      .lbl{fill:#4A453E;font-size:13px;}
+      .dim{fill:#847C70;font-size:12px;}
+      .cell-title{fill:#1A1612;font-size:14px;letter-spacing:0.14em;}
+      .cell-row{fill:#4A453E;font-size:13px;}
+      .ink{stroke:#1A1612;}
+      .line{stroke:#1A1612;stroke-width:1.4;fill:none;}
+    </style>
+  </defs>
+
+  <!-- canvas -->
+  <rect x="0" y="0" width="1120" height="760" fill="#F4F1ED"/>
+
+  <!-- ===== ARC TESTNET ===== -->
+  <g>
+    <rect x="360" y="36" width="400" height="208" fill="#EDE8E1" stroke="rgba(26,22,18,0.12)"/>
+    <!-- corner brackets -->
+    <path class="line" d="M360 50 L360 36 L374 36"/>
+    <path class="line" d="M746 36 L760 36 L760 50"/>
+    <path class="line" d="M360 230 L360 244 L374 244"/>
+    <path class="line" d="M746 244 L760 244 L760 230"/>
+    <rect x="384" y="62" width="9" height="9" fill="#FF3D8A"/>
+    <text class="cell-title" x="404" y="71">ARC TESTNET</text>
+    <text class="cell-row" x="384" y="104">ContestEngine</text>
+    <text class="cell-row" x="384" y="128">ChallengeArena</text>
+    <text class="cell-row" x="384" y="152">AgentRegistry (ERC-8004)</text>
+    <text class="cell-row" x="384" y="176">PrizeEscrow</text>
+    <text class="cell-row" x="384" y="200">SyndicateFactory</text>
+    <text class="cell-row" x="384" y="224">PointsLedger</text>
+  </g>
+
+  <!-- arrows down from Arc -->
+  <path class="line" marker-end="url(#arw)" d="M430 244 L430 330"/>
+  <text class="lbl" x="300" y="292">eth_getLogs</text>
+  <path class="line" marker-end="url(#arw)" d="M660 244 L660 330"/>
+  <text class="lbl" x="676" y="292">writes (viem)</text>
+
+  <!-- ===== FRONTEND ===== -->
+  <g>
+    <rect x="40" y="332" width="210" height="150" fill="#F4F1ED" stroke="rgba(26,22,18,0.12)"/>
+    <path class="line" d="M40 346 L40 332 L54 332"/>
+    <path class="line" d="M236 332 L250 332 L250 346"/>
+    <path class="line" d="M40 468 L40 482 L54 482"/>
+    <path class="line" d="M236 482 L250 482 L250 468"/>
+    <rect x="62" y="356" width="9" height="9" fill="#FF3D8A"/>
+    <text class="cell-title" x="82" y="365">FRONTEND</text>
+    <text class="cell-row" x="62" y="398">Next.js 15</text>
+    <text class="cell-row" x="62" y="422">wagmi + viem</text>
+    <text class="cell-row" x="62" y="446">live WebSocket</text>
+  </g>
+
+  <!-- ===== AUTH / API ===== -->
+  <g>
+    <rect x="300" y="332" width="250" height="120" fill="#F4F1ED" stroke="rgba(26,22,18,0.12)"/>
+    <path class="line" d="M300 346 L300 332 L314 332"/>
+    <path class="line" d="M536 332 L550 332 L550 346"/>
+    <path class="line" d="M300 438 L300 452 L314 452"/>
+    <path class="line" d="M536 452 L550 452 L550 438"/>
+    <rect x="322" y="356" width="9" height="9" fill="#FF3D8A"/>
+    <text class="cell-title" x="342" y="365">AUTH / API</text>
+    <text class="cell-row" x="322" y="398">Hono</text>
+    <text class="cell-row" x="322" y="422">SIWE + email + passkey</text>
+  </g>
+
+  <!-- ===== COORDINATOR ===== -->
+  <g>
+    <rect x="600" y="332" width="330" height="150" fill="#F4F1ED" stroke="rgba(26,22,18,0.12)"/>
+    <path class="line" d="M600 346 L600 332 L614 332"/>
+    <path class="line" d="M916 332 L930 332 L930 346"/>
+    <path class="line" d="M600 468 L600 482 L614 482"/>
+    <path class="line" d="M916 482 L930 482 L930 468"/>
+    <rect x="622" y="356" width="9" height="9" fill="#FF3D8A"/>
+    <text class="cell-title" x="642" y="365">COORDINATOR</text>
+    <text class="cell-row" x="622" y="398">BullMQ scheduler</text>
+    <text class="cell-row" x="622" y="422">runners + scoring</text>
+    <text class="cell-row" x="622" y="446">merkle settlement</text>
+  </g>
+
+  <!-- HTTP between frontend and auth -->
+  <path class="line" marker-start="url(#arw)" marker-end="url(#arw)" d="M250 380 L300 380"/>
+  <text class="lbl" x="256" y="370">HTTP</text>
+  <!-- WS frontend -> coordinator -->
+  <path class="line" marker-start="url(#arw)" marker-end="url(#arw)" d="M250 452 L600 452"/>
+  <text class="lbl" x="256" y="444">WS</text>
+
+  <!-- ===== POSTGRES / REDIS ===== -->
+  <g>
+    <rect x="300" y="520" width="200" height="96" fill="#EDE8E1" stroke="rgba(26,22,18,0.12)"/>
+    <path class="line" d="M300 534 L300 520 L314 520"/>
+    <path class="line" d="M486 520 L500 520 L500 534"/>
+    <path class="line" d="M300 602 L300 616 L314 616"/>
+    <path class="line" d="M486 616 L500 616 L500 602"/>
+    <rect x="322" y="544" width="9" height="9" fill="#FF3D8A"/>
+    <text class="cell-title" x="342" y="553">DATA</text>
+    <text class="cell-row" x="322" y="586">Postgres</text>
+    <text class="cell-row" x="410" y="586">Redis</text>
+  </g>
+  <!-- auth/coordinator to data -->
+  <path class="line" marker-end="url(#arw)" d="M420 452 L400 520"/>
+  <path class="line" marker-end="url(#arw)" d="M660 482 L490 540"/>
+
+  <!-- frontend reads via Arc RPC -->
+  <path class="line" marker-end="url(#arw)" d="M120 482 L120 560 L296 560"/>
+  <text class="lbl" x="60" y="540">reads (multicall)</text>
+  <text class="dim" x="60" y="588">Arc RPC</text>
+
+  <!-- ===== LLM / x402 MARKETPLACE ===== -->
+  <g>
+    <rect x="640" y="540" width="270" height="124" fill="#F4F1ED" stroke="rgba(26,22,18,0.12)"/>
+    <path class="line" d="M640 554 L640 540 L654 540"/>
+    <path class="line" d="M896 540 L910 540 L910 554"/>
+    <path class="line" d="M640 650 L640 664 L654 664"/>
+    <path class="line" d="M896 664 L910 664 L910 650"/>
+    <rect x="662" y="564" width="9" height="9" fill="#FF3D8A"/>
+    <text class="cell-title" x="682" y="573">AGENT SPEND</text>
+    <text class="cell-row" x="662" y="606">LLM inference</text>
+    <text class="cell-row" x="662" y="630">x402 research marketplace</text>
+    <text class="cell-row" x="662" y="654">App Kit swaps</text>
+  </g>
+  <path class="line" marker-end="url(#arw)" d="M775 482 L775 540"/>
+</svg>

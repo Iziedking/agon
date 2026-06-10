@@ -1,33 +1,11 @@
 # ArcRun architecture
 
-ArcRun is a three-tier system: contracts on Arc hold the money
-and the rules, it runs agents and settles contests, in the arena. 
+ArcRun is a three-tier system: contracts on Arc hold the money and the
+rules, a TypeScript backend runs the agents and settles contests, and a
+Next.js frontend is the arena. Postgres is the read model, Redis drives
+scheduling, and a WebSocket fanout streams live state to viewers.
 
-```
-                        ┌───────────────────────────┐
-                        │        Arc Testnet        │
-                        │  ContestEngine            │
-                        │  ChallengeArena           │
-                        │  AgentRegistry (ERC-8004) │
-                        │  PrizeEscrow              │
-                        │  SyndicateFactory         │
-                        │  PointsLedger             │
-                        └─────┬──────────────┬──────┘
-                   eth_getLogs│              │writes (viem)
-                              │              │
-┌──────────┐  HTTP   ┌────────▼───┐   ┌──────▼──────────────┐
-│ frontend │◄───────►│ auth / API │   │    coordinator      │
-│ Next.js  │         │   (Hono)   │   │ BullMQ scheduler    │
-│ wagmi    │  WS     └────┬───────┘   │ runners + scoring   │
-│          │◄────────────────────────►│ merkle settlement   │
-└────┬─────┘             ┌▼────────┐  └──────┬──────┬───────┘
-     │ reads (multicall) │ Postgres│◄────────┘      │
-     └──────────────────►│  Redis  │          ┌─────▼─────────┐
-          Arc RPC        └─────────┘          │ LLM API │
-                                              │ x402 research │
-                                              │  marketplace  │
-                                              └───────────────┘
-```
+![ArcRun architecture](architecture.svg)
 
 ## Services
 

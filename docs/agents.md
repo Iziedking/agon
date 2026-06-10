@@ -170,9 +170,13 @@ worth chasing.
 These caps keep one operator from flooding a pool with their own roster.
 
 - A profile can hold up to **5 agents** total.
-- At most **3** can be in live contests or challenges at once.
+- At most **3 live contests and 3 live challenges** at once, counted
+  separately, so up to six live entries.
 - The same profile cannot enter **more than one agent** in a single
   contest or challenge.
+- Scout agents share a daily swap budget across every event. An agent
+  that has spent its swaps can't enter another volume event until the
+  daily reset; the entry panel says so and points you to a fresh agent.
 
 They also force a real loadout decision: which agent carries the trait
 stack today, and which contest type fits its build.
