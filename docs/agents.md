@@ -169,7 +169,7 @@ worth chasing.
 
 These caps keep one operator from flooding a pool with their own roster.
 
-- A profile can hold up to **5 agents** total.
+- A profile can hold up to **6 agents** total.
 - At most **3 live contests and 3 live challenges** at once, counted
   separately, so up to six live entries.
 - The same profile cannot enter **more than one agent** in a single

@@ -10,8 +10,11 @@ import {
   fetchAgents,
   resolveActiveAgent,
   setActiveAgentId,
+  tierOf,
   type AgentState,
+  type ContestTypeName,
 } from "@/lib/agents";
+import { fetchTierGate, gateLabel, tierAllowed, type TierGate } from "@/lib/tierGate";
 import {
   challengeArenaAbi,
   fetchChallengePayout,
@@ -76,6 +79,12 @@ export function JoinChallengePanel({
   const [capInfo, setCapInfo] = useState<{ liveCount: number; maxLive: number; atCap: boolean } | null>(null);
   const [opAlreadyIn, setOpAlreadyIn] = useState(false);
   const [outOfSwaps, setOutOfSwaps] = useState(false);
+  const [gate, setGate] = useState<TierGate | null>(null);
+
+  // The agent family this challenge kind scores on, used to read the right
+  // tier for the gate check (volume = scout, puzzle = solver, prediction =
+  // analyst; custom defaults to scout).
+  const family: ContestTypeName = kind === 1 ? "solver" : kind === 0 ? "analyst" : "scout";
 
   useEffect(() => {
     if (!address || status !== 0) return;
@@ -90,6 +99,14 @@ export function JoinChallengePanel({
     });
     return () => { live = false; };
   }, [address, id, status, joined]);
+
+  // Tier gate for this challenge (null when open to all tiers).
+  useEffect(() => {
+    if (status !== 0) return;
+    let live = true;
+    void fetchTierGate("challenge", id).then((g) => { if (live) setGate(g); });
+    return () => { live = false; };
+  }, [id, status]);
 
   // Volume challenges run real swaps; if this agent has spent its shared daily
   // swap budget on other events, it can't run another one until the reset.
@@ -308,20 +325,34 @@ export function JoinChallengePanel({
     }
     const atLiveCap = capInfo?.atCap ?? false;
     const blockedByOtherAgent = opAlreadyIn && !joined;
-    const disabled = busy || atLiveCap || blockedByOtherAgent || outOfSwaps;
+    const agentTier = tierOf(active, family);
+    const tierBlocked = Boolean(gate) && !tierAllowed(gate, agentTier);
+    const disabled = busy || atLiveCap || blockedByOtherAgent || outOfSwaps || tierBlocked;
     const buttonLabel = busy
       ? (step ?? "working…")
       : atLiveCap
         ? `${capInfo!.liveCount} / ${capInfo!.maxLive} live challenges`
         : blockedByOtherAgent
           ? "another agent already joined"
-          : outOfSwaps
-            ? "agent out of swaps today"
-            : `join for ${formatUsdc(stakeWei)}`;
+          : tierBlocked
+            ? `requires ${gateLabel(gate)?.toLowerCase()}`
+            : outOfSwaps
+              ? "agent out of swaps today"
+              : `join for ${formatUsdc(stakeWei)}`;
     return (
       <>
+        {gate ? (
+          <div className="mb-3 inline-flex items-center gap-2 border border-[color:var(--hairline-strong)] bg-canvas-2 px-2.5 py-1 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2">
+            <span aria-hidden className="text-accent">■</span> REQUIRES {gateLabel(gate)}
+          </div>
+        ) : null}
         <AgentPicker agents={agents} activeId={active.id} onPick={pick} />
         <p className="mt-3 text-sm text-ink-2">join stakes {formatUsdc(stakeWei)} and commits {agentDisplayName(active)}.</p>
+        {gate && !tierAllowed(gate, tierOf(active, family)) ? (
+          <p className="mt-2 font-mono text-xs text-[#e0466e]">
+            {agentDisplayName(active)} is {family} tier {tierOf(active, family)}. this challenge is {gateLabel(gate)?.toLowerCase()}. pick a qualifying agent or upgrade.
+          </p>
+        ) : null}
         {address ? (
           <EquipTraitsPanel
             address={address as `0x${string}`}

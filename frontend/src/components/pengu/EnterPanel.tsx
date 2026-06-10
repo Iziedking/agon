@@ -10,7 +10,9 @@ import {
   fetchAgents,
   resolveActiveAgent,
   setActiveAgentId,
+  tierOf,
   type AgentState,
+  type ContestTypeName,
 } from "@/lib/agents";
 import { friendlyError } from "@/lib/errors";
 import { reportEvent } from "@/lib/report";
@@ -18,6 +20,7 @@ import { LoginCTA } from "@/components/pengu/LoginCTA";
 import { AgentPicker } from "@/components/pengu/AgentPicker";
 import { EquipTraitsPanel } from "@/components/pengu/EquipTraitsPanel";
 import { fetchEntryCaps, fetchInEvent, fetchSwapBudget } from "@/lib/loadouts";
+import { fetchTierGate, gateLabel, tierAllowed, type TierGate } from "@/lib/tierGate";
 
 const card =
   "relative border border-[color:var(--hairline)] bg-canvas p-6 lg:sticky lg:top-20";
@@ -44,6 +47,10 @@ export function EnterPanel({ contestId, status, endTime, contestType }: { contes
   const [capInfo, setCapInfo] = useState<{ liveCount: number; maxLive: number; atCap: boolean } | null>(null);
   const [opAlreadyIn, setOpAlreadyIn] = useState(false);
   const [outOfSwaps, setOutOfSwaps] = useState(false);
+  const [gate, setGate] = useState<TierGate | null>(null);
+
+  // The agent family this contest scores on, for the gate's tier check.
+  const family: ContestTypeName = contestType === 1 ? "analyst" : contestType === 2 ? "solver" : "scout";
 
   // Fall back to the first agent when the active-id resolution is racing
   // the agents fetch. Without this fallback the panel briefly renders the
@@ -64,6 +71,14 @@ export function EnterPanel({ contestId, status, endTime, contestType }: { contes
     });
     return () => { live = false; };
   }, [address, contestId, status, entered]);
+
+  // Tier gate for this contest (null when open to all tiers).
+  useEffect(() => {
+    if (status !== 1) return;
+    let live = true;
+    void fetchTierGate("contest", contestId).then((g) => { if (live) setGate(g); });
+    return () => { live = false; };
+  }, [contestId, status]);
 
   // Scout contests run real swaps; gate on the agent's shared daily budget.
   useEffect(() => {
@@ -250,7 +265,9 @@ export function EnterPanel({ contestId, status, endTime, contestType }: { contes
         cyclesShort && me && typeof me.cycles === "number"
           ? Math.max(0, (me.cyclesRequired ?? 0) - me.cycles)
           : 0;
-      const disabled = busy || atLiveCap || blockedByOtherAgent || cyclesShort || outOfSwaps;
+      const agentTier = tierOf(active, family);
+      const tierBlocked = Boolean(gate) && !tierAllowed(gate, agentTier);
+      const disabled = busy || atLiveCap || blockedByOtherAgent || cyclesShort || outOfSwaps || tierBlocked;
       const buttonLabel = busy
         ? "entering…"
         : cyclesShort
@@ -259,13 +276,25 @@ export function EnterPanel({ contestId, status, endTime, contestType }: { contes
             ? `${capInfo!.liveCount} / ${capInfo!.maxLive} live contests`
             : blockedByOtherAgent
               ? "another agent already entered"
-              : outOfSwaps
-                ? "agent out of swaps today"
-                : "enter contest";
+              : tierBlocked
+                ? `requires ${gateLabel(gate)?.toLowerCase()}`
+                : outOfSwaps
+                  ? "agent out of swaps today"
+                  : "enter contest";
       return (
         <>
+          {gate ? (
+            <div className="mb-3 inline-flex items-center gap-2 border border-[color:var(--hairline-strong)] bg-canvas-2 px-2.5 py-1 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2">
+              <span aria-hidden className="text-accent">■</span> REQUIRES {gateLabel(gate)}
+            </div>
+          ) : null}
           <AgentPicker agents={agents} activeId={active.id} onPick={pick} />
           <p className="mt-3 text-sm text-ink-2">entering commits {agentDisplayName(active)} for the contest window.</p>
+          {tierBlocked ? (
+            <p className="mt-2 font-mono text-xs text-[#e0466e]">
+              {agentDisplayName(active)} is {family} tier {agentTier}. this contest is {gateLabel(gate)?.toLowerCase()}. pick a qualifying agent or upgrade.
+            </p>
+          ) : null}
           {address ? (
             <EquipTraitsPanel
               address={address as `0x${string}`}

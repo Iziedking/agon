@@ -539,11 +539,11 @@ app.post("/wallet/execute", requireAuth, async (c) => {
     return c.json({ error: "contract address is not part of ArcRun" }, 400);
   }
 
-  // Enforce the 5-agent profile cap for Circle wallet users at the
+  // Enforce the 6-agent profile cap for Circle wallet users at the
   // backend's signing layer. Wagmi users sign client-side and bypass
   // this check, but the cap also stays enforced on-chain once the
   // mainnet AgentRegistry redeploy lands. Off-chain we just refuse to
-  // sign a sixth createAgent call so Circle users can't race past the
+  // sign a seventh createAgent call so Circle users can't race past the
   // frontend gate.
   if (
     body.contractAddress.toLowerCase() === config.contracts.AgentRegistry.toLowerCase() &&
@@ -554,8 +554,8 @@ app.post("/wallet/execute", requireAuth, async (c) => {
       [operator],
     );
     const owned = Number(countRows[0]?.n ?? "0");
-    if (owned >= 5) {
-      return c.json({ error: "5 agent cap reached; no more claims allowed" }, 403);
+    if (owned >= 6) {
+      return c.json({ error: "6 agent cap reached; no more claims allowed" }, 403);
     }
   }
 
@@ -1948,7 +1948,7 @@ app.get("/challenges/:id/invites", async (c) => {
   });
 });
 
-// ----- Claim-prep gate (off-chain 5-agent cap for web3 wallets) -----
+// ----- Claim-prep gate (off-chain 6-agent cap for web3 wallets) -----
 //
 // Web3 wallet users sign createAgent client-side, so the auth service
 // never sees the tx until the indexer picks it up. We can't actually
@@ -1965,7 +1965,7 @@ app.get("/agents/claim-prep", requireAuth, async (c) => {
     [operator],
   );
   const owned = Number(rows[0]?.n ?? "0");
-  const max = 5;
+  const max = 6;
   return c.json({
     owned,
     max,

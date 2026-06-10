@@ -30,7 +30,7 @@ async function fetchClaimPrep(): Promise<{ canClaim: boolean; reason: string | n
 /// the proposed AgentRegistry on-chain cap (deferred to mainnet contract
 /// redeploy). Off-chain we hide the CLAIM button at the cap and surface
 /// a clear message so the user knows they're full.
-const MAX_AGENTS_PER_PROFILE = 5;
+const MAX_AGENTS_PER_PROFILE = 6;
 
 /// Mints a free default agent for the connected wallet via AgentRegistry. Used
 /// from /workshop and /start so the claim path is identical from either entry.
