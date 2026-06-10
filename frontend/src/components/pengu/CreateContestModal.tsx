@@ -11,7 +11,7 @@ import { friendlyError } from "@/lib/errors";
 import { reportEvent } from "@/lib/report";
 import { ModalClose } from "@/components/redesign";
 
-/// Host-campaign modal reskinned to arcrun-redesign. Same flat ink-on-canvas
+/// Host-campaign modal. Same flat ink-on-canvas
 /// chrome as CreateChallengeModal: bracketed surface, stencil heading, tag
 /// type picker, hairline inputs, flat pink tag CTA.
 

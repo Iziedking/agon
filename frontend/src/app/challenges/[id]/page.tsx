@@ -8,7 +8,7 @@ import { ResultsBoard } from "@/components/pengu/ResultsBoard";
 import { fetchChallenge, CHALLENGE_KIND, CHALLENGE_STATUS } from "@/lib/challenges";
 import { formatUsdc } from "@/lib/contests";
 
-/// Challenge detail page reskinned to arcrun-redesign. Eyebrow + stencil
+/// Challenge detail page. Eyebrow + stencil
 /// stake/pot as the hero number, BracketedCell info panel, sticky
 /// JoinChallengePanel on the right rail.
 

@@ -7,10 +7,10 @@ import { deriveHotWallet, hotWalletBalance } from "../runners/scout.js";
 import { usdcMinimalAbi } from "../chain/abi.js";
 
 /// Unified hot-wallet interface for agent on-chain actions outside Scout's
-/// own loop. Today this just wraps the Scout-derived mnemonic wallet so the
-/// Analyst runner has a place to send Arcana trades from. Tomorrow it'll
-/// add a Circle Dev-Controlled path for Circle-email operators by checking
-/// whether the agent's owning operator has a Circle wallet attached.
+/// own loop. Wraps the Scout-derived mnemonic wallet so the Analyst runner
+/// has a place to send Arcana trades from. A Circle Dev-Controlled path for
+/// Circle-email operators can be added by checking whether the agent's
+/// owning operator has a Circle wallet attached.
 ///
 /// One function, one shape, so the analyst runner doesn't grow a fork per
 /// wallet kind. Add new kinds here.

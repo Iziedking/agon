@@ -24,7 +24,7 @@ import {
 import { enrollPasskey, fetchPasskeys, type PasskeyRecord } from "@/lib/auth";
 import { friendlyError } from "@/lib/errors";
 
-/// /operators/[address] per arcrun-redesign §4.5. The profile is for who you
+/// /operators/[address]. The profile is for who you
 /// are and how things look. Stats live on /dashboard.
 
 const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL ?? "http://localhost:8082";
@@ -156,7 +156,7 @@ export default function OperatorPage() {
         )}
       </section>
 
-      {/* SOCIALS. Public viewers only see what's linked — owner sees the full
+      {/* SOCIALS. Public viewers only see what's linked; owner sees the full
           card with link / unbind actions and unlinked rows. */}
       {isMe ? (
         <section className="mx-auto max-w-[1600px] px-6 pt-12">
@@ -203,7 +203,7 @@ export default function OperatorPage() {
         />
       )}
 
-      {/* SETTINGS — isMe only. */}
+      {/* SETTINGS: isMe only. */}
       {isMe ? (
         <section className="mx-auto max-w-[1600px] px-6 py-12 pb-16">
           <div className="mb-4 font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
@@ -314,7 +314,7 @@ function SocialRow({
 }
 
 /// Slim agent card for the public view. No NFT badge, no train-soon chip,
-/// no inputs — just identity (avatar + name + tiers) and traits, which read
+/// no inputs, just identity (avatar + name + tiers) and traits, which read
 /// as the agent's earned status. Matches the AgentCustomizeCard shell so
 /// the grid looks consistent.
 function PublicAgentCard({ agent }: { agent: AgentState }) {
@@ -350,7 +350,7 @@ function PublicAgentCard({ agent }: { agent: AgentState }) {
 }
 
 /// Read-only socials strip rendered on the public view. Only shows accounts
-/// that are actually linked — no placeholder "NOT LINKED" rows.
+/// that are actually linked. No placeholder "NOT LINKED" rows.
 function PublicSocialStrip({
   xHandle,
   telegramUsername,

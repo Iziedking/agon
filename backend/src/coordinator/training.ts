@@ -22,8 +22,8 @@ export function cyclesCost(fromLevel: number, speedupSteps = 0): bigint {
 
 /// Time ladder: level N → N+1 takes (N+1) × baseSecondsPerLevel real seconds,
 /// minus `speedupSteps × speedupSecondsPerStep`, floored at MIN_SECONDS so a
-/// fully sped-up training still has a visible wait. Pulled from env so demo
-/// mode can shrink the whole thing.
+/// fully sped-up training still has a visible wait. Pulled from env so test
+/// environments can shrink the whole thing.
 export function secondsCost(fromLevel: number, speedupSteps = 0): number {
   const base = (fromLevel + 1) * config.training.baseSecondsPerLevel;
   const cut = Math.max(0, speedupSteps) * config.training.speedupSecondsPerStep;
@@ -113,7 +113,7 @@ export function clampCombinedMultiplier(
 
 /// Promote any agent whose `completes_at` is in the past. Idempotent: if no
 /// row matches, returns 0. Called on every training-state read (lazy
-/// completion — no cron required).
+/// completion, no cron required).
 export async function flushTrainingQueue(agentId?: number): Promise<number> {
   const filter = agentId != null ? "and agent_id = $1" : "";
   const args = agentId != null ? [agentId] : [];

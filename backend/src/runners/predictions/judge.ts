@@ -66,7 +66,7 @@ function extractConfidence(text: string): number {
     const v = Number(decMatches[decMatches.length - 1]![1]);
     if (Number.isFinite(v) && v >= 0 && v <= 1) return v;
   }
-  // Fall back to 0.6 — slightly above base rate, since the agent at least
+  // Fall back to 0.6, slightly above base rate, since the agent at least
   // committed to a side. Stops every parse-failure from looking like a
   // perfect 50/50 base-rate guess.
   return 0.6;

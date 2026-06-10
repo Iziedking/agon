@@ -8,8 +8,8 @@ import { config } from "../config/index.js";
 /// Submits coordinator transactions to Arc. Calls are serialized through a
 /// promise chain so concurrent settlements never collide on the nonce; viem
 /// reads the pending nonce per call and viem's EIP-1559 estimation respects
-/// Arc's base fee. For higher throughput later this can move to a windowed
-/// nonce manager, but serialized submission is correct and simple for v0.
+/// Arc's base fee. For higher throughput this can move to a windowed
+/// nonce manager; serialized submission is correct and simple.
 export class TxSender {
   readonly account: Account;
   private readonly wallet: WalletClient;

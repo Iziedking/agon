@@ -5,7 +5,7 @@ import { BracketedCell } from "@/components/redesign";
 
 /// Operator-facing Arcana hot wallet card. Surfaces what the autofund did
 /// (per-tier USDC drip on Analyst contest entry), what positions the agent
-/// is currently sitting on, and what's settled. Read-only — funding is
+/// is currently sitting on, and what's settled. Read-only: funding is
 /// coordinator-driven; trades are runner-driven. Mounts on the workshop's
 /// active agent so the operator can see the state at a glance.
 

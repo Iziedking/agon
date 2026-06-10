@@ -16,7 +16,7 @@ import { fetchChallenge, CHALLENGE_KIND, type Challenge } from "@/lib/challenges
 import type { StandingsEntry } from "@/lib/live";
 import { computeWinProbabilities, formatProb, probFor, type WinProbability } from "@/lib/winProbability";
 
-/// /live/[source]/[id] — the focused watcher. Reads the on-chain shape of the
+/// /live/[source]/[id]: the focused watcher. Reads the on-chain shape of the
 /// event for the header (so a cold load doesn't depend on the WS), then
 /// subscribes to the live broadcast for the standings frames. Routes the
 /// per-kind stage through EventStage. Click → /contests/[id] (or
@@ -276,8 +276,8 @@ function ConnectionLine({ connected, live }: { connected: boolean; live: boolean
 
 /// Renders the per-kind stage with a "WHAT'S HAPPENING" headline above it
 /// that updates per-tick by diffing successive standings frames. The
-/// headline replaces the static "■ STAGE" eyebrow so judges and casual
-/// viewers can read what's happening without interpreting bars and rows.
+/// headline replaces the static "■ STAGE" eyebrow so viewers can read the
+/// state without interpreting bars and rows.
 function StageWithNarrative({
   entries,
   stageKind,
@@ -318,7 +318,7 @@ function StageWithNarrative({
 /// Standings rail. Reads from the live WS broadcast first; when the runner
 /// hasn't emitted a scoring frame yet the panel falls back to the on-chain
 /// entrant count so the user doesn't see "no entrants" while staring at a
-/// 2/2 staked challenge. The fallback shape carries no scores — just a
+/// 2/2 staked challenge. The fallback shape carries no scores, just a
 /// "waiting on first frame" line and the staked count. Per-row win-prob
 /// estimate sits between the name and the score so it's the first thing
 /// the eye picks up.

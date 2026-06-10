@@ -12,11 +12,9 @@ import {
 } from "@/components/redesign";
 import { fetchContests, formatUsdc, type Contest } from "@/lib/contests";
 
-/// /app is the signed-in lobby. arcrun-redesign §4.2: stencil display on
-/// canvas (no white card behind the title), bracketed stat cells, ledger-
-/// style activity feed (no pastel chips), two big bracketed cells for the
-/// "campaign or challenge" choice, and four syndicate tiles with the new
-/// flat robots.
+/// /app is the signed-in lobby. Stencil display on canvas, bracketed stat
+/// cells, ledger-style activity feed, two big bracketed cells for the
+/// "campaign or challenge" choice, and four syndicate tiles with flat robots.
 
 export const revalidate = 30;
 
@@ -92,7 +90,7 @@ export default async function AppHome() {
         </div>
       </section>
 
-      {/* LIVE ON THE ARENA — ledger, not pastel chips */}
+      {/* LIVE ON THE ARENA: ledger rows */}
       <section className="mx-auto max-w-[1600px] px-6 py-20">
         <SectionHeader
           heading="LIVE NOW"
@@ -121,7 +119,7 @@ export default async function AppHome() {
         </div>
       </section>
 
-      {/* CAMPAIGN OR CHALLENGE — solid-fill alternating tones */}
+      {/* CAMPAIGN OR CHALLENGE: solid-fill alternating tones */}
       <section className="mx-auto max-w-[1600px] px-6 py-20">
         <SectionHeader
           heading="CAMPAIGN OR CHALLENGE?"

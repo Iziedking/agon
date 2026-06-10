@@ -1,9 +1,9 @@
 import { createPublicClient, http } from "viem";
 import { arcTestnet } from "viem/chains";
 
-/// Re-export viem's built-in Arc testnet chain. Per the `circle:use-arc` skill,
-/// viem ships `arcTestnet` natively (chain id 5042002, RPC, explorer, 18-dec
-/// USDC native gas), so a custom `defineChain` is never required.
+/// Re-export viem's built-in Arc testnet chain. viem ships `arcTestnet`
+/// natively (chain id 5042002, RPC, explorer, 18-dec USDC native gas), so a
+/// custom `defineChain` is never required.
 export { arcTestnet };
 
 export const EXPLORER = "https://testnet.arcscan.app";
@@ -27,8 +27,8 @@ export const USDC = "0x3600000000000000000000000000000000000000" as const;
 ///
 /// `batch.multicall` is the load-bearing line: list pages read every contest
 /// and challenge ever created (2 eth_calls each, hundreds of items), and
-/// firing those as individual RPC requests rate-limits the public Arc RPC —
-/// pages crawled and throttled reads silently dropped cards from the grid.
+/// firing those as individual RPC requests rate-limits the public Arc RPC
+/// (pages crawled and throttled reads silently dropped cards from the grid).
 /// With batching on, viem aggregates all reads scheduled in the same tick
 /// through Multicall3 (deployed on Arc at the canonical address), so a full
 /// list load is a handful of RPC round-trips instead of 600.

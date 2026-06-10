@@ -52,6 +52,11 @@ scripts/
 # Local-only run guide (contains operational tips, not for distribution)
 docs/run_guide.md
 
+# Internal service docs. ArcRun ships as a product, not a clone-and-run
+# template; setup and operations notes stay local.
+backend/README.md
+frontend/README.md
+
 # Brand kit. Drafted for marketing, grant outreach, and Track 4 submission.
 # Kept local until we're ready to publish externally.
 docs/brandkit/

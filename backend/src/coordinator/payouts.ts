@@ -68,13 +68,13 @@ export function computePayoutsForMode(
   }
   // pnl_mtm and pnl_realized both use the same 30/70 curve here; the
   // difference is WHEN the runner computed the underlying score (mtm
-  // at close vs realized after markets resolve). Phase 3 sweeper gates
-  // the pnl_realized path to wait for resolution.
+  // at close vs realized after markets resolve). The settle sweeper
+  // gates the pnl_realized path to wait for resolution.
   return computePnlWeightedPayouts(results, claimable);
 }
 
-/// PnL-weighted payout for Analyst Arcana contests. Realism plan §"Reward
-/// sharing logic": 30% of the pool flat-distributed across qualifying
+/// PnL-weighted payout for Analyst Arcana contests:
+/// 30% of the pool flat-distributed across qualifying
 /// agents (anyone who took at least one position), 70% weighted by positive
 /// score (which the runner already derives from realized + marked-to-market
 /// PnL). Agents who participated but broke even still get the participation
@@ -89,7 +89,7 @@ export function computePnlWeightedPayouts(
 ): Payout[] {
   // Qualified = any participant exposed by the runner's detail blob. The
   // Arcana runner sets `marketsTraded` when it attempted to trade (even if
-  // the trade failed because the wallet was unfunded — the agent showed up).
+  // the trade failed because the wallet was unfunded; the agent showed up).
   const qualified = results.filter((r) => {
     const det = r.detail as { source?: string; marketsTraded?: number } | undefined;
     return det?.source === "arcana" && (det.marketsTraded ?? 0) > 0;

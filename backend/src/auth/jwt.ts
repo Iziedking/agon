@@ -7,8 +7,8 @@ const secret = new TextEncoder().encode(config.auth.jwtSecret);
 const ALG = "HS256";
 
 /// Name of the httpOnly session cookie set on /auth/wallet/verify and cleared on
-/// /auth/logout. Per the `circle:use-modular-wallets` skill, the session must
-/// not live in localStorage where XSS can lift it.
+/// /auth/logout. The session must not live in localStorage where XSS can
+/// lift it.
 export const SESSION_COOKIE = "arcrun_session";
 
 /// Issues a 7-day session token whose subject is the operator's wallet address.

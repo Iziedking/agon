@@ -2,7 +2,7 @@
 
 /// Fixed right-edge utility rail. Frames the page horizontally with the
 /// BodyLines, gives the user an always-available "feed live" anchor and
-/// social links. Pure decoration plus social links — no critical action
+/// social links. Pure decoration plus social links; no critical action
 /// lives here so accessibility-wise it stays decorative; users on small
 /// viewports do not see it at all.
 ///
@@ -39,7 +39,7 @@ export function SideRail() {
       aria-hidden
       className="pointer-events-none fixed right-4 top-1/2 z-30 hidden -translate-y-1/2 flex-col items-center gap-3 lg:flex"
     >
-      {/* live status dot — promotes the FEED LIVE chip from the hero to a
+      {/* live status dot: promotes the FEED LIVE chip from the hero to a
           global anchor. pulses on a 1.5s loop via the existing live-dot
           class in tokens.css. */}
       <span className="pointer-events-auto flex flex-col items-center gap-2">

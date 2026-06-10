@@ -1,6 +1,6 @@
-/// Small mono-caps eyebrow label with a pink square marker. The chaingpt
-/// "instrument panel" tag. Use above stat bands and section headings to
-/// add density without clutter.
+/// Small mono-caps eyebrow label with a pink square marker. Instrument-panel
+/// tag. Use above stat bands and section headings to add density without
+/// clutter.
 export function MicroLabel({
   children,
   tone = "ink",
@@ -21,7 +21,7 @@ export function MicroLabel({
   );
 }
 
-/// 01 — 02 — 03 numeric counter strip. Drop above a 2/3/4-column tile band
+/// 01 / 02 / 03 numeric counter strip. Drop above a 2/3/4-column tile band
 /// to label each tile with its index. Items are mono-caps with a hairline
 /// rule connecting them.
 export function CounterStrip({ count }: { count: number }) {

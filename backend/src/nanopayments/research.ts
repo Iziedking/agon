@@ -170,8 +170,7 @@ export function buildPriceUrl(baseUrl: string, symbols: string[]): string {
 
 /// Reduces a paid price response to "ethereum $1635.44 · usd-coin $0.9998".
 /// Handles the two live shapes: CoinGecko simple/price (object keyed by
-/// coin id, smoke-tested via AIsa on Polygon) and Alchemy prices-by-symbol
-/// (array of {symbol, prices:[{value}]}).
+/// coin id) and Alchemy prices-by-symbol (array of {symbol, prices:[{value}]}).
 export function summarizePrices(response: unknown): string {
   // CoinGecko shape: { ethereum: { usd: 1635.44 }, "usd-coin": { usd: 1 } }
   const fromObject = (node: unknown): string | null => {

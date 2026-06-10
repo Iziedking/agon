@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { ArcanaMark, BracketedCell, Robot, robotVariantForId } from "@/components/redesign";
 
 /// Live Arcana Markets contract on Arc Testnet. Single source of truth for
-/// the wait state's "powered by" strip and the active branch banner — when
+/// the wait state's "powered by" strip and the active branch banner. When
 /// a viewer wants to verify the integration is real, they can pop the chip
 /// open and land on the actual contract page.
 const ARCANA_CONTRACT = "0x443a47eF1025e047879b1BA08c94e6dedB354D54";
@@ -73,7 +73,7 @@ export function PredictionStage({
   }
 
   // Total YES/NO calls across analyst entries. With the synthetic fallback
-  // disabled by default, this stays at 0 when Arcana has no markets — so
+  // disabled by default, this stays at 0 when Arcana has no markets, so
   // we drop straight into the branded waiting placeholder instead of
   // showing an empty call chart.
   const totalAnalystCalls = useMemo(() => {
@@ -392,14 +392,14 @@ function SyntheticFallbackBadge() {
     <div className="flex flex-wrap items-center gap-2 border border-[color:var(--hairline-strong)] bg-canvas-2 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-2">
       <span className="border border-[color:var(--hairline-strong)] px-1.5 py-0.5 text-ink-3">SYNTHETIC FALLBACK</span>
       <span>
-        no open arcana markets at round start — agents predicted live arc state instead. arcana branch resumes automatically when their pipeline ships markets.
+        no open arcana markets at round start. agents predicted live arc state instead. arcana branch resumes automatically when their pipeline ships markets.
       </span>
     </div>
   );
 }
 
 // ===========================================================================
-// Arcana branch — real prediction-market positions, live PnL, claim status.
+// Arcana branch: real prediction-market positions, live PnL, claim status.
 // ===========================================================================
 
 function ArcanaBranch({

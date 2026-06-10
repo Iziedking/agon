@@ -38,10 +38,9 @@ import {
 ///
 /// Tier 0 / 1 random guess at p=0.5 (with a small luck nudge on tier 1).
 /// Tier 2 reasons from priors with no tools. Tier 3 adds code_execution
-/// (limited help for this kind). Tier 4 adds web_search, which is the real
-/// edge: the model can look up the live block explorer and answer
-/// near-perfectly. Paying for tier 4 literally buys real-time chain
-/// awareness in this contest type.
+/// (limited help for this kind). Tier 4 adds web_search: the model can look
+/// up the live block explorer and answer near-perfectly, so tier 4 buys
+/// real-time chain awareness in this contest type.
 ///
 /// Fallback: when ANTHROPIC_API_KEY is unset, every agent falls back to
 /// the synthetic curve from the previous implementation so local dev
@@ -52,7 +51,7 @@ const FALLBACK_SKILL = [0.0, 0.2, 0.4, 0.6, 0.85];
 /// How far into the future an Arcana market must resolve to qualify for an
 /// Analyst contest. Markets resolving sooner than this aren't useful (we'd
 /// pay for the trade then immediately resolve), markets resolving past this
-/// don't pay out in time. Tuned for the demo cadence; revisit when contest
+/// don't pay out in time. Tuned for short contest windows; revisit when
 /// durations stabilize.
 const ARCANA_RESOLUTION_WINDOW_SEC = 60 * 60 * 24 * 7; // 7 days
 
@@ -114,7 +113,7 @@ export class AnalystRunner implements Runner {
 }
 
 // ---------------------------------------------------------------------------
-// Arcana-backed Analyst — real USDC trades on the Arcana Markets contract.
+// Arcana-backed Analyst: real USDC trades on the Arcana Markets contract.
 // ---------------------------------------------------------------------------
 
 interface OpenArcanaMarket {
@@ -314,8 +313,8 @@ interface ArcanaPosition {
 /// 3. Submit approve + buyShares for each pick. Persist agent_positions.
 /// 4. Return the full position list (existing + new) for scoring + progress.
 ///
-/// When Phase 1 tick mode is enabled (PREDICTION_TICKS=1, the default),
-/// this function ONLY reads positions for scoring — trade creation lives
+/// When tick mode is enabled (PREDICTION_TICKS=1, the default), this
+/// function ONLY reads positions for scoring; trade creation lives
 /// in the tick scheduler at coordinator/predictionTicks.ts. The runner
 /// becomes a read-only scoring path; the scheduler owns position
 /// generation. Set PREDICTION_TICKS=0 to revert to single-pass behavior.
@@ -578,7 +577,7 @@ async function pickArcanaTrades(
     newsBlock,
     `Open markets you may trade (${menu.length}):`,
     menuLines,
-    `Pick at most ${slotsLeft} markets. Be selective — pass on a market by not picking it.`,
+    `Pick at most ${slotsLeft} markets. Be selective: pass on a market by not picking it.`,
   ].filter(Boolean).join("\n");
 
   let response = "";
@@ -774,7 +773,7 @@ async function insertAgentPosition(p: {
 }
 
 // ---------------------------------------------------------------------------
-// Synthetic fallback — kept verbatim so contests run when Arcana is dry.
+// Synthetic fallback: keeps contests running when Arcana has no markets.
 // ---------------------------------------------------------------------------
 
 async function runSyntheticContest(

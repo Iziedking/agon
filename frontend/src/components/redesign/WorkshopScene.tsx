@@ -2,7 +2,7 @@
 
 import { Robot, type RobotVariant } from "./Robot";
 
-/// Brand-vector workshop scene per §6.2 of the plan. Flat 1px-stroke
+/// Brand-vector workshop scene. Flat 1px-stroke
 /// rectangles on canvas, layered to imply depth. Elements appear as the
 /// agent's max tier rises so the surface visibly evolves with progression:
 ///
@@ -13,7 +13,7 @@ import { Robot, type RobotVariant } from "./Robot";
 ///   tier 4: + scanline overlay + glow ticks (command-center mode)
 ///
 /// The Robot mascot anchors the centre; the canvas around it is the
-/// scene. No bitmap, no gradient. Owner-only — shown in the active-agent
+/// scene. No bitmap, no gradient. Owner-only, shown in the active-agent
 /// panel of /workshop, suitable for share-to-X screenshots.
 
 interface Props {

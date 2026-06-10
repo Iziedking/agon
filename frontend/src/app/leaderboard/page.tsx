@@ -6,7 +6,7 @@ import { Footer } from "@/components/redesign/Footer";
 import { CornerMarkers, Robot, SectionHeader, robotVariantForId } from "@/components/redesign";
 import { fetchLeaderboard, formatReputation, formatUsdcString, short, type LeaderRow } from "@/lib/profiles";
 
-/// /leaderboard per arcrun-redesign §4.7. True mono table, not a rounded
+/// /leaderboard. True mono table, not a rounded
 /// card: header row in --ink-3 mono caps with a hairline below, rows
 /// alternate --canvas and --canvas-2, rank in stencil face (pink for top 3,
 /// ink otherwise), operator cell shows a 24px flat Robot + truncated

@@ -12,7 +12,7 @@ import { computePayouts, computePnlWeightedPayouts, isArcanaResults } from "./pa
 /// Runs one full contest on-chain and broadcasts it to the live panel: open and
 /// fund, register agents, score with the Solver, stream standings over the
 /// contest window, then settle on-chain and broadcast the real payout. This is
-/// the real coordinator flow behind the /live page (v0 self-funds with the
+/// the coordinator flow behind the /live page (self-funds with the
 /// coordinator wallet and uses a second hot wallet as a second operator).
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

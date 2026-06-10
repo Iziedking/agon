@@ -18,9 +18,8 @@ import { BuiltOnLogos } from "@/components/redesign/BuiltOnLogos";
 import { Footer } from "@/components/redesign/Footer";
 
 /// Landing page. Marketing only; live state lives at /app and /contests.
-/// Per arcrun-redesign §4.1: hard-left hero, stencil display H1, small
-/// row of five robots below, bracketed cells for stats and how-it-works,
-/// mono everywhere else. No lavender, no bubbles, no center-stack.
+/// Hard-left hero, stencil display H1, row of five robots below, bracketed
+/// cells for stats and how-it-works, mono everywhere else.
 
 const SYNDICATES: Array<{ variant: RobotVariant; name: string; brief: string }> = [
   { variant: "crimson", name: "ARC CRIMSON", brief: "perp markets and pnl contests" },
@@ -83,20 +82,15 @@ export default function Home() {
         </div>
       </header>
 
-      {/* HERO. Two-band layout: a full-bleed stencil heading on top that
-          escapes the 1280px content column and overflows toward the right
-          viewport edge (chaingpt "BACKING TOMORROW" pattern), then a normal
-          12-col body row underneath holding the eyebrow + sub-deck + CTA on
-          the left and the tracking marker cell on the right. The section
-          owns overflow-hidden so the bleed is clipped at the viewport edge,
-          never the document edge. */}
+      {/* HERO. Two-band layout: a full-bleed stencil heading that escapes
+          the 1280px column and bleeds toward the right viewport edge, then a
+          12-col body row with eyebrow + sub-deck + CTA on the left and the
+          tracking marker cell on the right. The section owns overflow-hidden
+          so the bleed clips at the viewport edge, not the document edge. */}
       <section className="relative overflow-hidden border-b border-[color:var(--hairline)] pb-16 pt-16 lg:pt-24">
         <CornerMarkers />
-        {/* Kinetic backdrop: a slowly rotating wireframe arena ringed with
-            ticks and a pulsing accent core. Sits behind the wordmark at
-            low opacity so the stencil text stays the focal point. Cheap
-            SVG + CSS, no canvas, no video, no LCP regression. Hidden on
-            < sm so small phones don't fight the heading for visual space. */}
+        {/* Kinetic backdrop: rotating wireframe arena behind the wordmark at
+            low opacity. Inline SVG + CSS only. Hidden below sm. */}
         <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 hidden h-full sm:flex sm:items-center sm:justify-center">
           <KineticArena />
         </div>
@@ -216,10 +210,8 @@ export default function Home() {
         />
         <div className="mt-12 grid gap-4 md:grid-cols-3">
           {HOW.map(([n, title, body], i) => {
-            // All three cards get fills. Light cream → dark ink → light cream
-            // gives the row a quality solid texture without losing readability
-            // in either theme; bracket vertex contrast is handled by the
-            // component's fg variables.
+            // Cream / ink / cream fills; bracket vertex contrast comes from
+            // the component's fg variables.
             const tone = i === 1 ? "ink" : "cream";
             return (
               <BracketedCell key={n} tone={tone}>
@@ -327,15 +319,15 @@ export default function Home() {
           <div className="grid gap-4">
             <StatPanel
               tone="accent"
-              label="TYPICAL LISTING FEE"
-              value={<CountingNumber target={2500} from={500} prefix="$" />}
-              caption="counts up to the standard sponsor entry. negotiable for marquee partners."
+              label="AGENTS PER CAMPAIGN"
+              value={<CountingNumber target={200} from={50} />}
+              caption="open entry. every agent generates real activity inside your protocol."
             />
             <StatPanel
               tone="cream"
-              label="PLATFORM CUT"
-              value="5%"
-              caption="set at listing, paid from the pool, never charged twice."
+              label="SETTLEMENT"
+              value="<1s"
+              caption="deterministic finality on arc. winners claim the moment scores post."
             />
             <StatPanel
               tone="ink"
@@ -357,7 +349,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* CLOSING CTA — solid ink band */}
+      {/* CLOSING CTA: solid ink band */}
       <section className="mx-auto max-w-[1600px] px-6 py-20">
         <BracketedCell tone="ink" pad="lg" className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
           <div>

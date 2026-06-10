@@ -10,7 +10,7 @@
    changes. */
 
 :root {
-  /* === arcrun-redesign palette (current source of truth) === */
+  /* === brand palette === */
   /* Canvas: warm paper, never lavender, never pure white */
   --canvas: #F4F1ED;
   --canvas-2: #EDE8E1;
@@ -28,7 +28,7 @@
   --accent-ink: #FFFFFF;
   /* Syndicate identity colors. The robot fill (decorative) and the tile
      accent (chrome/halo/ring) are tracked separately for the cyan
-     syndicate, which has a mint robot inside a cyan tube per §10. */
+     syndicate, which renders a mint robot inside a cyan tube. */
   --syn-violet: #7C5CFF;
   --syn-pink: #D6336C;
   --syn-gold: #D78A2B;
@@ -181,8 +181,8 @@
   --z-toast: 50;
 }
 
-/* Base body: arcrun-redesign canvas. Light only.
-   The four-layer body background gives the chaingpt-style "real paper under
+/* Base body: brand canvas. Light only.
+   The four-layer body background gives a "real paper under
    stage lighting" feel: a warm vertical gradient, a faint minor grid at 60px,
    a slightly stronger major grid at 240px, and small L-bracket corner marks
    at every major intersection. Everything sits on the warm cream canvas and
@@ -203,14 +203,14 @@ body {
   background-image:
     /* L-bracket at the top-left of each 240px cell PLUS a small filled ink
        square at the bottom-right. Together they bookend every grid cell,
-       which gives the canvas the chaingpt "instrument panel" feel without
+       which gives the canvas an "instrument panel" feel without
        adding another bg-image layer (browser only composites one svg here).
-       The filled square is the "tracking pip" — visible enough to read as
+       The filled square is the "tracking pip": visible enough to read as
        intentional decoration on big empty stretches, faint enough to never
        distract from content sitting on top of a BracketedCell. */
     url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><path d='M0 12 L0 0 L12 0' stroke='rgba(26,22,18,0.14)' stroke-width='1' fill='none'/><rect x='232' y='232' width='5' height='5' fill='rgba(26,22,18,0.22)'/></svg>"),
     /* Major grid: 240x240, slightly stronger ink. Six-ish columns on a 1440
-       viewport, mirrors the chaingpt column rhythm. */
+       viewport, matches the page column rhythm. */
     linear-gradient(to right, rgba(26, 22, 18, 0.035) 1px, transparent 1px),
     linear-gradient(to bottom, rgba(26, 22, 18, 0.035) 1px, transparent 1px),
     /* Minor grid: 60x60, a whisper. Four minor cells make one major cell. */
@@ -236,7 +236,7 @@ body {
 }
 
 /* Decorative pink "tracking square" anchored just below the nav, mirroring
-   the small pink mark that opens every chaingpt section. Sits absolutely
+   the small pink mark that opens every section. Sits absolutely
    under the page content so it never blocks clicks and never participates
    in the modal stacking context. */
 body::before {
@@ -259,7 +259,7 @@ body::before {
    instead of stacking flatly. Modals at z-modal sit on top.
 
    Reduced-motion disables nothing here because it's static texture, not
-   motion. Per chaingpt parity (gap 6 of arcrun-ui-upgrade skill). */
+   motion. */
 body::after {
   content: "";
   position: fixed;
@@ -518,7 +518,7 @@ html.dark body::after {
   animation: arena-grid 20s linear infinite;
 }
 
-/* ---------- syndicate tube motion (§10) ---------- */
+/* ---------- syndicate tube motion ---------- */
 
 @keyframes synBob {
   from { transform: translate(var(--mx,0), -6px) rotate(var(--sway-from, -2deg)); }

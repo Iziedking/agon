@@ -71,7 +71,6 @@ const SESSION_MAX_AGE = 7 * 24 * 60 * 60; // 7 days, matches issueToken expiry
 /// Auth service: SIWE wallet login plus optional X (Twitter) OAuth2 linking.
 /// The wallet is the identity, so X is not required to enter contests; it is a
 /// social link, and Discord can be added the same way later.
-/// See ARCRUN_PLAN.md section 5.1.
 
 const app = new Hono<{ Variables: { address: string } }>();
 
@@ -729,7 +728,7 @@ app.get("/auth/me", requireAuth, async (c) => {
   // refused below the configured floor. Default 0 = open to everyone
   // (matches the contract's "qualification enforced off-chain at
   // scoring time" note). On-chain enforcement on registerEntry needs a
-  // contract redeploy (queued under BEFORE PRODUCTION in todo.md).
+  // contract redeploy.
   const minCycles = Number(process.env.QUALIFY_MIN_POINTS ?? "0");
   const cycles = Number(op.cycles ?? "0");
   const canEnterContests = minCycles <= 0 || cycles >= minCycles;
@@ -1054,7 +1053,7 @@ app.get("/challenges/:id/results", async (c) => {
 
 // The pool of awardable traits, public read so the UI can render chip labels
 // without duplicating the source of truth. The legendary entries are visible
-// here even when no agent owns one yet (rarity is part of the pitch). The
+// here even when no agent owns one yet so rarity is visible up front. The
 // `rugChance` is surfaced too so the UI can show the odds.
 app.get("/traits/pool", (c) => c.json({ traits: TRAITS, rugChance: RUG_CHANCE }));
 
@@ -1780,8 +1779,7 @@ app.get("/challenges/:id/invites", async (c) => {
 // "are you allowed to claim" endpoint the frontend calls right before
 // signing. Combined with the frontend disable/refetch race fixes, this
 // catches the casual case where two clicks race past the on-chain
-// limit. Permanent enforcement comes from the AgentRegistry mainnet
-// redeploy, queued in BEFORE PRODUCTION in todo.md.
+// limit. Permanent enforcement requires an AgentRegistry redeploy.
 
 app.get("/agents/claim-prep", requireAuth, async (c) => {
   const operator = c.get("address");
@@ -1898,9 +1896,9 @@ app.get("/operators/:address/in-event/:source/:eventId", async (c) => {
 // ----- Real LLM run audit trail -----
 //
 // Public read of the per-puzzle solve history for a contest. Drives the
-// "see the real solves" surface on the contest detail page so judges can
-// look at the exact puzzle text and each agent's answer. Limited so a
-// curious viewer can't pull thousands of rows in one call.
+// solve-detail surface on the contest detail page: the exact puzzle text
+// and each agent's answer. Limited so a curious viewer can't pull
+// thousands of rows in one call.
 
 app.get("/contests/:id/llm-runs", async (c) => {
   const contestId = Number(c.req.param("id"));
@@ -2036,7 +2034,7 @@ app.get("/operators/:address/refunds-pending", async (c) => {
     ),
     // Contests don't charge an entrant a stake (entry is free for agent
     // owners), so a cancelled contest the operator entered isn't a
-    // refund claim — there's nothing to pull back. We still surface it
+    // refund claim; there's nothing to pull back. We still surface it
     // here so the dashboard can show "this contest was cancelled" and
     // the row doesn't vanish silently.
     query<{ id: string }>(
@@ -2317,8 +2315,8 @@ app.get("/auth/x/callback", async (c) => {
   await query("update operators set x_handle = $2 where address = $1", [address, me.data.username]);
 
   // Return the user to their own operator page so the freshly-linked X
-  // handle is visible immediately. Landing the redirect on the root
-  // (the prior behaviour) felt like the OAuth had failed.
+  // handle is visible immediately; landing on the root makes the OAuth
+  // look like it failed.
   const redirectTo = new URL(`/operators/${address}`, config.auth.appUrl);
   redirectTo.searchParams.set("x_bound", me.data.username);
   return c.redirect(redirectTo.toString());

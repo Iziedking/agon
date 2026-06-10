@@ -57,7 +57,7 @@ const KIND_TO_CTYPE = [1, 2, 0, 2];
 
 // Per-kind score randomness, applied AFTER the runner's scoring so a low-tier
 // agent can sometimes upset a high-tier one in noisy kinds. The runner's own
-// ±3% (the global gaming guard from PLAN §2) is layered with this. Defaults:
+// ±3% global gaming guard is layered with this. Defaults:
 // PREDICTION is markets and noisy, PUZZLE is skill-heavy, VOLUME is moderately
 // noisy, CUSTOM splits the difference. Override per kind via env, e.g.
 // `CHALLENGE_RANDOMNESS_PREDICTION=0.30`.
@@ -101,8 +101,8 @@ function coordinatorAddr(): `0x${string}` {
 }
 
 /// Lazy-claimed bot agent the coordinator uses to auto-fill underfilled
-/// challenges so demo-time solo challenges still run instead of cancelling
-/// for refund. Cached after first read.
+/// challenges so solo challenges still run instead of cancelling for
+/// refund. Cached after first read.
 let cachedBotAgentId: number | null = null;
 async function ensureCoordinatorAgent(): Promise<number> {
   if (cachedBotAgentId !== null) return cachedBotAgentId;
@@ -118,7 +118,7 @@ async function ensureCoordinatorAgent(): Promise<number> {
     cachedBotAgentId = Number(existing[0]);
     return cachedBotAgentId;
   }
-  // No agent yet — claim one. createAgent emits the new id; simplest path is
+  // No agent yet; claim one. createAgent emits the new id; simplest path is
   // to read nextAgentId before the write (it's the id that will be assigned).
   // Falls back to re-reading agentsOf after the tx if needed.
   const wallet = coordinatorWallet();
@@ -285,7 +285,7 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
     const full = liveEntrants >= Number(ch.maxEntrants);
     const joinEnded = nowSec >= Number(ch.joinDeadline);
 
-    // Demo auto-fill: any time a non-coordinator-created challenge sits at 1
+    // Auto-fill: any time a non-coordinator-created challenge sits at 1
     // entrant, the coordinator joins it with a bot agent so it actually runs
     // instead of cancelling for refund at the join deadline. Default ON; set
     // AUTOPILOT_FILL_CHALLENGES=0 to disable. Only runs while the window is
@@ -443,7 +443,7 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
       );
       const scoringMode = normalizeScoringMode(modeRow.rows[0]?.scoring_mode);
 
-      // PNL_REALIZED gate (Phase 3): same logic as runContestById. Bail
+      // PNL_REALIZED gate: same logic as runContestById. Bail
       // early if pinned markets unresolved and under 48h. Resolver sweep
       // retries every 60s.
       if (scoringMode === "pnl_realized") {
@@ -467,7 +467,7 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
             return;
           }
           console.log(
-            `challenge ${challengeId}: PNL_REALIZED 48h timeout — settling on resolved markets only`,
+            `challenge ${challengeId}: PNL_REALIZED 48h timeout, settling on resolved markets only`,
           );
         }
       }
@@ -497,10 +497,10 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
         console.error(`challenge ${challengeId}: placement trait awards failed:`, err instanceof Error ? err.message : err),
       );
 
-      // Credit Cycles to challenge participants via PointsLedger. Was
-      // missing — only contests credited cycles, so challenge wins
-      // showed 0 cycles on the leaderboard. cType uses the same family
-      // mapping as the runner so the on-chain event is tagged correctly.
+      // Credit Cycles to challenge participants via PointsLedger so
+      // challenge wins count on the leaderboard alongside contests.
+      // cType uses the same family mapping as the runner so the
+      // on-chain event is tagged correctly.
       await creditPoints(challengeId, cType, results);
 
       // ERC-8004 portable reputation. Validator wallet posts one
@@ -508,7 +508,7 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
       // so other Arc apps can read a player's standing without trusting
       // ArcRun. Opt-in via VALIDATOR_PRIVATE_KEY; falls through cleanly
       // when unset. In-game challenge rep (the AgentRegistry delta)
-      // isn't applied here — ChallengeArena doesn't hold the
+      // isn't applied here: ChallengeArena doesn't hold the
       // CONTEST_ENGINE_ROLE on AgentRegistry. Queued for the next
       // contract version with a contract-level cap audit.
       await postValidatorFeedback("challenge", challengeId, cType, results);

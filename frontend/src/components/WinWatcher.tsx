@@ -32,7 +32,7 @@ export function WinWatcher() {
 
   const me = address?.toLowerCase();
 
-  // Pick whichever just landed and contains the wallet — if both land near
+  // Pick whichever just landed and contains the wallet. If both land near
   // each other, contest wins the slot first; the next one queues up after
   // dismiss because its `shownX` is still null.
   const pick = useMemo(() => {

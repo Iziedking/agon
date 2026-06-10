@@ -1,29 +1,34 @@
 # ArcRun backend
 
-Node and TypeScript services for ArcRun on Arc testnet: an indexer, an auth service, a coordinator, and the three agent runners. They read the deployed contract addresses from `../contracts/deployments/arc-testnet.json`.
+Node and TypeScript services for ArcRun on Arc Testnet: an indexer, an
+auth and API service, a coordinator, and the three agent runners. They
+read deployed contract addresses from
+`../contracts/deployments/arc-testnet.json`.
 
 ## Services
 
 | Service | Entry | What it does |
 |---------|-------|--------------|
-| Indexer | `npm run indexer` | Polls the six contracts with `eth_getLogs`, writes raw events to `events_log` and updates the denormalized read tables. Resumes from the last block. |
-| Auth | `npm run auth` | SIWE wallet login (EOA and EIP-1271 smart accounts), JWT sessions, and optional X OAuth2 linking. The wallet is the identity; X is not required to compete. |
-| Coordinator | `npm run coordinator` | BullMQ contest scheduler, the Arc transaction sender (serialized nonce, EIP-1559 fees), and the WebSocket fanout. |
+| Indexer | `npm run indexer` | Polls the contracts (and Arcana Markets) with `eth_getLogs`, writes raw events to `events_log`, and maintains the denormalized read tables. Resumes from the last processed block. |
+| Auth / API | `npm run auth` | SIWE wallet login, email login (one-time code, passkey, Circle Developer-Controlled wallet), JWT sessions, backend-signed wallet routes, payout proofs, results, and optional X / Discord / Telegram linking. |
+| Coordinator | `npm run coordinator` | BullMQ scheduler, serialized Arc transaction sender (EIP-1559), agent runners, Merkle settlement, WebSocket standings fanout, autopilot. |
 
 ## Stack
 
-viem, Hono, pg (Postgres 16), ioredis and BullMQ (Redis 7), ws, jose (JWT), zod, dotenv.
+viem, Hono, pg (Postgres 16), ioredis and BullMQ (Redis 7), ws, jose,
+zod, Anthropic SDK, Circle Developer-Controlled Wallets SDK.
 
 ## Setup
 
 ```bash
 docker compose up -d        # Postgres on 5434, Redis on 6380
-cp .env.example .env        # adjust if needed
+cp .env.example .env        # fill in the values marked <fill in>
 npm install
 npm run migrate             # create tables
 ```
 
-Host ports are 5434 (Postgres) and 6380 (Redis) to avoid clashing with local defaults. Other ports: auth 8082, WebSocket 8788.
+Host ports are 5434 (Postgres) and 6380 (Redis) to avoid clashing with
+local defaults. Other ports: auth 8082, WebSocket 8788.
 
 ## Run
 
@@ -34,29 +39,55 @@ npm run coordinator         # needs COORDINATOR_PRIVATE_KEY to send; otherwise l
 npm run typecheck
 ```
 
-## Runners and settlement
+## Runners
 
-The three contest runners live in `src/runners` and share the scoring module in `src/scoring`:
-- **Solver** generates seeded puzzles and grades on correctness and speed.
-- **Analyst** scores probabilistic predictions by Brier score.
-- **Scout** runs tier-limited real USDC operations from a per-agent hot wallet (derived from `SCOUT_MASTER_MNEMONIC`), generating genuine Arc volume.
+The three contest runners live in `src/runners` and share the LLM
+client and the scoring module:
 
-The coordinator turns runner results into a tiered `(operator, amount)` payout merkle tree (`src/coordinator/merkle.ts` and `payouts.ts`) that verifies against the contracts, posts the root, and settles. The full open-to-claim loop is proven on testnet.
+- **Solver** generates a seeded puzzle set per contest and grades on
+  correctness and speed. Every entrant faces identical puzzles.
+- **Analyst** trades live binary markets on Arcana Markets with real
+  USDC from per-agent wallets. A tick scheduler spreads each agent's
+  decision budget across the trade window; scoring is PnL.
+- **Scout** derives a hot wallet per agent from `SCOUT_MASTER_MNEMONIC`
+  and executes tier-capped USDC operations on Arc; scoring is volume.
 
-To drive the frontend `/live` page with a real contest, run the coordinator with `RUN_CONTEST=1` (and `COORDINATOR_PRIVATE_KEY` set). It opens and funds a contest on-chain, streams standings over the WebSocket while the window elapses, settles on-chain, and broadcasts the real payout (`src/coordinator/runContest.ts`).
+Tier gates capability: tier 0 and 1 skip the LLM, tier 2 adds it, tier
+3 adds code execution, tier 4 adds web search. `LLM_DAILY_KILL_USD`
+hard-stops LLM spend for the day when exceeded. Every call is audited
+in `llm_runs`.
 
-## Demos
+## Research micropayments
 
-Throwaway dev scripts in `src/demo`, run with `npx tsx`:
-- `seed.ts` sends a sample createAgent and joinSyndicate.
-- `auth-test.ts` exercises the SIWE login against a running auth service.
-- `runner-demo.ts` runs the Solver and Analyst offline.
-- `scout-demo.ts` runs real Scout USDC operations from a funded hot wallet.
-- `contest-e2e.ts` runs the entire contest loop on-chain: open, enter, score, settle, claim.
+Agents at tier 3 and above buy outside data mid-run through x402 (HTTP
+402) micropayments settled in USDC: prediction-market data and web
+search for the Solver, sentiment-tagged news for the Analyst, spot
+prices for the Scout. The shared gate in `src/nanopayments/research.ts`
+enforces the tier threshold, per-call caps, and a session budget per
+tier. Every payment writes a row to `nanopayments` and surfaces on the
+live stage.
+
+Setup: install the Circle CLI (`npm i -g @circle-fin/cli`), create an
+agent wallet, fund its Gateway balance, and set the `NANOPAY_*`
+variables described in `.env.example`.
+
+## Settlement
+
+The coordinator turns runner results into a tiered `(operator, amount)`
+payout Merkle tree (`src/coordinator/merkle.ts`, `payouts.ts`), posts
+the root on chain, and serves claim proofs over the API. The full
+open-to-claim loop runs on testnet around the clock under the
+autopilot.
 
 ## Notes
 
-- Secrets live in `.env` (gitignored): `JWT_SECRET`, `COORDINATOR_PRIVATE_KEY`, `SCOUT_MASTER_MNEMONIC`, and the X OAuth credentials. Contract addresses are public and come from the committed deployments file.
-- X OAuth routes return 501 until `X_CLIENT_ID`, `X_CLIENT_SECRET`, and `X_CALLBACK_URL` are set.
-- `src/demo/` holds throwaway scripts (`seed.ts` sends sample on-chain activity, `auth-test.ts` exercises SIWE). They are dev tools, not services.
-- The indexer is idempotent and resumable: it tracks the last processed block in `indexer_state` and de-dupes on `(tx_hash, log_index)`.
+- Secrets live in `.env` (gitignored): `JWT_SECRET`,
+  `COORDINATOR_PRIVATE_KEY`, `VALIDATOR_PRIVATE_KEY`,
+  `SCOUT_MASTER_MNEMONIC`, `ANTHROPIC_API_KEY`, Circle credentials, and
+  OAuth keys. Contract addresses are public and come from the committed
+  deployments file.
+- Social OAuth routes return 501 until their credentials are set.
+- The indexer is idempotent and resumable: it tracks the last processed
+  block in `indexer_state` and de-dupes on `(tx_hash, log_index)`.
+- The coordinator refuses to start in strict mode if the coordinator
+  and validator wallets are the same address.

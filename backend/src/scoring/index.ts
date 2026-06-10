@@ -1,10 +1,9 @@
 /// Scoring formulas shared by the runners and the coordinator. All scores are
 /// integers scaled to 1e6 so they sort cleanly and survive JSON without floats.
-/// See ARCRUN_PLAN.md section 5.2.
 
 export const SCORE_SCALE = 1_000_000;
 
-/// Deterministic small-range randomizer (the plan's +/-3% anti-gaming factor),
+/// Deterministic small-range randomizer (the +/-3% anti-gaming factor),
 /// derived from a seed so a contest's scoring is reproducible and auditable.
 export function jitter(seed: number, spreadBps = 300): number {
   // mulberry32

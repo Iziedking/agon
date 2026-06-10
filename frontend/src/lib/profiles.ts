@@ -124,7 +124,7 @@ export async function saveAgentName(
     });
     const data = (await res.json().catch(() => ({}))) as { nickname?: string | null; error?: string };
     if (!res.ok) {
-      if (res.status === 401) return { ok: false, error: "sign in first — open the login modal" };
+      if (res.status === 401) return { ok: false, error: "sign in first. open the login modal" };
       return { ok: false, error: data.error ?? "could not save the name" };
     }
     return { ok: true, nickname: data.nickname ?? null };
@@ -149,7 +149,7 @@ export async function saveAgentSkin(
     });
     const data = (await res.json().catch(() => ({}))) as { error?: string };
     if (!res.ok) {
-      if (res.status === 401) return { ok: false, error: "sign in first — open the login modal" };
+      if (res.status === 401) return { ok: false, error: "sign in first. open the login modal" };
       return { ok: false, error: data.error ?? "could not save the skin" };
     }
     return { ok: true };
@@ -166,7 +166,7 @@ export async function clearAgentSkin(agentId: number): Promise<{ ok: true } | { 
     });
     if (!res.ok) {
       const data = (await res.json().catch(() => ({}))) as { error?: string };
-      if (res.status === 401) return { ok: false, error: "sign in first — open the login modal" };
+      if (res.status === 401) return { ok: false, error: "sign in first. open the login modal" };
       return { ok: false, error: data.error ?? "could not clear the skin" };
     }
     return { ok: true };

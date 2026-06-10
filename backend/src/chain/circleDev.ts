@@ -10,9 +10,8 @@ import { config } from "../config/index.js";
 /// by Circle on the user's behalf. The user never touches a private key, the
 /// passkey ceremony, or a wallet extension.
 ///
-/// The custody trade-off is recorded in the project memory; this module is
-/// the seam between ArcRun and that trade-off so a future swap to user-
-/// controlled (MPC) wallets only has to replace this file.
+/// This module is the seam for that custody trade-off: a future swap to
+/// user-controlled (MPC) wallets only has to replace this file.
 
 let cachedClient: ReturnType<typeof initiateDeveloperControlledWalletsClient> | null = null;
 

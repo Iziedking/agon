@@ -17,7 +17,7 @@ export type PuzzleKind = "arithmetic" | "classify" | "routing" | "pattern" | "wo
 /// Standardized presentation metadata. Every puzzle, regardless of family,
 /// surfaces on the live stage with the same six fields so the audience reads
 /// the same shape every time. The variant is in the question text, not the
-/// chrome. See docs/brandkit/11-realism-plan.md "Solver track".
+/// chrome.
 export interface PuzzlePresentation {
   /// Capitalized family tag for the chrome ("QUIZ", "ARITHMETIC", etc).
   family: string;
@@ -55,8 +55,8 @@ export interface Puzzle {
 /// rounds within the same contest don't collide and contests don't share
 /// templates. The first 100 rounds of a contest fit inside 32-bit ranges.
 ///
-/// Quiz is weighted up so the demo features it prominently (about half of
-/// every round). Each quiz question is drawn from QUIZ_BANK with the same
+/// Quiz is weighted up to about half of every round. Each quiz question is
+/// drawn from QUIZ_BANK with the same
 /// seed-derived index, so a 60+ question bank means a 5-puzzle round rarely
 /// reuses questions within the same contest.
 export function generatePuzzles(seed: number, count: number): Puzzle[] {
@@ -77,10 +77,10 @@ export function generatePuzzles(seed: number, count: number): Puzzle[] {
   for (let i = 0; i < count; i++) {
     if (includeResearch) {
       // 10 buckets: 5 research (50%), 3 quiz, 1 arithmetic, 1 classify.
-      // The 50% research weighting brings the demo's expected
-      // P(zero research in 6 puzzles) down to ~1.6%, so judges almost
-      // always see Nanopayments fire. Routing / pattern / wordcount drop
-      // out at this weight — they were 1/12 each and rarely visible.
+      // The 50% research weighting brings P(zero research in 6 puzzles)
+      // down to ~1.6%, so nearly every round fires a Nanopayment. Routing,
+      // pattern, and wordcount drop out at this weight; they were 1/12
+      // each and rarely visible.
       const k = pick(r, 10);
       if (k < 5) out.push(researchPuzzle(r, usedResearch));
       else if (k < 8) out.push(quiz(r, usedQuizIndices));

@@ -18,9 +18,7 @@ import { formatUsdcString, short } from "@/lib/profiles";
 /// flagged and a placement banner shows when they win. Reads the auth service,
 /// so it works for any contest, current or long settled.
 
-// Stencil rank color: top three carry an accent tint, everyone else stays ink.
-// No more gold/silver/bronze rounded pills — flat ink in the arcrun-redesign
-// style. Pink only marks #1 (one accent per row).
+// Stencil rank color: flat ink, pink only marks #1 (one accent per row).
 function rankColor(rank: number): string {
   if (rank === 1) return "var(--accent)";
   return "var(--ink)";
@@ -182,10 +180,9 @@ function LiveStandings({
         ? challengeStandings.entries
         : [];
 
-  // Hook must run on every render — never conditional, never after an early
-  // return. The empty-entries paths below render different content, but this
-  // hook stays at the top so the hook count is stable across renders. React
-  // error #310 fires here when this rule slips (and that's what just broke).
+  // Hook must run on every render: never conditional, never after an early
+  // return. Keep it at the top so the hook count is stable across renders
+  // (React error #310 otherwise).
   const names = useAgentNames(entries.map((e) => e.agentId));
 
   if (entries.length === 0) {
@@ -250,7 +247,7 @@ function LiveStandings({
 }
 
 /// The static entrant field: who has joined, no scores yet. Looks up
-/// nicknames so a renamed agent reads as "kingizie" instead of the bare
+/// nicknames so a renamed agent shows its name instead of the bare
 /// "agent #17" id. Falls back to the id when no nickname is set.
 function Field({ entrants, me }: { entrants: ResultEntrant[]; me?: string }) {
   const names = useAgentNames(entrants.map((e) => e.agentId));

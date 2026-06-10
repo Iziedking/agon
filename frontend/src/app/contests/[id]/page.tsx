@@ -8,7 +8,7 @@ import { ResultsBoard } from "@/components/pengu/ResultsBoard";
 import { CONTRACTS, EXPLORER } from "@/lib/arc";
 import { CONTEST_TYPE, fetchContest, formatUsdc, metricLabel, type Contest } from "@/lib/contests";
 
-/// Contest detail page reskinned to arcrun-redesign. Eyebrow + stencil
+/// Contest detail page. Eyebrow + stencil
 /// pool size as the hero number, BracketedCell info panel with mono
 /// key/value rows, sticky EnterPanel on the right rail.
 

@@ -25,11 +25,10 @@ import {
   fetchSyndicateMultipliers,
 } from "./syndicateWar.js";
 
-/// Step 3 and 4 of the multi-user loop: take a real, open contest, assemble the
-/// field of every operator who entered (from the indexer's entries table, with
-/// each agent's tier read from AgentRegistry), stream standings over the window,
-/// then run the right runner over the whole field and settle on-chain. This is
-/// the generic engine that replaces the two-agent runContest demo.
+/// Generic contest engine: take a real, open contest, assemble the field of
+/// every operator who entered (from the indexer's entries table, with each
+/// agent's tier read from AgentRegistry), stream standings over the window,
+/// then run the right runner over the whole field and settle on-chain.
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -82,7 +81,7 @@ async function fetchField(contestId: number, cType: number): Promise<ContestEntr
           tier,
         ]);
       } catch {
-        // RPC blip — treat as tier 0 for this tick. The indexer or a
+        // RPC blip: treat as tier 0 for this tick. The indexer or a
         // later tick will fix the row.
         tier = 0;
       }
@@ -214,7 +213,7 @@ export async function runContestById(contestId: number, broadcast: (message: unk
   const platformFee = (c.prizePool * BigInt(c.platformFeeBps)) / 10_000n;
   const claimable = c.prizePool - platformFee;
   // Pick the payout curve based on the creator's scoring_mode (Arcana
-  // contests only — Scout/Solver fall through to the rank-based curve
+  // contests only; Scout/Solver fall through to the rank-based curve
   // inside the dispatcher). Default null = pnl_mtm.
   const modeRow = await query<{ scoring_mode: string | null; end_block: string | null }>(
     "select scoring_mode, created_block::text as end_block from contests where id = $1",
@@ -246,7 +245,7 @@ export async function runContestById(contestId: number, broadcast: (message: unk
         return;
       }
       console.log(
-        `contest ${contestId}: PNL_REALIZED 48h timeout — settling with ${pending.length - unresolved.length} resolved market(s), unresolved positions get 0 PnL`,
+        `contest ${contestId}: PNL_REALIZED 48h timeout, settling with ${pending.length - unresolved.length} resolved market(s), unresolved positions get 0 PnL`,
       );
     }
   }

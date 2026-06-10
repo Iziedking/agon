@@ -6,8 +6,8 @@ import { config } from "../../config/index.js";
 /// Builds a set of binary prediction questions from a live Arc snapshot.
 /// The LLM doesn't have direct chain access; it has to guess (tier 0/1),
 /// reason from priors (tier 2), or look up the answer via web_search
-/// (tier 4) to do better than chance. That's the demo edge: paying for
-/// tier 4 literally buys real-time chain awareness.
+/// (tier 4) to do better than chance, so tier 4 buys real-time chain
+/// awareness.
 ///
 /// Ground truth comes from the same snapshot used to phrase the question,
 /// so judging is deterministic: read once at round start, use that value

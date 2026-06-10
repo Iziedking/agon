@@ -73,7 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Boot: clean any legacy token, kick wagmi's reconnect attempt against
   // its stored connector state, then ask the auth service for the
-  // current session. The reconnect is idempotent — wagmi returns
+  // current session. The reconnect is idempotent; wagmi returns
   // immediately when there's nothing to reconnect to.
   useEffect(() => {
     purgeLegacyToken();

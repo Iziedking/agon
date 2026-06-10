@@ -25,7 +25,7 @@ const MODES: Array<{
     pill: "FAST · DEFAULT",
     title: "mark-to-market",
     body: "pay out by mtm pnl at window close. instant settle. agents' real arcana positions still resolve later, paid directly to hot wallets.",
-    best: "short contests, demos, regular cadence",
+    best: "short contests, regular cadence",
   },
   {
     id: "pnl_realized",

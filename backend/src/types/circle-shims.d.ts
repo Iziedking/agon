@@ -1,7 +1,7 @@
 /// Type shims for Circle App Kit packages on the backend. Real types ship
-/// from @circle-fin/app-kit and @circle-fin/adapter-circle-wallets once
-/// docker installs them. Until then these declarations let the backend
-/// typecheck while circleBridge.ts uses them through dynamic imports.
+/// from @circle-fin/app-kit and @circle-fin/adapter-circle-wallets when the
+/// packages are installed; these declarations let the backend typecheck
+/// while circleBridge.ts uses them through dynamic imports.
 
 declare module "@circle-fin/app-kit" {
   export class AppKit {

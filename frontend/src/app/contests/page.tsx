@@ -16,9 +16,9 @@ import { HostCampaignButton } from "@/components/pengu/HostCampaignButton";
 import { Pagination } from "@/components/pengu/Pagination";
 import { fetchContests, CONTEST_TYPE, formatUsdc, metricLabel, type Contest } from "@/lib/contests";
 
-/// /contests per arcrun-redesign §4.11. Hard-left section header with the
+/// /contests. Hard-left section header with the
 /// HOST A CAMPAIGN tag CTA in the right slot. Filters row above the grid
-/// (ALL/VOLUME/PREDICTION/PUZZLE — active inverted to flat pink). 3-col
+/// (ALL/VOLUME/PREDICTION/PUZZLE, active inverted to flat pink). 3-col
 /// BracketedCell grid: ■ CAMPAIGN #N caps + StatusChip, stencil pool size,
 /// mono metric/window/entries, READ TERMS + ENTER → tags at the bottom.
 

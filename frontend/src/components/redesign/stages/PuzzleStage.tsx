@@ -77,8 +77,7 @@ export function PuzzleStage({ entries }: { entries: StandingsEntry[] }) {
   const maxScore = Math.max(...entries.map((e) => e.score), 1);
 
   // Round-total nanopayment spend, summed across every agent. Drives the
-  // "■ NANOPAYMENTS" chip at the top of the stage so judges read "the
-  // arena spent $X.XX on research this round" at a glance.
+  // "■ NANOPAYMENTS" chip at the top of the stage.
   const roundSpent6 = entries.reduce((acc, e) => {
     if (e.progress?.kind === "solver") return acc + sumSpent6(e.progress.spent);
     return acc;
@@ -121,7 +120,7 @@ export function PuzzleStage({ entries }: { entries: StandingsEntry[] }) {
 
   return (
     <div className="flex flex-col gap-5">
-      {/* NANOPAYMENTS chip — total round research spend, only when > 0 */}
+      {/* NANOPAYMENTS chip: total round research spend, only when > 0 */}
       {roundSpent6 > 0n ? (
         <div className="flex flex-wrap items-center gap-3 font-mono text-[11px] uppercase tracking-[0.16em]">
           <span aria-hidden className="text-accent">■</span>
@@ -130,7 +129,7 @@ export function PuzzleStage({ entries }: { entries: StandingsEntry[] }) {
         </div>
       ) : null}
 
-      {/* THIS ROUND — standardized puzzle cards or fallback to legacy chip strip */}
+      {/* THIS ROUND: standardized puzzle cards or fallback to legacy chip strip */}
       {cards ? (
         <BracketedCell pad="sm">
           <div className="flex flex-col gap-2">

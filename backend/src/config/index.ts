@@ -32,7 +32,7 @@ const envSchema = z.object({
 
   // Email OTP at first signup. When enabled, a never-seen email must
   // prove ownership via a 6-digit code before the passkey-enrollment
-  // path runs. Returning passkey users skip this — the passkey itself
+  // path runs. Returning passkey users skip this; the passkey itself
   // is the proof. OTP_PEPPER salts the at-rest code hash so a DB leak
   // doesn't expose live codes.
   EMAIL_OTP_ENABLED: z.coerce.boolean().default(false),
@@ -70,29 +70,26 @@ const envSchema = z.object({
   ANTHROPIC_API_KEY: z.string().optional(),
   LLM_DAILY_KILL_USD: z.coerce.number().nonnegative().default(5),
   // Default LLM model used by every LLM-enabled tier. Tier 0/1 don't call
-  // the LLM at all; tier 2 and up share this model. Default Haiku 4.5 to
-  // keep testnet cost predictable. Override per the marketing tier curve
-  // (1 / 2 / 4 / 8 / 16) by setting LLM_MODEL_TIER4 to a smarter brain
-  // for mainnet, where tier 4 is the absolute top of the food chain.
+  // the LLM at all; tier 2 and up share this model. Defaults to Haiku 4.5
+  // to keep testnet cost predictable.
   LLM_MODEL: z.string().default("claude-haiku-4-5-20251001"),
   // Optional override applied ONLY to tier 4 agents. When set, tier 4 calls
-  // use this model while tiers 2 and 3 stay on LLM_MODEL. Designed for
-  // mainnet where the platform sells tier 4 as the best agent on Arc;
-  // typical values are claude-sonnet-4-6 or claude-opus-4-7. Leave unset on
-  // testnet so the demo stays cheap.
+  // use this model while tiers 2 and 3 stay on LLM_MODEL. Typical values
+  // are claude-sonnet-4-6 or claude-opus-4-7. Leave unset on testnet to
+  // keep costs low.
   LLM_MODEL_TIER4: z.string().optional(),
   // Testing safety belt. When true:
   //  - web_search tool is stripped from every tier (avoids $0.01/search)
   //  - max_tokens is clamped to 200 regardless of POWER stat
   //  - retries are disabled
-  // Use during smoke runs so the cost ceiling stays predictable.
+  // Use during test runs so the cost ceiling stays predictable.
   LLM_TESTING: z.coerce.boolean().default(false),
 
   // Agent training. Cost to go from level N to N+1 is (N+1) × 50 Cycles and
   // (N+1) × this many real seconds. Default 3600 = 60 minutes per level base
   // (so level 5 takes 6h). Long enough that the speedup ladder is worth
-  // paying for. Set to 30 in the demo environment so a judge can watch a
-  // training cycle finish during the walkthrough.
+  // paying for. Set low (e.g. 30) in test environments so a training cycle
+  // finishes quickly.
   TRAINING_BASE_SECONDS_PER_LEVEL: z.coerce.number().int().positive().default(3600),
   // Speedup ladder: each +50 cycles spent at start time shaves 15 min off
   // the queue duration. Lets operators trade Cycles for wall-clock when
@@ -114,10 +111,9 @@ const envSchema = z.object({
   // separate address from the agent NFT owner (the AgentRegistry contract).
   VALIDATOR_PRIVATE_KEY: z.string().optional(),
 
-  // Arcana Markets (external prediction-market integration). Verified live
-  // contract on Arc Testnet at 0x443a47eF... — owner is a single EOA, currently
-  // resuming market generation per partnership agreement. The indexer
-  // subscribes to its events; the Analyst runner reads open markets here.
+  // Arcana Markets (external prediction-market integration). Live contract
+  // on Arc Testnet; owner is a single EOA. The indexer subscribes to its
+  // events; the Analyst runner reads open markets here.
   ARCANA_MARKETS_ADDRESS: z
     .string()
     .regex(/^0x[a-fA-F0-9]{40}$/)
@@ -160,7 +156,7 @@ const envSchema = z.object({
   NANOPAY_CLI_PATH: z.string().default("circle"),
   // Circle Agent wallet address that pays for x402 research. Created via
   // `circle wallet create --type agent`, funded via `circle gateway deposit`.
-  // The wallet's keys live with the user's CLI login session — the backend
+  // The wallet's keys live with the operator's CLI login session; the backend
   // shells to `circle services pay --address <this>` and the CLI signs.
   // Distinct identity system from Circle Dev-Controlled wallets (the SDK
   // path used for email-login operators). Required when NANOPAY_ENABLED=true.
@@ -171,7 +167,7 @@ const envSchema = z.object({
     .transform((v) => (v ? (v as `0x${string}`) : undefined)),
   // Per-puzzle research budget in USDC (decimal). Tier 0 cheapest, tier 4
   // most. Defaults reflect the "agents that can afford better data win"
-  // mechanic the demo leans on.
+  // mechanic.
   NANOPAY_TIER_0_BUDGET_USDC: z.coerce.number().nonnegative().default(0.01),
   NANOPAY_TIER_1_BUDGET_USDC: z.coerce.number().nonnegative().default(0.05),
   NANOPAY_TIER_2_BUDGET_USDC: z.coerce.number().nonnegative().default(0.25),
@@ -184,8 +180,7 @@ const envSchema = z.object({
   // Hard ceiling per call so a runaway prompt can't burn the pool.
   NANOPAY_MAX_PER_CALL_USDC: z.coerce.number().positive().default(2.0),
   // Research spend is a premium ability: only agents at this tier or above
-  // pay for outside data. The upgrade pitch is literal — buy tier 3 and
-  // your agent starts buying market intelligence.
+  // pay for outside data.
   NANOPAY_MIN_RESEARCH_TIER: z.coerce.number().int().min(0).max(4).default(3),
   // Session-lifetime research budget per tier pool in USDC (decimal). The
   // in-memory pool starts at this number and drains as calls settle; the
@@ -196,19 +191,19 @@ const envSchema = z.object({
   // Analyst research: paid crypto news headlines fetched before trade
   // picks. Gloria AI sells 20 sentiment-tagged headlines per keyword for
   // $0.05, settled as plain on-chain USDC on Base (the agent wallet's
-  // Base USDC balance pays, NOT the Gateway pool — keep it topped up).
+  // Base USDC balance pays, NOT the Gateway pool; keep it topped up).
   NANOPAY_ANALYST_NEWS_ENDPOINT: z.string().optional(),
   NANOPAY_ANALYST_NEWS_LABEL: z.string().default("Gloria AI news"),
   NANOPAY_ANALYST_NEWS_CHAIN: z.string().default("BASE"),
   // Scout research: paid spot prices fetched before the volume strategy.
   // AIsa's CoinGecko proxy sells prices for $0.008 and settles on Polygon
-  // (MATIC) — the same Gateway domain the eco deposit funds, so it draws
-  // from the existing pool. Smoke-tested live 2026-06-10.
+  // (MATIC), the same Gateway domain the eco deposit funds, so it draws
+  // from the existing pool.
   NANOPAY_SCOUT_PRICE_ENDPOINT: z.string().optional(),
   NANOPAY_SCOUT_PRICE_LABEL: z.string().default("AIsa market prices"),
   NANOPAY_SCOUT_PRICE_CHAIN: z.string().default("MATIC"),
 
-  // Phase 1 prediction-tick scheduler. When true (default), agents make
+  // Prediction-tick scheduler. When true (default), agents make
   // multiple tier-gated decisions across the trade window via the
   // coordinator's tick scheduler. The legacy single-pass analyst runner
   // gates its own trade-creation logic so we don't double-trade. Set to

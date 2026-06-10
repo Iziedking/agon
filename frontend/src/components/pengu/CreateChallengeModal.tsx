@@ -9,7 +9,7 @@ import { friendlyError } from "@/lib/errors";
 import { reportEvent } from "@/lib/report";
 import { ModalClose } from "@/components/redesign";
 
-/// Create-challenge modal reskinned to arcrun-redesign. Flat ink-on-canvas
+/// Create-challenge modal. Flat ink-on-canvas
 /// surface, stencil heading, tag-style kind picker, mono inputs with hairline
 /// borders, flat pink tag CTA. No rounded pills, no bubble heading, no shadow.
 

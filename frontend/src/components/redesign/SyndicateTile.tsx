@@ -4,7 +4,7 @@ import { useEffect, useRef, type CSSProperties } from "react";
 import { BracketedCell } from "./BracketedCell";
 import { Robot, type RobotVariant } from "./Robot";
 
-/// One syndicate tile per §10. A tall bracketed cell with a monochrome
+/// One syndicate tile. A tall bracketed cell with a monochrome
 /// cabin/tube; the only colored elements are the robot, the halo behind
 /// it, the floating particles, the accent ring at the tube base, and the
 /// outline CTA. The cabin chrome (top cap, glass walls, bottom cap,
@@ -16,7 +16,7 @@ interface SyndicateConf {
   /// Accent for halo/ring/particles/CTA border.
   accent: string;
   /// Robot variant rendered inside the tube. NOTE: cyan syndicate uses the
-  /// mint robot per §10.3 table.
+  /// mint robot.
   robot: RobotVariant;
   /// Mono caps label rendered in the header strip.
   name: string;
@@ -192,7 +192,7 @@ export function SyndicateTile({
               />
             ))}
 
-            {/* Mascot, offset above midpoint per §10.2 */}
+            {/* Mascot, offset above midpoint */}
             <div
               className="absolute left-1/2 syn-mascot"
               style={{

@@ -36,7 +36,7 @@ import {
   type AgentState,
 } from "@/lib/agents";
 
-/// /workshop per arcrun-redesign §4.4. Disconnected: one BracketedCell + a
+/// /workshop. Disconnected: one BracketedCell + a
 /// pink SIGN IN tag. Connected: two-column layout. Left = agent list as
 /// ledger rows. Right = the active agent's Robot + bracketed STATS block.
 ///
@@ -57,7 +57,7 @@ function WorkshopPageBody() {
   const { address: walletAddress, isConnected: walletConnected } = useAccount();
   const { me } = useAuth();
   // Accept either an injected-wallet connection or a SIWE session address.
-  // Circle passkey users have me.address but no wagmi connection — gating
+  // Circle passkey users have me.address but no wagmi connection; gating
   // on isConnected alone locked them out of the workshop.
   const address = (walletAddress ?? me?.address) as `0x${string}` | undefined;
   const isConnected = walletConnected || !!me?.address;
@@ -223,7 +223,7 @@ function WorkshopPageBody() {
         )}
 
         {/* Training panel: six stats per agent. Full-width below the grid
-            so the six bars have horizontal room. Owner-only — read by
+            so the six bars have horizontal room. Owner-only, read by
             the auth API which gates writes by SIWE ownership. */}
         {active ? (
           <div id={`train-${active.id}`} className="mt-10 scroll-mt-24">

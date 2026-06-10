@@ -21,8 +21,8 @@ import { extractSearchTerm, buildResearchUrl } from "./puzzles/research.js";
 
 /// Maps a puzzle kind to its preferred x402 research endpoint. Returning null
 /// means the runner skips the research-spend step for that puzzle. The
-/// research family is the demo's marquee: it points at NANOPAY_PREDICTION_ENDPOINT
-/// (Predexon by default) and reliably pays per call so judges see real spend.
+/// research family points at NANOPAY_PREDICTION_ENDPOINT (Predexon by
+/// default) and pays per call, so the live stage shows real spend.
 function researchEndpointFor(
   kind: PuzzleKind,
 ): { url: string; label: string } | null {
@@ -88,8 +88,8 @@ function shapeResearchCall(
 ///
 /// Fallback: when ANTHROPIC_API_KEY is unset (local dev, CI), every agent
 /// drops to the random-guess path regardless of tier. The coordinator
-/// pipeline doesn't notice; the demo loses tier differentiation locally
-/// but the contracts and broadcast keep working.
+/// pipeline doesn't notice; tier differentiation is lost locally but the
+/// contracts and broadcast keep working.
 
 const FALLBACK_ACCURACY = [0.5, 0.55, 0.62, 0.7, 0.8];
 const FALLBACK_MS_PER_PUZZLE = [1800, 1500, 1200, 900, 700];
@@ -174,8 +174,7 @@ export class SolverRunner implements Runner {
 /// Runs the per-agent solve honoring the tier's capability gates. Tier 0/1
 /// (llmEnabled=false) skip the LLM and just guess; tier 2+ call the model
 /// with the tier-attached tools. Audit rows are written for every puzzle
-/// regardless of path so the demo "see the real solves" surface has
-/// complete coverage.
+/// regardless of path so the solve-detail surface has complete coverage.
 async function runWithCapabilities(
   contestId: number,
   entry: ContestEntryInput,
@@ -268,8 +267,7 @@ export function applyRouting(
 /// Kind-aware odds: multiple-choice guesses are right 25 to 33 percent
 /// of the time, free-form numeric guesses almost never. LUCK on tier 1
 /// adds a small bias toward the correct answer; with enough luck a
-/// tier 1 agent can outperform a stock tier 2 LLM by chance, which is
-/// the "guess + luck" story the upgrade flow advertises.
+/// tier 1 agent can outperform a stock tier 2 LLM by chance.
 async function runGuessPath(
   contestId: number,
   entry: ContestEntryInput,
@@ -623,9 +621,9 @@ function buildSystemPrompt(params: RuntimeParams): string {
 }
 
 /// Fallback path used when ANTHROPIC_API_KEY is unset. Synthetic curve so
-/// the coordinator still produces a contest result without the user
-/// configuring a paid API key. Roughly mirrors the tier accuracy curve so
-/// the standings still make sense on a local dev box.
+/// the coordinator still produces a contest result without a paid API key.
+/// Roughly mirrors the tier accuracy curve so the standings still make
+/// sense on a local dev box.
 function guessOnlySolve(puzzles: Puzzle[], tier: number, seed: number): SolveOutcome {
   const r = seededRng(seed);
   const idx = Math.min(Math.max(tier, 0), 4);

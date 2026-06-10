@@ -14,7 +14,7 @@ import { config } from "../config/index.js";
 ///
 /// Collisions across any pair are at minimum a centralization smell and
 /// at worst a security failure (ERC-8004's no-self-feedback rule is the
-/// hardest constraint — coordinator == validator gets calls rejected
+/// hardest constraint: coordinator == validator gets calls rejected
 /// on-chain).
 ///
 /// In dev / local testnet, a collision is a warning so a one-keypair
@@ -47,7 +47,7 @@ async function resolveAddresses(): Promise<WalletMap> {
     try {
       out.scoutMaster0 = mnemonicToAccount(config.scout.masterMnemonic, { addressIndex: 0 }).address;
     } catch {
-      // bad mnemonic — leave null
+      // bad mnemonic; leave null
     }
   }
   try {
@@ -57,7 +57,7 @@ async function resolveAddresses(): Promise<WalletMap> {
       functionName: "treasury",
     })) as `0x${string}`;
   } catch {
-    // RPC blip or contract not yet deployed — skip the treasury cross-check.
+    // RPC blip or contract not yet deployed; skip the treasury cross-check.
   }
   return out;
 }

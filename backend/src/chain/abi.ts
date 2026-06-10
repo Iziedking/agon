@@ -48,7 +48,7 @@ export const prizeEscrowEvents = parseAbi([
   "event PaidOut(address indexed controller, uint256 indexed poolId, address indexed recipient, uint256 amount)",
 ]);
 
-/// Arcana Markets — external prediction market contract on Arc Testnet.
+/// Arcana Markets: external prediction market contract on Arc Testnet.
 /// Source: github.com/stephdrealss/arcana-markets, src/App.js. Parimutuel
 /// YES/NO pool, single-resolver admin model. createMarket / resolveMarket /
 /// cancelMarket are owner-only; buyShares / claimWinnings / refund are open.
@@ -72,7 +72,7 @@ export const arcanaMarketsAbi = parseAbi([
   "function buyShares(uint256 marketId, bool isYes, uint256 usdcAmount)",
   "function claimWinnings(uint256 marketId)",
   "function refund(uint256 marketId)",
-  // writes (owner only — calling will revert "Not owner" from non-owner)
+  // writes (owner only; calling will revert "Not owner" from non-owner)
   "function createMarket(string title, string category, uint256 endTime)",
   "function resolveMarket(uint256 marketId, bool yesWon)",
   "function cancelMarket(uint256 marketId)",

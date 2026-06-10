@@ -436,7 +436,7 @@ create table if not exists delisted_agents (
 );
 
 -- ===========================================================================
--- Arcana Markets integration (Phase A — read + index)
+-- Arcana Markets integration (read + index)
 -- ===========================================================================
 -- Cached state of every Arcana market the indexer has seen. Updated on
 -- SharesBought (pool deltas), MarketResolved (outcome), and a periodic

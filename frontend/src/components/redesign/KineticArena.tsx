@@ -4,9 +4,8 @@
 /// concentric wireframe rings + a pulsing dot at the center, all in ink at
 /// low alpha so the wordmark on top stays the focal point.
 ///
-/// Implemented as inline SVG with CSS animations — no canvas, no video, no
-/// network requests, no LCP regression. The whole thing weighs maybe 2 KB.
-/// `prefers-reduced-motion` disables the spin and pulse.
+/// Implemented as inline SVG with CSS animations: no canvas, no video, no
+/// network requests. `prefers-reduced-motion` disables the spin and pulse.
 export function KineticArena() {
   return (
     <svg

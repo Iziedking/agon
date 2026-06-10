@@ -10,17 +10,15 @@ import { query } from "../db/pool.js";
 ///
 /// Why shell out instead of an SDK: Circle hasn't released a programmatic
 /// x402 SDK yet. The CLI handles payment-authorization signing, Gateway
-/// routing, and the 402 round-trip. Running it from a child process is the
-/// supported integration shape today; we can swap to direct HTTP + viem
-/// signing in v2.
+/// routing, and the 402 round-trip, so spawning it is the supported
+/// integration shape today.
 ///
 /// Per-tier spending caps are enforced in this module because Circle's
-/// native `wallet limit set` policy is mainnet-only — testnet rejects it
+/// native `wallet limit set` policy is mainnet-only; testnet rejects it
 /// with "Spending policies are mainnet-only."
 ///
 /// Every call writes one row to `nanopayments`. The Solver runner uses
-/// these rows to surface real spend on the live stage so judges see the
-/// agentic economy in motion.
+/// these rows to surface real spend per call on the live stage.
 
 const USDC_6 = 1_000_000n;
 
@@ -52,7 +50,7 @@ export function usdcToInt6(amount: number): bigint {
 }
 
 /// 6-dec integer → human USDC string with 4 fractional digits. Used in
-/// log lines and the live-stage display so judges see "$0.0136" not raw 6-dec.
+/// log lines and the live-stage display ("$0.0136" instead of raw 6-dec).
 export function int6ToUsdcString(n: bigint): string {
   const whole = n / USDC_6;
   const frac = n % USDC_6;
@@ -70,7 +68,7 @@ export interface PayX402Opts {
   tier: number;
   /// Paid endpoint URL surfaced by `circle services search`.
   endpoint: string;
-  /// Human label like "Predexon prediction markets" — drives the live-stage
+  /// Human label like "Predexon prediction markets"; drives the live-stage
   /// caption.
   endpointLabel?: string;
   /// Request body forwarded as the `--data` flag.
@@ -202,7 +200,7 @@ export async function inspectX402(endpoint: string): Promise<unknown | null> {
 }
 
 function persistAndReturn(opts: PayX402Opts, result: PayX402Result): PayX402Result {
-  // Fire and forget — DB write should never block the runner. Errors here
+  // Fire and forget: DB write should never block the runner. Errors here
   // are logged, never thrown.
   void query(
     `insert into nanopayments

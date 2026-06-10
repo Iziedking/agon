@@ -108,7 +108,7 @@ function diffFrame(
           out.push(`${name} solved ${newCorrect} of ${pa.total}`);
         }
       } else if (pa.kind === "analyst" && pb.kind === "analyst") {
-        // Arcana branch first — when a real position lands or resolves it's
+        // Arcana branch first: when a real position lands or resolves it's
         // way more interesting than a synthetic call.
         const aArc = pa.arcana ?? [];
         const bArc = pb.arcana ?? [];

@@ -25,8 +25,8 @@ import {
   type BridgeStepProgress,
 } from "@/lib/bridge";
 
-/// One-click USDC mover. Defaults source AND destination to Arc Testnet —
-/// when both are Arc the page renders the same-chain TRANSFER flow (direct
+/// One-click USDC mover. Defaults source AND destination to Arc Testnet.
+/// When both are Arc the page renders the same-chain TRANSFER flow (direct
 /// USDC.transfer via viem). When they differ, it's a CCTP bridge via Circle
 /// App Kit with the Forwarding Service on so the user never needs a wallet
 /// on the destination chain.
@@ -166,7 +166,7 @@ function WagmiBridge() {
     }
   }
 
-  /// Same-chain USDC.transfer call via viem. No CCTP — just a regular ERC-20
+  /// Same-chain USDC.transfer call via viem. No CCTP, just a regular ERC-20
   /// transfer to the recipient address.
   async function doTransfer() {
     if (!walletClient) throw new Error("Wallet not ready. Refresh and try again.");
@@ -635,8 +635,8 @@ void parseUnits;
 
 /// Email-user withdrawal flow. Dev-Controlled wallets sign through the
 /// backend, so we expose two modes:
-///   1. ARC TO ARC — direct USDC.transfer via /wallet/execute
-///   2. ARC TO OTHER CHAIN — CCTPv2 bridge via /wallet/bridge, which runs
+///   1. ARC TO ARC: direct USDC.transfer via /wallet/execute
+///   2. ARC TO OTHER CHAIN: CCTPv2 bridge via /wallet/bridge, which runs
 ///      Circle Wallets adapter + App Kit server-side, Forwarder Service on
 ///      so the destination chain mint is handled for the user.
 function CircleUserBridge() {

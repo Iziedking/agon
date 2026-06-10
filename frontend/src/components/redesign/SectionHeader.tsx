@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 
-/// Every section opens with three stacked lines, left-aligned. Mirrors the
-/// ChainGPT "■ BACKING TOMORROW" pattern:
+/// Every section opens with three stacked lines, left-aligned:
 ///   1) 6×6px pink square + mono caps eyebrow
 ///   2) massive display heading in stencil face
 ///   3) 2–3 line mono sub-deck at `--ink-2`
@@ -14,7 +13,7 @@ interface Props {
   /// the eyebrow when it would only paraphrase the heading: the heading is
   /// the thing.
   eyebrow?: ReactNode;
-  /// The display heading. Strings only — the component handles the type.
+  /// The display heading. Strings only; the component handles the type.
   heading: string;
   /// Optional sub-deck mono body. Two or three lines max.
   subDeck?: ReactNode;

@@ -1,7 +1,7 @@
 /// Client API for agent training. Mirrors the backend coordinator/training.ts
 /// module: six stats, levels 0..20, Cycles cost (N+1)*50, time gate set by
 /// the server's TRAINING_BASE_SECONDS_PER_LEVEL env (default 60min/level prod,
-/// 30s/level in the demo environment). Optional speedup ladder at queue
+/// 30s/level in dev). Optional speedup ladder at queue
 /// time: each +50 cycles shaves 15 min off the wait.
 
 const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL ?? "http://localhost:8082";
@@ -36,7 +36,7 @@ export interface TrainingState {
 }
 
 /// Base cycles cost (level N → N+1). Speedup adds `steps × cyclesPerStep`
-/// on top — pass that in to get the total the user will be charged.
+/// on top; pass that in to get the total the user will be charged.
 export function cyclesCost(fromLevel: number, speedupSteps = 0, cyclesPerStep = 50): number {
   return (fromLevel + 1) * 50 + Math.max(0, speedupSteps) * cyclesPerStep;
 }

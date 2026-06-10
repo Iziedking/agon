@@ -1,7 +1,7 @@
 /// A horizontal hairline rule with a centered ring glyph and bracket notches
-/// at both ends. Used between top-level sections on long pages to reinforce
-/// the chaingpt "instrument panel" feel. Sits on canvas, no background of
-/// its own. Decorative only.
+/// at both ends. Used between top-level sections on long pages for the
+/// instrument-panel feel. Sits on canvas, no background of its own.
+/// Decorative only.
 export function SectionDivider() {
   return (
     <div aria-hidden className="relative mx-auto w-full max-w-[1600px] px-6">

@@ -13,12 +13,12 @@ import type { AgentResult } from "../runners/types.js";
 /// validator wallet to the Arc ReputationRegistry. All best-effort: a failure
 /// here never unwinds an already-settled contest, it only logs.
 ///
-/// Traits roadmap (v1): when an agent places top-N, award a contest-tagged
+/// Traits roadmap: when an agent places top-N, award a contest-tagged
 /// trait via the auth service's agent_traits table (source: 'contest',
 /// source_ref: contestId). Then a runner-side multiplier pass reads each
 /// entrant's owned traits and nudges their score. Today traits are mystery-only
-/// and purely visual; the multiplier hookup happens in the next phase so we can
-/// review the impact on payout fairness first.
+/// and purely visual; the multiplier hookup is deferred pending a review of
+/// its impact on payout fairness.
 
 const engineAbi = parseAbi([
   "function applyReputationDeltas(uint256 contestId, uint256[] agentIds, int128[] deltas)",

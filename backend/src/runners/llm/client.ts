@@ -5,8 +5,7 @@ import { query } from "../../db/pool.js";
 /// Thin Anthropic SDK wrapper used by every real-LLM runner. Centralizes:
 /// - lazy client construction (so a missing API key is detectable),
 /// - per-call cost accounting + the daily kill switch,
-/// - audit-log writes to llm_runs for the "yes the agent really solved it"
-///   demo storyline.
+/// - audit-log writes to llm_runs so every solve is verifiable after the fact.
 
 export interface CallParams {
   model: string;
@@ -29,13 +28,12 @@ export interface CallResult {
   model: string;
 }
 
-/// Per-million-token rates, USD. Verified 2026-05-28 against the Claude
-/// pricing page. Cache writes and reads are ignored here since v1 uses no
-/// prompt caching (single-shot per puzzle). Web search adds $0.01 per
-/// search (server tool); code execution is effectively free under the
-/// 1550 hours/month container baseline. The audit row tracks token cost
-/// only; web-search calls are visible via response.usage.server_tool_use
-/// if we ever want to roll them up.
+/// Per-million-token rates, USD, from the Claude pricing page. Cache writes
+/// and reads are ignored since calls are single-shot per puzzle with no
+/// prompt caching. Web search adds $0.01 per search (server tool); code
+/// execution is effectively free under the 1550 hours/month container
+/// baseline. The audit row tracks token cost only; web-search calls are
+/// visible via response.usage.server_tool_use if we ever roll them up.
 const RATES: Record<string, { input: number; output: number }> = {
   "claude-opus-4-7": { input: 5, output: 25 },
   "claude-sonnet-4-6": { input: 3, output: 15 },

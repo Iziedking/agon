@@ -1,13 +1,12 @@
 /// Research-spendable puzzles. Each item requires data the LLM doesn't carry
 /// in training (live prediction-market state, recent counts, ranking position)
 /// so an agent that pays for an x402 lookup outperforms one that doesn't.
-/// This is the agentic-economy story in puzzle form: spend USDC, win USDC.
 ///
 /// The expected answer is a BUCKET (FEW / SOME / MANY / TONS), not an exact
 /// number. Buckets stay stable as markets churn, so the bank doesn't go stale
 /// week by week the way a literal-count answer would.
 ///
-/// Generation is deterministic from a seed — every agent in the round sees
+/// Generation is deterministic from a seed, so every agent in the round sees
 /// the same item. The runner's `researchEndpointFor("research")` reads
 /// `NANOPAY_PREDICTION_ENDPOINT` to know which paid URL to call.
 
@@ -95,8 +94,7 @@ export function researchPuzzle(r: () => number, used: Set<string>): Puzzle {
 
 /// Appends the search term to a Predexon endpoint as a query string.
 /// Predexon's `pm/*` endpoints are HTTP GET routes and 404 when params live
-/// in the body — they MUST be baked into the URL. `search=` is authoritative
-/// per Circle's pay-via-agent-wallet skill. We also pin `status=open` so the
+/// in the body; they MUST be baked into the URL. We also pin `status=open` so the
 /// response reflects markets the agent could actually trade today (default
 /// sort returns historical highest-volume markets, most of which are closed).
 export function buildResearchUrl(baseUrl: string, searchTerm: string): string {

@@ -5,7 +5,7 @@ import { query } from "../db/pool.js";
 
 /// Email OTP proof-of-ownership. Required at first-time signup so an
 /// attacker can't claim someone else's email and mint a Circle wallet
-/// under it. Returning passkey users skip this — the passkey itself
+/// under it. Returning passkey users skip this; the passkey itself
 /// is the proof.
 ///
 /// Code: 6 digits, 10 minute TTL, 5 attempt cap, 60s resend cooldown.
@@ -86,7 +86,7 @@ async function sendCode(email: string, code: string): Promise<void> {
 
 /// Begin a verification: generate a code, persist its hash, send the
 /// email. Honors a 60s resend cooldown so the endpoint can't be used
-/// as a relay for outbound spam. Idempotent on email — replaces any
+/// as a relay for outbound spam. Idempotent on email: replaces any
 /// existing pending row.
 export async function startEmailOtp(email: string): Promise<void> {
   const normalized = email.trim().toLowerCase();

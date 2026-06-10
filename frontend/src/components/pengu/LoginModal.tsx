@@ -18,14 +18,14 @@ import { ModalClose, Robot } from "@/components/redesign";
 import { friendlyError } from "@/lib/errors";
 import { logRawError, reportEvent } from "@/lib/report";
 
-/// Login popout, reskinned to arcrun-redesign. Bracketed surface on a warm
+/// Login popout. Bracketed surface on a warm
 /// canvas, stencil heading, mono body, flat notched pink tag CTAs. Three
 /// views: signed-out (choose between email passkey or wallet), email form,
 /// and signed-in (account info plus a single SIGN OUT button that also
 /// disconnects the wagmi wallet so the next click starts a fresh wallet
 /// pick and a fresh SIWE signature). No rounded bubbles, no purple backdrop.
 
-// Notched CTA shape — same clipPath the rest of the redesign uses.
+// Notched CTA shape, same clipPath the rest of the redesign uses.
 const NOTCH = "polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%)";
 
 function MailIcon() {
@@ -261,7 +261,7 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
     setError(null);
     try {
       await verifyEmailOtp(trimmed, codeTrimmed);
-      // OTP verified — re-run the email sign-in. This time
+      // OTP verified. Re-run the email sign-in. This time
       // /auth/email/begin returns the WebAuthn registration challenge
       // and the passkey ceremony runs.
       const result = await signInWithEmail(trimmed);
@@ -318,10 +318,9 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
   }
 
   /// Full sign-out: clear the SIWE session AND disconnect the wagmi wallet.
-  /// This is what the user expects "SIGN OUT" to mean. Without the disconnect,
-  /// wagmi remembers the wallet and the next sign-in skips the wallet picker,
-  /// which makes the flow feel sticky in a way that's confusing during demos.
-  /// The modal closes after so the next click hits a clean "choose" view.
+  /// Without the disconnect, wagmi remembers the wallet and the next sign-in
+  /// skips the wallet picker. The modal closes after so the next click hits
+  /// a clean "choose" view.
   async function handleSignOut() {
     try {
       await signOut();

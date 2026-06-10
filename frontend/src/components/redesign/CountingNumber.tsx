@@ -5,12 +5,11 @@ import { useEffect, useState } from "react";
 /// Number that animates from a low value up to the target, holds, then loops.
 /// Used on the landing's FOR PROJECTS panel so the listing fee feels live
 /// instead of static. Default behaviour: count from $500 to target over 2s,
-/// hold for 2s, then restart. Respects prefers-reduced-motion — if the user
+/// hold for 2s, then restart. Respects prefers-reduced-motion: if the user
 /// has motion off, the number renders at the target value with no animation.
 ///
 /// Format is a free-form callback so the caller controls currency, decimals,
-/// and unit. Keep it simple — no commas helpers built in. Caller passes a
-/// formatter.
+/// and unit. No comma helpers built in; the caller passes a formatter.
 
 interface Props {
   /// Final value the counter rolls up to.

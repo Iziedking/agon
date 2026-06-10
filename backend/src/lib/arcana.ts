@@ -3,10 +3,9 @@ import { publicClient } from "../chain/arc.js";
 import { arcanaMarketsAbi, usdcMinimalAbi } from "../chain/abi.js";
 
 /// Typed read client for the Arcana Markets contract on Arc Testnet.
-/// Source of truth: docs/brandkit/12-arcana-integration-brief.md and the
-/// reference-arcana-markets memory. Writes (buyShares, claimWinnings) live
-/// in the runner; this module is read-only so the indexer and admin pages
-/// can pull state without any signer setup.
+/// Writes (buyShares, claimWinnings) live in the runner; this module is
+/// read-only so the indexer and admin pages can pull state without any
+/// signer setup.
 
 const ARCANA = config.arcana.address;
 const USDC = config.external.USDC;
@@ -55,7 +54,7 @@ export async function getMarket(id: bigint): Promise<ArcanaMarket> {
   };
 }
 
-/// Batch read via viem multicall — single eth_call for the whole list,
+/// Batch read via viem multicall: single eth_call for the whole list,
 /// instead of N sequential RPC round-trips. Falls back to per-id reads
 /// when multicall isn't available on the RPC (unlikely on Arc but the
 /// fallback keeps dev environments resilient).

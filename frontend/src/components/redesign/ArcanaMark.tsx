@@ -30,7 +30,7 @@ export function ArcanaMark({ size = 22, showWordmark = true, className = "" }: P
       <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden>
         {/* rounded square plate */}
         <rect x="0" y="0" width="32" height="32" rx="7" ry="7" fill={ARCANA_BLUE} />
-        {/* outer diamond — white outline */}
+        {/* outer diamond: white outline */}
         <path
           d="M16 7 L25 16 L16 25 L7 16 Z"
           fill="none"
@@ -38,7 +38,7 @@ export function ArcanaMark({ size = 22, showWordmark = true, className = "" }: P
           strokeWidth="2.4"
           strokeLinejoin="miter"
         />
-        {/* inner diamond — filled white */}
+        {/* inner diamond: filled white */}
         <path d="M16 12 L20 16 L16 20 L12 16 Z" fill="#FFFFFF" />
       </svg>
       {showWordmark ? (

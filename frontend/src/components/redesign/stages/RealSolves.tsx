@@ -269,7 +269,7 @@ function verdictTone(v: LlmRun["verdict"]): { label: string; border: string; tex
 
 /// Pull the final answer out of an LLM response, mirroring the backend
 /// judge in `backend/src/runners/judge.ts`. The rule is "answer with a
-/// single letter" or "answer with the integer only" — so the cell shows
+/// single letter" or "answer with the integer only", so the cell shows
 /// only that. The full chain-of-thought stays available on hover via
 /// the `title` attr.
 ///

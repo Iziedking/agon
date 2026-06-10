@@ -1,15 +1,11 @@
-/// Five fixed vertical guide lines that frame the entire viewport, chaingpt
-/// blueprint scaffold. Mounted once in the root layout so every page inherits
-/// them. Hidden below md so mobile stays clean.
+/// Five fixed vertical guide lines that frame the entire viewport (blueprint
+/// scaffold). Mounted once in the root layout so every page inherits them.
+/// Hidden below md so mobile stays clean.
 ///
-/// Stacking notes:
-/// - `position: fixed` here adds a stacking context. We keep `z-index: 0` and
-///   `pointer-events: none` so modals at `z-modal` (40) and any nav at z:20
-///   sit on top and remain clickable. The earlier body::before pink anchor
-///   broke the sign-in modal by using z:1 with fixed positioning — never
-///   repeat that.
-/// - Content containers do not need a z-index because they're flow elements
-///   above this fixed layer.
+/// Stacking notes: `position: fixed` adds a stacking context. Keep
+/// `z-index: 0` and `pointer-events: none` so modals at `z-modal` (40) and
+/// nav at z:20 sit on top and remain clickable. A fixed layer at z:1 here
+/// breaks the sign-in modal.
 export function BodyLines() {
   return (
     <div

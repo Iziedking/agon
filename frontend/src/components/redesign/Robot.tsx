@@ -8,7 +8,7 @@
 /// white, one variant iris), a rectangular mouth-plate with a smaller pill
 /// inside, a rounded chest, two short legs ending in dark boots.
 ///
-/// Five color variants — Violet/Pink/Gold/Mint/Crimson — keyed to syndicate
+/// Five color variants (Violet/Pink/Gold/Mint/Crimson) keyed to syndicate
 /// identity. Eye-plate and boots are always the same dark #1A1230.
 
 export type RobotVariant = "violet" | "pink" | "gold" | "mint" | "crimson";

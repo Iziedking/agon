@@ -11,10 +11,9 @@ import { usdcToInt6, int6ToUsdcString } from "../nanopayments/index.js";
 /// Why a Circle Agent wallet instead of a Circle Dev-Controlled wallet:
 /// `circle services pay` only signs for wallets the CLI is logged into;
 /// it cannot drive a Dev-Controlled wallet (those use a separate entity
-/// secret managed by the backend). For v1 we run one shared agent wallet
-/// across tiers; the per-puzzle cap differentiates tier behavior. Adding
-/// per-tier wallets is a future enhancement and only requires reading
-/// per-tier addresses from env.
+/// secret managed by the backend). All tiers share one agent wallet; the
+/// per-puzzle cap differentiates tier behavior. Per-tier wallets would only
+/// require reading per-tier addresses from env.
 
 const TIERS = [0, 1, 2, 3, 4] as const;
 type Tier = (typeof TIERS)[number];
@@ -24,7 +23,7 @@ export interface TierPool {
   walletAddress: `0x${string}`;
   /// Session research budget remaining, seeded from
   /// NANOPAY_SESSION_BUDGET_USDC at provisioning and decremented by the
-  /// runners as calls settle. Soft cap only — the CLI refuses calls when
+  /// runners as calls settle. Soft cap only: the CLI refuses calls when
   /// the agent wallet's Gateway balance can't cover the seller's price.
   balanceUsdc6: bigint;
   perPuzzleCap6: bigint;
@@ -96,7 +95,7 @@ export async function recordTierPoolSpend(tier: number, usdc6: bigint): Promise<
   });
 }
 
-/// Stubbed for API parity with the previous SDK-backed implementation —
+/// Stubbed for API parity with the previous SDK-backed implementation.
 /// Gateway balance lives on Circle's servers, not on chain at the wallet
 /// address, so there's nothing to refresh here. Kept as a no-op so callers
 /// (the runner's settle path) don't need a conditional.

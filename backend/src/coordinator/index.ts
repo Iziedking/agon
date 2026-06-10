@@ -15,15 +15,15 @@ import { ensureTierPools } from "./tierPools.js";
 /// (sweepers, Arcana claimer, tick scheduler, random challenges).
 ///
 /// Three open-driver modes, picked by env in this order:
-///   1. SCHEDULER_MODE=cadence  — per-type BullMQ cron opens Scout/Analyst/Solver
-///                                concurrently at their plan §5.2 cadences.
-///                                Sweepers settle them when their windows close.
-///   2. SCHEDULER_MODE=manual   — log-only stub; no auto-opens. Use this when
-///                                you want to drive contests yourself via the
-///                                npm run open-contest CLI.
-///   3. (default)               — autopilot hot-loop: one rotating contest at
-///                                a time, randomized pool + duration, friendly
-///                                for demos. Same sweepers run underneath.
+///   1. SCHEDULER_MODE=cadence: per-type BullMQ cron opens Scout/Analyst/Solver
+///                              concurrently at their per-type cadences.
+///                              Sweepers settle them when their windows close.
+///   2. SCHEDULER_MODE=manual:  log-only stub; no auto-opens. Use this when
+///                              you want to drive contests yourself via the
+///                              npm run open-contest CLI.
+///   3. (default)               autopilot hot-loop: one rotating contest at
+///                              a time, randomized pool + duration. Same
+///                              sweepers run underneath.
 ///
 /// All three require COORDINATOR_PRIVATE_KEY (the sponsor that funds pools).
 /// Without a key the coordinator stays in log-only mode regardless.
@@ -34,7 +34,7 @@ async function main() {
   // Role-separation sanity check. Logs the four wallet addresses
   // (coordinator / validator / treasury / scout-master[0]) and warns
   // on collisions. Under STRICT_WALLET_SEPARATION=true any collision
-  // is a startup failure — set that on production deploys.
+  // is a startup failure; set that on production deploys.
   const ok = await checkWalletSeparation();
   if (!ok) {
     process.exit(1);
@@ -65,7 +65,7 @@ async function main() {
 
   // Nanopayments tier pools (one Circle Dev-Controlled wallet per tier).
   // Solver uses these to pay for research per puzzle via Circle's x402
-  // marketplace. Idempotent — re-runs on boot are cheap, only mints
+  // marketplace. Idempotent: re-runs on boot are cheap, only mints
   // wallets that don't already exist in tier_pool_state.
   await ensureTierPools().catch((err) => {
     console.warn(`[tier-pools] provisioning encountered an error: ${err instanceof Error ? err.message : err}`);
@@ -122,7 +122,7 @@ async function main() {
     return;
   }
 
-  // Default: autopilot hot-loop (single rotating contest, demo-friendly).
+  // Default: autopilot hot-loop (single rotating contest).
   // Honors AUTOPILOT=0 to fall back to manual.
   if (process.env.AUTOPILOT === "0") {
     console.log("autopilot off: AUTOPILOT=0, falling back to manual mode");

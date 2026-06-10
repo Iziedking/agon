@@ -28,12 +28,12 @@ import {
   summarizeNews,
 } from "../nanopayments/research.js";
 
-/// Phase 1: tick-driven prediction model.
+/// Tick-driven prediction model.
 ///
 /// Each agent gets `tickBudget(tier, stats, equipped)` decisions across the
-/// trade window. Time-driven (option A): the scheduler wakes every
-/// TICK_INTERVAL_SEC, walks open events, fires one tick per agent whose
-/// next-tick-at has elapsed.
+/// trade window. Time-driven: the scheduler wakes every TICK_INTERVAL_SEC,
+/// walks open events, and fires one tick per agent whose next-tick-at has
+/// elapsed.
 ///
 /// Settlement reads positions from `agent_positions` (the existing table)
 /// and scores via `computePredictionPayouts` in scoring/prediction.ts. The
@@ -215,11 +215,11 @@ export async function fireAgentTick(ctx: TickContext): Promise<TickOutcome | nul
   const systemPrompt = [
     "You are an ArcRun analyst agent making one decision in a Prediction market round.",
     "On each tick you pick exactly one action:",
-    "  OPEN_YES — open a new YES position on a market",
-    "  OPEN_NO  — open a new NO position",
-    "  HEDGE_YES — buy YES to hedge an existing NO position on that market",
-    "  HEDGE_NO  — buy NO to hedge an existing YES position",
-    "  HOLD     — skip this tick",
+    "  OPEN_YES: open a new YES position on a market",
+    "  OPEN_NO: open a new NO position",
+    "  HEDGE_YES: buy YES to hedge an existing NO position on that market",
+    "  HEDGE_NO: buy NO to hedge an existing YES position",
+    "  HOLD: skip this tick",
     `Cap per market: $${maxStakeUsd} USDC. Cap per round: ${cap.maxMarkets} markets.`,
     "Output ONE LINE in this format:",
     "DECISION <action> <market_id|->\\ <stake_usdc|->",
@@ -228,10 +228,9 @@ export async function fireAgentTick(ctx: TickContext): Promise<TickOutcome | nul
     "REASON <short why>",
   ].join(" ");
 
-  // Tier-gated paid news pull. Top-tier analysts buy fresh headlines about
-  // whatever the pinned markets are about before deciding — the upgrade
-  // mechanic in its purest form. Null (lower tier, no endpoint, drained
-  // budget, payment rejected) means the tick proceeds on priors alone.
+  // Tier-gated paid news pull: top-tier analysts buy fresh headlines about
+  // the pinned markets before deciding. Null (lower tier, no endpoint,
+  // drained budget, payment rejected) means the tick proceeds on priors alone.
   let newsBlock: string[] = [];
   if (params?.llmEnabled && config.nanopay.analystNewsEndpoint) {
     const keyword = newsKeywordFor(pinned.map((m) => m.title));

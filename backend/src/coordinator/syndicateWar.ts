@@ -1,17 +1,15 @@
 import { query } from "../db/pool.js";
 
-/// Syndicate war: layer 2 of the syndicate-utility plan from todo.md.
+/// Syndicate war.
 ///
-/// Each ISO-week the coordinator settles a war standing — total
+/// Each ISO-week the coordinator settles a war standing: total
 /// contributions per syndicate over the past 7 days, ranked. Members
 /// of the top-3 syndicates earn a score multiplier on the current
 /// week's contests (1.05 / 1.03 / 1.02 for rank 1 / 2 / 3), so picking
-/// a side has a real expected-value effect on payouts even before the
-/// USDC prize pool lands in the contract redeploy.
+/// a side has a real expected-value effect on payouts.
 ///
-/// On-chain USDC payouts for the war pool are deferred to the contract
-/// redeploy bundle — this module gives them a clean home (the war_results
-/// table is the source of truth) without blocking on the redeploy.
+/// On-chain USDC payouts for the war pool require a contract redeploy;
+/// until then the war_results table is the source of truth.
 
 const MULTIPLIER_BY_RANK: Record<number, number> = {
   1: 1.05,
@@ -110,7 +108,7 @@ async function syndicateRankMap(): Promise<Map<number, number>> {
   }
   const map = new Map<number, number>();
   // Prefer the most recently settled week. If nothing is settled yet
-  // (fresh deploy, day-one demo), fall back to ranking syndicates by
+  // (fresh deploy), fall back to ranking syndicates by
   // their cumulative total_reputation so the multiplier is meaningful
   // from the first contest.
   const latest = await query<{ week_id: string }>(
@@ -181,8 +179,8 @@ export function applySyndicateMultipliers<T extends { operator: `0x${string}`; s
 
 /// Background loop: settle the prior ISO-week every hour. Cheap query,
 /// idempotent insert. Runs forever; the autopilot spawns it. The hourly
-/// cadence is generous — the standings only matter to scoring once per
-/// week — but it keeps the read surface fresh for the war board UI
+/// cadence is generous (the standings only matter to scoring once per
+/// week) but it keeps the read surface fresh for the war board UI
 /// without waiting for the next Monday boundary.
 export async function startSyndicateWarSettler(): Promise<void> {
   const EVERY_MS = 60 * 60 * 1000;

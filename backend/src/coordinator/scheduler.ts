@@ -5,20 +5,20 @@ import { openContest, type OpenOpts } from "./contestOps.js";
 import { pinArcanaMarketsForContest } from "../lib/arcanaPins.js";
 
 /// Cadence-driven contest scheduler. Runs three BullMQ repeatable jobs at
-/// the plan's per-type intervals (Scout 48h, Analyst 5m, Solver 7m). Each
+/// per-type intervals (Scout 48h, Analyst 5m, Solver 7m). Each
 /// fire opens a fresh contest of that type via the same on-chain
 /// listContest path the autopilot uses. Settle-sweepers in autopilot.ts
 /// pick the contests up when their windows close.
 ///
 /// Two modes coexist:
-///   - SCHEDULER_MODE=cadence   — per-type concurrent cadence (this file)
-///   - SCHEDULER_MODE=autopilot — single rotating contest at a time (autopilot.ts)
-/// Default is autopilot, which is friendlier for demos (one contest in
-/// focus). Cadence mode matches the plan §5.2 production model.
+///   - SCHEDULER_MODE=cadence:   per-type concurrent cadence (this file)
+///   - SCHEDULER_MODE=autopilot: single rotating contest at a time (autopilot.ts)
+/// Default is autopilot (one contest in focus). Cadence mode is the
+/// production model.
 
 export const CONTEST_QUEUE = "contests";
 
-/// Per-type cadence (ms). Matches ARCRUN_PLAN.md §5.2.
+/// Per-type cadence (ms).
 const CADENCE_MS: Record<string, number> = {
   SCOUT: 48 * 60 * 60 * 1000,
   ANALYST: 5 * 60 * 1000,

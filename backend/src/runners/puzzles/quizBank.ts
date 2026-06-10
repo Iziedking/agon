@@ -1,18 +1,14 @@
 /// Quiz question bank used by the SOLVER contest's quiz puzzle family.
-/// Vast enough that a 5-puzzle round rarely repeats. ~60% Arc + Circle so
-/// the demo reads as a sponsor-aware quiz; ~40% general blockchain so it
-/// doesn't feel like an advert.
+/// Large enough that a 5-puzzle round rarely repeats. Mix is ~60% Arc and
+/// Circle, ~40% general blockchain.
 ///
 /// Every question is multiple choice (A/B/C/D). Judging is deterministic
 /// (extract the last letter from the LLM response and compare).
 ///
-/// Facts verified against:
-/// - arc-docs MCP (Arc testnet specs, Malachite consensus, EWMA fee
-///   model, USDC native gas, ERC-8004 addresses)
-/// - circle MCP (CCTP V2, Gateway, Modular / User-Controlled /
-///   Developer-Controlled wallets, USDC decimals)
-/// Verified 2026-05-28. Re-verify before publishing the demo if Arc or
-/// Circle ship product changes.
+/// Facts verified against Arc docs (testnet specs, Malachite consensus,
+/// EWMA fee model, USDC native gas, ERC-8004 addresses) and Circle docs
+/// (CCTP V2, Gateway, wallet products, USDC decimals). Re-verify the bank
+/// if Arc or Circle ship product changes.
 
 export type QuizCategory = "arc" | "circle" | "evm" | "defi" | "security";
 

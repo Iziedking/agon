@@ -17,7 +17,7 @@ import { LoginCTA } from "@/components/pengu/LoginCTA";
 import { fetchAgents, type AgentState } from "@/lib/agents";
 import { CONTEST_TYPE, fetchContests, formatUsdc, metricLabel, type Contest } from "@/lib/contests";
 
-/// /onboarding/[step] per arcrun-redesign §4.3. Five steps, shared layout:
+/// /onboarding/[step]. Five steps, shared layout:
 ///   - eyebrow `ONBOARDING · STEP N OF 5`
 ///   - 5-segment progress bar (hairline frame, pink fill on completed)
 ///   - single BracketedCell with the step content

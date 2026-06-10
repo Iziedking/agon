@@ -18,8 +18,7 @@ const jetbrainsMono = JetBrains_Mono({
   display: "swap",
 });
 
-// Stencil display. Hard, blocky, ChainGPT-style. The product's only heading
-// face. Replaces the prior Bagel Fat One / Lilita One bubble.
+// Stencil display. Hard and blocky. The product's only heading face.
 const blackOps = Black_Ops_One({
   subsets: ["latin"],
   weight: "400",

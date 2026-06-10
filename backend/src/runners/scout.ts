@@ -20,8 +20,8 @@ import {
 /// ScoutRunner: each agent has a deterministic hot wallet derived from the
 /// master mnemonic by agentId. The agent performs tier-limited real USDC
 /// operations on Arc, generating genuine on-chain volume (the point of a Scout
-/// contest). v0 uses self-transfers so funds stay in the hot wallet and only
-/// gas is spent; the same executor will later route through Circle App Kit Swap
+/// contest). Ops are self-transfers so funds stay in the hot wallet and only
+/// gas is spent; the same executor can later route through Circle App Kit Swap
 /// or a sponsor's protocol. Tier caps the op count and per-op size.
 
 const USDC_ABI = parseAbi([

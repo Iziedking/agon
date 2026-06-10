@@ -4,8 +4,7 @@ import type { CSSProperties } from "react";
 import { Robot, robotVariantForId, type RobotVariant } from "@/components/redesign/Robot";
 
 /// Renders an agent's visual. If the owner has uploaded a skin, the image is
-/// shown; otherwise falls back to the flat <Robot /> variant from the
-/// arcrun-redesign system. The legacy AgentMascot is no longer the fallback.
+/// shown; otherwise falls back to the flat <Robot /> variant.
 
 interface Props {
   agent: { id: number; nickname?: string | null; skin?: string | null };

@@ -3,9 +3,9 @@
 /// guidance exactly and we are not redrawing approximations in SVG.
 ///
 /// File expectations:
-///   /public/brands/arc.png      Arc — white arc/A on dark navy
-///   /public/brands/circle.png   Circle — gradient broken ring on near-black
-///   /public/brands/usdc.png     USDC — blue rounded square with white $
+///   /public/brands/arc.png      Arc: white arc/A on dark navy
+///   /public/brands/circle.png   Circle: gradient broken ring on near-black
+///   /public/brands/usdc.png     USDC: blue rounded square with white $
 ///
 /// Each image is square. The component renders at 40x40 so anything from
 /// 64x64 up to ~512x512 will look crisp; smaller will blur. PNG, SVG, or

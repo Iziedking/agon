@@ -4,7 +4,7 @@ import { BracketedCell } from "./BracketedCell";
 /// A single metric inside a BracketedCell. Top eyebrow label in mono caps
 /// `--ink-3`, large numeral in stencil display face `--ink`, optional mono
 /// small caption underneath. Left-aligned. Reserve `accent` for at most one
-/// stat per page — never on every numeral.
+/// stat per page, never on every numeral.
 
 interface Props {
   label: string;

@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 /// `--ink-3` mono. Replaces every pastel chip activity feed.
 ///
 /// Layout:
-///   [■ event-color] [LABEL caps] — [description, ink-2]  ...  [right ctx] [tx ↗]
+///   [■ event-color] [LABEL caps] [description, ink-2]  ...  [right ctx] [tx ↗]
 
 type Tone = "ok" | "warn" | "err" | "accent" | "violet" | "gold" | "mint" | "crimson" | "ink";
 
@@ -30,7 +30,7 @@ interface RowProps {
   /// activity ledger row opens its focused stage on /live without forcing a
   /// new tab.
   href?: string;
-  /// External tx link rendered as `tx ↗`. Opens in a new tab — keep it for
+  /// External tx link rendered as `tx ↗`. Opens in a new tab; keep it for
   /// arcscan / explorer links, not for SPA navigation.
   txHref?: string;
 }

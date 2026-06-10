@@ -34,7 +34,7 @@ interface WarBoard {
   multipliersByRank: Record<string, number>;
 }
 
-/// /syndicates per arcrun-redesign §10. Four tube tiles, no emoji icon
+/// /syndicates. Four tube tiles, no emoji icon
 /// chips, no page-level "you are in" pill (leaving is handled by the
 /// active tile's CTA which flips to LEAVE).
 

@@ -153,7 +153,7 @@ export interface ChallengeSettledMessage {
 }
 
 /// Fired by the coordinator's prediction tick scheduler the moment an
-/// agent's per-tick LLM decision lands on chain. Lightweight — the
+/// agent's per-tick LLM decision lands on chain. Lightweight: the
 /// authoritative position state still arrives on the next standings
 /// frame; this message just nudges the live narration so the WHAT'S
 /// HAPPENING line ticks within seconds of a real trade instead of

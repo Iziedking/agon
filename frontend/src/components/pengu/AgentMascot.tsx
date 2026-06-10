@@ -6,9 +6,9 @@
 ///
 /// Props:
 ///   color    chassis color (overrides variant default)
-///   variant  syndicate (default | crimson | cyan | gold | violet) — picks
+///   variant  syndicate (default | crimson | cyan | gold | violet): picks
 ///            visor + chest + antenna design
-///   mood     idle | focus | win | rugged — drives expression and chest state
+///   mood     idle | focus | win | rugged: drives expression and chest state
 ///   live     when true, adds a subtle breath animation so the agent reads as
 ///            "powered on" instead of static
 ///   className tailwind sizing

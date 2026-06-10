@@ -20,7 +20,7 @@ import { Pagination } from "@/components/pengu/Pagination";
 import { fetchChallenges, CHALLENGE_KIND, type Challenge } from "@/lib/challenges";
 import { formatUsdc } from "@/lib/contests";
 
-/// /challenges per arcrun-redesign §4.9. SectionHeader + START A CHALLENGE
+/// /challenges. SectionHeader + START A CHALLENGE
 /// in the right slot. Loading state is a pink hairline shimmer. 3-col
 /// BracketedCell grid: CHALLENGE #N caps + StatusChip, stake amount in
 /// stencil, two flat Robot avatars overlapping at 24px to represent the
@@ -146,7 +146,7 @@ function ChallengeCard({ ch }: { ch: Challenge }) {
           </div>
         </div>
         <div className="flex shrink-0 items-end">
-          {/* Two overlapping 24px Robot avatars (per §4.9) */}
+          {/* Two overlapping 24px Robot avatars */}
           <span className="block">
             <Robot variant={aVariant} size={24} decorative />
           </span>

@@ -23,10 +23,9 @@ import {
 } from "@/lib/agents";
 import { fetchContests } from "@/lib/contests";
 
-/// A judge-friendly walkthrough: connect, claim, enter. Mirrors the real flow,
-/// keeps the steps visible, and never leaves the visitor wondering what to do
-/// next. State updates live (wallet connects, agent claim confirms, open contest
-/// count refreshes), so the page tracks the user's progress as it happens.
+/// Guided walkthrough: connect, claim, enter. Mirrors the real flow with the
+/// steps kept visible. State updates live (wallet connects, agent claim
+/// confirms, open contest count refreshes).
 
 type StepStatus = "locked" | "active" | "done";
 

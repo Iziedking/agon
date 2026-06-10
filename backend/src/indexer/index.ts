@@ -391,7 +391,7 @@ async function applyDenormalized(client: PoolClient, log: Log) {
     case "PaidOut":
       // Every USDC outflow from a pool: contest claims, challenge
       // payouts, listing fee to treasury, platform fee skim. We don't
-      // classify by reason here — the (controller, pool_id, recipient)
+      // classify by reason here; the (controller, pool_id, recipient)
       // tuple is enough to reconcile later. Unique (tx_hash, log_index)
       // keeps this idempotent across indexer restarts.
       await client.query(
@@ -418,7 +418,7 @@ async function applyDenormalized(client: PoolClient, log: Log) {
 }
 
 // ---------------------------------------------------------------------------
-// Arcana Markets — separate indexing pass. Their contract is external; a hiccup
+// Arcana Markets: separate indexing pass. Their contract is external; a hiccup
 // there should never stall the ArcRun-contracts indexer above. Same polling
 // model, separate cursor row in arcana_indexer_state.
 // ---------------------------------------------------------------------------
@@ -499,7 +499,7 @@ async function applyArcanaEvent(client: PoolClient, log: Log) {
       const buyer = lc(a.buyer);
       // Increment the relevant pool. The market row is auto-created here so
       // we don't have to wait for the periodic reconcile to discover new
-      // markets — a SharesBought event implies the market exists.
+      // markets; a SharesBought event implies the market exists.
       await client.query(
         `insert into arcana_markets (market_id, end_time, yes_pool, no_pool)
          values ($1, to_timestamp(0), $2, $3)

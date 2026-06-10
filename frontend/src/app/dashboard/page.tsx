@@ -41,7 +41,7 @@ import {
   type OperatorProfile,
 } from "@/lib/profiles";
 
-/// /dashboard per arcrun-redesign §4.10. Signed-out: one BracketedCell with
+/// /dashboard. Signed-out: one BracketedCell with
 /// a single full-width pink SIGN IN tag and a mono helper line. Signed-in:
 /// 12-col layout with four StatBlocks, then MY AGENTS + PRIZES PENDING
 /// ledgers side by side, then a full-width ACTIVITY ledger. Mystery claim
@@ -242,11 +242,9 @@ export default function DashboardPage() {
             </BracketedCell>
           </div>
 
-          {/* PRIZES PENDING placeholder — the real surface is the
-              self-contained PrizesPending component below, which renders
-              its own bracketed section. Leave a small "your prizes"
-              pointer here so the right column isn't empty when nothing is
-              claimable. */}
+          {/* PRIZES PENDING placeholder. The real surface is the PrizesPending
+              component below; this keeps the right column from sitting empty
+              when nothing is claimable. */}
           <div className="lg:col-span-5">
             <div className="mb-3 flex items-center justify-between">
               <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
@@ -260,22 +258,22 @@ export default function DashboardPage() {
               <p className="px-2 py-3 font-mono text-sm text-ink-2">
                 {claimable.length === 0
                   ? "no prizes waiting. enter a contest and place top tier to earn one."
-                  : "claim them below — no need to find the contest page."}
+                  : "claim them below. no need to find the contest page."}
               </p>
             </BracketedCell>
           </div>
         </div>
       </section>
 
-      {/* PRIZES PENDING — full-width self-contained surface that fetches
+      {/* PRIZES PENDING: full-width self-contained surface that fetches
           both contest and challenge unclaimed payouts and shows the share
           modal after a successful claim. Self-hides when nothing pending. */}
       <PrizesPending address={address as `0x${string}`} />
 
-      {/* REFUNDS WAITING — only renders when the user has cancelled challenges to pull back */}
+      {/* REFUNDS WAITING: only renders when the user has cancelled challenges to pull back */}
       <RefundsWaiting address={address as `0x${string}`} />
 
-      {/* MYSTERY CLAIM — kept as a bracketed sidecar */}
+      {/* MYSTERY CLAIM: kept as a bracketed sidecar */}
       {agents.length > 0 ? (
         <section className="mx-auto max-w-[1600px] px-6 pb-10">
           <div className="mb-3 font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
@@ -290,7 +288,7 @@ export default function DashboardPage() {
         </section>
       ) : null}
 
-      {/* ACTIVITY — full width */}
+      {/* ACTIVITY: full width */}
       <section className="mx-auto max-w-[1600px] px-6 pb-10">
         <div className="mb-3 flex items-center justify-between">
           <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">

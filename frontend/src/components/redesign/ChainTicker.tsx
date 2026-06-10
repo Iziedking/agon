@@ -5,7 +5,7 @@ import { publicClient } from "@/lib/arc";
 
 /// Thin top-of-viewport status bar showing live arc chain numbers. Polls
 /// the public RPC every 6 seconds (well under the 1s block time so we miss
-/// some blocks, which is fine — this is HUD ornamentation, not a wallet
+/// some blocks, which is fine: this is HUD ornamentation, not a wallet
 /// surface). Mounted once in the root layout above the page header.
 ///
 /// Hidden on < sm so the mobile chrome stays clean. Falls back to dashes

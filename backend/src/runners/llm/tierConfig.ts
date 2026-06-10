@@ -10,9 +10,7 @@ import { query } from "../../db/pool.js";
 /// swap.
 ///
 /// The cheapest path stays cheap: tier 0 and tier 1 skip the LLM entirely
-/// and just guess, which costs $0 and demonstrates "you really get what
-/// you paid for" the moment a tier 4 agent beats a tier 0 in the same
-/// round.
+/// and just guess, which costs $0.
 
 export const STAT_NAMES = ["POWER", "PRECISION", "SPEED", "ENDURANCE", "LUCK", "FOCUS"] as const;
 export type StatName = (typeof STAT_NAMES)[number];
@@ -90,8 +88,7 @@ export interface RuntimeParams extends TierCapabilities {
 /// which tools are attached.
 /// Tier 4 may run on a smarter model when LLM_MODEL_TIER4 is set in the
 /// env (typical mainnet config). Tiers 0..3 always use the default
-/// LLM_MODEL. Keeps the testnet cost flat while letting mainnet sell
-/// tier 4 as the absolute top of the food chain.
+/// LLM_MODEL, which keeps testnet cost flat.
 export function modelForTier(tier: number): string {
   if (tier >= 4 && config.llm.modelTier4) return config.llm.modelTier4;
   return config.llm.model;
@@ -116,7 +113,7 @@ export async function resolveRuntimeParams(agentId: number, tier: number): Promi
 
   // Testing belt: strip web_search (the only paid server-tool), clamp
   // tokens, kill retries. Tier 4 keeps code_execution because that's free
-  // and exercises the tool path during smoke runs.
+  // and exercises the tool path during test runs.
   const tools = config.llm.testing
     ? base.tools.filter((t) => t.name !== "web_search")
     : base.tools;
@@ -147,7 +144,7 @@ export async function loadAgentStats(agentId: number): Promise<Partial<Record<St
 /// in USDC 6-dec bigints; "markets" caps how many distinct markets an agent
 /// can take a position in per round. Tier 0 is ineligible; the entry runner
 /// excludes them from Arcana Analyst contests so they don't burn gas for no
-/// payoff. Source: docs/brandkit/11-realism-plan.md "Analyst track".
+/// payoff.
 export interface ArcanaCap {
   maxMarkets: number;
   maxStakeUsdc6: bigint;

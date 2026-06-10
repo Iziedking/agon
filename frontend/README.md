@@ -1,13 +1,24 @@
 # ArcRun frontend
 
-Next.js 15 (App Router) with wagmi v2 and viem, for Arc testnet.
+Next.js 15 (App Router) with wagmi v2 and viem, for Arc Testnet.
 
 ## Pages
 
 - `/` landing.
-- `/login` two-method sign-in: web3 wallet (SIWE) and email (Circle Developer-Controlled wallets, signed backend-side).
-- `/contests` and `/contests/[id]` real contest state read straight from ContestEngine on Arc.
-- `/live` the live contest panel (WebSocket) with a win modal.
+- `/login` two sign-in methods: web3 wallet (SIWE) and email (one-time
+  code, passkey, Circle Developer-Controlled wallet signed backend-side).
+- `/app` signed-in lobby with live stats and the activity ledger.
+- `/contests`, `/contests/[id]` contest grid and detail, read on-chain.
+- `/challenges`, `/challenges/[id]` peer challenge grid and detail.
+- `/live` lobby of every running event; `/live/contest/[id]` and
+  `/live/challenge/[id]` full-stage watchers with per-type views
+  (puzzle grid, prediction positions with PnL, transaction tape).
+- `/bridge` USDC transfers: CCTP v2 from seven external testnets into
+  Arc for web3 wallets, Arc-side transfers for email users.
+- `/dashboard` operator stats, agents, pending prizes, activity.
+- `/workshop` agent training, traits, and tier upgrades.
+- `/leaderboard`, `/syndicates`, `/operators/[address]` rankings,
+  factions, and public operator profiles with optional social links.
 
 ## Setup
 
@@ -19,19 +30,28 @@ npm run dev                  # http://localhost:3000
 
 ## Environment (`.env.local`, all optional)
 
-- `NEXT_PUBLIC_AUTH_URL` (default `http://localhost:8082`): the backend auth service.
-- `NEXT_PUBLIC_WS_URL` (default `ws://localhost:8788`): the coordinator live fanout.
+- `NEXT_PUBLIC_AUTH_URL` (default `http://localhost:8082`): the backend
+  auth service.
+- `NEXT_PUBLIC_WS_URL` (default `ws://localhost:8788`): the coordinator
+  live fanout.
 
-Email login no longer needs frontend env. Configure it on the backend with
-`CIRCLE_API_KEY`, `CIRCLE_ENTITY_SECRET`, and `CIRCLE_WALLET_SET_ID`; the
-backend wraps Circle Developer-Controlled wallets and signs writes for the
-user. See `backend/scripts/circle-bootstrap.ts` for one-time setup.
+Email login needs no frontend configuration. Set `CIRCLE_API_KEY`,
+`CIRCLE_ENTITY_SECRET`, and `CIRCLE_WALLET_SET_ID` on the backend; it
+provisions and signs for Circle Developer-Controlled wallets. See
+`backend/scripts/circle-bootstrap.ts` for one-time setup.
 
 Deployed contract addresses are public and live in `src/lib/arc.ts`.
 
 ## Notes
 
-- Wallet login signs a SIWE message that the backend verifies; it works for ordinary wallets and smart accounts.
-- The email path is custodial: the backend mints a Circle Developer-Controlled wallet for each new email, seeds it with testnet USDC, and signs every contract call on the user's behalf via Circle's HSM. The user sees no signing prompts. Mainnet must add an OTP step before treating email as proof of identity.
-- The contests pages read on-chain directly via viem, so they need no backend.
-- The live panel needs the coordinator running a contest (see the backend README, `RUN_CONTEST`).
+- Chain reads go through a viem `publicClient` with Multicall3
+  batching, so list pages aggregate hundreds of contract reads into a
+  few RPC round-trips.
+- Wallet login signs a SIWE message the backend verifies; it works for
+  ordinary wallets and EIP-1271 smart accounts.
+- The email path is custodial: the backend signs every contract call
+  through Circle's infrastructure. Signup is gated by a 6-digit
+  one-time code and a WebAuthn passkey.
+- A chain guard switches wagmi wallets back to Arc on every route
+  except `/bridge`, and every contract write re-checks the chain first.
+- The live pages need the coordinator running (see the backend README).

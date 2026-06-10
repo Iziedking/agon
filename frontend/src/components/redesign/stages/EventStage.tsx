@@ -10,10 +10,10 @@ import type { StandingsEntry } from "@/lib/live";
 /// from either the contest's CONTEST_TYPE label (SCOUT / ANALYST / SOLVER)
 /// or the challenge's CHALLENGE_KIND label (PREDICTION / PUZZLE / VOLUME /
 /// CUSTOM). The two systems share four buckets:
-///   puzzle    — SOLVER, PUZZLE
-///   volume    — SCOUT,  VOLUME
-///   prediction — ANALYST, PREDICTION
-///   custom    — anything else
+///   puzzle:     SOLVER, PUZZLE
+///   volume:     SCOUT,  VOLUME
+///   prediction: ANALYST, PREDICTION
+///   custom:     anything else
 
 export type StageKind = "puzzle" | "volume" | "prediction" | "custom";
 

@@ -3,10 +3,9 @@
 import { ModalClose } from "@/components/redesign";
 
 /// The win-share card. Pops the instant the operator's wallet appears in a
-/// settled contest's or challenge's winner list. arcrun-redesign chrome:
-/// bracketed surface, stencil "YOU PLACED" + rank, prize in stencil display
-/// face, mono description, two tag CTAs (SHARE TO X primary, OPEN PRIZE
-/// secondary). Replaces the prior bubble-style WinModal.
+/// settled contest's or challenge's winner list. Bracketed surface, stencil
+/// "YOU PLACED" + rank, prize in stencil display face, mono description,
+/// two tag CTAs (SHARE TO X primary, OPEN PRIZE secondary).
 
 const NOTCH = "polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%)";
 

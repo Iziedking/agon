@@ -35,15 +35,15 @@ per day).
 The single most powerful key on the platform. Holds `DEFAULT_ADMIN_ROLE`
 on every contract:
 
-- `PrizeEscrow` — grant `CONTROLLER_ROLE`, set treasury via
+- `PrizeEscrow`: grant `CONTROLLER_ROLE`, set treasury via
   `setTreasury()`, sweep unclaimed.
-- `AgentRegistry` — grant `CONTEST_ENGINE_ROLE`, set treasury, set
+- `AgentRegistry`: grant `CONTEST_ENGINE_ROLE`, set treasury, set
   upgrade prices.
-- `ContestEngine` — grant `COORDINATOR_ROLE`, set listing fee, set
+- `ContestEngine`: grant `COORDINATOR_ROLE`, set listing fee, set
   default platform fee bps (capped at 20%), cancel any contest.
-- `ChallengeArena` — grant `COORDINATOR_ROLE`, cancel challenges.
-- `SyndicateFactory` — grant `COORDINATOR_ROLE`.
-- `PointsLedger` — grant `COORDINATOR_ROLE` and `CONTEST_ENGINE_ROLE`.
+- `ChallengeArena`: grant `COORDINATOR_ROLE`, cancel challenges.
+- `SyndicateFactory`: grant `COORDINATOR_ROLE`.
+- `PointsLedger`: grant `COORDINATOR_ROLE` and `CONTEST_ENGINE_ROLE`.
 
 The admin key cannot directly steal user funds (claims are pull-based,
 gated by merkle proofs) but it can drain the treasury via
@@ -52,7 +52,7 @@ re-route future fees by changing the treasury address.
 
 ### Storage
 
-Cold storage only — hardware wallet (Ledger / Trezor) plus a sealed
+Cold storage only: hardware wallet (Ledger / Trezor) plus a sealed
 seed-phrase backup in a separate location. The admin key signs
 governance operations a handful of times per year; it should never sit
 on a server.
@@ -91,7 +91,7 @@ private Slack/Discord channel.
 2. From the OLD admin, for each of the six contracts:
      grantRole(DEFAULT_ADMIN_ROLE, NEW_ADMIN)
 3. Verify the NEW admin can call a governance op (e.g. setTreasury to
-   the same address — a no-op that proves the role works).
+   the same address, a no-op that proves the role works).
 4. From the OLD admin, for each contract:
      renounceRole(DEFAULT_ADMIN_ROLE, OLD_ADMIN)
 5. Wipe the old hardware wallet.
@@ -100,7 +100,7 @@ private Slack/Discord channel.
 ```
 
 Never `revokeRole` the old admin from the new admin in the same tx
-sequence — `renounceRole` from the old key is the standard OpenZeppelin
+sequence. `renounceRole` from the old key is the standard OpenZeppelin
 AccessControl flow.
 
 ### Recovery / loss procedure
@@ -135,7 +135,7 @@ The address that receives:
 - Unclaimed pool sweeps after 30 days via
   `PrizeEscrow.sweepUnclaimed()`.
 
-No on-chain role — treasury is just an address stamped into each
+No on-chain role: treasury is just an address stamped into each
 contract's storage. It can spend USDC freely (standard EOA powers).
 
 ### Storage
@@ -168,7 +168,7 @@ dashboard with a daily snapshot makes drift obvious.
 4. Update contracts/deployments/arc-testnet.json `roles.treasury`.
 ```
 
-No downtime — future fees route to the new address from the block
+No downtime: future fees route to the new address from the block
 `setTreasury` lands. Past fees in the old address must be moved manually.
 
 ### Recovery / loss procedure
@@ -189,10 +189,10 @@ If treasury is lost but admin is intact:
 
 The orchestration key. Holds `COORDINATOR_ROLE` on:
 
-- `ContestEngine` — `postScoreRoot()`, `settle()`, `cancelContest()`.
-- `ChallengeArena` — `postWinnerRoot()`, `cancelChallenge()`.
-- `SyndicateFactory` — `settleWeeklyWar()`.
-- `PointsLedger` — `credit()`.
+- `ContestEngine`: `postScoreRoot()`, `settle()`, `cancelContest()`.
+- `ChallengeArena`: `postWinnerRoot()`, `cancelChallenge()`.
+- `SyndicateFactory`: `settleWeeklyWar()`.
+- `PointsLedger`: `credit()`.
 
 Off-chain it also:
 
@@ -210,7 +210,7 @@ The coordinator wallet holds two pools of USDC:
 
 ### Storage
 
-Warm wallet — KMS-backed signing service (AWS KMS, GCP Cloud KMS, or a
+Warm wallet: KMS-backed signing service (AWS KMS, GCP Cloud KMS, or a
 self-hosted HSM). The key signs many txs per day; cold storage is not
 viable. Never raw `COORDINATOR_PRIVATE_KEY` in env on production. Dev
 and staging can use env; mainnet must be KMS.
@@ -226,7 +226,7 @@ themselves the winner of every active contest, then call `settle()`,
 then claim everything. Per-contest cap is the pool size.
 
 They can also drain the coordinator's own USDC float (up to whatever
-balance is loaded — this is not protocol funds, but it is ArcRun's
+balance is loaded: this is not protocol funds, but it is ArcRun's
 working capital).
 
 Time to drain: one tx per contest. With ~5 live contests, ~5 txs.
@@ -240,7 +240,7 @@ Watch the indexer for:
 - `Transfer(coordinator, *, value)` USDC events where the recipient is
   not a known hot-wallet derivation, a contract, or treasury.
 
-Alarm on these in real time, not daily — a fake-settle attack can be
+Alarm on these in real time, not daily. A fake-settle attack can be
 done in minutes.
 
 ### Rotation procedure
@@ -288,10 +288,10 @@ pools are stranded until the 30-day unclaimed window opens
 
 Calls `ReputationRegistry.giveFeedback()` on the external ERC-8004
 contract after every contest and challenge settles. The validator EOA
-holds no on-chain role — its authority comes from the no-self-feedback
+holds no on-chain role: its authority comes from the no-self-feedback
 rule: the registry rejects feedback where the caller owns the agent
 NFT. AgentRegistry owns all ArcRun agent NFTs, so any non-AgentRegistry
-EOA can validate them — but the validator must not collide with the
+EOA can validate them, but the validator must not collide with the
 coordinator (because the coordinator's key is what AgentRegistry uses
 internally; the rejection rule is more subtle than just "must not be
 the NFT owner address", so keep them distinct).
@@ -303,7 +303,7 @@ txs per contest settlement; load is modest.
 
 ### Blast radius if compromised
 
-Attacker can post arbitrary `giveFeedback()` calls — fake wins for
+Attacker can post arbitrary `giveFeedback()` calls: fake wins for
 their own agents, fake losses for competitors. The ERC-8004 standing
 this fakes is portable across other Arc apps, so the reputation damage
 extends beyond ArcRun.
@@ -374,7 +374,7 @@ non-trivial refactor; on testnet, a sealed envelope is acceptable.
 
 ### Blast radius if compromised
 
-Every Scout hot wallet — past, present, and future — is at risk. An
+Every Scout hot wallet (past, present, and future) is at risk. An
 attacker with the mnemonic can derive any `addressIndex` and drain
 whatever USDC is sitting there. Typical balance per wallet is small
 (1-5 USDC) but the total across an active platform is meaningful.
@@ -409,7 +409,7 @@ A drop without a corresponding settlement run is compromise.
 Mnemonic gone but coordinator intact:
 
 1. All currently-funded hot wallets are now permanently inaccessible to
-   ArcRun. Their USDC is stranded (literally lost — no one holds the
+   ArcRun. Their USDC is stranded (literally lost: no one holds the
    key). Audit how much is locked up.
 2. Generate a new mnemonic and swap env per the rotation steps.
 3. Continue operating. Future Scout contests use the new mnemonic; old
@@ -426,9 +426,9 @@ Once a year, walk this doc end-to-end and verify:
 
 - [ ] Storage location of each key is still correct (people change
       laptops, hardware wallets get retired).
-- [ ] Backup access still works — try recovering each key from its
+- [ ] Backup access still works: try recovering each key from its
       backup in a sandbox.
-- [ ] Monitoring alarms still fire — push a synthetic event and confirm
+- [ ] Monitoring alarms still fire: push a synthetic event and confirm
       the on-call channel gets pinged.
 - [ ] The wallet-separation boot check still flags the simulated
       collision (run with two roles set to the same key in a staging

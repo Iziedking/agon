@@ -4,8 +4,7 @@ import { arcTestnet } from "./arc";
 /// Client for the ArcRun auth service. Runs the SIWE flow (shared by the web3
 /// wallet and the Circle Modular passkey login) and lets the backend persist
 /// the session in an httpOnly cookie. The frontend never reads the token, so
-/// XSS cannot lift it. Per the `circle:use-modular-wallets` skill, the session
-/// must not live in localStorage.
+/// XSS cannot lift it. The session must not live in localStorage.
 
 const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL ?? "http://localhost:8082";
 const LEGACY_TOKEN_KEY = "arcrun_jwt"; // pre-cookie storage, cleaned up on first read

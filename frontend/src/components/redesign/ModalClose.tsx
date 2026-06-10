@@ -1,11 +1,8 @@
 "use client";
 
-/// Brand-correct modal close affordance. Replaces the various `✕` /
-/// emoji-glyph buttons that were scattered across CreateContestModal,
-/// LoginModal, UpgradeFlow, etc. Per the arcrun-redesign anti-pattern
-/// rule "no emoji as iconography": uses the mathematical "×" operator
-/// in mono, not the heavy dingbat. Hover thickens to ink + flips to
-/// accent, matching the rest of the brand's interaction language.
+/// Shared modal close affordance. No emoji as iconography: uses the
+/// mathematical "×" operator in mono, not the heavy dingbat. Hover
+/// thickens to ink + flips to accent.
 ///
 /// 32x32 hit target absolute-positioned top-right of any modal panel.
 /// Caller passes onClick; we own everything else.

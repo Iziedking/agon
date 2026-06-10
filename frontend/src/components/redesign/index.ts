@@ -1,4 +1,4 @@
-/// Public surface of the arcrun-redesign primitives. Import from here.
+/// Public surface of the redesign primitives. Import from here.
 
 export { Robot, robotVariantForId, type RobotVariant } from "./Robot";
 export { TagButton } from "./TagButton";

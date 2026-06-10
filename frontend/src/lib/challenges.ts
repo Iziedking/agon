@@ -145,7 +145,7 @@ export async function hasClaimedChallenge(id: number, operator: `0x${string}`): 
 /// to pull back. Joins the backend's list (which scans the indexer's
 /// challenge_entries + challenges) with on-chain refunded() reads so rows
 /// already refunded drop out. Cancelled contests the operator entered
-/// surface here too as informational rows — entry to a contest is free,
+/// surface here too as informational rows: entry to a contest is free,
 /// so there's no stake to pull back, but the operator should still see
 /// "this one was cancelled" instead of it vanishing.
 ///

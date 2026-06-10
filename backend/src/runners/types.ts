@@ -45,8 +45,7 @@ export type AgentProgress =
       /// Per-puzzle nanopayment spend in USDC (6-decimal as a string so it
       /// survives the JSON hop). Aligned 1:1 with `correct[]`. Zero when
       /// the agent didn't spend on that puzzle. Surfaced on the live stage
-      /// as "spent $0.0136 on Predexon for this puzzle" — the visible proof
-      /// that the agentic economy is moving real USDC.
+      /// as "spent $0.0136 on Predexon for this puzzle".
       spent?: string[];
       /// Per-puzzle nanopayment endpoint label (e.g. "Predexon prediction
       /// markets", "Crypto market data"). Aligned 1:1 with `spent[]`.
@@ -56,7 +55,7 @@ export type AgentProgress =
   | {
       kind: "analyst";
       calls: Array<{ p: number; outcome: 0 | 1; correct: boolean }>;
-      /// Phase 1 tick model: how many decision ticks the agent has used
+      /// Tick model: how many decision ticks the agent has used
       /// out of their tier-derived budget. Drives the "T 3/8" chip on
       /// the live stage so viewers see who's spent their decisions.
       ticksUsed?: number;

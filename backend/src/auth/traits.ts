@@ -125,7 +125,7 @@ export function rollMystery(
 export const COOLDOWN_MS = 24 * 60 * 60 * 1000; // legacy reference; daily UTC reset is the active rule
 
 /// Total mystery boxes available globally per UTC day. First-come, first-served.
-/// Configurable via env so the demo can be tuned.
+/// Configurable via env.
 export const DAILY_POOL_MAX: number = (() => {
   const raw = Number(process.env.MYSTERY_DAILY_POOL);
   if (!Number.isFinite(raw) || raw <= 0) return 100;

@@ -33,7 +33,7 @@ export interface BridgeChain {
   explorer: string;
   /// Chain icon. llamao.fi's icon CDN is the same source chainlist.org uses,
   /// so the icons match what users see across the ecosystem. Undefined when
-  /// the chain isn't on llamao yet (Arc Testnet) — the picker falls back to
+  /// the chain isn't on llamao yet (Arc Testnet); the picker falls back to
   /// a brand-color tile.
   iconUrl?: string;
   /// Gas faucet for this testnet, used by the bridge UI so users can claim

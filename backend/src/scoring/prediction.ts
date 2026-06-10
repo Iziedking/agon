@@ -1,9 +1,8 @@
-/// Pure scoring functions for the prediction-tick model. Locks in the math
-/// from docs/brandkit/13-prediction-windows-design.md. Three scoring modes
-/// (PNL_MTM, PNL_REALIZED, VOLUME) all share these primitives.
+/// Pure scoring functions for the prediction-tick model. Three scoring
+/// modes (PNL_MTM, PNL_REALIZED, VOLUME) all share these primitives.
 ///
 /// Design contract: every function in this file is deterministic, has no
-/// side effects, and operates on plain values. The Phase 1 runner threads
+/// side effects, and operates on plain values. The tick runner threads
 /// these primitives through the per-agent tick loop; tests in
 /// backend/scripts/prediction-examples.ts walk every scenario and assert.
 
@@ -22,7 +21,7 @@ export type RelevantTrait =
   | "lucky-charm";
 
 // ===========================================================================
-// Tick budget — how many decisions an agent makes during the trade window.
+// Tick budget: how many decisions an agent makes during the trade window.
 // ===========================================================================
 
 /// Per-tier base ticks. Index 0 = tier 0 (ineligible), index 4 = tier 4.
@@ -92,7 +91,7 @@ export function impliedYesProb(yesPool: bigint, noPool: bigint): number {
 }
 
 // ===========================================================================
-// PnL — mtm and realized.
+// PnL: mtm and realized.
 // ===========================================================================
 
 /// Marked-to-market PnL for one position. Uses the "edge appreciation since
