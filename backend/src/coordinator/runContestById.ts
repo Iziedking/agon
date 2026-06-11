@@ -105,12 +105,13 @@ async function fetchField(contestId: number, cType: number): Promise<ContestEntr
   return field;
 }
 
-/// Live preview while the window is open. Solver and Analyst are pure, so we run
-/// them for real; Scout does real on-chain ops, so its live view is a pure
-/// tier-based proxy and the real volume run happens once at settlement.
-async function previewScores(cType: number, contestId: number, field: ContestEntryInput[]): Promise<AgentResult[]> {
-  if (cType === 1) return new AnalystRunner().run(contestId, field);
-  if (cType === 2) return new SolverRunner(6).run(contestId, field);
+/// Lineup preview while the ENTRY (join) window is open. We deliberately do
+/// NOT run the real puzzle/analysis/volume here: doing so made agents appear to
+/// finish ("4/6 solved") before the join timer even ended. Instead every type
+/// shows a tier-based lineup, so the open window reads as "agents assembling,
+/// join still open". The authoritative run (finalScores) happens once at
+/// settlement, after entries close, and reveals the real result.
+async function previewScores(_cType: number, _contestId: number, field: ContestEntryInput[]): Promise<AgentResult[]> {
   return field.map((e) => ({ agentId: e.agentId, operator: e.operator, score: (e.tier + 1) * 100, detail: {} }));
 }
 

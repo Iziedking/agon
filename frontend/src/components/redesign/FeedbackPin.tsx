@@ -23,6 +23,7 @@ export function FeedbackPin() {
   const [imgErr, setImgErr] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
+  const [submitErr, setSubmitErr] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -71,6 +72,7 @@ export function FeedbackPin() {
     const text = message.trim();
     if (!text || sending) return;
     setSending(true);
+    setSubmitErr(null);
     const ok = await submitFeedback({
       type: kind,
       message: text,
@@ -84,11 +86,14 @@ export function FeedbackPin() {
       setMessage("");
       setImage(null);
       setImgErr(null);
-      setTimeout(() => {
-        setSent(false);
-        setOpen(false);
-      }, 1600);
+    } else {
+      setSubmitErr("could not send. check your connection and try again.");
     }
+  }
+
+  function sendAnother() {
+    setSent(false);
+    setSubmitErr(null);
   }
 
   return (
@@ -122,9 +127,25 @@ export function FeedbackPin() {
           </div>
 
           {sent ? (
-            <p className="px-4 py-8 text-center font-mono text-[12px] text-ink-2">
-              thanks. sent to the team.
-            </p>
+            <div className="px-4 py-8 text-center">
+              <div className="text-accent" aria-hidden style={{ fontSize: 22, lineHeight: 1 }}>■</div>
+              <div className="mt-3 font-mono text-[13px] text-ink">thanks — sent to the team.</div>
+              <p className="mt-1 font-mono text-[11px] text-ink-3">we read every report.</p>
+              <div className="mt-5 flex justify-center gap-2">
+                <button
+                  onClick={sendAnother}
+                  className="border border-ink-3 bg-canvas px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:border-ink hover:text-ink"
+                >
+                  SEND ANOTHER
+                </button>
+                <button
+                  onClick={() => { setSent(false); setOpen(false); }}
+                  className="border border-[color:var(--accent-ink)] bg-accent px-4 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-accent-ink hover:-translate-y-px"
+                >
+                  DONE
+                </button>
+              </div>
+            </div>
           ) : (
             <div className="px-4 py-4">
               <div className="flex gap-2">
@@ -198,6 +219,7 @@ export function FeedbackPin() {
                   {sending ? "SENDING…" : "SEND →"}
                 </button>
               </div>
+              {submitErr ? <p className="mt-2 font-mono text-[10px] text-[color:var(--err)]">{submitErr}</p> : null}
             </div>
           )}
         </div>

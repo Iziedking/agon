@@ -32,9 +32,13 @@ function shell(opts: { preheader: string; eyebrow: string; heading: string; body
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- Declare a light-only scheme so Gmail / Apple Mail dark mode don't invert
+     the palette and hide the ink text on the canvas card. -->
 <meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
+<style>:root { color-scheme: light only; } body { color-scheme: light only; }</style>
 </head>
-<body style="margin:0;padding:0;background:${C.canvas};">
+<body style="margin:0;padding:0;background:${C.canvas};color-scheme:light only;">
 <span style="display:none;max-height:0;overflow:hidden;opacity:0;color:${C.canvas};">${opts.preheader}</span>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${C.canvas};">
 <tr><td align="center" style="padding:32px 16px;">

@@ -34,13 +34,16 @@ function hashCode(code: string): string {
 
 function generateCode(): string {
   // 6-digit numeric, padded. Uses crypto-grade randomness so the code
-  // isn't guessable from process timing or insertion order.
+  // isn't guessable from process timing or insertion order. Build the number
+  // with multiplication (not bit-shifts): `<<` is signed 32-bit in JS, so a
+  // high top byte made `n` negative and produced codes like "-845521" that
+  // could never verify.
   const bytes = createHash("sha256")
     .update(`${Date.now()}:${Math.random()}:${Math.random()}`)
     .digest();
   let n = 0;
-  for (let i = 0; i < 4; i++) n = (n << 8) | (bytes[i] ?? 0);
-  return String(n % 1_000_000).padStart(6, "0");
+  for (let i = 0; i < 4; i++) n = (n * 256 + (bytes[i] ?? 0)) % 1_000_000;
+  return String(n).padStart(6, "0");
 }
 
 async function sendCode(email: string, code: string): Promise<void> {
