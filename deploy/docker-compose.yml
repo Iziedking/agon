@@ -6,6 +6,14 @@
 #
 # The GitHub Actions deploy job runs, over SSH on the VPS:
 #   docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build
+#
+# Resource caps are sized for a 2-core / 8GB host. They use the top-level
+# mem_limit/cpus keys, which `docker compose up` enforces (the deploy.resources
+# block is ignored outside Swarm, so it is not used here). cpus is a ceiling,
+# not a reservation: it only bites under contention, and it stops the
+# coordinator from grabbing both cores during a settlement wave so Postgres
+# always has a core. Always-on memory limits total ~5.7GB, leaving headroom for
+# the host and the transient migrate job. Adjust if you move to a bigger box.
 
 x-backend: &backend
   build:
@@ -26,6 +34,9 @@ services:
     image: postgres:16-alpine
     container_name: arcrun-postgres
     restart: unless-stopped
+    mem_limit: 2g
+    mem_reservation: 768m
+    cpus: 1.0
     environment:
       POSTGRES_USER: arcrun
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -42,6 +53,9 @@ services:
     image: redis:7-alpine
     container_name: arcrun-redis
     restart: unless-stopped
+    mem_limit: 512m
+    mem_reservation: 128m
+    cpus: 0.5
     volumes:
       - arcrun_redisdata:/data
     healthcheck:
@@ -55,6 +69,8 @@ services:
     container_name: arcrun-migrate
     command: npm run migrate
     restart: "no"
+    mem_limit: 768m
+    cpus: 1.0
     depends_on:
       postgres:
         condition: service_healthy
@@ -63,6 +79,9 @@ services:
     <<: *backend
     container_name: arcrun-indexer
     command: npm run indexer
+    mem_limit: 768m
+    mem_reservation: 192m
+    cpus: 0.75
     depends_on:
       postgres:
         condition: service_healthy
@@ -73,6 +92,9 @@ services:
     <<: *backend
     container_name: arcrun-auth
     command: npm run auth
+    mem_limit: 768m
+    mem_reservation: 192m
+    cpus: 0.75
     expose:
       - "8082"
     depends_on:
@@ -87,6 +109,9 @@ services:
     <<: *backend
     container_name: arcrun-coordinator
     command: npm run coordinator
+    mem_limit: 1536m
+    mem_reservation: 384m
+    cpus: 1.0
     expose:
       - "8788"
     depends_on:
@@ -101,6 +126,8 @@ services:
     image: caddy:2-alpine
     container_name: arcrun-caddy
     restart: unless-stopped
+    mem_limit: 192m
+    cpus: 0.5
     ports:
       - "80:80"
       - "443:443"
