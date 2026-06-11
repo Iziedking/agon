@@ -9,6 +9,7 @@ import { ContestStage } from "@/components/pengu/ContestStage";
 import { BracketedCell, StatusChip } from "@/components/redesign";
 import { fetchResults, type ArenaResults, type ResultEntrant } from "@/lib/results";
 import { formatUsdcString, short } from "@/lib/profiles";
+import type { StandingsEntry } from "@/lib/live";
 
 /// The field-and-results board for a contest or challenge detail page. While it
 /// is still live it lists the entrants and polls for new ones; for a live
@@ -170,15 +171,20 @@ function LiveStandings({
   contestType?: string;
 }) {
   const { standings, challengeStandings } = useContestSocket();
-  const matchingStandings = standings && standings.contestId === id ? standings : null;
-  const entries =
-    kind === "contests"
-      ? matchingStandings
-        ? matchingStandings.entries
-        : []
-      : challengeStandings && challengeStandings.challengeId === id
-        ? challengeStandings.entries
-        : [];
+  // The socket exposes one latest frame across every live event. Retain the
+  // last frame for THIS event so another contest's broadcast can't blank the
+  // stage between our frames (the flicker). Reset when the event changes.
+  const [entries, setEntries] = useState<StandingsEntry[]>([]);
+  const [liveType, setLiveType] = useState<string | undefined>(undefined);
+  useEffect(() => { setEntries([]); setLiveType(undefined); }, [id, kind]);
+  useEffect(() => {
+    if (kind === "contests" && standings && standings.contestId === id) {
+      setEntries(standings.entries);
+      if (standings.contestType) setLiveType(standings.contestType);
+    } else if (kind === "challenges" && challengeStandings && challengeStandings.challengeId === id) {
+      setEntries(challengeStandings.entries);
+    }
+  }, [standings, challengeStandings, id, kind]);
 
   // Hook must run on every render: never conditional, never after an early
   // return. Keep it at the top so the hook count is stable across renders
@@ -198,7 +204,7 @@ function LiveStandings({
           from the broadcast; challenges get it from the parent page (the
           challenge kind label like "PUZZLE" or "VOLUME"). */}
       <ContestStage
-        contestType={matchingStandings?.contestType ?? contestType}
+        contestType={liveType ?? contestType}
         entries={entries}
       />
 

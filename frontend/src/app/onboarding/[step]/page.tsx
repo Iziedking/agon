@@ -286,7 +286,51 @@ function AgentStep({
           onClaimed={onClaimed}
         />
       </div>
+      <FaucetCard />
     </>
+  );
+}
+
+/// On Arc, gas is paid in USDC, so claiming an agent needs a little USDC in the
+/// wallet. This card copies the connected address and opens Circle's testnet
+/// faucet so a brand-new wallet can fund itself before claiming. Email/Circle
+/// wallets are seeded automatically, so this mainly helps injected wallets.
+function FaucetCard() {
+  const { address } = useOperatorAddress();
+  const [copied, setCopied] = useState(false);
+
+  async function onClick() {
+    if (address) {
+      try {
+        await navigator.clipboard.writeText(address);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } catch {
+        // Clipboard blocked (rare); open the faucet anyway.
+      }
+    }
+    window.open("https://faucet.circle.com", "_blank", "noopener,noreferrer");
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title="Copies your wallet address, then opens the Circle USDC faucet in a new tab"
+      className="group mt-4 flex w-full items-center justify-between gap-3 border border-[color:var(--hairline-strong)] bg-canvas-2 px-4 py-3 text-left transition-colors hover:border-ink"
+    >
+      <span className="min-w-0">
+        <span className="block font-mono text-[11px] uppercase tracking-[0.14em] text-ink">
+          <span aria-hidden className="text-accent">■</span> NO GAS? GRAB FREE USDC
+        </span>
+        <span className="mt-1 block font-mono text-[11px] leading-[1.5] text-ink-2">
+          on arc, gas is usdc. {copied ? "address copied — paste it on the faucet." : "tap to copy your wallet and open the faucet."}
+        </span>
+      </span>
+      <span aria-hidden className="flex-none font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3 group-hover:text-ink">
+        {copied ? "COPIED" : "COPY & OPEN"} ↗
+      </span>
+    </button>
   );
 }
 

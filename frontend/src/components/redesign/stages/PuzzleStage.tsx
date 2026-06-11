@@ -314,20 +314,19 @@ function PuzzleRow({
       </div>
     );
   }
-  // Score-derived fallback
-  const pct = Math.min(1, entry.score / maxScore);
-  const filled = Math.round(6 * pct);
+  // No real solve progress yet (queued during the join window, or a frame
+  // without solver data). Show empty cells numbered 1-6 so the row reads as
+  // "six puzzles, none solved yet" instead of faking progress from the score.
   return (
     <div className="grid grid-cols-6 gap-1">
       {Array.from({ length: 6 }, (_, i) => (
         <span
           key={i}
-          className="aspect-square"
-          style={{
-            background: i < filled ? accent : "transparent",
-            border: i < filled ? `1px solid ${accent}` : "1px solid var(--hairline)",
-          }}
-        />
+          className="flex aspect-square items-center justify-center font-mono text-[9px] text-ink-3"
+          style={{ background: "transparent", border: "1px solid var(--hairline)" }}
+        >
+          {i + 1}
+        </span>
       ))}
     </div>
   );
