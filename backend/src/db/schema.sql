@@ -168,7 +168,8 @@ alter table contests add column if not exists scoring_mode text;
 -- row instead of round-tripping N agents × M ticks to the chain. Null
 -- on legacy rows; the runner falls back to a live read and backfills.
 alter table entries add column if not exists tier int;
-alter table challenge_entries add column if not exists tier int;
+-- challenge_entries.tier is added right after that table is created below;
+-- altering it here would fail on a fresh DB where the table doesn't exist yet.
 
 -- Treasury / payout flow from PrizeEscrow.PaidOut. Every USDC outflow
 -- from a pool gets a row here: contest prize claims, challenge payouts,
@@ -317,6 +318,9 @@ create table if not exists challenge_entries (
   primary key (challenge_id, agent_id)
 );
 create index if not exists challenge_entries_operator_idx on challenge_entries(operator);
+-- Tier snapshot at entry time (see the entries.tier note above). Added here,
+-- after the create, so a fresh DB has the table before the column is added.
+alter table challenge_entries add column if not exists tier int;
 
 -- Resolved challenge payouts, in leaf order, for serving claim proofs.
 create table if not exists challenge_payouts (
