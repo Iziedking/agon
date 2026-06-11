@@ -1,5 +1,6 @@
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/redesign/Footer";
+import { FirstRunGate } from "@/components/FirstRunGate";
 import {
   ActivityLedger,
   ActivityRow,
@@ -184,6 +185,7 @@ export default async function AppHome() {
       </section>
 
       <Footer />
+      <FirstRunGate />
     </div>
   );
 }
