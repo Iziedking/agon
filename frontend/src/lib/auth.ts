@@ -189,6 +189,27 @@ export async function signInWithEmail(email: string): Promise<EmailLoginResult> 
   };
 }
 
+/// OTP-only email sign-in: completes the session from a verified code, with no
+/// passkey ceremony. Call after verifyEmailOtp succeeds. Passkeys stay optional
+/// (added later from settings); returning users who have one are offered the
+/// passkey login automatically by signInWithEmail.
+export async function sessionFromEmail(email: string): Promise<EmailLoginResult> {
+  const res = await fetch(`${AUTH_URL}/auth/email/session`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ email }),
+  });
+  const data = (await res.json().catch(() => ({}))) as Partial<EmailLoginResult> & { error?: string };
+  if (!res.ok) throw new Error(data.error ?? "could not complete sign-in");
+  return {
+    address: (data.address ?? "0x") as `0x${string}`,
+    walletId: data.walletId ?? null,
+    seeded: Boolean(data.seeded),
+    isNew: Boolean(data.isNew),
+  };
+}
+
 /// One registered passkey, as returned by GET /auth/passkey/list. Used by
 /// the profile settings to show the user's enrolled devices.
 export interface PasskeyRecord {

@@ -385,6 +385,71 @@ app.post("/auth/email/finish", async (c) => {
   });
 });
 
+/// Email login WITHOUT a passkey: complete sign-in from a verified OTP alone.
+/// Signup is just email + code; passkeys become optional and are enrolled
+/// later from settings (and offered automatically on return once enrolled).
+/// Gated on a recent OTP verification so a session can't be claimed for an
+/// email the caller doesn't control.
+app.post("/auth/email/session", async (c) => {
+  if (!circleDevConfigured()) {
+    return c.json({ error: "email login is not configured on this server" }, 503);
+  }
+  if (!config.auth.emailOtp.enabled) {
+    return c.json({ error: "code-based email login is not enabled" }, 400);
+  }
+
+  let body: { email?: string };
+  try { body = await c.req.json(); } catch { return c.json({ error: "bad json" }, 400); }
+  const email = readEmail(body);
+  if (!email) return c.json({ error: "valid email required" }, 400);
+
+  if (!(await isEmailVerified(email))) {
+    return c.json({ error: "verify your email code first", code: "otp_required" }, 401);
+  }
+
+  let address: string;
+  let walletId: string | null;
+  let seeded = false;
+  let createdNow = false;
+
+  const existing = await query<{ address: string; circle_wallet_id: string | null }>(
+    "select address, circle_wallet_id from operators where email = $1",
+    [email],
+  );
+  if (existing.rows[0]) {
+    address = existing.rows[0].address;
+    walletId = existing.rows[0].circle_wallet_id;
+  } else {
+    const created = await createUserWallet(email).catch((err) => {
+      console.error("[auth/email/session] createUserWallet failed:", err);
+      return null;
+    });
+    if (!created) return c.json({ error: "could not create wallet, try again in a moment" }, 502);
+    address = created.address;
+    walletId = created.walletId;
+    await query(
+      `insert into operators (address, email, circle_wallet_id)
+         values ($1, $2, $3)
+         on conflict (address) do update set email = excluded.email, circle_wallet_id = excluded.circle_wallet_id`,
+      [address, email, walletId],
+    );
+    createdNow = true;
+    const seed = await seedTestnetUsdc(address as `0x${string}`).catch(() => ({ requested: false }));
+    seeded = seed.requested;
+  }
+
+  await consumeEmailVerification(email).catch(() => {});
+  const token = await issueToken(address);
+  setSessionCookie(c, token);
+  void logEvent({
+    kind: createdNow ? "email_signup" : "email_login",
+    address,
+    context: { email, walletId, seeded, method: "otp" },
+    source: "auth",
+  });
+  return c.json({ address, walletId, seeded, isNew: createdNow });
+});
+
 // ----- Passkey enrollment from inside a live session -----
 //
 // Lets a signed-in user attach a passkey to their existing operator row so

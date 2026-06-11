@@ -9,6 +9,7 @@ import {
   enrollPasskey,
   loginWithSigner,
   OtpRequiredError,
+  sessionFromEmail,
   signInWithEmail,
   startEmailOtp,
   verifyEmailOtp,
@@ -245,11 +246,10 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
     }
   }
 
-  /// Verify the 6-digit OTP, then re-run the email sign-in. The backend
-  /// flags the email as verified for 15 min so the second
-  /// /auth/email/begin call sails through to the passkey-registration
-  /// branch. On any error we keep the OTP view active so the user can
-  /// retry without re-typing their email.
+  /// Verify the 6-digit OTP and complete sign-in from the code alone — no
+  /// passkey prompt. Signup is just email + code; a passkey can be added later
+  /// from settings for faster returning logins. On any error we keep the OTP
+  /// view active so the user can retry without re-typing their email.
   async function handleVerifyOtp() {
     const trimmed = email.trim();
     const codeTrimmed = otp.trim();
@@ -261,10 +261,8 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
     setError(null);
     try {
       await verifyEmailOtp(trimmed, codeTrimmed);
-      // OTP verified. Re-run the email sign-in. This time
-      // /auth/email/begin returns the WebAuthn registration challenge
-      // and the passkey ceremony runs.
-      const result = await signInWithEmail(trimmed);
+      // OTP verified -> create the session directly, no WebAuthn ceremony.
+      const result = await sessionFromEmail(trimmed);
       await refresh();
       reportEvent("login", {
         context: { method: "email", isNew: result.isNew, seeded: result.seeded, otp: true },
