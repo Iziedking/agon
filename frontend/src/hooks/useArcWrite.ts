@@ -5,6 +5,7 @@ import { useWriteContract } from "wagmi";
 import { useAuth } from "@/hooks/useAuth";
 import { useCircleExecute, type CircleWriteArgs } from "@/hooks/useCircleExecute";
 import { useEnsureArc } from "@/hooks/useEnsureArc";
+import { arcTestnet } from "@/lib/arc";
 
 /// Unified write surface for ArcRun call sites. Resolves at runtime to either
 /// wagmi's useWriteContract (for users with an injected wallet) or
@@ -34,6 +35,11 @@ export function useArcWrite() {
       // /bridge with the wallet still on Sepolia or Polygon, swap to Arc
       // before signing. Throws a friendly error if the user declines.
       await ensureOnArc();
+      // Pin the write to Arc. With `chainId` set, wagmi/viem verifies the
+      // wallet is on Arc at send time and throws ChainMismatchError otherwise,
+      // so a tx can never fire on the wrong chain even if the switch above
+      // didn't fully propagate (e.g. wallet still on ETH mainnet).
+      //
       // wagmi's writeContractAsync types are heavily inferred from the ABI; the
       // unified hook accepts a looser shape so the dual-path call sites don't
       // have to know what kind of wallet the user has. The `unknown` cast lets
@@ -43,6 +49,7 @@ export function useArcWrite() {
         abi: args.abi,
         functionName: args.functionName,
         args: args.args as unknown as never,
+        chainId: arcTestnet.id,
         ...(args.value ? { value: BigInt(args.value) } : {}),
       } as Parameters<typeof wagmi.writeContractAsync>[0]);
     },

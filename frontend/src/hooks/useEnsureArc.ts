@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback } from "react";
-import { useChainId, useSwitchChain } from "wagmi";
+import { useAccount, useSwitchChain } from "wagmi";
 import { arcTestnet } from "@/lib/arc";
 
 /// Returns a function that resolves once the connected wallet is on Arc
@@ -11,7 +11,10 @@ import { arcTestnet } from "@/lib/arc";
 /// the switch the promise rejects, so callers can surface a friendly
 /// message instead of letting the underlying writeContract throw.
 export function useEnsureArc(): () => Promise<void> {
-  const chainId = useChainId();
+  // The wallet's ACTUAL connected chain. useChainId() returns wagmi's
+  // configured active chain, which can report Arc even when the wallet is on
+  // an unconfigured chain like ETH mainnet, so the switch would be skipped.
+  const { chainId } = useAccount();
   const { switchChainAsync } = useSwitchChain();
 
   return useCallback(async () => {

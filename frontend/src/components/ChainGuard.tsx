@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
-import { useAccount, useChainId, useSwitchChain } from "wagmi";
+import { useAccount, useSwitchChain } from "wagmi";
 import { arcTestnet } from "@/lib/arc";
 
 /// Routes where the user legitimately needs the wallet on a non-Arc chain.
@@ -19,8 +19,10 @@ const NON_ARC_ROUTES = ["/bridge"];
 /// z-index above the win modal so a wrong-chain warning is never hidden.
 export function ChainGuard() {
   const pathname = usePathname() ?? "/";
-  const { isConnected } = useAccount();
-  const chainId = useChainId();
+  // account.chainId is the wallet's ACTUAL chain. useChainId() reports wagmi's
+  // configured active chain, which can read as Arc even when the wallet sits on
+  // an unconfigured chain (e.g. ETH mainnet), so the banner would never show.
+  const { isConnected, chainId } = useAccount();
   const { switchChain, isPending, error } = useSwitchChain();
   const autoTried = useRef(false);
 
