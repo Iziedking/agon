@@ -92,8 +92,8 @@ export function researchPuzzle(r: () => number, used: Set<string>): Puzzle {
     "B) FEW   (1 to 3 open markets)",
     "C) SOME  (4 to 10 open markets)",
     "D) MANY  (11 or more open markets)",
-    "Answer with one of: NONE, FEW, SOME, MANY.",
-    "If the RESEARCH context above carries market data, count and bucket from it. Otherwise estimate from what you know.",
+    "If the RESEARCH context above carries market data, count and bucket from it. Otherwise give your best estimate.",
+    "You MUST finish with exactly one word on its own line: NONE, FEW, SOME, or MANY. Commit to one even if you are unsure; never reply that you lack data.",
   ].join("\n");
 
   return {

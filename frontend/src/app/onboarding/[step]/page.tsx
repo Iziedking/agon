@@ -99,6 +99,15 @@ export default function OnboardingPage() {
   }, []);
 
   const hasAgents = !!agents && agents.length > 0;
+
+  // Returning users already have an agent, so there's nothing to onboard. Once
+  // they reach the connect step and we confirm an agent on their wallet, send
+  // them straight to the app home. New users (no agent) stay and continue to
+  // the claim step and on to 6/6.
+  useEffect(() => {
+    if (slug === "connect" && hasAgents) router.replace("/app");
+  }, [slug, hasAgents, router]);
+
   const canAdvance =
     slug === "welcome" ? true :
     slug === "connect" ? isConnected :
@@ -217,7 +226,7 @@ function ConnectStep({ isConnected, address }: { isConnected: boolean; address?:
   return (
     <>
       <p className="font-mono text-sm leading-[1.6] text-ink-2">
-        sign in with your wallet or with email. one signature, one session. you can disconnect at any time.
+        connect with your wallet or email.
       </p>
       <div className="mt-6 flex flex-wrap items-center gap-4">
         {isConnected && address ? (

@@ -308,11 +308,24 @@ function extractAnswer(response: string, expected: string | null): string {
       }
       if (pick) return pick;
     }
+    // Research bucket (none / few / some / many)
+    const buckets = ["none", "few", "some", "many"];
+    if (buckets.includes(exp.toLowerCase())) {
+      const lower = cleaned.toLowerCase();
+      let pick: string | null = null;
+      let lastIdx = -1;
+      for (const w of buckets) {
+        const i = lower.lastIndexOf(w);
+        if (i > lastIdx) { lastIdx = i; pick = w; }
+      }
+      if (pick) return pick.toUpperCase();
+    }
   }
 
-  // Fallback: tight summary (legacy). Trims to one short line so the cell
-  // isn't a paragraph even when extraction fails.
-  return truncate(cleaned.replace(/\s+/g, " "), 32);
+  // No clean answer found. Never leak the response text into the cell — the
+  // full reasoning is one click away in the popover. A dash reads as "the
+  // agent didn't commit to an answer".
+  return "—";
 }
 
 function truncate(s: string, max: number): string {

@@ -14,9 +14,14 @@ export interface JudgeOutcome {
   extracted: string;
 }
 
+/// Shown in the answer cell when the agent never committed to a valid answer.
+/// Kept short and content-free so reasoning never leaks into the cell — the
+/// full response is always one click away in the reasoning popover.
+const NO_ANSWER = "—";
+
 export function judge(puzzle: Puzzle, raw: string): JudgeOutcome {
   const cleaned = raw.replace(/```[\s\S]*?```/g, " ").trim();
-  if (!cleaned) return { verdict: "error", extracted: "" };
+  if (!cleaned) return { verdict: "error", extracted: NO_ANSWER };
 
   switch (puzzle.kind) {
     case "arithmetic":
@@ -41,12 +46,12 @@ export function judge(puzzle: Puzzle, raw: string): JudgeOutcome {
 function judgeNumber(text: string, expected: string): JudgeOutcome {
   const want = Number(expected);
   const numbers = Array.from(text.matchAll(/-?\d[\d,]*(?:\.\d+)?/g)).map((m) => m[0]);
-  if (numbers.length === 0) return { verdict: "error", extracted: text.slice(0, 32) };
+  if (numbers.length === 0) return { verdict: "error", extracted: NO_ANSWER };
   // Take the last number in the response. LLMs that scaffold tend to end on
   // the answer; agents that just blurt the answer have one number total.
   const pickStr = numbers[numbers.length - 1]!.replace(/,/g, "");
   const got = Number(pickStr);
-  if (!Number.isFinite(got)) return { verdict: "error", extracted: pickStr };
+  if (!Number.isFinite(got)) return { verdict: "error", extracted: NO_ANSWER };
   return { verdict: got === want ? "correct" : "wrong", extracted: pickStr };
 }
 
@@ -63,7 +68,7 @@ function judgeOneOf(text: string, choices: string[], expected: string): JudgeOut
       lastChoice = c;
     }
   }
-  if (!lastChoice) return { verdict: "error", extracted: text.slice(0, 32) };
+  if (!lastChoice) return { verdict: "error", extracted: NO_ANSWER };
   return { verdict: lastChoice === expected ? "correct" : "wrong", extracted: lastChoice };
 }
 
