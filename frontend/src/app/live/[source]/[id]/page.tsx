@@ -83,7 +83,16 @@ function ContestFocus({ id }: { id: number }) {
     return () => { stopped = true; };
   }, [id]);
 
-  const live = standings && standings.contestId === id ? standings : null;
+  // Keep the last standings frame for THIS contest. The socket exposes a single
+  // latest frame across every live event, so when another contest broadcasts,
+  // `standings.contestId` stops matching and the stage would blank to
+  // "initializing" then refill on our next frame — a visible flash. Retaining
+  // the last matching frame locally keeps the stage stable between our frames.
+  const [live, setLive] = useState<NonNullable<typeof standings> | null>(null);
+  useEffect(() => { setLive(null); }, [id]);
+  useEffect(() => {
+    if (standings && standings.contestId === id) setLive(standings);
+  }, [standings, id]);
   const entries: StandingsEntry[] = live?.entries ?? [];
   const kindLabel = c ? (CONTEST_TYPE[c.contestType] ?? "CONTEST").toUpperCase() : "—";
   const stageKind = normalizeStageKind(live?.contestType ?? kindLabel);
@@ -173,7 +182,13 @@ function ChallengeFocus({ id }: { id: number }) {
     return () => { stopped = true; };
   }, [id]);
 
-  const live = challengeStandings && challengeStandings.challengeId === id ? challengeStandings : null;
+  // Retain the last frame for THIS challenge so another event's broadcast over
+  // the shared socket can't blank the stage between our frames (see ContestFocus).
+  const [live, setLive] = useState<NonNullable<typeof challengeStandings> | null>(null);
+  useEffect(() => { setLive(null); }, [id]);
+  useEffect(() => {
+    if (challengeStandings && challengeStandings.challengeId === id) setLive(challengeStandings);
+  }, [challengeStandings, id]);
   const entries: StandingsEntry[] = live?.entries ?? [];
   const kindLabel = ch ? (CHALLENGE_KIND[ch.kind] ?? "CHALLENGE").toUpperCase() : "—";
   const stageKind = normalizeStageKind(kindLabel);
