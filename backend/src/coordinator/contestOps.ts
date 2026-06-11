@@ -15,11 +15,15 @@ const erc20 = parseAbi([
   "function balanceOf(address owner) view returns (uint256)",
 ]);
 const engineAbi = parseAbi([
-  "function listContest(uint8 cType,address protocolTarget,bytes32 metric,uint256 prizePool,uint64 duration,uint16 winnerCutBps,uint16 topN) returns (uint256)",
-  "function listingFee() view returns (uint256)",
+  "function listContest(uint8 cType,address protocolTarget,bytes32 metric,uint256 prizePool,uint64 duration,uint16 winnerCutBps,uint16 topN,uint16 minTier,uint16 maxTier) returns (uint256)",
+  "function listingFeeBps() view returns (uint16)",
   "function nextContestId() view returns (uint256)",
-  "function getContest(uint256 contestId) view returns ((uint8 contestType,uint8 status,uint16 winnerCutBps,uint16 topN,uint16 platformFeeBps,address sponsor,address protocolTarget,bytes32 metric,uint64 startTime,uint64 endTime,uint256 prizePool,bytes32 finalRoot))",
+  "function getContest(uint256 contestId) view returns ((uint8 contestType,uint8 status,uint16 winnerCutBps,uint16 topN,uint16 platformFeeBps,address sponsor,address protocolTarget,bytes32 metric,uint64 startTime,uint64 endTime,uint256 prizePool,bytes32 finalRoot,uint16 minTier,uint16 maxTier))",
 ]);
+
+/// Default tier gate = fully open (every tier 0..4 may enter).
+const OPEN_MIN_TIER = 0;
+const OPEN_MAX_TIER = 4;
 
 const TYPES: Record<string, { index: number; metric: string }> = {
   scout: { index: 0, metric: "VOLUME" },
@@ -49,6 +53,9 @@ export interface OpenOpts {
   durationSeconds: number;
   winnerCutBps?: number;
   topN?: number;
+  /// On-chain entry tier gate. Omit for fully open (0..4).
+  minTier?: number;
+  maxTier?: number;
 }
 
 /// List and fund a platform contest, leaving it OPEN. Returns its id.
@@ -68,14 +75,26 @@ export async function openContest(opts: OpenOpts): Promise<number> {
     return hash;
   }
 
-  const listingFee = (await publicClient.readContract({ address: engine, abi: engineAbi, functionName: "listingFee" })) as bigint;
+  // Listing fee is a percentage of the pool (bps); approve pool + fee.
+  const listingFeeBps = (await publicClient.readContract({ address: engine, abi: engineAbi, functionName: "listingFeeBps" })) as number;
+  const listingFee = (prizePool * BigInt(listingFeeBps)) / 10_000n;
   await send({ address: config.external.USDC, abi: erc20, functionName: "approve", args: [escrow, prizePool + listingFee] });
   const contestId = await publicClient.readContract({ address: engine, abi: engineAbi, functionName: "nextContestId" });
   await send({
     address: engine,
     abi: engineAbi,
     functionName: "listContest",
-    args: [t.index, zeroAddress, keccak256(toBytes(t.metric)), prizePool, duration, opts.winnerCutBps ?? 6000, opts.topN ?? 3],
+    args: [
+      t.index,
+      zeroAddress,
+      keccak256(toBytes(t.metric)),
+      prizePool,
+      duration,
+      opts.winnerCutBps ?? 6000,
+      opts.topN ?? 3,
+      opts.minTier ?? OPEN_MIN_TIER,
+      opts.maxTier ?? OPEN_MAX_TIER,
+    ],
   });
   return Number(contestId);
 }

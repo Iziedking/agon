@@ -26,9 +26,14 @@ contract ContestEngineTest is Test {
     address internal alice = makeAddr("alice");
     address internal bob = makeAddr("bob");
 
-    uint256 internal constant LISTING_FEE = 5e6; // 5 USDC
+    uint16 internal constant LISTING_FEE_BPS = 150; // 1.5% of the pool
     uint16 internal constant PLATFORM_FEE_BPS = 500; // 5%
     bytes32 internal constant METRIC_VOLUME = keccak256("VOLUME");
+
+    /// Listing fee charged for a given pool, mirroring the contract math.
+    function _listingFee(uint256 prizePool) internal pure returns (uint256) {
+        return (prizePool * LISTING_FEE_BPS) / 10_000;
+    }
 
     function setUp() public {
         usdc = new MockUSDC();
@@ -37,7 +42,7 @@ contract ContestEngineTest is Test {
         vm.startPrank(admin);
         escrow = new PrizeEscrow(admin, address(usdc), treasury);
         registry = new AgentRegistry(admin, address(idRegistry), address(usdc), treasury);
-        engine = new ContestEngine(admin, address(registry), address(escrow), LISTING_FEE, PLATFORM_FEE_BPS);
+        engine = new ContestEngine(admin, address(registry), address(escrow), LISTING_FEE_BPS, PLATFORM_FEE_BPS);
 
         escrow.grantRole(escrow.CONTROLLER_ROLE(), address(engine));
         registry.grantRole(registry.CONTEST_ENGINE_ROLE(), address(engine));
@@ -48,11 +53,33 @@ contract ContestEngineTest is Test {
     // ---------- helpers ----------
 
     function _listContest(uint256 prizePool, uint64 duration) internal returns (uint256 id) {
-        usdc.mint(sponsor, prizePool + LISTING_FEE);
+        return _listContestGated(prizePool, duration, 0, 4);
+    }
+
+    function _listContestGated(uint256 prizePool, uint64 duration, uint16 minTier, uint16 maxTier)
+        internal
+        returns (uint256 id)
+    {
+        uint256 fee = _listingFee(prizePool);
+        usdc.mint(sponsor, prizePool + fee);
         vm.startPrank(sponsor);
-        usdc.approve(address(escrow), prizePool + LISTING_FEE);
-        id = engine.listContest(ContestType.SCOUT, address(0xBEEF), METRIC_VOLUME, prizePool, duration, 5000, 10);
+        usdc.approve(address(escrow), prizePool + fee);
+        id = engine.listContest(
+            ContestType.SCOUT, address(0xBEEF), METRIC_VOLUME, prizePool, duration, 5000, 10, minTier, maxTier
+        );
         vm.stopPrank();
+    }
+
+    /// Upgrade an agent's SCOUT tier to `target` (sequential 0..target).
+    function _upgradeScout(address operator, uint256 agentId, uint16 target) internal {
+        for (uint16 t = 1; t <= target; t++) {
+            uint256 price = registry.upgradePrice(ContestType.SCOUT, t - 1);
+            usdc.mint(operator, price);
+            vm.startPrank(operator);
+            usdc.approve(address(registry), price);
+            registry.upgradeAgent(agentId, ContestType.SCOUT, t);
+            vm.stopPrank();
+        }
     }
 
     function _createAgentAndEnter(address operator, uint256 contestId) internal returns (uint256 agentId) {
@@ -69,7 +96,7 @@ contract ContestEngineTest is Test {
 
         assertEq(id, 1);
         assertEq(escrow.poolBalance(address(engine), id), 1000e6, "pool escrowed");
-        assertEq(usdc.balanceOf(treasury), LISTING_FEE, "listing fee to treasury");
+        assertEq(usdc.balanceOf(treasury), _listingFee(1000e6), "listing fee to treasury");
 
         ContestEngine.Contest memory c = engine.getContest(id);
         assertEq(uint8(c.status), uint8(ContestStatus.OPEN));
@@ -103,7 +130,7 @@ contract ContestEngineTest is Test {
         engine.settle(id);
 
         // fee skimmed at settle: treasury holds listing fee + platform fee.
-        assertEq(usdc.balanceOf(treasury), LISTING_FEE + 50e6, "treasury after settle");
+        assertEq(usdc.balanceOf(treasury), _listingFee(1000e6) + 50e6, "treasury after settle");
         assertEq(escrow.poolBalance(address(engine), id), 950e6, "pool after skim");
 
         bytes32[] memory proofA = MerkleHelper.getProof(leaves, 0);
@@ -135,6 +162,41 @@ contract ContestEngineTest is Test {
         vm.prank(admin);
         vm.expectRevert(ContestEngine.FeeTooHigh.selector);
         engine.setDefaultPlatformFeeBps(2001);
+    }
+
+    function test_listingFee_isPercentOfPool() public {
+        // Listing fee scales with pool size. At 1.5%, a 2000 USDC pool pays 30.
+        uint256 id = _listContest(2000e6, 2 days);
+        assertEq(usdc.balanceOf(treasury), 30e6, "1.5% of 2000 USDC = 30");
+        assertEq(escrow.poolBalance(address(engine), id), 2000e6, "full pool still escrowed");
+    }
+
+    function test_setListingFeeBps_changesFee() public {
+        vm.prank(admin);
+        engine.setListingFeeBps(300); // 3%
+        assertEq(engine.listingFeeBps(), 300);
+
+        // List directly with the 3% fee approved (the _listContest helper bakes
+        // in the default rate, so it can't be used after a rate change).
+        usdc.mint(sponsor, 1000e6 + 30e6);
+        vm.startPrank(sponsor);
+        usdc.approve(address(escrow), 1000e6 + 30e6);
+        engine.listContest(ContestType.SCOUT, address(0xBEEF), METRIC_VOLUME, 1000e6, 2 days, 5000, 10, 0, 4);
+        vm.stopPrank();
+
+        assertEq(usdc.balanceOf(treasury), 30e6, "3% of 1000 USDC = 30");
+    }
+
+    function test_setListingFeeBps_revertsAboveCap() public {
+        vm.prank(admin);
+        vm.expectRevert(ContestEngine.FeeTooHigh.selector);
+        engine.setListingFeeBps(1001); // > MAX_LISTING_FEE_BPS (10%)
+    }
+
+    function test_setListingFeeBps_onlyAdmin() public {
+        vm.prank(alice);
+        vm.expectRevert();
+        engine.setListingFeeBps(100);
     }
 
     function test_postScoreRoot_onlyCoordinator() public {
@@ -173,6 +235,71 @@ contract ContestEngineTest is Test {
         vm.prank(alice);
         vm.expectRevert(ContestEngine.AlreadyEntered.selector);
         engine.registerEntry(id, agentId, 0);
+    }
+
+    function test_registerEntry_revertsOperatorSecondAgent() public {
+        // One operator, two agents: the second agent's entry is rejected so a
+        // single operator cannot flood one contest. (Audit M3 / bundle #3.)
+        uint256 id = _listContest(1000e6, 1 days);
+        _createAgentAndEnter(alice, id);
+
+        vm.prank(alice);
+        uint256 agent2 = registry.createAgent("ipfs://a2");
+        vm.prank(alice);
+        vm.expectRevert(ContestEngine.OperatorAlreadyEntered.selector);
+        engine.registerEntry(id, agent2, 0);
+    }
+
+    function test_registerEntry_tierGate() public {
+        // Contest gated to tiers 2..4. A fresh tier-0 agent is rejected; after
+        // upgrading SCOUT to tier 2 the same operator's agent can enter.
+        uint256 id = _listContestGated(1000e6, 1 days, 2, 4);
+
+        vm.prank(alice);
+        uint256 agentId = registry.createAgent("ipfs://a");
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(ContestEngine.TierNotAllowed.selector, uint16(0), uint16(2), uint16(4)));
+        engine.registerEntry(id, agentId, 0);
+
+        _upgradeScout(alice, agentId, 2);
+        vm.prank(alice);
+        engine.registerEntry(id, agentId, 0);
+        assertEq(engine.entryCount(id), 1, "tier-2 agent entered");
+    }
+
+    function test_listContest_revertsInvalidTierGate() public {
+        usdc.mint(sponsor, 1000e6 + _listingFee(1000e6));
+        vm.startPrank(sponsor);
+        usdc.approve(address(escrow), 1000e6 + _listingFee(1000e6));
+        // maxTier above MAX_TIER (4) is rejected.
+        vm.expectRevert(ContestEngine.InvalidTierGate.selector);
+        engine.listContest(ContestType.SCOUT, address(0xBEEF), METRIC_VOLUME, 1000e6, 1 days, 5000, 10, 0, 5);
+        vm.stopPrank();
+    }
+
+    function test_pause_blocksEntry() public {
+        uint256 id = _listContest(1000e6, 1 days);
+        vm.prank(alice);
+        uint256 agentId = registry.createAgent("ipfs://a");
+
+        vm.prank(admin);
+        engine.pause();
+
+        vm.prank(alice);
+        vm.expectRevert(); // Pausable: EnforcedPause
+        engine.registerEntry(id, agentId, 0);
+
+        vm.prank(admin);
+        engine.unpause();
+        vm.prank(alice);
+        engine.registerEntry(id, agentId, 0);
+        assertEq(engine.entryCount(id), 1, "entry works after unpause");
+    }
+
+    function test_pause_onlyAdmin() public {
+        vm.prank(alice);
+        vm.expectRevert();
+        engine.pause();
     }
 
     // ---------- claims ----------

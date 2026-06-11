@@ -3,6 +3,7 @@ pragma solidity 0.8.24;
 
 import { AccessControl } from "@openzeppelin/contracts/access/AccessControl.sol";
 import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import { Pausable } from "@openzeppelin/contracts/utils/Pausable.sol";
 import { MerkleProof } from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 
 import { ContestType, ContestStatus } from "./types/ArcRunTypes.sol";
@@ -23,7 +24,7 @@ import { IPrizeEscrow } from "./interfaces/IPrizeEscrow.sol";
 ///         sponsor's published, auditable terms. USDC custody and per-pool
 ///         accounting live in PrizeEscrow; this contract only orchestrates.
 ///         See ARCRUN_PLAN.md §4.1.
-contract ContestEngine is AccessControl, ReentrancyGuard {
+contract ContestEngine is AccessControl, ReentrancyGuard, Pausable {
     // ============ Roles ============
 
     /// @notice Backend coordinator: posts score roots, settles, drives reputation.
@@ -33,8 +34,15 @@ contract ContestEngine is AccessControl, ReentrancyGuard {
 
     uint16 public constant BPS_DENOMINATOR = 10_000;
 
+    /// @notice Highest agent tier (mirrors AgentRegistry.MAX_TIER). Used to
+    ///         validate a contest's entry tier gate.
+    uint16 public constant MAX_TIER = 4;
+
     /// @notice Ceiling on the platform fee a contest can carry (20%).
     uint16 public constant MAX_PLATFORM_FEE_BPS = 2_000;
+
+    /// @notice Ceiling on the listing fee (10% of the prize pool).
+    uint16 public constant MAX_LISTING_FEE_BPS = 1_000;
 
     /// @notice Window after a contest ends during which winners can claim.
     ///         After it elapses, leftover pool funds can be swept to treasury.
@@ -47,8 +55,10 @@ contract ContestEngine is AccessControl, ReentrancyGuard {
 
     // ============ Mutable state ============
 
-    /// @notice Flat USDC (6 dp) a sponsor pays up front to list a contest.
-    uint256 public listingFee;
+    /// @notice Listing fee in bps of the prize pool, paid up front to list a
+    ///         contest (separate from the settlement platform-fee skim). 0 =
+    ///         free hosting. Charged on the pool size so big campaigns pay more.
+    uint16 public listingFeeBps;
 
     /// @notice ArcRun platform fee (bps) stamped onto each contest at listing.
     ///         Set by the admin, never by the sponsor, so a sponsor cannot zero
@@ -68,13 +78,19 @@ contract ContestEngine is AccessControl, ReentrancyGuard {
         uint64 endTime;
         uint256 prizePool; // USDC (6 dp), escrowed at listing
         bytes32 finalRoot; // merkle root of (operator, amount) payouts
+        // Entry tier gate, appended so existing struct decoders stay valid.
+        uint16 minTier; // lowest agent tier allowed (0 = open)
+        uint16 maxTier; // highest agent tier allowed (MAX_TIER = open top)
     }
 
     uint256 private _nextContestId = 1;
     mapping(uint256 => Contest) private _contests;
 
-    /// @notice contestId => agentId => entered (prevents double entry).
+    /// @notice contestId => agentId => entered (prevents the same agent twice).
     mapping(uint256 => mapping(uint256 => bool)) public agentEntered;
+    /// @notice contestId => operator => entered (one entry per operator: no
+    ///         Sybil flooding a pool with many owned agents).
+    mapping(uint256 => mapping(address => bool)) public operatorEntered;
     /// @notice contestId => operator => prize claimed.
     mapping(uint256 => mapping(address => bool)) public prizeClaimed;
     /// @notice contestId => number of registered entries.
@@ -101,7 +117,7 @@ contract ContestEngine is AccessControl, ReentrancyGuard {
     event ReputationApplied(uint256 indexed contestId, uint256 count);
     event ContestCancelled(uint256 indexed contestId, uint256 refunded);
     event UnclaimedSwept(uint256 indexed contestId);
-    event ListingFeeUpdated(uint256 oldFee, uint256 newFee);
+    event ListingFeeUpdated(uint16 oldBps, uint16 newBps);
     event PlatformFeeUpdated(uint16 oldBps, uint16 newBps);
 
     // ============ Errors ============
@@ -119,6 +135,9 @@ contract ContestEngine is AccessControl, ReentrancyGuard {
     error ContestNotEnded();
     error NotAgentOwner();
     error AlreadyEntered();
+    error OperatorAlreadyEntered();
+    error InvalidTierGate();
+    error TierNotAllowed(uint16 agentTier, uint16 minTier, uint16 maxTier);
     error InvalidRoot();
     error ContestNotScoring();
     error ContestNotSettled();
@@ -135,19 +154,20 @@ contract ContestEngine is AccessControl, ReentrancyGuard {
         address admin,
         address agentRegistryAddr,
         address escrowAddr,
-        uint256 listingFee_,
+        uint16 listingFeeBps_,
         uint16 platformFeeBps_
     ) {
         if (admin == address(0)) revert ZeroAddress();
         if (agentRegistryAddr == address(0)) revert ZeroAddress();
         if (escrowAddr == address(0)) revert ZeroAddress();
         if (platformFeeBps_ > MAX_PLATFORM_FEE_BPS) revert FeeTooHigh();
+        if (listingFeeBps_ > MAX_LISTING_FEE_BPS) revert FeeTooHigh();
 
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
 
         agentRegistry = IAgentRegistry(agentRegistryAddr);
         escrow = IPrizeEscrow(escrowAddr);
-        listingFee = listingFee_;
+        listingFeeBps = listingFeeBps_;
         defaultPlatformFeeBps = platformFeeBps_;
     }
 
@@ -164,9 +184,12 @@ contract ContestEngine is AccessControl, ReentrancyGuard {
     /// @param  duration      Seconds the contest stays open for entries/scoring.
     /// @param  winnerCutBps  Published share of the pool to the headline tier.
     /// @param  topN          Published headline winner count.
+    /// @param  minTier       Lowest agent tier allowed to enter (0 = open).
+    /// @param  maxTier       Highest agent tier allowed (MAX_TIER = open top).
     /// @dev    The platform fee is not a parameter; the admin-set
     ///         `defaultPlatformFeeBps` is stamped onto the contest so a sponsor
-    ///         cannot avoid ArcRun's skim.
+    ///         cannot avoid ArcRun's skim. A fully open contest passes
+    ///         (minTier=0, maxTier=MAX_TIER).
     function listContest(
         ContestType cType,
         address protocolTarget,
@@ -174,13 +197,16 @@ contract ContestEngine is AccessControl, ReentrancyGuard {
         uint256 prizePool,
         uint64 duration,
         uint16 winnerCutBps,
-        uint16 topN
-    ) external nonReentrant returns (uint256 contestId) {
+        uint16 topN,
+        uint16 minTier,
+        uint16 maxTier
+    ) external whenNotPaused nonReentrant returns (uint256 contestId) {
         if (prizePool == 0) revert ZeroPrizePool();
         if (duration == 0) revert ZeroDuration();
         if (metric == bytes32(0)) revert InvalidMetric();
         if (winnerCutBps > BPS_DENOMINATOR) revert InvalidBps();
         if (topN == 0) revert InvalidTopN();
+        if (maxTier > MAX_TIER || minTier > maxTier) revert InvalidTierGate();
 
         contestId = _nextContestId++;
         uint64 nowTs = uint64(block.timestamp);
@@ -197,10 +223,14 @@ contract ContestEngine is AccessControl, ReentrancyGuard {
             startTime: nowTs,
             endTime: nowTs + duration,
             prizePool: prizePool,
-            finalRoot: bytes32(0)
+            finalRoot: bytes32(0),
+            minTier: minTier,
+            maxTier: maxTier
         });
 
         // Effects set above; now interactions (CEI ordering, guarded by nonReentrant).
+        // Listing fee is a percentage of the pool, charged up front to treasury.
+        uint256 listingFee = (prizePool * listingFeeBps) / BPS_DENOMINATOR;
         if (listingFee > 0) escrow.collectListingFee(msg.sender, listingFee);
         escrow.depositPrizePool(contestId, msg.sender, prizePool);
 
@@ -213,7 +243,10 @@ contract ContestEngine is AccessControl, ReentrancyGuard {
     ///         thresholds (min points, etc.) are enforced off-chain by the
     ///         coordinator at scoring time; entry itself is permissionless for
     ///         agent owners.
-    function registerEntry(uint256 contestId, uint256 agentId, uint256 syndicateId) external {
+    function registerEntry(uint256 contestId, uint256 agentId, uint256 syndicateId)
+        external
+        whenNotPaused
+    {
         Contest storage c = _contests[contestId];
         if (c.sponsor == address(0)) revert ContestDoesNotExist();
         if (c.status != ContestStatus.OPEN) revert ContestNotOpen();
@@ -221,8 +254,17 @@ contract ContestEngine is AccessControl, ReentrancyGuard {
         if (block.timestamp >= c.endTime) revert ContestEnded();
         if (agentRegistry.ownerOfAgent(agentId) != msg.sender) revert NotAgentOwner();
         if (agentEntered[contestId][agentId]) revert AlreadyEntered();
+        if (operatorEntered[contestId][msg.sender]) revert OperatorAlreadyEntered();
+
+        // Tier gate: the agent's tier in this contest's family must sit within
+        // [minTier, maxTier]. A fully open contest (0..MAX_TIER) never rejects.
+        uint16 tier = agentRegistry.getTier(agentId, c.contestType);
+        if (tier < c.minTier || tier > c.maxTier) {
+            revert TierNotAllowed(tier, c.minTier, c.maxTier);
+        }
 
         agentEntered[contestId][agentId] = true;
+        operatorEntered[contestId][msg.sender] = true;
         unchecked {
             entryCount[contestId] += 1;
         }
@@ -237,6 +279,7 @@ contract ContestEngine is AccessControl, ReentrancyGuard {
     ///         encoding `['address','uint256']`.
     function claimPrize(uint256 contestId, uint256 amount, bytes32[] calldata proof)
         external
+        whenNotPaused
         nonReentrant
     {
         Contest storage c = _contests[contestId];
@@ -351,15 +394,27 @@ contract ContestEngine is AccessControl, ReentrancyGuard {
         emit UnclaimedSwept(contestId);
     }
 
-    function setListingFee(uint256 newFee) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        emit ListingFeeUpdated(listingFee, newFee);
-        listingFee = newFee;
+    function setListingFeeBps(uint16 newBps) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (newBps > MAX_LISTING_FEE_BPS) revert FeeTooHigh();
+        emit ListingFeeUpdated(listingFeeBps, newBps);
+        listingFeeBps = newBps;
     }
 
     function setDefaultPlatformFeeBps(uint16 newBps) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (newBps > MAX_PLATFORM_FEE_BPS) revert FeeTooHigh();
         emit PlatformFeeUpdated(defaultPlatformFeeBps, newBps);
         defaultPlatformFeeBps = newBps;
+    }
+
+    /// @notice Emergency stop: blocks new listings, entries, and claims. Admin
+    ///         only. Settlement and recovery (cancel/refund/sweep) stay open so
+    ///         a paused contest can still be unwound.
+    function pause() external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _pause();
+    }
+
+    function unpause() external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _unpause();
     }
 
     // ============ Views ============

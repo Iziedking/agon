@@ -115,7 +115,7 @@ async function startChallengeSweeper(broadcast: (message: unknown) => void): Pro
 }
 
 const arenaCreateAbi = parseAbi([
-  "function createChallenge(uint8 kind, uint128 stake, uint64 maxEntrants, uint64 joinDeadline, uint64 resolveDeadline, bool isPrivate)",
+  "function createChallenge(uint8 kind, uint128 stake, uint64 maxEntrants, uint64 joinDeadline, uint64 resolveDeadline, bool isPrivate, uint16 minTier, uint16 maxTier) returns (uint256)",
 ]);
 
 /// Randomly creates peer challenges on the same cadence as contests, so the
@@ -192,7 +192,7 @@ async function startRandomChallengeLoop(broadcast: (message: unknown) => void): 
         address: config.contracts.ChallengeArena,
         abi: arenaCreateAbi,
         functionName: "createChallenge",
-        args: [kind, stake, 2n, joinDeadline, resolveDeadline, false],
+        args: [kind, stake, 2n, joinDeadline, resolveDeadline, false, gate.min, gate.max],
       });
       await publicClient.waitForTransactionReceipt({ hash });
       await setTierGate("challenge", Number(claimingId), gate.min, gate.max).catch(() => {});
@@ -345,7 +345,15 @@ export async function startAutopilot(broadcast: (message: unknown) => void): Pro
       ? Math.round(randomPool() * highTierPoolMult * 100) / 100
       : randomPool();
     const durationSeconds = randInt(durationMin, durationMax);
-    const contestId = await openContest({ type, poolUsdc, durationSeconds });
+    const contestId = await openContest({
+      type,
+      poolUsdc,
+      durationSeconds,
+      minTier: gate.min,
+      maxTier: gate.max,
+    });
+    // Mirror the gate off-chain too: the settlement-side filter and the entry
+    // UI read it without a contract call. The on-chain gate is the enforcer.
     await setTierGate("contest", contestId, gate.min, gate.max).catch(() => {});
     console.log(
       `autopilot: opened ${type} contest ${contestId} (tier ${gate.min}-${gate.max}), ${poolUsdc} USDC, ${durationSeconds}s window`,

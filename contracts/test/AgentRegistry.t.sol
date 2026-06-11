@@ -84,9 +84,11 @@ contract AgentRegistryTest is Test {
     function test_upgradeAgent_revertsAboveMaxTier() public {
         vm.prank(alice);
         uint256 agentId = registry.createAgent("ipfs://a");
+        // MAX_TIER is 4; requesting tier 5 is out of range. The range check
+        // runs before the sequential check, so InvalidTier(5) is returned.
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(AgentRegistry.InvalidTier.selector, uint16(3)));
-        registry.upgradeAgent(agentId, ContestType.SCOUT, 3);
+        vm.expectRevert(abi.encodeWithSelector(AgentRegistry.InvalidTier.selector, uint16(5)));
+        registry.upgradeAgent(agentId, ContestType.SCOUT, 5);
     }
 
     function test_upgradeAgent_revertsNonOwner() public {
@@ -175,9 +177,11 @@ contract AgentRegistryTest is Test {
     }
 
     function test_setUpgradePrice_revertsAtOrAboveMaxTier() public {
+        // fromTier must be < MAX_TIER (4); tier 4 is the top and has no upgrade
+        // step above it, so setting a price from tier 4 reverts.
         vm.prank(admin);
-        vm.expectRevert(abi.encodeWithSelector(AgentRegistry.InvalidTier.selector, uint16(2)));
-        registry.setUpgradePrice(ContestType.SCOUT, 2, 1e6);
+        vm.expectRevert(abi.encodeWithSelector(AgentRegistry.InvalidTier.selector, uint16(4)));
+        registry.setUpgradePrice(ContestType.SCOUT, 4, 1e6);
     }
 
     function test_setters_onlyAdmin() public {

@@ -6,7 +6,7 @@ import { useOperatorAddress } from "@/hooks/useAuth";
 import { useArcWrite } from "@/hooks/useArcWrite";
 import { CONTRACTS, USDC, publicClient } from "@/lib/arc";
 import { erc20Abi } from "@/lib/agents";
-import { contestEngineAbi, fetchListingFee, metricForType, nextContestId } from "@/lib/contests";
+import { contestEngineAbi, listingFeeForPool, metricForType, nextContestId } from "@/lib/contests";
 import { friendlyError } from "@/lib/errors";
 import { reportEvent } from "@/lib/report";
 import { ModalClose } from "@/components/redesign";
@@ -92,7 +92,7 @@ export function CreateContestModal({ open, onClose }: { open: boolean; onClose: 
       const duration = BigInt(Math.max(1, Math.floor(Number(durationMin))) * 60);
       const winnerCutBps = Math.min(10000, Math.max(0, Math.round(Number(winnerPct) * 100)));
       const top = Math.max(1, Math.floor(Number(topN)));
-      const fee = await fetchListingFee();
+      const fee = await listingFeeForPool(pool6);
 
       setStatus("approving USDC…");
       const approveHash = await writeContractAsync({
@@ -105,15 +105,16 @@ export function CreateContestModal({ open, onClose }: { open: boolean; onClose: 
 
       setStatus("creating campaign…");
       const id = await nextContestId();
+      // The host's tier gate is enforced on-chain at entry and mirrored
+      // off-chain for the settlement filter and entry UI.
+      const preset = GATE_PRESETS[gateIdx]!;
       const hash = await writeContractAsync({
         address: CONTRACTS.ContestEngine,
         abi: contestEngineAbi,
         functionName: "listContest",
-        args: [cType, zeroAddress, metricForType(cType), pool6, duration, winnerCutBps, top],
+        args: [cType, zeroAddress, metricForType(cType), pool6, duration, winnerCutBps, top, preset.min, preset.max],
       });
       await publicClient.waitForTransactionReceipt({ hash });
-      // Record the tier gate the host chose (no-op when ALL TIERS).
-      const preset = GATE_PRESETS[gateIdx]!;
       await submitTierGate("contest", id, preset.min, preset.max);
       setCreatedId(id);
       reportEvent("campaign_create", { context: { id, cType, pool, gate: preset.label }, address });

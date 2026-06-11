@@ -130,7 +130,7 @@ contract AgentRegistry is AccessControl, IERC721Receiver, ReentrancyGuard {
         identityRegistry = IIdentityRegistry(identityRegistryAddr);
         usdc = IERC20(usdcAddr);
         treasury = treasuryAddr;
-        maxAgentsPerOwner = 10;
+        maxAgentsPerOwner = 6;
 
         _seedUpgradePrices();
     }

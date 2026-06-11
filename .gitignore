@@ -53,8 +53,17 @@ todo.md
 deploy.md
 first_deploy.md
 docs/images
-# Local-only operator scripts (admin keys, role grants, etc.)
+# Operator/dev scripts: local-only by default (some may carry admin keys or
+# role grants), but commit the repo-safe, secret-free ones the box and the
+# ops runbook actually need. These read keys from env, never hardcode them.
 scripts/
+!backend/scripts/
+backend/scripts/*
+!backend/scripts/circle-bootstrap.ts
+!backend/scripts/verify-contracts.ts
+!contracts/scripts/
+contracts/scripts/*
+!contracts/scripts/set-listing-fee.sh
 
 # Local-only run guide (contains operational tips, not for distribution)
 docs/run_guide.md

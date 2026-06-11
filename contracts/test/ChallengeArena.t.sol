@@ -6,7 +6,7 @@ import { Test } from "forge-std/Test.sol";
 import { ChallengeArena } from "../src/ChallengeArena.sol";
 import { PrizeEscrow } from "../src/PrizeEscrow.sol";
 import { AgentRegistry } from "../src/AgentRegistry.sol";
-import { ChallengeKind, ChallengeStatus } from "../src/types/ArcRunTypes.sol";
+import { ChallengeKind, ChallengeStatus, ContestType } from "../src/types/ArcRunTypes.sol";
 
 import { MockUSDC } from "./mocks/MockUSDC.sol";
 import { MockIdentityRegistry } from "./mocks/MockIdentityRegistry.sol";
@@ -40,6 +40,8 @@ contract ChallengeArenaTest is Test {
 
         escrow.grantRole(escrow.CONTROLLER_ROLE(), address(arena));
         arena.grantRole(arena.COORDINATOR_ROLE(), coordinator);
+        // Mirrors the deploy: the arena can push reputation to AgentRegistry.
+        registry.grantRole(registry.CONTEST_ENGINE_ROLE(), address(arena));
         vm.stopPrank();
     }
 
@@ -60,10 +62,32 @@ contract ChallengeArenaTest is Test {
     }
 
     function _create(uint64 maxEntrants, bool isPrivate) internal returns (uint256 id) {
+        return _createKindGated(ChallengeKind.PREDICTION, maxEntrants, isPrivate, 0, 4);
+    }
+
+    function _createKindGated(
+        ChallengeKind kind,
+        uint64 maxEntrants,
+        bool isPrivate,
+        uint16 minTier,
+        uint16 maxTier
+    ) internal returns (uint256 id) {
         uint64 joinDeadline = uint64(block.timestamp + 1 days);
         uint64 resolveDeadline = uint64(block.timestamp + 2 days);
         vm.prank(alice);
-        id = arena.createChallenge(ChallengeKind.PREDICTION, STAKE, maxEntrants, joinDeadline, resolveDeadline, isPrivate);
+        id = arena.createChallenge(kind, STAKE, maxEntrants, joinDeadline, resolveDeadline, isPrivate, minTier, maxTier);
+    }
+
+    /// Upgrade an agent's tier in one family to `target` (sequential).
+    function _upgrade(address operator, uint256 agentId, ContestType cType, uint16 target) internal {
+        for (uint16 t = 1; t <= target; t++) {
+            uint256 price = registry.upgradePrice(cType, t - 1);
+            usdc.mint(operator, price);
+            vm.startPrank(operator);
+            usdc.approve(address(registry), price);
+            registry.upgradeAgent(agentId, cType, t);
+            vm.stopPrank();
+        }
     }
 
     // ---------- lifecycle ----------
@@ -226,5 +250,107 @@ contract ChallengeArenaTest is Test {
         arena.joinChallenge(id, bobAgent);
         vm.stopPrank();
         assertTrue(arena.joined(id, bob));
+    }
+
+    // ---------- tier gate ----------
+
+    function test_join_tierGate_rejectsThenAllows() public {
+        // PUZZLE maps to the SOLVER family; gate it to tiers 1..4.
+        uint256 id = _createKindGated(ChallengeKind.PUZZLE, 2, false, 1, 4);
+
+        uint256 bobAgent = _agent(bob);
+        usdc.mint(bob, STAKE);
+        vm.startPrank(bob);
+        usdc.approve(address(escrow), STAKE);
+        vm.expectRevert(abi.encodeWithSelector(ChallengeArena.TierNotAllowed.selector, uint16(0), uint16(1), uint16(4)));
+        arena.joinChallenge(id, bobAgent);
+        vm.stopPrank();
+
+        _upgrade(bob, bobAgent, ContestType.SOLVER, 1);
+        usdc.mint(bob, STAKE);
+        vm.startPrank(bob);
+        usdc.approve(address(escrow), STAKE);
+        arena.joinChallenge(id, bobAgent);
+        vm.stopPrank();
+        assertTrue(arena.joined(id, bob), "tier-1 solver joined");
+    }
+
+    function test_join_customKindIsUngated() public {
+        // CUSTOM has no canonical family, so a tier gate is ignored and a fresh
+        // tier-0 agent can join even a high-tier-gated custom challenge.
+        uint256 id = _createKindGated(ChallengeKind.CUSTOM, 2, false, 3, 4);
+        _join(bob, id);
+        assertTrue(arena.joined(id, bob), "tier-0 agent joins ungated custom challenge");
+    }
+
+    function test_createChallenge_revertsInvalidTierGate() public {
+        uint64 joinDeadline = uint64(block.timestamp + 1 days);
+        uint64 resolveDeadline = uint64(block.timestamp + 2 days);
+        vm.prank(alice);
+        vm.expectRevert(ChallengeArena.InvalidTierGate.selector);
+        arena.createChallenge(ChallengeKind.PUZZLE, STAKE, 2, joinDeadline, resolveDeadline, false, 0, 5);
+    }
+
+    // ---------- pause ----------
+
+    function test_pause_blocksJoin() public {
+        uint256 id = _create(2, false);
+        uint256 bobAgent = _agent(bob);
+        usdc.mint(bob, STAKE);
+
+        vm.prank(admin);
+        arena.pause();
+
+        vm.startPrank(bob);
+        usdc.approve(address(escrow), STAKE);
+        vm.expectRevert(); // Pausable: EnforcedPause
+        arena.joinChallenge(id, bobAgent);
+        vm.stopPrank();
+    }
+
+    // ---------- reputation ----------
+
+    function test_applyReputationDeltas_afterSettle() public {
+        uint256 id = _create(2, false);
+        uint256 aliceAgent = _agentJoin(alice, id);
+        uint256 bobAgent = _agentJoin(bob, id);
+        arena.lockChallenge(id);
+
+        bytes32[] memory leaves = new bytes32[](1);
+        leaves[0] = MerkleHelper.leaf(alice, 195e6);
+        vm.prank(coordinator);
+        arena.postWinnerRoot(id, MerkleHelper.getRoot(leaves));
+
+        uint256[] memory agentIds = new uint256[](2);
+        agentIds[0] = aliceAgent;
+        agentIds[1] = bobAgent;
+        int128[] memory deltas = new int128[](2);
+        deltas[0] = 30e6;
+        deltas[1] = -10e6;
+
+        vm.prank(coordinator);
+        arena.applyReputationDeltas(id, agentIds, deltas);
+
+        assertEq(registry.getEffectiveReputation(aliceAgent), 30e6, "winner rep up");
+        assertEq(registry.getEffectiveReputation(bobAgent), 0, "loser floored at 0");
+    }
+
+    function test_applyReputationDeltas_onlyCoordinator() public {
+        uint256 id = _create(2, false);
+        uint256[] memory agentIds = new uint256[](0);
+        int128[] memory deltas = new int128[](0);
+        vm.prank(alice);
+        vm.expectRevert();
+        arena.applyReputationDeltas(id, agentIds, deltas);
+    }
+
+    /// Join helper that returns the agent id (the base `_join` does not).
+    function _agentJoin(address operator, uint256 id) internal returns (uint256 agentId) {
+        agentId = _agent(operator);
+        usdc.mint(operator, STAKE);
+        vm.startPrank(operator);
+        usdc.approve(address(escrow), STAKE);
+        arena.joinChallenge(id, agentId);
+        vm.stopPrank();
     }
 }

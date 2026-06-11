@@ -51,15 +51,22 @@ contract Deploy is Script {
         address usdc = vm.envOr("USDC_ADDRESS", ARC_USDC);
         address identityRegistry = vm.envOr("IDENTITY_REGISTRY_ADDRESS", ARC_IDENTITY_REGISTRY);
 
-        uint256 listingFee = vm.envOr("LISTING_FEE", uint256(0));
+        // Listing fee is a percentage of the prize pool, in bps. 0 = free
+        // hosting; change anytime with ContestEngine.setListingFeeBps.
+        uint16 listingFeeBps = uint16(vm.envOr("LISTING_FEE_BPS", uint256(0)));
         uint16 platformFeeBps = uint16(vm.envOr("PLATFORM_FEE_BPS", uint256(500))); // 5% default
+
+        // The coordinator posts payout roots; the treasury receives fees. Keep
+        // them distinct so a compromised coordinator key cannot also be the
+        // fee sink. (Audit M1.)
+        require(coordinator != treasury, "coordinator must differ from treasury");
 
         vm.startBroadcast(deployerKey);
 
         d.escrow = new PrizeEscrow(admin, usdc, treasury);
         d.agentRegistry = new AgentRegistry(admin, identityRegistry, usdc, treasury);
         d.contestEngine =
-            new ContestEngine(admin, address(d.agentRegistry), address(d.escrow), listingFee, platformFeeBps);
+            new ContestEngine(admin, address(d.agentRegistry), address(d.escrow), listingFeeBps, platformFeeBps);
         d.challengeArena = new ChallengeArena(admin, address(d.agentRegistry), address(d.escrow), platformFeeBps);
         d.syndicateFactory = new SyndicateFactory(admin);
         d.pointsLedger = new PointsLedger(admin);
@@ -70,7 +77,10 @@ contract Deploy is Script {
             d.escrow.grantRole(d.escrow.CONTROLLER_ROLE(), address(d.contestEngine));
             d.escrow.grantRole(d.escrow.CONTROLLER_ROLE(), address(d.challengeArena));
 
+            // Both settlement contracts push in-game reputation to AgentRegistry,
+            // so both hold CONTEST_ENGINE_ROLE.
             d.agentRegistry.grantRole(d.agentRegistry.CONTEST_ENGINE_ROLE(), address(d.contestEngine));
+            d.agentRegistry.grantRole(d.agentRegistry.CONTEST_ENGINE_ROLE(), address(d.challengeArena));
 
             d.contestEngine.grantRole(d.contestEngine.COORDINATOR_ROLE(), coordinator);
             d.challengeArena.grantRole(d.challengeArena.COORDINATOR_ROLE(), coordinator);
@@ -85,7 +95,7 @@ contract Deploy is Script {
 
         vm.stopBroadcast();
 
-        _report(d, admin, treasury, coordinator, listingFee, platformFeeBps);
+        _report(d, admin, treasury, coordinator, listingFeeBps, platformFeeBps);
     }
 
     function _report(
@@ -93,7 +103,7 @@ contract Deploy is Script {
         address admin,
         address treasury,
         address coordinator,
-        uint256 listingFee,
+        uint16 listingFeeBps,
         uint16 platformFeeBps
     ) internal pure {
         console2.log("=== ArcRun v0 deployed ===");
@@ -107,7 +117,7 @@ contract Deploy is Script {
         console2.log("admin:           ", admin);
         console2.log("treasury:        ", treasury);
         console2.log("coordinator:     ", coordinator);
-        console2.log("listingFee:      ", listingFee);
+        console2.log("listingFeeBps:   ", listingFeeBps);
         console2.log("platformFeeBps:  ", platformFeeBps);
     }
 }

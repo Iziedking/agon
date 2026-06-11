@@ -7,7 +7,7 @@ import { CONTRACTS, publicClient } from "./arc";
 /// entrants refund.
 
 export const challengeArenaAbi = parseAbi([
-  "function createChallenge(uint8 kind, uint128 stake, uint64 maxEntrants, uint64 joinDeadline, uint64 resolveDeadline, bool isPrivate) returns (uint256)",
+  "function createChallenge(uint8 kind, uint128 stake, uint64 maxEntrants, uint64 joinDeadline, uint64 resolveDeadline, bool isPrivate, uint16 minTier, uint16 maxTier) returns (uint256)",
   "function invite(uint256 id, address[] invitees)",
   "function invited(uint256 id, address operator) view returns (bool)",
   "function nextChallengeId() view returns (uint256)",

@@ -12,8 +12,8 @@ export const contestEngineAbi = parseAbi([
   "function registerEntry(uint256 contestId, uint256 agentId, uint256 syndicateId)",
   "function prizeClaimed(uint256 contestId, address operator) view returns (bool)",
   "function claimPrize(uint256 contestId, uint256 amount, bytes32[] proof)",
-  "function listContest(uint8 cType, address protocolTarget, bytes32 metric, uint256 prizePool, uint64 duration, uint16 winnerCutBps, uint16 topN) returns (uint256)",
-  "function listingFee() view returns (uint256)",
+  "function listContest(uint8 cType, address protocolTarget, bytes32 metric, uint256 prizePool, uint64 duration, uint16 winnerCutBps, uint16 topN, uint16 minTier, uint16 maxTier) returns (uint256)",
+  "function listingFeeBps() view returns (uint16)",
 ]);
 
 /// The scoring metric each contest family settles on (matches the coordinator).
@@ -23,17 +23,25 @@ export function metricForType(cType: number): `0x${string}` {
   return keccak256(toBytes(METRIC_FOR_TYPE[cType] ?? "VOLUME"));
 }
 
-/// Flat USDC fee a sponsor pays on top of the pool to list a contest.
-export async function fetchListingFee(): Promise<bigint> {
+/// Listing fee in bps of the prize pool (0 = free hosting).
+export async function fetchListingFeeBps(): Promise<number> {
   try {
-    return (await publicClient.readContract({
-      address: CONTRACTS.ContestEngine,
-      abi: contestEngineAbi,
-      functionName: "listingFee",
-    })) as bigint;
+    return Number(
+      await publicClient.readContract({
+        address: CONTRACTS.ContestEngine,
+        abi: contestEngineAbi,
+        functionName: "listingFeeBps",
+      }),
+    );
   } catch {
-    return 0n;
+    return 0;
   }
+}
+
+/// The USDC listing fee for a given pool, derived from the bps rate.
+export async function listingFeeForPool(pool6: bigint): Promise<bigint> {
+  const bps = await fetchListingFeeBps();
+  return (pool6 * BigInt(bps)) / 10_000n;
 }
 
 /// The id the next listed contest will get.

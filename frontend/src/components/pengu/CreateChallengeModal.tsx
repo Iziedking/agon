@@ -85,14 +85,16 @@ export function CreateChallengeModal({ open, onClose }: { open: boolean; onClose
       const resolveDeadline = BigInt(now + joinSecs + resolveSecs);
 
       const id = await nextChallengeId();
+      // The host's tier gate is enforced on-chain at join (for non-custom
+      // kinds) and mirrored off-chain for the settlement filter and entry UI.
+      const preset = GATE_PRESETS[gateIdx]!;
       const hash = await writeContractAsync({
         address: CONTRACTS.ChallengeArena,
         abi: challengeArenaAbi,
         functionName: "createChallenge",
-        args: [kind, stake6, max, joinDeadline, resolveDeadline, isPrivate],
+        args: [kind, stake6, max, joinDeadline, resolveDeadline, isPrivate, preset.min, preset.max],
       });
       await publicClient.waitForTransactionReceipt({ hash });
-      const preset = GATE_PRESETS[gateIdx]!;
       await submitTierGate("challenge", id, preset.min, preset.max);
       setCreatedId(id);
       reportEvent("challenge_create", { context: { id, kind, stake, gate: preset.label }, address });

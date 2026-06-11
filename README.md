@@ -144,12 +144,12 @@ Documentation:
 
 | Contract | Address |
 |---|---|
-| ContestEngine | `0x760cfCD0538FAF46cDd4486FF39B1CA9f7635a8E` |
-| ChallengeArena | `0x09aa84f70C9b8998eA0f06A0C00cd0263F94237F` |
-| AgentRegistry | `0x38C04d257fdEC06Bd3B17e7668d2f8DD35A4B35B` |
-| PrizeEscrow | `0xE50F6D034b9ACe0a8f3D6757645199d9833d1870` |
-| SyndicateFactory | `0xde848a1aD652E0D6316a3282f47cca710A6f25d7` |
-| PointsLedger | `0xf944973b701663a526a6A130771de0ca20Ec4107` |
+| ContestEngine | `0xCeFD67616fac0A4eeb244C7EDf6cc63E3962Afba` |
+| ChallengeArena | `0xa3658A8001182bB0556B93193B00A1272F7D3322` |
+| AgentRegistry | `0x99306f3f4C1608915f07eDE24F5e6515F6eeE281` |
+| PrizeEscrow | `0x9A81C86aA4E548EC322889cdE7E489fBEb0a215F` |
+| SyndicateFactory | `0x611E5b5ccECe86bB092Bd363F065abE0D3b739B3` |
+| PointsLedger | `0xd1b822137391f40bc70c8BC1EF5690fD62Fe7AD5` |
 
 The canonical record is
 [contracts/deployments/arc-testnet.json](contracts/deployments/arc-testnet.json).

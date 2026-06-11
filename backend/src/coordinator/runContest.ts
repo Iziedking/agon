@@ -19,7 +19,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const erc20 = parseAbi(["function approve(address spender, uint256 amount) returns (bool)"]);
 const engineAbi = parseAbi([
-  "function listContest(uint8 cType,address protocolTarget,bytes32 metric,uint256 prizePool,uint64 duration,uint16 winnerCutBps,uint16 topN) returns (uint256)",
+  "function listContest(uint8 cType,address protocolTarget,bytes32 metric,uint256 prizePool,uint64 duration,uint16 winnerCutBps,uint16 topN,uint16 minTier,uint16 maxTier) returns (uint256)",
   "function registerEntry(uint256 contestId,uint256 agentId,uint256 syndicateId)",
   "function postScoreRoot(uint256 contestId,bytes32 root)",
   "function settle(uint256 contestId)",
@@ -70,7 +70,7 @@ export async function runLiveContest(broadcast: (message: unknown) => void): Pro
     address: engine,
     abi: engineAbi,
     functionName: "listContest",
-    args: [2, zeroAddress, keccak256(toBytes("PUZZLE")), PRIZE_POOL, DURATION, 6000, 1],
+    args: [2, zeroAddress, keccak256(toBytes("PUZZLE")), PRIZE_POOL, DURATION, 6000, 1, 0, 4],
   });
   const openReceipt = await publicClient.getTransactionReceipt({ hash: openHash });
   const openTs = (await publicClient.getBlock({ blockNumber: openReceipt.blockNumber })).timestamp;
