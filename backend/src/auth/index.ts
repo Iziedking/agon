@@ -1634,7 +1634,7 @@ app.get("/notifications", requireAuth, async (c) => {
        from notifications
       where operator = $1 ${unreadOnly ? "and read = false" : ""}
       order by created_at desc
-      limit 50`,
+      limit 20`,
     [operator],
   );
   const unread = rows.filter((r) => !r.read).length;
@@ -1667,6 +1667,26 @@ app.post("/notifications/read", requireAuth, async (c) => {
     );
   } else {
     await query("update notifications set read = true where operator = $1 and read = false", [operator]);
+  }
+  return c.json({ ok: true });
+});
+
+/// Clear the feed. Body { ids?: number[] } removes those rows; omit ids to
+/// clear all of the operator's notifications.
+app.post("/notifications/clear", requireAuth, async (c) => {
+  const operator = c.get("address").toLowerCase();
+  let ids: number[] = [];
+  try {
+    const body = await c.req.json<{ ids?: number[] }>();
+    ids = Array.isArray(body.ids) ? body.ids.filter((n) => Number.isFinite(n)) : [];
+  } catch { /* clear-all */ }
+  if (ids.length > 0) {
+    await query(
+      "delete from notifications where operator = $1 and id = any($2::bigint[])",
+      [operator, ids],
+    );
+  } else {
+    await query("delete from notifications where operator = $1", [operator]);
   }
   return c.json({ ok: true });
 });

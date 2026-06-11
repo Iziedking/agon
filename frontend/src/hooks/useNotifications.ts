@@ -5,6 +5,7 @@ import { useOperatorAddress } from "@/hooks/useAuth";
 import {
   fetchNotifications,
   markNotificationsRead,
+  clearNotifications,
   playNotificationChime,
   type AppNotification,
 } from "@/lib/notifications";
@@ -58,9 +59,16 @@ export function useNotifications() {
     await markNotificationsRead();
   }, [unread]);
 
+  const clearAll = useCallback(async () => {
+    setItems([]);
+    setUnread(0);
+    seenIds.current.clear();
+    await clearNotifications();
+  }, []);
+
   const setSound = useCallback((on: boolean) => {
     soundOn.current = on;
   }, []);
 
-  return { items, unread, refresh, markAllRead, setSound, isSignedIn };
+  return { items, unread, refresh, markAllRead, clearAll, setSound, isSignedIn };
 }

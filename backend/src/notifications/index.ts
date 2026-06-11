@@ -43,6 +43,20 @@ export async function notify(operator: string, input: NotifyInput): Promise<void
         input.context ? JSON.stringify(input.context) : null,
       ],
     );
+    // Keep at most the newest 20 per operator. Older rows auto-clear as new
+    // ones arrive, so the feed never grows without bound and the bell stays
+    // a short, current list rather than an archive.
+    await query(
+      `delete from notifications
+        where operator = $1
+          and id not in (
+            select id from notifications
+             where operator = $1
+             order by created_at desc
+             limit 20
+          )`,
+      [addr],
+    );
   } catch (err) {
     console.warn(`[notify] insert failed: ${err instanceof Error ? err.message : err}`);
   }

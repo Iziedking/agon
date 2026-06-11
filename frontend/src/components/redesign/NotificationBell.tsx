@@ -31,7 +31,7 @@ function timeAgo(iso: string): string {
 }
 
 export function NotificationBell() {
-  const { items, unread, markAllRead, setSound, isSignedIn } = useNotifications();
+  const { items, unread, markAllRead, clearAll, setSound, isSignedIn } = useNotifications();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const [soundOn, setSoundOn] = useState(true);
@@ -73,18 +73,29 @@ export function NotificationBell() {
       </button>
 
       {open ? (
-        <div className="absolute right-0 z-modal mt-2 w-[340px] border border-ink bg-canvas shadow-[0_12px_40px_rgba(26,22,18,0.18)]">
-          <div className="flex items-center justify-between border-b border-[color:var(--hairline)] px-4 py-3">
+        <div className="fixed left-3 right-3 top-[4.5rem] z-modal border border-ink bg-canvas shadow-[0_12px_40px_rgba(26,22,18,0.18)] sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[340px]">
+          <div className="flex items-center justify-between gap-3 border-b border-[color:var(--hairline)] px-4 py-3">
             <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
               <span aria-hidden className="text-accent">■</span> NOTIFICATIONS
             </span>
-            <button
-              onClick={() => setSoundOn((s) => !s)}
-              className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3 hover:text-ink"
-              title="toggle sound"
-            >
-              {soundOn ? "SOUND ON" : "SOUND OFF"}
-            </button>
+            <div className="flex items-center gap-3">
+              {items.length > 0 ? (
+                <button
+                  onClick={() => void clearAll()}
+                  className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3 hover:text-ink"
+                  title="clear all notifications"
+                >
+                  CLEAR
+                </button>
+              ) : null}
+              <button
+                onClick={() => setSoundOn((s) => !s)}
+                className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3 hover:text-ink"
+                title="toggle sound"
+              >
+                {soundOn ? "SOUND ON" : "SOUND OFF"}
+              </button>
+            </div>
           </div>
           <div className="max-h-[60vh] overflow-y-auto">
             {items.length === 0 ? (

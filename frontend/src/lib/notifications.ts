@@ -52,6 +52,21 @@ export async function markNotificationsRead(ids?: number[]): Promise<void> {
   }
 }
 
+/// Remove notifications from the feed. Pass ids to clear specific rows, or
+/// omit to clear them all.
+export async function clearNotifications(ids?: number[]): Promise<void> {
+  try {
+    await fetch(`${AUTH_URL}/notifications/clear`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(ids ? { ids } : {}),
+    });
+  } catch {
+    /* best-effort */
+  }
+}
+
 /// A short two-tone chime synthesized with the Web Audio API, so there's no
 /// audio asset to ship or fail to load. No-op when the tab has never had a
 /// user gesture (browsers block audio until then).
