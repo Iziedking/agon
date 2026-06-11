@@ -10,6 +10,7 @@ import { WinWatcher } from "@/components/WinWatcher";
 import { ThemeScript } from "@/components/ThemeScript";
 import { BodyLines } from "@/components/redesign/BodyLines";
 import { SideRail } from "@/components/redesign/SideRail";
+import { FeedbackPin } from "@/components/redesign/FeedbackPin";
 
 // Mono body. Every label, eyebrow, numeral, and table cell reads from this.
 const jetbrainsMono = JetBrains_Mono({
@@ -44,6 +45,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           {children}
           <SideRail />
           <WinWatcher />
+          <FeedbackPin />
         </Providers>
         <ErrorReporter />
       </body>

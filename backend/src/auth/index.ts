@@ -1691,6 +1691,64 @@ app.post("/notifications/clear", requireAuth, async (c) => {
   return c.json({ ok: true });
 });
 
+// ----- Feedback -----
+
+/// Lightweight global rate limit so the public feedback endpoint can't be
+/// used to flood the team's Telegram. Allows a burst, then ~1 per 2s.
+const feedbackHits: number[] = [];
+function feedbackRateOk(): boolean {
+  const now = Date.now();
+  while (feedbackHits.length > 0 && now - feedbackHits[0]! > 60_000) feedbackHits.shift();
+  if (feedbackHits.length >= 30) return false;
+  feedbackHits.push(now);
+  return true;
+}
+
+/// In-app feedback (bug reports / feature ideas) relayed to the team's
+/// Telegram. Public on purpose: anyone using the app can report, signed in
+/// or not. The page path and operator address ride along when available so
+/// reports are actionable.
+app.post("/feedback", async (c) => {
+  if (!feedbackRateOk()) return c.json({ error: "rate limited" }, 429);
+
+  let body: { type?: string; message?: string; path?: string; address?: string };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "bad json" }, 400);
+  }
+
+  const message = String(body.message ?? "").trim().slice(0, 2000);
+  if (!message) return c.json({ error: "message required" }, 400);
+  const type = body.type === "idea" ? "IDEA" : "BUG";
+  const where = body.path ? String(body.path).slice(0, 200) : "";
+  const who = body.address ? String(body.address).slice(0, 64) : "anonymous";
+
+  const token = config.auth.telegram.botToken;
+  const chatId = config.auth.telegram.feedbackChatId;
+  if (!token || !chatId) {
+    console.warn("[feedback] telegram not configured (TELEGRAM_BOT_TOKEN / FEEDBACK_TELEGRAM_CHAT_ID); dropping");
+    return c.json({ ok: true, delivered: false });
+  }
+
+  const text = `[ARCRUN ${type}]\n\n${message}\n\npage: ${where || "?"}\nfrom: ${who}`;
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text, disable_web_page_preview: true }),
+    });
+    if (!res.ok) {
+      console.warn(`[feedback] telegram HTTP ${res.status}`);
+      return c.json({ ok: false }, 502);
+    }
+  } catch (err) {
+    console.warn(`[feedback] relay failed: ${err instanceof Error ? err.message : err}`);
+    return c.json({ ok: false }, 502);
+  }
+  return c.json({ ok: true, delivered: true });
+});
+
 // ----- Tier gates -----
 
 /// Record the tier gate a host chose for a contest or challenge they created.

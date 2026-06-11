@@ -173,9 +173,26 @@ export default function Home() {
 
           {/* Robot row sits inside the 1280 column so it doesn't compete with
               the bleed. Headline is the focal point, robots are decoration. */}
-          <div className="mt-14 flex flex-wrap items-end justify-center gap-6 border-t border-[color:var(--hairline)] pt-10">
+          <div className="mt-14 flex flex-wrap items-end justify-center gap-3 border-t border-[color:var(--hairline)] px-4 pt-10 sm:gap-6">
             {HERO_ROBOTS.map((v, i) => (
-              <Robot key={`${v}-${i}`} variant={v} size={i === 2 ? 96 : 72} decorative />
+              <Robot
+                key={`${v}-${i}`}
+                variant={v}
+                // Smaller on phones so all five sit on one row instead of
+                // wrapping 4+1; full size from sm up.
+                size={i === 2 ? 72 : 56}
+                className="sm:hidden"
+                decorative
+              />
+            ))}
+            {HERO_ROBOTS.map((v, i) => (
+              <Robot
+                key={`lg-${v}-${i}`}
+                variant={v}
+                size={i === 2 ? 96 : 72}
+                className="hidden sm:block"
+                decorative
+              />
             ))}
           </div>
         </div>

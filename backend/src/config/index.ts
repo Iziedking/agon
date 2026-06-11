@@ -26,6 +26,8 @@ const envSchema = z.object({
   X_CALLBACK_URL: z.string().optional(),
   TELEGRAM_BOT_TOKEN: z.string().optional(),
   TELEGRAM_BOT_USERNAME: z.string().optional(),
+  // Telegram chat the in-app feedback widget relays bug/idea reports to.
+  FEEDBACK_TELEGRAM_CHAT_ID: z.string().optional(),
   DISCORD_CLIENT_ID: z.string().optional(),
   DISCORD_CLIENT_SECRET: z.string().optional(),
   DISCORD_CALLBACK_URL: z.string().optional(),
@@ -335,6 +337,7 @@ export const config = {
     telegram: {
       botToken: env.TELEGRAM_BOT_TOKEN,
       botUsername: env.TELEGRAM_BOT_USERNAME,
+      feedbackChatId: env.FEEDBACK_TELEGRAM_CHAT_ID,
     },
     discord: {
       clientId: env.DISCORD_CLIENT_ID,

@@ -18,12 +18,14 @@ import { NotificationBell } from "@/components/redesign/NotificationBell";
 /// opens a full-width drawer below the nav. Without this users on phones
 /// could not navigate at all.
 
+// Bridge is intentionally not a top-level nav item: ArcRun is an agent arena,
+// not a bridge. The bridge is reached from the withdraw flow (and direct
+// /bridge links), where moving USDC omnichain actually matters to the user.
 const ROUTES = [
   { href: "/dashboard", label: "DASHBOARD" },
   { href: "/contests", label: "CONTESTS" },
   { href: "/challenges", label: "CHALLENGES" },
   { href: "/live", label: "LIVE" },
-  { href: "/bridge", label: "BRIDGE" },
   { href: "/leaderboard", label: "LEADERBOARD" },
   { href: "/syndicates", label: "SYNDICATES" },
 ];

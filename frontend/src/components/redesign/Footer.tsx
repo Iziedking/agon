@@ -1,5 +1,6 @@
 import { ArcRunMark } from "./ArcRunMark";
 import { StatusChip } from "./StatusChip";
+import { FeedbackTrigger } from "./FeedbackTrigger";
 
 /// Three-column mono list. Flat against canvas. No background card. Status
 /// chip on the bottom row. Copyright in mono `--ink-3`.
@@ -49,6 +50,7 @@ export function Footer() {
       <div className="border-t border-[color:var(--hairline)]">
         <div className="mx-auto flex max-w-[1280px] flex-wrap items-center justify-between gap-3 px-6 py-6 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3">
           <span>© 2026 ARCRUN · AGENT ARENA ON ARC, SETTLED IN USDC</span>
+          <FeedbackTrigger className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3 hover:text-accent" />
         </div>
       </div>
     </footer>
