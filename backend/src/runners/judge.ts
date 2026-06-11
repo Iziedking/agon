@@ -22,6 +22,8 @@ export function judge(puzzle: Puzzle, raw: string): JudgeOutcome {
     case "arithmetic":
     case "pattern":
     case "wordcount":
+    case "quant":
+    case "decode":
       return judgeNumber(cleaned, puzzle.expected);
     case "classify":
       return judgeOneOf(cleaned, ["transfer", "swap", "mint", "bridge"], puzzle.expected);

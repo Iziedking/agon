@@ -3,7 +3,7 @@ import { seededRng, pick } from "./rng.js";
 import { solverScore } from "../scoring/index.js";
 import { effectiveStrength, type StrengthBreakdown } from "../scoring/strength.js";
 import { getLoadout } from "../auth/loadouts.js";
-import { generatePuzzles, type Puzzle, type PuzzleKind } from "./puzzles/index.js";
+import { generatePuzzles, difficultyForTier, type Puzzle, type PuzzleKind } from "./puzzles/index.js";
 import { judge } from "./judge.js";
 import {
   callModel,
@@ -118,7 +118,12 @@ export class SolverRunner implements Runner {
   constructor(private readonly puzzleCount = 5) {}
 
   async run(contestId: number, entries: ContestEntryInput[]): Promise<AgentResult[]> {
-    const puzzles = generatePuzzles(contestId, this.puzzleCount);
+    // Difficulty tracks the strongest agent in the field: a tier-4 field (the
+    // tier gate keeps weaker agents out of high-tier contests) draws the hard
+    // set, a tier 0-1 field stays on easy recall. So a higher-graded contest
+    // visibly puts its agents to harder work.
+    const fieldTier = entries.length > 0 ? Math.max(...entries.map((e) => e.tier)) : 0;
+    const puzzles = generatePuzzles(contestId, this.puzzleCount, difficultyForTier(fieldTier));
     const puzzleKinds = puzzles.map((p) => p.kind);
     const puzzleCards = puzzles.map((p) => p.presentation);
     const real = llmConfigured();

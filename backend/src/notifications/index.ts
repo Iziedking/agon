@@ -76,7 +76,11 @@ async function relayTelegram(operator: string, input: NotifyInput): Promise<void
     const chatId = rows[0]?.telegram_id;
     if (!chatId) return;
 
-    const text = input.body ? `${input.title}\n${input.body}` : input.title;
+    // Include a tappable deep link to the relevant page (claim, challenge,
+    // training, etc.) so the user can act straight from Telegram. href is a
+    // relative path; join it to the app origin.
+    const link = input.href ? `${config.auth.appUrl.replace(/\/$/, "")}${input.href}` : null;
+    const text = [input.title, input.body, link].filter(Boolean).join("\n");
     const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: "POST",
       headers: { "content-type": "application/json" },

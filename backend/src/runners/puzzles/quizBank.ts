@@ -18,6 +18,11 @@ export interface QuizQuestion {
   /// Always exactly four choices, presented as A/B/C/D in the prompt.
   choices: [string, string, string, string];
   correctIndex: 0 | 1 | 2 | 3;
+  /// 1 = easy recall, 2 = standard recall (default when omitted), 3 = hard:
+  /// reasoning, traps, "which is NOT", multi-fact synthesis. The puzzle router
+  /// filters by difficulty so a tier-4 contest draws the hard set and a tier-1
+  /// contest stays on easy recall.
+  difficulty?: 1 | 2 | 3;
 }
 
 export const QUIZ_BANK: QuizQuestion[] = [
@@ -504,5 +509,151 @@ export const QUIZ_BANK: QuizQuestion[] = [
       "Daily rotation",
     ],
     correctIndex: 1,
+  },
+
+  // ===== EASY (difficulty 1): plain recall for tier 0-1 contests =====
+  {
+    category: "circle",
+    question: "How many decimals does USDC use?",
+    choices: ["6", "8", "18", "2"],
+    correctIndex: 0,
+    difficulty: 1,
+  },
+  {
+    category: "evm",
+    question: "What does 'gas' pay for on an EVM chain?",
+    choices: ["Computation and storage", "Internet bandwidth", "Validator salaries only", "Token minting"],
+    correctIndex: 0,
+    difficulty: 1,
+  },
+  {
+    category: "defi",
+    question: "What is a liquidity pool?",
+    choices: [
+      "A reserve of two tokens traders swap against",
+      "A staking lockup contract",
+      "A governance voting booth",
+      "A bridge between two chains",
+    ],
+    correctIndex: 0,
+    difficulty: 1,
+  },
+
+  // ===== HARD (difficulty 3): reasoning, traps, multi-step for tier 3-4 =====
+  {
+    category: "security",
+    question:
+      "A withdraw() sends ETH with .call{value}() BEFORE it zeroes the caller's balance. What vulnerability is this?",
+    choices: ["Integer overflow", "Reentrancy", "Front-running", "Signature replay"],
+    correctIndex: 1,
+    difficulty: 3,
+  },
+  {
+    category: "defi",
+    question:
+      "A constant-product AMM pool holds 100 TOKEN and 100 USDC (x*y=k). Ignoring fees, about how much USDC does swapping 100 TOKEN return?",
+    choices: ["~50 USDC", "~100 USDC", "~67 USDC", "~33 USDC"],
+    correctIndex: 0,
+    difficulty: 3,
+  },
+  {
+    category: "defi",
+    question:
+      "A user grants an unlimited (max-uint256) USDC approval to a router that is later exploited. What is their exposure?",
+    choices: [
+      "Only the tokens in the one swap",
+      "Their entire USDC balance, up to the wallet amount",
+      "Nothing; approvals are single-use",
+      "Only the gas they paid",
+    ],
+    correctIndex: 1,
+    difficulty: 3,
+  },
+  {
+    category: "evm",
+    question: "Which storage write costs the most gas?",
+    choices: [
+      "Reading a warm slot",
+      "Writing a zero slot to a non-zero value",
+      "Overwriting non-zero with another non-zero",
+      "Reading a cold slot",
+    ],
+    correctIndex: 1,
+    difficulty: 3,
+  },
+  {
+    category: "evm",
+    question: "In EIP-1559, where does the base fee go?",
+    choices: ["Paid to the validator", "Burned", "Refunded to the sender", "Added to the next block reward"],
+    correctIndex: 1,
+    difficulty: 3,
+  },
+  {
+    category: "evm",
+    question: "Which statement about ERC-4337 account abstraction is NOT true?",
+    choices: [
+      "UserOperations are relayed by bundlers",
+      "It requires an Ethereum hard fork to work",
+      "Paymasters can sponsor a user's gas",
+      "Accounts are smart contracts, not EOAs",
+    ],
+    correctIndex: 1,
+    difficulty: 3,
+  },
+  {
+    category: "defi",
+    question:
+      "On a constant-product AMM, as a single swap gets larger relative to the pool, the price per token the trader receives:",
+    choices: ["Improves", "Gets worse (more slippage)", "Stays constant", "Goes to zero only if the pool is empty"],
+    correctIndex: 1,
+    difficulty: 3,
+  },
+  {
+    category: "circle",
+    question: "How does Circle's CCTP move native USDC across chains?",
+    choices: [
+      "Burns it on the source chain, mints it on the destination via an attestation",
+      "Locks it and issues a wrapped USDC token",
+      "Routes it through a federated multisig",
+      "Swaps it against liquidity-provider pools",
+    ],
+    correctIndex: 0,
+    difficulty: 3,
+  },
+  {
+    category: "defi",
+    question:
+      "An agent swaps 1000 USDC paying a 0.5% fee, then swaps the output paying a 0.3% fee. Roughly how much remains?",
+    choices: ["~992 USDC", "~980 USDC", "~995 USDC", "~990 USDC"],
+    correctIndex: 0,
+    difficulty: 3,
+  },
+  {
+    category: "security",
+    question:
+      "A miner sees a pending tx that will move a price, and inserts its own trade just before it. This is:",
+    choices: ["Front-running (MEV)", "Reentrancy", "Integer underflow", "A replay attack"],
+    correctIndex: 0,
+    difficulty: 3,
+  },
+  {
+    category: "security",
+    question: "What makes a signature-replay attack possible?",
+    choices: [
+      "A missing nonce or domain separator lets the same signature be reused",
+      "A weak elliptic curve",
+      "High gas prices",
+      "An unchecked external call",
+    ],
+    correctIndex: 0,
+    difficulty: 3,
+  },
+  {
+    category: "arc",
+    question:
+      "On Arc, gas is paid in USDC. If a tx needs 50,000 gas at a 0.2 gwei-equivalent price, the fee is denominated in:",
+    choices: ["USDC (6 decimals)", "ETH (18 decimals)", "ARC (18 decimals)", "Gwei only"],
+    correctIndex: 0,
+    difficulty: 3,
   },
 ];

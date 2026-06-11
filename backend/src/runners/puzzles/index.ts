@@ -12,7 +12,28 @@ import { researchPuzzle } from "./research.js";
 /// deterministic so the contest itself doesn't burn budget before agents
 /// even start.
 
-export type PuzzleKind = "arithmetic" | "classify" | "routing" | "pattern" | "wordcount" | "quiz" | "research";
+export type PuzzleKind =
+  | "arithmetic"
+  | "classify"
+  | "routing"
+  | "pattern"
+  | "wordcount"
+  | "quiz"
+  | "research"
+  | "quant"
+  | "decode";
+
+/// Puzzle difficulty band. Maps from the contest/challenge tier so a tier-4
+/// gated event draws the hard set (reasoning, multi-step quant, calldata
+/// decode) while a tier 0-1 event stays on easy recall and simple math.
+export type Difficulty = 1 | 2 | 3;
+
+/// Tier (0-4) to difficulty band. 0-1 easy, 2-3 standard, 4 hard.
+export function difficultyForTier(tier: number): Difficulty {
+  if (tier >= 4) return 3;
+  if (tier >= 2) return 2;
+  return 1;
+}
 
 /// Standardized presentation metadata. Every puzzle, regardless of family,
 /// surfaces on the live stage with the same six fields so the audience reads
@@ -59,7 +80,7 @@ export interface Puzzle {
 /// drawn from QUIZ_BANK with the same
 /// seed-derived index, so a 60+ question bank means a 5-puzzle round rarely
 /// reuses questions within the same contest.
-export function generatePuzzles(seed: number, count: number): Puzzle[] {
+export function generatePuzzles(seed: number, count: number, difficulty: Difficulty = 2): Puzzle[] {
   const r = seededRng(seed);
   const out: Puzzle[] = [];
   // Track quiz indices used in this round so a round of N puzzles doesn't
@@ -70,47 +91,92 @@ export function generatePuzzles(seed: number, count: number): Puzzle[] {
   // from the quiz dedupe because research keys live in their own namespace.
   const usedResearch = new Set<string>();
   // Research weight is opt-in via NANOPAY_ENABLED. When off, the generator
-  // falls back to the legacy mix so testnet dev without Circle CLI still
-  // produces a complete round. When on, research items take 4 of 12 slots
-  // so a typical round shows the spend mechanic prominently.
+  // falls back to the locally-solvable mix so testnet dev without Circle CLI
+  // still produces a complete round.
   const includeResearch = process.env.NANOPAY_ENABLED === "true" || process.env.NANOPAY_ENABLED === "1";
   for (let i = 0; i < count; i++) {
-    if (includeResearch) {
-      // 10 buckets: 5 research (50%), 3 quiz, 1 arithmetic, 1 classify.
-      // The 50% research weighting brings P(zero research in 6 puzzles)
-      // down to ~1.6%, so nearly every round fires a Nanopayment. Routing,
-      // pattern, and wordcount drop out at this weight; they were 1/12
-      // each and rarely visible.
-      const k = pick(r, 10);
-      if (k < 5) out.push(researchPuzzle(r, usedResearch));
-      else if (k < 8) out.push(quiz(r, usedQuizIndices));
-      else if (k === 8) out.push(arithmetic(r));
-      else out.push(classify(r));
-    } else {
-      // Legacy mix: 10 buckets, 5 quiz, 1 each for the five locally-solvable
-      // families. Identical to the pre-Nanopay generator.
-      const k = pick(r, 10);
-      if (k < 5) out.push(quiz(r, usedQuizIndices));
-      else if (k === 5) out.push(arithmetic(r));
-      else if (k === 6) out.push(classify(r));
-      else if (k === 7) out.push(routing(r));
-      else if (k === 8) out.push(pattern(r));
-      else out.push(wordcount(r));
-    }
+    out.push(pickPuzzle(r, difficulty, includeResearch, usedQuizIndices, usedResearch));
   }
   return out;
+}
+
+/// One puzzle for the round, weighted by difficulty band:
+///   1 (easy)     - simple recall + arithmetic, no research, no hard families
+///   2 (standard) - the original mix (recall quiz, classify, routing, research)
+///   3 (hard)     - hard reasoning quiz, multi-step quant, calldata decode,
+///                  plus research; toy families (wordcount) drop out
+function pickPuzzle(
+  r: () => number,
+  difficulty: Difficulty,
+  includeResearch: boolean,
+  usedQuiz: Set<number>,
+  usedResearch: Set<string>,
+): Puzzle {
+  const k = pick(r, 10);
+
+  if (difficulty === 1) {
+    if (k < 4) return quiz(r, usedQuiz, 1);
+    if (k < 6) return arithmetic(r);
+    if (k < 8) return classify(r);
+    if (k === 8) return wordcount(r);
+    return pattern(r);
+  }
+
+  if (difficulty === 3) {
+    // Research still appears (it's the spend mechanic), but the locally-solved
+    // slots are all hard: reasoning quiz, multi-step quant, calldata decode.
+    if (includeResearch && k < 3) return researchPuzzle(r, usedResearch);
+    if (k < 6) return quiz(r, usedQuiz, 3);
+    if (k < 8) return quant(r);
+    return decode(r);
+  }
+
+  // Standard (difficulty 2): the original mix.
+  if (includeResearch) {
+    if (k < 5) return researchPuzzle(r, usedResearch);
+    if (k < 8) return quiz(r, usedQuiz, 2);
+    if (k === 8) return arithmetic(r);
+    return classify(r);
+  }
+  if (k < 5) return quiz(r, usedQuiz, 2);
+  if (k === 5) return arithmetic(r);
+  if (k === 6) return classify(r);
+  if (k === 7) return routing(r);
+  if (k === 8) return pattern(r);
+  return wordcount(r);
 }
 
 // ----- quiz family -----
 
 const LETTERS = ["A", "B", "C", "D"] as const;
 
-function quiz(r: () => number, used: Set<number>): Puzzle {
-  let idx = pick(r, QUIZ_BANK.length);
+/// Indices of quiz questions eligible for a difficulty band. Hard (3) draws
+/// only the tagged-hard questions; easy (1) draws tagged-easy; both widen to
+/// the standard pool if the exact set is too thin to fill a round without
+/// heavy repetition. Untagged questions count as standard (2).
+function quizPoolFor(difficulty: Difficulty): number[] {
+  const lvl = (i: number) => QUIZ_BANK[i]!.difficulty ?? 2;
+  const all = QUIZ_BANK.map((_, i) => i);
+  const exact = all.filter((i) => lvl(i) === difficulty);
+  if (exact.length >= 3) return exact;
+  if (difficulty === 3) {
+    const wide = all.filter((i) => lvl(i) >= 2);
+    return wide.length ? wide : all;
+  }
+  if (difficulty === 1) {
+    const wide = all.filter((i) => lvl(i) <= 2);
+    return wide.length ? wide : all;
+  }
+  return all;
+}
+
+function quiz(r: () => number, used: Set<number>, difficulty: Difficulty = 2): Puzzle {
+  const pool = quizPoolFor(difficulty);
+  let idx = pool[pick(r, pool.length)]!;
   // Skip already-used indices in this round. Bounded loop so we never spin
-  // forever even if the bank is misconfigured.
+  // forever even if the pool is small.
   for (let attempts = 0; attempts < 8 && used.has(idx); attempts++) {
-    idx = pick(r, QUIZ_BANK.length);
+    idx = pool[pick(r, pool.length)]!;
   }
   used.add(idx);
   const q: QuizQuestion = QUIZ_BANK[idx] ?? QUIZ_BANK[0]!;
@@ -272,5 +338,91 @@ function wordcount(r: () => number): Puzzle {
       timeLimitSec: 15,
       toolsAllowed: "none",
     },
+  };
+}
+
+// ----- hard families (difficulty 3) -----
+
+const QUANT_PRESENTATION: PuzzlePresentation = {
+  family: "QUANT",
+  difficulty: 3,
+  format: "integer",
+  // Multi-step. Code execution (tier 3+) turns these from "carry four steps in
+  // your head" into a one-liner, so they reward the higher tiers.
+  timeLimitSec: 45,
+  toolsAllowed: "calc",
+};
+
+/// Multi-step quantitative word problems with a single integer answer. A weak
+/// model that skips a step lands on a plausible-but-wrong number; a stronger
+/// one (or any tier with code execution) nails it.
+function quant(r: () => number): Puzzle {
+  const variant = pick(r, 3);
+  if (variant === 0) {
+    // Two-hop fee on a round notional.
+    const amt = (5 + pick(r, 25)) * 100; // 500..2900
+    const f1 = 10 + pick(r, 40); // bps
+    const f2 = 10 + pick(r, 40); // bps
+    const outAmt = Math.round(amt * (1 - f1 / 10000) * (1 - f2 / 10000));
+    return {
+      kind: "quant",
+      prompt:
+        `You swap ${amt} USDC, paying a ${(f1 / 100).toFixed(2)}% fee, then swap the ` +
+        `output paying a ${(f2 / 100).toFixed(2)}% fee. How many whole USDC remain? ` +
+        `Answer with the integer only (round to nearest).`,
+      expected: String(outAmt),
+      presentation: QUANT_PRESENTATION,
+    };
+  }
+  if (variant === 1) {
+    // Gas fee in micro-USDC.
+    const gas = (2 + pick(r, 8)) * 10000; // 20000..90000
+    const priceMicro = 1 + pick(r, 9); // micro-USDC per gas
+    return {
+      kind: "quant",
+      prompt:
+        `A transaction uses ${gas} gas at ${priceMicro} micro-USDC per gas unit. ` +
+        `What is the total fee in micro-USDC? Answer with the integer only.`,
+      expected: String(gas * priceMicro),
+      presentation: QUANT_PRESENTATION,
+    };
+  }
+  // Simple-interest yield.
+  const principal = (1 + pick(r, 9)) * 1000; // 1000..9000
+  const ratePct = 2 + pick(r, 18); // 2..19 %
+  return {
+    kind: "quant",
+    prompt:
+      `An agent stakes ${principal} USDC at ${ratePct}% APY for one year (simple interest). ` +
+      `How much yield in whole USDC does it earn? Answer with the integer only.`,
+    expected: String(Math.round((principal * ratePct) / 100)),
+    presentation: QUANT_PRESENTATION,
+  };
+}
+
+const DECODE_PRESENTATION: PuzzlePresentation = {
+  family: "DECODE",
+  difficulty: 3,
+  format: "integer",
+  timeLimitSec: 45,
+  toolsAllowed: "calc",
+};
+
+/// Calldata decode: read the amount out of an ABI-encoded ERC-20 transfer. The
+/// agent must locate the final 32-byte word and parse it as a hex integer.
+function decode(r: () => number): Puzzle {
+  const amount = 1 + pick(r, 9999); // 1..9999
+  const amountHex = amount.toString(16).padStart(64, "0");
+  // 12-byte left pad + 20-byte dummy address = one 32-byte word.
+  const addrWord = "0".repeat(24) + "abcdef0123456789abcdef0123456789abcdef01";
+  const calldata = `0xa9059cbb${addrWord}${amountHex}`;
+  return {
+    kind: "decode",
+    prompt:
+      `This is ERC-20 transfer calldata: the 4-byte selector 0xa9059cbb, then a ` +
+      `32-byte recipient word, then a 32-byte amount word.\n${calldata}\n` +
+      `Decode the transfer amount as a decimal integer. Answer with the integer only.`,
+    expected: String(amount),
+    presentation: DECODE_PRESENTATION,
   };
 }
