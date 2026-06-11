@@ -33,9 +33,12 @@ export function FirstRunGate() {
       setGated(false);
       return;
     }
-    // Never onboarded and not connected: this is a fresh visitor -> gate.
+    // Not connected: we can't tell a fresh visitor from a returning one who
+    // simply isn't auto-connected, and gating the latter into START is wrong.
+    // Show the home (the nav has SIGN IN / DASHBOARD); only gate once a wallet
+    // is connected and confirmed to hold no agent.
     if (!address) {
-      setGated(true);
+      setGated(false);
       return;
     }
     let stop = false;

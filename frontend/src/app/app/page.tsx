@@ -78,7 +78,7 @@ export default async function AppHome() {
           right={
             <>
               <TagButton variant="ghost" href="/contests">SEE LIVE CONTESTS</TagButton>
-              <TagButton href="/onboarding/welcome">START</TagButton>
+              <TagButton href="/dashboard">VIEW DASHBOARD</TagButton>
             </>
           }
         />

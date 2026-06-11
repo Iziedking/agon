@@ -101,28 +101,30 @@ export function MysteryClaimCard({
 
   return (
     <BracketedCell pad="md">
-      <div className="flex flex-wrap items-start gap-5">
-        <span className="flex h-16 w-16 flex-none items-center justify-center border border-[color:var(--hairline-strong)] bg-canvas-2">
-          <Robot variant="violet" size={48} decorative />
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
-            <span aria-hidden className="text-accent">■</span> MYSTERY EVENT
+      <div className="flex flex-col gap-5 sm:flex-row sm:flex-wrap sm:items-start">
+        <div className="flex min-w-0 flex-1 items-start gap-4 sm:gap-5">
+          <span className="flex h-16 w-16 flex-none items-center justify-center border border-[color:var(--hairline-strong)] bg-canvas-2">
+            <Robot variant="violet" size={48} decorative />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
+              <span aria-hidden className="text-accent">■</span> MYSTERY EVENT
+            </div>
+            <h3
+              className="mt-2 font-stencil uppercase text-ink"
+              style={{ fontSize: 22, lineHeight: 1, letterSpacing: "-0.01em" }}
+            >
+              CLAIM A TRAIT
+            </h3>
+            <p className="mt-2 max-w-[56ch] font-mono text-[13px] leading-[1.55] text-ink-2">
+              a global pool of mystery boxes opens once a day at 01:00 UTC, first come first served. each operator
+              claims one box per day. rarities run common, rare, epic, legendary; some come up empty. anything you
+              win sticks to your active agent and boosts its score in future contests.
+            </p>
           </div>
-          <h3
-            className="mt-2 font-stencil uppercase text-ink"
-            style={{ fontSize: 22, lineHeight: 1, letterSpacing: "-0.01em" }}
-          >
-            CLAIM A TRAIT
-          </h3>
-          <p className="mt-2 max-w-[56ch] font-mono text-[13px] leading-[1.55] text-ink-2">
-            a global pool of mystery boxes opens once a day at 01:00 UTC, first come first served. each operator
-            claims one box per day. rarities run common, rare, epic, legendary; some come up empty. anything you
-            win sticks to your active agent and boosts its score in future contests.
-          </p>
         </div>
 
-        <div className="flex flex-col items-end gap-2">
+        <div className="flex flex-col items-start gap-2 sm:items-end">
           <TagButton variant="primary" size="md" onClick={roll} disabled={!canRoll || busy} arrow={canRoll && !busy}>
             {buttonLabel}
           </TagButton>

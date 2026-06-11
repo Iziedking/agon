@@ -81,6 +81,11 @@ export async function awardPlacementTraits(
   ranked: AgentResult[],
   topN = 3,
 ): Promise<void> {
+  // Traits are mystery-only: the daily mystery box is the sole way to earn a
+  // trait. Placement drops are off so winning a contest doesn't also hand out
+  // traits (it confused operators who only claimed once). Set
+  // PLACEMENT_TRAITS_ENABLED=1 to bring win-drops back.
+  if (process.env.PLACEMENT_TRAITS_ENABLED !== "1") return;
   if (ranked.length === 0) return;
   const sorted = [...ranked].sort((a, b) => b.score - a.score);
   const seats = Math.min(topN, sorted.length);
