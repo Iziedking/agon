@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 
 import { config } from "../config/index.js";
 import { query } from "../db/pool.js";
+import { sendEmail } from "../email/client.js";
+import { otpEmailTemplate } from "../email/templates.js";
 
 /// Email OTP proof-of-ownership. Required at first-time signup so an
 /// attacker can't claim someone else's email and mint a Circle wallet
@@ -41,46 +43,19 @@ function generateCode(): string {
   return String(n % 1_000_000).padStart(6, "0");
 }
 
-async function sendViaConsole(email: string, code: string): Promise<void> {
-  // Dev mode: log the code so test flows can read it without an SMTP
-  // setup. Clearly tagged so production logs never accidentally leak
-  // a live code under a benign label.
-  console.log(`[EMAIL OTP · DEV] ${email} → ${code} (expires in 10 min)`);
-}
-
-async function sendViaResend(email: string, code: string): Promise<void> {
-  const apiKey = config.auth.emailOtp.resendApiKey;
-  const from = config.auth.emailOtp.from;
-  if (!apiKey || !from) {
-    throw new OtpError(
-      "email_provider_not_configured",
-      "RESEND_API_KEY and EMAIL_FROM required when EMAIL_PROVIDER=resend",
-      500,
-    );
-  }
-  const subject = "Your ArcRun verification code";
-  const text =
-    `Your ArcRun verification code is ${code}.\n\n` +
-    `It expires in 10 minutes. If you didn't request this, ignore this email.`;
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${apiKey}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({ from, to: email, subject, text }),
-  });
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new OtpError("email_send_failed", `resend ${res.status}: ${body.slice(0, 200)}`, 502);
-  }
-}
-
 async function sendCode(email: string, code: string): Promise<void> {
-  if (config.auth.emailOtp.provider === "resend") {
-    await sendViaResend(email, code);
-  } else {
-    await sendViaConsole(email, code);
+  // Dev (non-resend) provider: log the code so test flows can read it without
+  // an SMTP setup. Clearly tagged so prod logs never leak a code by accident.
+  if (config.auth.emailOtp.provider !== "resend") {
+    console.log(`[EMAIL OTP · DEV] ${email} → ${code} (expires in 10 min)`);
+    return;
+  }
+  // Production: send the brand-styled email through the shared sender.
+  const tpl = otpEmailTemplate(code);
+  try {
+    await sendEmail({ to: email, subject: tpl.subject, html: tpl.html, text: tpl.text });
+  } catch (err) {
+    throw new OtpError("email_send_failed", err instanceof Error ? err.message : String(err), 502);
   }
 }
 
