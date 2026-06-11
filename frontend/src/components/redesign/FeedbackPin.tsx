@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ClipboardEvent as ReactClipboardEvent } from "react";
 import { usePathname } from "next/navigation";
 import { useAccount } from "wagmi";
 import { FEEDBACK_OPEN_EVENT, submitFeedback } from "@/lib/feedback";
@@ -19,9 +19,35 @@ export function FeedbackPin() {
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<Kind>("bug");
   const [message, setMessage] = useState("");
+  const [image, setImage] = useState<string | null>(null);
+  const [imgErr, setImgErr] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const MAX_IMAGE_BYTES = 4 * 1024 * 1024; // 4MB
+
+  function readImage(file: File | null | undefined) {
+    setImgErr(null);
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setImgErr("that's not an image");
+      return;
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      setImgErr("image too large, keep it under 4MB");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setImage(typeof reader.result === "string" ? reader.result : null);
+    reader.readAsDataURL(file);
+  }
+
+  function onPaste(e: ReactClipboardEvent) {
+    const item = Array.from(e.clipboardData.items).find((i) => i.type.startsWith("image/"));
+    if (item) readImage(item.getAsFile());
+  }
 
   const showPin = pathname !== "/"; // never the floating pin on the landing page
 
@@ -45,11 +71,19 @@ export function FeedbackPin() {
     const text = message.trim();
     if (!text || sending) return;
     setSending(true);
-    const ok = await submitFeedback({ type: kind, message: text, path: pathname, address });
+    const ok = await submitFeedback({
+      type: kind,
+      message: text,
+      path: pathname,
+      address,
+      image: image ?? undefined,
+    });
     setSending(false);
     if (ok) {
       setSent(true);
       setMessage("");
+      setImage(null);
+      setImgErr(null);
       setTimeout(() => {
         setSent(false);
         setOpen(false);
@@ -112,15 +146,46 @@ export function FeedbackPin() {
               <textarea
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
+                onPaste={onPaste}
                 maxLength={2000}
                 rows={4}
                 placeholder={
                   kind === "bug"
-                    ? "what broke, and what were you doing?"
+                    ? "what broke, and what were you doing? (paste a screenshot here too)"
                     : "what would make this better?"
                 }
                 className="mt-3 w-full resize-none border border-[color:var(--hairline-strong)] bg-canvas px-3 py-2 font-mono text-[13px] text-ink outline-none placeholder:text-ink-3 focus:border-ink"
               />
+
+              {/* Screenshot attach. Click to pick a file, or paste into the box above. */}
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => readImage(e.target.files?.[0])}
+              />
+              {image ? (
+                <div className="mt-3 flex items-center gap-3 border border-[color:var(--hairline)] p-2">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={image} alt="screenshot preview" className="h-12 w-12 object-cover" />
+                  <span className="flex-1 font-mono text-[11px] text-ink-2">screenshot attached</span>
+                  <button
+                    onClick={() => { setImage(null); if (fileRef.current) fileRef.current.value = ""; }}
+                    className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3 hover:text-accent"
+                  >
+                    REMOVE
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => fileRef.current?.click()}
+                  className="mt-3 flex items-center gap-2 border border-ink-3 bg-canvas px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:border-ink hover:text-ink"
+                >
+                  + ATTACH SCREENSHOT
+                </button>
+              )}
+              {imgErr ? <p className="mt-1.5 font-mono text-[10px] text-[color:var(--err)]">{imgErr}</p> : null}
 
               <div className="mt-3 flex items-center justify-between">
                 <span className="font-mono text-[10px] text-ink-3">{message.length}/2000</span>

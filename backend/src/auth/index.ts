@@ -1711,7 +1711,7 @@ function feedbackRateOk(): boolean {
 app.post("/feedback", async (c) => {
   if (!feedbackRateOk()) return c.json({ error: "rate limited" }, 429);
 
-  let body: { type?: string; message?: string; path?: string; address?: string };
+  let body: { type?: string; message?: string; path?: string; address?: string; image?: string };
   try {
     body = await c.req.json();
   } catch {
@@ -1746,8 +1746,43 @@ app.post("/feedback", async (c) => {
     console.warn(`[feedback] relay failed: ${err instanceof Error ? err.message : err}`);
     return c.json({ ok: false }, 502);
   }
+
+  // Optional screenshot: a data URL from the widget. Decode and forward to the
+  // same chat via sendPhoto. Best-effort, so a bad image never fails the
+  // report whose text already landed.
+  await relayFeedbackPhoto(token, chatId, type, body.image);
+
   return c.json({ ok: true, delivered: true });
 });
+
+/// Decode a data-URL screenshot and post it to Telegram via sendPhoto.
+async function relayFeedbackPhoto(
+  token: string,
+  chatId: string,
+  type: string,
+  dataUrl: string | undefined,
+): Promise<void> {
+  if (!dataUrl) return;
+  const m = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/.exec(dataUrl);
+  if (!m) return;
+  const mime = m[1]!;
+  const buf = Buffer.from(m[2]!, "base64");
+  if (buf.length === 0 || buf.length > 6 * 1024 * 1024) return; // cap ~6MB
+  try {
+    const ext = mime.split("/")[1] ?? "png";
+    const form = new FormData();
+    form.append("chat_id", chatId);
+    form.append("caption", `[ARCRUN ${type}] screenshot`);
+    form.append("photo", new Blob([buf], { type: mime }), `screenshot.${ext}`);
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+      method: "POST",
+      body: form,
+    });
+    if (!res.ok) console.warn(`[feedback] sendPhoto HTTP ${res.status}`);
+  } catch (err) {
+    console.warn(`[feedback] sendPhoto failed: ${err instanceof Error ? err.message : err}`);
+  }
+}
 
 // ----- Tier gates -----
 

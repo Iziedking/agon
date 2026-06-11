@@ -18,6 +18,8 @@ export async function submitFeedback(input: {
   message: string;
   path?: string;
   address?: string;
+  /// Optional screenshot as a data URL (data:image/png;base64,...).
+  image?: string;
 }): Promise<boolean> {
   try {
     const res = await fetch(`${AUTH_URL}/feedback`, {
