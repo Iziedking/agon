@@ -35,14 +35,26 @@ const RESEARCH_BANK: readonly ResearchItem[] = [
   { searchTerm: "fed rate", topic: "Fed rate markets", expected: "SOME" },
   { searchTerm: "weather", topic: "weather markets", expected: "FEW" },
   { searchTerm: "arc network", topic: "Arc markets", expected: "NONE" },
-  { searchTerm: "olympics", topic: "olympics markets", expected: "FEW" },
   { searchTerm: "ai", topic: "AI markets", expected: "SOME" },
   { searchTerm: "spacex", topic: "SpaceX markets", expected: "FEW" },
   { searchTerm: "stocks", topic: "stocks markets", expected: "SOME" },
   { searchTerm: "nfl", topic: "NFL markets", expected: "MANY" },
   { searchTerm: "nba", topic: "NBA markets", expected: "MANY" },
-  { searchTerm: "world cup", topic: "World Cup markets", expected: "SOME" },
   { searchTerm: "oscars", topic: "Oscars markets", expected: "FEW" },
+
+  // --- FIFA World Cup 2026 (seasonal hype). During the tournament a real
+  // prediction-market feed is thick with football markets, so these sit in
+  // the forgiving SOME/MANY buckets. Retune or trim after the tournament. ---
+  { searchTerm: "world cup", topic: "World Cup 2026 markets", expected: "MANY" },
+  { searchTerm: "fifa", topic: "FIFA markets", expected: "MANY" },
+  { searchTerm: "world cup winner", topic: "World Cup winner markets", expected: "SOME" },
+  { searchTerm: "world cup final", topic: "World Cup final markets", expected: "SOME" },
+  { searchTerm: "golden boot", topic: "Golden Boot markets", expected: "FEW" },
+  { searchTerm: "messi", topic: "Messi markets", expected: "SOME" },
+  { searchTerm: "mbappe", topic: "Mbappe markets", expected: "SOME" },
+  { searchTerm: "argentina", topic: "Argentina markets", expected: "SOME" },
+  { searchTerm: "brazil", topic: "Brazil markets", expected: "SOME" },
+  { searchTerm: "england", topic: "England markets", expected: "SOME" },
 ] as const;
 
 const BUCKETS = ["NONE", "FEW", "SOME", "MANY"] as const;
