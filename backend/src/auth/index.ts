@@ -2694,12 +2694,14 @@ app.get("/operators/:address", async (c) => {
     x_handle: string | null;
     telegram_id: string | null;
     telegram_username: string | null;
+    telegram_avatar: string | null;
     discord_id: string | null;
     discord_username: string | null;
+    discord_avatar: string | null;
     current_syndicate_id: string | null;
     cycles: string;
   }>(
-    "select address, x_handle, telegram_id, telegram_username, discord_id, discord_username, current_syndicate_id, cycles from operators where address = $1",
+    "select address, x_handle, telegram_id, telegram_username, telegram_avatar, discord_id, discord_username, discord_avatar, current_syndicate_id, cycles from operators where address = $1",
     [address],
   );
   const agents = await query<{ id: string; scout_tier: number; analyst_tier: number; solver_tier: number; reputation: string; nickname: string | null; display_mode: string | null; has_skin: boolean }>(
@@ -2886,9 +2888,12 @@ app.get("/auth/telegram/callback", requireAuth, async (c) => {
   }
 
   const username = q.username ?? null;
+  // The login widget includes photo_url; it's the only way to get a Telegram
+  // avatar (it can't be resolved from a username afterward), so capture it now.
+  const photoUrl = typeof q.photo_url === "string" ? q.photo_url : null;
   await query(
-    "update operators set telegram_id = $2, telegram_username = $3 where address = $1",
-    [address, q.id, username],
+    "update operators set telegram_id = $2, telegram_username = $3, telegram_avatar = $4 where address = $1",
+    [address, q.id, username, photoUrl],
   );
 
   const redirectTo = new URL(config.auth.appUrl);
@@ -2900,7 +2905,7 @@ app.get("/auth/telegram/callback", requireAuth, async (c) => {
 app.post("/auth/telegram/unbind", requireAuth, async (c) => {
   const address = c.get("address");
   await query(
-    "update operators set telegram_id = null, telegram_username = null where address = $1",
+    "update operators set telegram_id = null, telegram_username = null, telegram_avatar = null where address = $1",
     [address],
   );
   return c.json({ ok: true });
@@ -2966,11 +2971,17 @@ app.get("/auth/discord/callback", async (c) => {
     headers: { authorization: `Bearer ${access_token}` },
   });
   if (!meRes.ok) return c.json({ error: "could not fetch discord profile" }, 502);
-  const me = (await meRes.json()) as { id: string; username: string };
+  const me = (await meRes.json()) as { id: string; username: string; avatar: string | null };
 
+  // Discord avatars are keyed by user id + avatar hash, so build the CDN URL
+  // now (animated avatars start with "a_" and serve as gif). Null avatar = the
+  // default Discord avatar; we leave it null and the UI shows an initial.
+  const discordAvatar = me.avatar
+    ? `https://cdn.discordapp.com/avatars/${me.id}/${me.avatar}.${me.avatar.startsWith("a_") ? "gif" : "png"}?size=128`
+    : null;
   await query(
-    "update operators set discord_id = $2, discord_username = $3 where address = $1",
-    [address, me.id, me.username],
+    "update operators set discord_id = $2, discord_username = $3, discord_avatar = $4 where address = $1",
+    [address, me.id, me.username, discordAvatar],
   );
 
   const redirectTo = new URL(config.auth.appUrl);
@@ -2982,7 +2993,7 @@ app.get("/auth/discord/callback", async (c) => {
 app.post("/auth/discord/unbind", requireAuth, async (c) => {
   const address = c.get("address");
   await query(
-    "update operators set discord_id = null, discord_username = null where address = $1",
+    "update operators set discord_id = null, discord_username = null, discord_avatar = null where address = $1",
     [address],
   );
   return c.json({ ok: true });

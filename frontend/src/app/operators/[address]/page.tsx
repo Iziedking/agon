@@ -191,6 +191,7 @@ export default function OperatorPage() {
                 isMe={isMe}
                 handle={profile !== "loading" ? profile?.telegramUsername ?? null : null}
                 telegramId={profile !== "loading" ? profile?.telegramId ?? null : null}
+                avatarUrl={profile !== "loading" ? profile?.telegramAvatar ?? null : null}
                 onUnbind={async () => {
                   await fetch(`${AUTH_URL}/auth/telegram/unbind`, { method: "POST", credentials: "include" });
                   setProfile(await fetchOperator(address));
@@ -199,6 +200,7 @@ export default function OperatorPage() {
               <DiscordRow
                 isMe={isMe}
                 handle={profile !== "loading" ? profile?.discordUsername ?? null : null}
+                avatarUrl={profile !== "loading" ? profile?.discordAvatar ?? null : null}
                 onUnbind={async () => {
                   await fetch(`${AUTH_URL}/auth/discord/unbind`, { method: "POST", credentials: "include" });
                   setProfile(await fetchOperator(address));
@@ -624,11 +626,13 @@ function TelegramRow({
   isMe,
   handle,
   telegramId,
+  avatarUrl,
   onUnbind,
 }: {
   isMe: boolean;
   handle: string | null;
   telegramId: string | null;
+  avatarUrl: string | null;
   onUnbind: () => Promise<void>;
 }) {
   const [botUsername, setBotUsername] = useState<string | null>(null);
@@ -676,7 +680,8 @@ function TelegramRow({
   }, [isMe, handle, configured, botUsername]);
 
   const displayHandle = handle ? `@${handle}` : telegramId ? `ID ${telegramId}` : "NOT LINKED";
-  const avatarUrl = handle ? `https://unavatar.io/telegram/${handle}` : null;
+  // Telegram avatars can't be resolved from a username; we use the photo_url
+  // captured from the login widget at link time, or none (no broken image).
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color:var(--hairline)] py-3 last:border-0">
@@ -729,20 +734,32 @@ function TelegramRow({
 function DiscordRow({
   isMe,
   handle,
+  avatarUrl,
   onUnbind,
 }: {
   isMe: boolean;
   handle: string | null;
+  avatarUrl: string | null;
   onUnbind: () => Promise<void>;
 }) {
-  // Discord avatars are keyed by numeric user id, not handle, so unavatar
-  // can't resolve from the username. Until the backend surfaces discord_id
-  // to the profile, render a brand-color initial avatar instead of a
-  // broken image.
+  // Discord avatars are keyed by user id + hash, captured at OAuth time and
+  // surfaced here as avatarUrl. When the user has no custom avatar we fall
+  // back to a brand-color initial instead of a broken image.
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color:var(--hairline)] py-3 last:border-0">
       <div className="flex min-w-0 items-center gap-3">
-        {handle ? (
+        {handle && avatarUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={avatarUrl}
+            alt=""
+            width={36}
+            height={36}
+            loading="lazy"
+            decoding="async"
+            className="h-9 w-9 flex-none rounded-full bg-canvas-3 object-cover"
+          />
+        ) : handle ? (
           <span
             aria-hidden
             className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-[#5865F2] font-mono text-[13px] font-medium text-white"

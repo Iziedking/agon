@@ -29,6 +29,11 @@ alter table operators add column if not exists discord_username text;
 -- X profile image, captured at link time. Used when an agent's display mode
 -- is "x" so it can show the operator's X avatar alongside the handle.
 alter table operators add column if not exists x_avatar text;
+-- Telegram / Discord profile images, captured at link time (Telegram from the
+-- login widget's photo_url, Discord from the OAuth avatar hash). Neither can be
+-- resolved from a username after the fact, so we store the URL when linking.
+alter table operators add column if not exists telegram_avatar text;
+alter table operators add column if not exists discord_avatar text;
 -- Email and Circle Dev-Controlled wallet linkage. An operator row exists for
 -- both SIWE-only users (email/circle null) and email-login users (email set,
 -- circle_wallet_id set). When circle_wallet_id is non-null the backend signs

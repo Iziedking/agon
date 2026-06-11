@@ -41,8 +41,10 @@ export interface OperatorProfile {
   xHandle: string | null;
   telegramId: string | null;
   telegramUsername: string | null;
+  telegramAvatar: string | null;
   discordId: string | null;
   discordUsername: string | null;
+  discordAvatar: string | null;
   syndicateId: string | null;
   cycles: number;
   reputation: string; // raw, scaled 1e6, as a string

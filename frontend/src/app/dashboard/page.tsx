@@ -115,8 +115,8 @@ export default function DashboardPage() {
   const safeProfile: OperatorProfile = profile ?? {
     operator: address,
     xHandle: null,
-    telegramId: null, telegramUsername: null,
-    discordId: null, discordUsername: null,
+    telegramId: null, telegramUsername: null, telegramAvatar: null,
+    discordId: null, discordUsername: null, discordAvatar: null,
     syndicateId: null,
     cycles: 0,
     reputation: "0",
