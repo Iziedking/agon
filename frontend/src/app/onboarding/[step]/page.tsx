@@ -16,21 +16,30 @@ import { Confetti } from "@/components/pengu/Confetti";
 import { LoginCTA } from "@/components/pengu/LoginCTA";
 import { fetchAgents, type AgentState } from "@/lib/agents";
 import { CONTEST_TYPE, fetchContests, formatUsdc, metricLabel, type Contest } from "@/lib/contests";
+import { useArcWrite } from "@/hooks/useArcWrite";
+import { CONTRACTS, publicClient } from "@/lib/arc";
+import {
+  fetchSyndicates,
+  fetchCurrentSyndicate,
+  syndicateFactoryAbi,
+  type Syndicate,
+} from "@/lib/syndicates";
+import { friendlyError } from "@/lib/errors";
 
-/// /onboarding/[step]. Five steps, shared layout:
-///   - eyebrow `ONBOARDING · STEP N OF 5`
-///   - 5-segment progress bar (hairline frame, pink fill on completed)
+/// /onboarding/[step]. Six steps, shared layout:
+///   - eyebrow `ONBOARDING · STEP N OF 6`
+///   - progress bar (hairline frame, pink fill on completed)
 ///   - single BracketedCell with the step content
 ///   - bottom row: ← BACK ghost · SKIP · CONTINUE → primary tag
 ///   - small variant-colored robot bottom-right of the card
-///     welcome → pink · connect → gold · agent → violet · compete → mint · done → crimson
 
 const STEPS = [
   { slug: "welcome", title: "WELCOME TO ARCRUN", robot: "pink" as RobotVariant },
   { slug: "connect", title: "CONNECT YOUR WALLET", robot: "gold" as RobotVariant },
   { slug: "agent", title: "CLAIM YOUR AGENT", robot: "violet" as RobotVariant },
+  { slug: "syndicate", title: "PICK YOUR SYNDICATE", robot: "crimson" as RobotVariant },
   { slug: "compete", title: "PICK A CONTEST", robot: "mint" as RobotVariant },
-  { slug: "done", title: "YOU'RE IN", robot: "crimson" as RobotVariant },
+  { slug: "done", title: "YOU'RE IN", robot: "pink" as RobotVariant },
 ] as const;
 
 type Slug = (typeof STEPS)[number]["slug"];
@@ -94,6 +103,7 @@ export default function OnboardingPage() {
     slug === "welcome" ? true :
     slug === "connect" ? isConnected :
     slug === "agent" ? hasAgents :
+    slug === "syndicate" ? true :
     slug === "compete" ? true :
     false;
 
@@ -123,6 +133,7 @@ export default function OnboardingPage() {
                 {slug === "agent" && (
                   <AgentStep isConnected={isConnected} agents={agents} onClaimed={refreshAgents} />
                 )}
+                {slug === "syndicate" && <SyndicateStep isConnected={isConnected} address={address} />}
                 {slug === "compete" && <CompeteStep openContests={openContests} />}
                 {slug === "done" && <DoneStep />}
               </div>
@@ -275,6 +286,109 @@ function AgentStep({
           onClaimed={onClaimed}
         />
       </div>
+    </>
+  );
+}
+
+const SYN_COLOR: Record<string, string> = {
+  crimson: "#E0345A",
+  mint: "#2BD4A3",
+  gold: "#FFC93A",
+  violet: "#7C5CFF",
+};
+function synVariant(name: string): keyof typeof SYN_COLOR {
+  const n = name.toLowerCase();
+  if (n.includes("crimson")) return "crimson";
+  if (n.includes("cyan") || n.includes("mint")) return "mint";
+  if (n.includes("gold")) return "gold";
+  return "violet";
+}
+
+/// Pick a syndicate. Membership is where weekly syndicate rewards are
+/// claimed, so this is a real choice, not just flavor. Optional: the
+/// operator can also pick or switch later on /syndicates.
+function SyndicateStep({ isConnected, address }: { isConnected: boolean; address?: `0x${string}` }) {
+  const { writeContractAsync } = useArcWrite();
+  const [syndicates, setSyndicates] = useState<Syndicate[] | null>(null);
+  const [current, setCurrent] = useState<number>(0);
+  const [busyId, setBusyId] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    void fetchSyndicates().then((s) => { if (live) setSyndicates(s.filter((x) => !x.isCustom).slice(0, 4)); }).catch(() => { if (live) setSyndicates([]); });
+    return () => { live = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!address) return;
+    let live = true;
+    void fetchCurrentSyndicate(address).then((id) => { if (live) setCurrent(id); });
+    return () => { live = false; };
+  }, [address, busyId]);
+
+  async function join(id: number) {
+    if (!address) return;
+    setBusyId(id);
+    setError(null);
+    try {
+      const hash = await writeContractAsync({
+        address: CONTRACTS.SyndicateFactory,
+        abi: syndicateFactoryAbi,
+        functionName: "joinSyndicate",
+        args: [BigInt(id)],
+      });
+      await publicClient.waitForTransactionReceipt({ hash });
+      setCurrent(id);
+    } catch (e) {
+      setError(friendlyError(e, "could not join that syndicate."));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <>
+      <p className="font-mono text-sm leading-[1.6] text-ink-2">
+        pick a side. your syndicate is where you claim weekly syndicate rewards: the top syndicates
+        each cycle share a pool, and members split it by what they contributed. you can switch later.
+      </p>
+
+      {!isConnected ? (
+        <p className="mt-5 font-mono text-[12px] text-ink-3">sign in first to pick a syndicate.</p>
+      ) : syndicates === null ? (
+        <p className="mt-5 font-mono text-[12px] text-ink-3">reading syndicates from arc…</p>
+      ) : syndicates.length === 0 ? (
+        <p className="mt-5 font-mono text-[12px] text-ink-3">no syndicates on chain yet. you can pick one later on the syndicates page.</p>
+      ) : (
+        <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {syndicates.map((s) => {
+            const variant = synVariant(s.name);
+            const joined = current === s.id;
+            const busy = busyId === s.id;
+            return (
+              <button
+                key={s.id}
+                onClick={() => join(s.id)}
+                disabled={busy || joined}
+                className={`flex items-start gap-3 border px-3 py-3 text-left transition-colors ${
+                  joined ? "border-accent bg-canvas-2" : "border-[color:var(--hairline-strong)] bg-canvas hover:bg-canvas-2"
+                } disabled:opacity-80`}
+              >
+                <span aria-hidden className="mt-1 inline-block h-3 w-3 flex-none" style={{ background: SYN_COLOR[variant] }} />
+                <span className="min-w-0">
+                  <span className="block font-mono text-[12px] uppercase tracking-[0.12em] text-ink">{s.name}</span>
+                  <span className="mt-1 block font-mono text-[11px] leading-[1.5] text-ink-2">{s.theme}</span>
+                  <span className="mt-1 block font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
+                    {joined ? "● YOUR SYNDICATE" : busy ? "JOINING…" : `${s.memberCount} MEMBERS · PICK`}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {error ? <p className="mt-3 font-mono text-xs text-[#e0466e]">{error}</p> : null}
     </>
   );
 }
