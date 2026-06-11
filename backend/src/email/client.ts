@@ -30,25 +30,50 @@ export async function sendEmail(msg: EmailMessage): Promise<void> {
   }
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 async function sendViaResend(msg: EmailMessage): Promise<void> {
   const apiKey = config.auth.emailOtp.resendApiKey;
   const from = config.auth.emailOtp.from;
   if (!apiKey || !from) {
     throw new Error("RESEND_API_KEY and EMAIL_FROM are required when EMAIL_PROVIDER=resend");
   }
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
-    body: JSON.stringify({
-      from: fromHeader(from),
-      to: msg.to,
-      subject: msg.subject,
-      html: msg.html,
-      text: msg.text,
-    }),
+  const payload = JSON.stringify({
+    from: fromHeader(from),
+    to: msg.to,
+    subject: msg.subject,
+    html: msg.html,
+    text: msg.text,
   });
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`resend ${res.status}: ${body.slice(0, 200)}`);
+
+  // Resend (and any provider) rate-limits and has the occasional 5xx. Under a
+  // signup burst that would otherwise drop or delay codes, so retry on 429 /
+  // 5xx / network error with exponential backoff. 4xx other than 429 is a real
+  // rejection (bad address, unverified domain) and is not retried.
+  const MAX_ATTEMPTS = 3;
+  let lastErr = "";
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    if (attempt > 0) await sleep(300 * 2 ** (attempt - 1)); // 300ms, 600ms
+
+    let res: Response;
+    try {
+      // 10s ceiling so a hung provider call doesn't stall the request thread.
+      res = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
+        body: payload,
+        signal: AbortSignal.timeout(10_000),
+      });
+    } catch (err) {
+      lastErr = err instanceof Error ? err.message : String(err);
+      continue; // network error / timeout -> retry
+    }
+
+    if (res.ok) return;
+
+    const retryable = res.status === 429 || res.status >= 500;
+    lastErr = `resend ${res.status}: ${(await res.text().catch(() => "")).slice(0, 200)}`;
+    if (!retryable) throw new Error(lastErr); // hard rejection, don't retry
   }
+  throw new Error(`email send failed after ${MAX_ATTEMPTS} attempts: ${lastErr}`);
 }
