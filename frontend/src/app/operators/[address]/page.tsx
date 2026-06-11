@@ -14,6 +14,7 @@ import {
   clearAgentSkin,
   fetchOperator,
   getSetting,
+  saveAgentDisplayMode,
   saveAgentName,
   saveAgentSkin,
   setSetting,
@@ -66,11 +67,17 @@ export default function OperatorPage() {
     } catch {/* silent */}
   }
 
-  // Pick the operator's first agent with a custom skin (if any) so the
-  // header avatar reflects their identity instead of the default flat pink
-  // Robot. Falls back to the Robot while agents load or when no agent has a
-  // skin set yet.
-  const headerSkinAgent = Array.isArray(agents) ? agents.find((a) => !!a.skin) : null;
+  // Header avatar resolves the operator's primary (first) agent identity: its
+  // X avatar, custom skin, or the robot, the same way the agent reads
+  // everywhere else. Falls back to the Robot while agents load.
+  const primaryAgent = Array.isArray(agents) ? agents[0] ?? null : null;
+  const headerXHandle = profile !== "loading" ? profile?.xHandle ?? null : null;
+  let headerAvatar: string | null = null;
+  if (primaryAgent) {
+    const m = primaryAgent.displayMode ?? "x";
+    if (m === "x" && headerXHandle) headerAvatar = `https://unavatar.io/x/${headerXHandle}`;
+    else if (m === "custom" && primaryAgent.skin) headerAvatar = primaryAgent.skin;
+  }
 
   return (
     <div className="min-h-screen bg-canvas text-ink">
@@ -83,10 +90,10 @@ export default function OperatorPage() {
             className="flex h-14 w-14 flex-none items-center justify-center overflow-hidden border border-[color:var(--hairline-strong)] bg-canvas-2"
             style={{ borderRadius: "50%" }}
           >
-            {headerSkinAgent?.skin ? (
+            {headerAvatar ? (
               <img
-                src={headerSkinAgent.skin}
-                alt={headerSkinAgent.nickname ?? `agent #${headerSkinAgent.id}`}
+                src={headerAvatar}
+                alt={primaryAgent?.nickname ?? `agent #${primaryAgent?.id ?? ""}`}
                 className="h-full w-full object-cover"
                 loading="lazy"
                 decoding="async"
@@ -147,7 +154,12 @@ export default function OperatorPage() {
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {agents.map((a) =>
               isMe ? (
-                <AgentCustomizeCard key={a.id} agent={a} isMe />
+                <AgentCustomizeCard
+                  key={a.id}
+                  agent={a}
+                  isMe
+                  xLinked={profile !== "loading" && !!profile?.xHandle}
+                />
               ) : (
                 <PublicAgentCard key={a.id} agent={a} />
               ),
@@ -415,9 +427,10 @@ async function downscaleToDataUrl(file: File, max = 256): Promise<string> {
   }
 }
 
-function AgentCustomizeCard({ agent, isMe }: { agent: AgentState; isMe: boolean }) {
+function AgentCustomizeCard({ agent, isMe, xLinked }: { agent: AgentState; isMe: boolean; xLinked: boolean }) {
   const [name, setName] = useState<string>(agent.nickname ?? "");
   const [skin, setSkin] = useState<string | null>(agent.skin ?? null);
+  const [mode, setMode] = useState<"default" | "x" | "custom">(agent.displayMode ?? "x");
   const [busy, setBusy] = useState(false);
   const [skinBusy, setSkinBusy] = useState(false);
   const [savedNote, setSavedNote] = useState(false);
@@ -428,7 +441,19 @@ function AgentCustomizeCard({ agent, isMe }: { agent: AgentState; isMe: boolean 
   useEffect(() => {
     setName(agent.nickname ?? "");
     setSkin(agent.skin ?? null);
-  }, [agent.id, agent.nickname, agent.skin]);
+    setMode(agent.displayMode ?? "x");
+  }, [agent.id, agent.nickname, agent.skin, agent.displayMode]);
+
+  async function pickMode(next: "default" | "x" | "custom") {
+    if (next === mode) return;
+    const prev = mode;
+    setMode(next); // optimistic
+    const res = await saveAgentDisplayMode(agent.id, next);
+    if (!res.ok) {
+      setMode(prev);
+      setError(res.error);
+    }
+  }
 
   async function save() {
     setBusy(true); setError(null);
@@ -495,6 +520,36 @@ function AgentCustomizeCard({ agent, isMe }: { agent: AgentState; isMe: boolean 
 
       {isMe ? (
         <>
+          <div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">SHOW AS</div>
+            <div className="mt-1.5 flex flex-wrap gap-2">
+              {([
+                { k: "default", label: "ROBOT", enabled: true, hint: "" },
+                { k: "x", label: "X PROFILE", enabled: xLinked, hint: "link your X first" },
+                { k: "custom", label: "CUSTOM", enabled: !!skin, hint: "upload a skin first" },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.k}
+                  onClick={() => opt.enabled && void pickMode(opt.k)}
+                  disabled={!opt.enabled}
+                  title={!opt.enabled ? opt.hint : undefined}
+                  className={
+                    mode === opt.k
+                      ? "border border-accent bg-accent px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-accent-ink"
+                      : opt.enabled
+                        ? "border border-ink-3 bg-canvas px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:border-ink hover:text-ink"
+                        : "cursor-not-allowed border border-[color:var(--hairline)] bg-canvas px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3 opacity-50"
+                  }
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1.5 font-mono text-[10px] text-ink-3">
+              how this agent appears everywhere: leaderboard, live, contests.
+            </p>
+          </div>
+
           <div className="flex flex-wrap items-center gap-2">
             <input
               value={name}

@@ -1164,6 +1164,101 @@ app.delete("/agents/:id/skin", requireAuth, async (c) => {
   return c.json({ id: agentId, ok: true });
 });
 
+// ----- Agent display identity -----
+//
+// Which name + avatar an agent shows everywhere it appears:
+//   'default' -> robot mascot + #id
+//   'x'       -> owner's X handle + X avatar
+//   'custom'  -> uploaded skin + nickname
+// Resolved with graceful fallback to 'default' when the chosen source is
+// missing (e.g. mode 'x' but the wallet never linked X).
+
+const DISPLAY_MODES = new Set(["default", "x", "custom"]);
+
+/// Switch an agent's display identity. Owner-gated like the name/skin routes.
+app.post("/agents/:id/display-mode", requireAuth, async (c) => {
+  const operator = c.get("address");
+  const agentId = Number(c.req.param("id"));
+  if (!Number.isFinite(agentId)) return c.json({ error: "invalid agent id" }, 400);
+
+  const { mode } = await c.req.json<{ mode?: string }>();
+  if (!mode || !DISPLAY_MODES.has(mode)) {
+    return c.json({ error: "mode must be default, x, or custom" }, 400);
+  }
+
+  const { rows } = await query<{ owner: string }>("select owner from agents where id = $1", [agentId]);
+  const owner = rows[0]?.owner;
+  if (!owner) return c.json({ error: "agent not found" }, 404);
+  if (owner.toLowerCase() !== operator.toLowerCase()) {
+    return c.json({ error: "you do not own this agent" }, 403);
+  }
+
+  await query("update agents set display_mode = $2 where id = $1", [agentId, mode]);
+  return c.json({ id: agentId, mode });
+});
+
+/// Bulk resolved display identity for agents. Public, like /agents/names and
+/// /agents/skins. For each id returns { kind, name, avatar }: avatar is an
+/// image URL (X) or data URL (custom), or null to render the robot mascot;
+/// name is null to use the frontend's default (#id).
+app.get("/agents/identities", async (c) => {
+  const ids = (c.req.query("ids") ?? "")
+    .split(",")
+    .map((s) => Number(s.trim()))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  if (ids.length === 0) return c.json({ identities: {} });
+
+  const { rows } = await query<{
+    id: string;
+    display_mode: string | null;
+    nickname: string | null;
+    skin: string | null;
+    x_handle: string | null;
+    x_avatar: string | null;
+  }>(
+    `select a.id, a.display_mode, a.nickname, a.skin, o.x_handle, o.x_avatar
+       from agents a
+       left join operators o on lower(o.address) = lower(a.owner)
+      where a.id = any($1::bigint[])`,
+    [ids],
+  );
+
+  const identities: Record<string, { kind: string; name: string | null; avatar: string | null }> = {};
+  for (const r of rows) {
+    const mode = r.display_mode ?? "x";
+    if (mode === "x" && r.x_handle) {
+      // Prefer the avatar captured at link time; fall back to unavatar.io so an
+      // X-linked agent always shows a picture even if it linked before we
+      // started storing the profile image.
+      const avatar = r.x_avatar ?? `https://unavatar.io/x/${r.x_handle}`;
+      identities[r.id] = { kind: "x", name: `@${r.x_handle}`, avatar };
+    } else if (mode === "custom" && r.skin) {
+      identities[r.id] = { kind: "custom", name: r.nickname ?? null, avatar: r.skin };
+    } else {
+      identities[r.id] = { kind: "default", name: null, avatar: null };
+    }
+  }
+  return c.json({ identities });
+});
+
+/// Bulk raw display modes for agents (the chosen mode, not the resolved one).
+/// Used by the owner's management view so the switcher shows the real
+/// selection even when the chosen source isn't set yet. Public; harmless.
+app.get("/agents/modes", async (c) => {
+  const ids = (c.req.query("ids") ?? "")
+    .split(",")
+    .map((s) => Number(s.trim()))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  if (ids.length === 0) return c.json({ modes: {} });
+  const { rows } = await query<{ id: string; display_mode: string | null }>(
+    "select id, display_mode from agents where id = any($1::bigint[])",
+    [ids],
+  );
+  const modes: Record<string, string> = {};
+  for (const r of rows) modes[r.id] = r.display_mode ?? "x";
+  return c.json({ modes });
+});
+
 // ----- Admin: soft burn (delist) -----
 //
 // Hide an agent id from every public listing without touching the chain. The
@@ -2433,6 +2528,10 @@ app.get("/leaderboard", async (c) => {
     reputation: string;
     primary_agent_id: string | null;
     primary_skin: string | null;
+    primary_display_mode: string | null;
+    primary_nickname: string | null;
+    x_handle: string | null;
+    x_avatar: string | null;
   }>(
     // Primary agent is the operator's first non-delisted agent by id. Its
     // skin shows in the leaderboard row so identifiable operators (the
@@ -2447,7 +2546,11 @@ app.get("/leaderboard", async (c) => {
        op.cycles               as cycles,
        coalesce(ag.reputation, 0) as reputation,
        pa.id::text             as primary_agent_id,
-       pa.skin                 as primary_skin
+       pa.skin                 as primary_skin,
+       pa.display_mode         as primary_display_mode,
+       pa.nickname             as primary_nickname,
+       op.x_handle             as x_handle,
+       op.x_avatar             as x_avatar
      from operators op
      -- Entries: union of contest + challenge participation so the
      -- "ENTERED" column reflects everything the operator showed up for.
@@ -2470,7 +2573,7 @@ app.get("/leaderboard", async (c) => {
      left join (select owner, sum(reputation) as reputation from agents group by owner) ag
        on ag.owner = op.address
      left join lateral (
-       select a.id, a.skin
+       select a.id, a.skin, a.display_mode, a.nickname
          from agents a
          left join delisted_agents d on d.agent_id = a.id
         where a.owner = op.address and d.agent_id is null
@@ -2488,16 +2591,31 @@ app.get("/leaderboard", async (c) => {
     [limit],
   );
   return c.json({
-    leaders: rows.map((r) => ({
-      operator: r.operator,
-      entered: Number(r.entered),
-      wins: Number(r.wins),
-      earned: r.earned ?? "0",
-      cycles: Number(r.cycles ?? "0"),
-      reputation: r.reputation ?? "0",
-      primaryAgentId: r.primary_agent_id ? Number(r.primary_agent_id) : null,
-      primarySkin: r.primary_skin ?? null,
-    })),
+    leaders: rows.map((r) => {
+      // Resolve the primary agent's display identity so the row avatar honors
+      // its mode (X avatar / custom skin / robot), matching everywhere else.
+      const mode = r.primary_display_mode ?? "x";
+      let primarySkin: string | null = null;
+      let primaryName: string | null = null;
+      if (mode === "x" && r.x_handle) {
+        primarySkin = r.x_avatar ?? `https://unavatar.io/x/${r.x_handle}`;
+        primaryName = `@${r.x_handle}`;
+      } else if (mode === "custom" && r.primary_skin) {
+        primarySkin = r.primary_skin;
+        primaryName = r.primary_nickname ?? null;
+      }
+      return {
+        operator: r.operator,
+        entered: Number(r.entered),
+        wins: Number(r.wins),
+        earned: r.earned ?? "0",
+        cycles: Number(r.cycles ?? "0"),
+        reputation: r.reputation ?? "0",
+        primaryAgentId: r.primary_agent_id ? Number(r.primary_agent_id) : null,
+        primarySkin,
+        primaryName,
+      };
+    }),
   });
 });
 
@@ -2519,8 +2637,8 @@ app.get("/operators/:address", async (c) => {
     "select address, x_handle, telegram_id, telegram_username, discord_id, discord_username, current_syndicate_id, cycles from operators where address = $1",
     [address],
   );
-  const agents = await query<{ id: string; scout_tier: number; analyst_tier: number; solver_tier: number; reputation: string; nickname: string | null }>(
-    "select id, scout_tier, analyst_tier, solver_tier, reputation, nickname from agents where owner = $1 order by id",
+  const agents = await query<{ id: string; scout_tier: number; analyst_tier: number; solver_tier: number; reputation: string; nickname: string | null; display_mode: string | null; has_skin: boolean }>(
+    "select id, scout_tier, analyst_tier, solver_tier, reputation, nickname, display_mode, (skin is not null) as has_skin from agents where owner = $1 order by id",
     [address],
   );
   const stats = await query<{ entered: string; wins: string; earned: string }>(
@@ -2563,6 +2681,8 @@ app.get("/operators/:address", async (c) => {
       solverTier: r.solver_tier,
       reputation: r.reputation,
       nickname: r.nickname,
+      displayMode: r.display_mode ?? "x",
+      hasSkin: r.has_skin,
     })),
     contests: contests.rows.map((r) => ({
       contestId: Number(r.contest_id),
@@ -2623,13 +2743,20 @@ app.get("/auth/x/callback", async (c) => {
   if (!tokenRes.ok) return c.json({ error: "token exchange failed" }, 502);
   const { access_token } = (await tokenRes.json()) as { access_token: string };
 
-  const meRes = await fetch("https://api.twitter.com/2/users/me", {
+  const meRes = await fetch("https://api.twitter.com/2/users/me?user.fields=profile_image_url", {
     headers: { authorization: `Bearer ${access_token}` },
   });
   if (!meRes.ok) return c.json({ error: "could not fetch X profile" }, 502);
-  const me = (await meRes.json()) as { data: { username: string } };
+  const me = (await meRes.json()) as { data: { username: string; profile_image_url?: string } };
 
-  await query("update operators set x_handle = $2 where address = $1", [address, me.data.username]);
+  // X returns a 48px `_normal` avatar; swap to `_400x400` for a crisp one.
+  const xAvatar = me.data.profile_image_url
+    ? me.data.profile_image_url.replace("_normal", "_400x400")
+    : null;
+  await query(
+    "update operators set x_handle = $2, x_avatar = $3 where address = $1",
+    [address, me.data.username, xAvatar],
+  );
 
   // Return the user to their own operator page so the freshly-linked X
   // handle is visible immediately; landing on the root makes the OAuth
@@ -2641,7 +2768,7 @@ app.get("/auth/x/callback", async (c) => {
 
 app.post("/auth/x/unbind", requireAuth, async (c) => {
   const address = c.get("address");
-  await query("update operators set x_handle = null where address = $1", [address]);
+  await query("update operators set x_handle = null, x_avatar = null where address = $1", [address]);
   return c.json({ ok: true });
 });
 

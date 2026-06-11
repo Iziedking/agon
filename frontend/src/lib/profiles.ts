@@ -158,6 +158,30 @@ export async function saveAgentSkin(
   }
 }
 
+/// Switch an agent's display identity: 'default' (robot), 'x' (X handle +
+/// avatar), or 'custom' (uploaded skin + nickname). Requires a SIWE session.
+export async function saveAgentDisplayMode(
+  agentId: number,
+  mode: "default" | "x" | "custom",
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const res = await fetch(`${AUTH_URL}/agents/${agentId}/display-mode`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ mode }),
+    });
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (res.status === 401) return { ok: false, error: "sign in first. open the login modal" };
+      return { ok: false, error: data.error ?? "could not switch the display" };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "network error" };
+  }
+}
+
 export async function clearAgentSkin(agentId: number): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
     const res = await fetch(`${AUTH_URL}/agents/${agentId}/skin`, {
@@ -175,21 +199,52 @@ export async function clearAgentSkin(agentId: number): Promise<{ ok: true } | { 
   }
 }
 
-/// Bulk-fetch skins for a list of agent ids. Missing entries are simply absent
-/// from the returned map. No auth required (skins are public, like names).
+/// Resolved display identity for an agent: which name + avatar to show, based
+/// on its display_mode and the owner's X / skin data. `avatar` is an image URL
+/// (X) or data URL (custom), or null to render the robot mascot. `name` is null
+/// to use the caller's default (`agent #id`).
+export interface AgentIdentity {
+  kind: "default" | "x" | "custom";
+  name: string | null;
+  avatar: string | null;
+}
+
+// Short-lived in-flight dedupe so the names and skins hooks asking for the same
+// id set in the same tick share a single /agents/identities request. Cleared
+// shortly after so a mode switch is picked up on the next mount.
+const identityInflight = new Map<string, Promise<Record<string, AgentIdentity>>>();
+
+export async function fetchAgentIdentities(ids: number[]): Promise<Map<number, AgentIdentity>> {
+  const out = new Map<number, AgentIdentity>();
+  if (ids.length === 0) return out;
+  const qs = ids.join(",");
+  let p = identityInflight.get(qs);
+  if (!p) {
+    p = (async () => {
+      try {
+        const res = await fetch(`${AUTH_URL}/agents/identities?ids=${qs}`, { cache: "no-store" });
+        if (!res.ok) return {};
+        const data = (await res.json()) as { identities?: Record<string, AgentIdentity> };
+        return data.identities ?? {};
+      } catch {
+        return {};
+      }
+    })();
+    identityInflight.set(qs, p);
+    void p.finally(() => setTimeout(() => identityInflight.delete(qs), 1500));
+  }
+  for (const [k, v] of Object.entries(await p)) out.set(Number(k), v);
+  return out;
+}
+
+/// Bulk-fetch agent avatars. Derived from the identity resolver, so this now
+/// returns the X avatar or custom skin per the agent's display mode (absent =
+/// render the robot). Render sites do `skin ? <img> : <Robot>` unchanged.
 export async function fetchAgentSkins(ids: number[]): Promise<Map<number, string>> {
   const out = new Map<number, string>();
-  if (ids.length === 0) return out;
-  try {
-    const qs = ids.join(",");
-    const res = await fetch(`${AUTH_URL}/agents/skins?ids=${qs}`, { cache: "no-store" });
-    if (!res.ok) return out;
-    const data = (await res.json()) as { skins?: Record<string, string> };
-    for (const [k, v] of Object.entries(data.skins ?? {})) {
-      if (v) out.set(Number(k), v);
-    }
-  } catch {
-    // network blip, return what we have
+  const identities = await fetchAgentIdentities(ids);
+  for (const [id, ident] of identities) {
+    if (ident.avatar) out.set(id, ident.avatar);
   }
   return out;
 }
@@ -227,18 +282,50 @@ export function invalidateDelistedAgents() {
 /// watching a contest sees them.
 export async function fetchAgentNames(ids: number[]): Promise<Map<number, string>> {
   const out = new Map<number, string>();
+  const identities = await fetchAgentIdentities(ids);
+  for (const [id, ident] of identities) {
+    if (ident.name) out.set(id, ident.name);
+  }
+  return out;
+}
+
+// ---- Raw (unresolved) lookups for the owner's management card. These return
+// the actual uploaded skin / custom nickname / chosen mode so editing shows
+// real values, not the resolved display identity. ----
+
+export async function fetchAgentSkinsRaw(ids: number[]): Promise<Map<number, string>> {
+  const out = new Map<number, string>();
   if (ids.length === 0) return out;
   try {
-    const qs = ids.join(",");
-    const res = await fetch(`${AUTH_URL}/agents/names?ids=${qs}`, { cache: "no-store" });
+    const res = await fetch(`${AUTH_URL}/agents/skins?ids=${ids.join(",")}`, { cache: "no-store" });
+    if (!res.ok) return out;
+    const data = (await res.json()) as { skins?: Record<string, string> };
+    for (const [k, v] of Object.entries(data.skins ?? {})) if (v) out.set(Number(k), v);
+  } catch { /* blip */ }
+  return out;
+}
+
+export async function fetchAgentNamesRaw(ids: number[]): Promise<Map<number, string>> {
+  const out = new Map<number, string>();
+  if (ids.length === 0) return out;
+  try {
+    const res = await fetch(`${AUTH_URL}/agents/names?ids=${ids.join(",")}`, { cache: "no-store" });
     if (!res.ok) return out;
     const data = (await res.json()) as { names?: Record<string, string> };
-    for (const [k, v] of Object.entries(data.names ?? {})) {
-      if (v) out.set(Number(k), v);
-    }
-  } catch {
-    // network blip, return what we have
-  }
+    for (const [k, v] of Object.entries(data.names ?? {})) if (v) out.set(Number(k), v);
+  } catch { /* blip */ }
+  return out;
+}
+
+export async function fetchAgentModes(ids: number[]): Promise<Map<number, string>> {
+  const out = new Map<number, string>();
+  if (ids.length === 0) return out;
+  try {
+    const res = await fetch(`${AUTH_URL}/agents/modes?ids=${ids.join(",")}`, { cache: "no-store" });
+    if (!res.ok) return out;
+    const data = (await res.json()) as { modes?: Record<string, string> };
+    for (const [k, v] of Object.entries(data.modes ?? {})) if (v) out.set(Number(k), v);
+  } catch { /* blip */ }
   return out;
 }
 

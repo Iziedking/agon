@@ -1,6 +1,6 @@
 import { parseAbi } from "viem";
 import { publicClient, CONTRACTS } from "./arc";
-import { fetchAgentNames, fetchAgentSkins, fetchDelistedAgents } from "./profiles";
+import { fetchAgentNamesRaw, fetchAgentSkinsRaw, fetchAgentModes, fetchDelistedAgents } from "./profiles";
 
 /// Reads agent state from AgentRegistry on Arc, plus the bits needed to upgrade.
 
@@ -63,6 +63,9 @@ export interface AgentState {
   /// Operator-uploaded skin (base64 data URL). When present, render this image
   /// instead of the variant mascot. Server-persisted, owner-only write.
   skin?: string | null;
+  /// Chosen display identity: 'default' (robot), 'x' (X handle+avatar), or
+  /// 'custom' (uploaded skin+nickname). Defaults to 'x'.
+  displayMode?: "default" | "x" | "custom";
 }
 
 /// Fallback-aware display name for an agent. Always returns something to show.
@@ -145,7 +148,8 @@ export async function fetchAgents(owner: `0x${string}`): Promise<AgentState[]> {
       // Parallel per-id chain reads. Was sequential; with 5 agents this
       // collapses ~5 round-trips into one wall-clock RPC tier. Names and
       // skins also fire in the same parallel batch.
-      const [chainResults, names, skins] = await Promise.all([
+      const numIds = ids.map((id) => Number(id));
+      const [chainResults, names, skins, modes] = await Promise.all([
         Promise.all(
           ids.map((id) =>
             publicClient.readContract({
@@ -156,8 +160,11 @@ export async function fetchAgents(owner: `0x${string}`): Promise<AgentState[]> {
             }),
           ),
         ),
-        fetchAgentNames(ids.map((id) => Number(id))),
-        fetchAgentSkins(ids.map((id) => Number(id))),
+        // Raw (unresolved) name/skin/mode so the management card edits real
+        // values, not the resolved display identity used elsewhere.
+        fetchAgentNamesRaw(numIds),
+        fetchAgentSkinsRaw(numIds),
+        fetchAgentModes(numIds),
       ]);
 
       const agents: AgentState[] = ids.map((id, i) => {
@@ -172,8 +179,10 @@ export async function fetchAgents(owner: `0x${string}`): Promise<AgentState[]> {
         };
         const n = names.get(out.id);
         const s = skins.get(out.id);
+        const m = modes.get(out.id);
         if (n) out.nickname = n;
         if (s) out.skin = s;
+        if (m === "default" || m === "x" || m === "custom") out.displayMode = m;
         return out;
       });
       setAgentsCache(owner, agents);

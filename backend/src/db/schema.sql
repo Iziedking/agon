@@ -26,6 +26,9 @@ alter table operators add column if not exists telegram_id text;
 alter table operators add column if not exists telegram_username text;
 alter table operators add column if not exists discord_id text;
 alter table operators add column if not exists discord_username text;
+-- X profile image, captured at link time. Used when an agent's display mode
+-- is "x" so it can show the operator's X avatar alongside the handle.
+alter table operators add column if not exists x_avatar text;
 -- Email and Circle Dev-Controlled wallet linkage. An operator row exists for
 -- both SIWE-only users (email/circle null) and email-login users (email set,
 -- circle_wallet_id set). When circle_wallet_id is non-null the backend signs
@@ -125,6 +128,13 @@ alter table agents add column if not exists nickname text;
 -- Custom skin: base64 data URL (image/png|jpeg|webp|gif), capped 256KB on the
 -- server. Null means "use the mascot variant fallback".
 alter table agents add column if not exists skin text;
+-- Display identity for the agent: which name+avatar to show.
+--   'default' -> robot mascot + default name (#id)
+--   'x'       -> owner's X handle + X avatar (falls back to default if unlinked)
+--   'custom'  -> uploaded skin + nickname (falls back to default if none)
+-- Defaults to 'x' so a fresh agent reads as the operator's X identity when
+-- one is linked, and as the robot otherwise.
+alter table agents add column if not exists display_mode text not null default 'x';
 
 -- Phase 2 scoring mode: pnl_mtm (default), pnl_realized, or volume.
 -- Set by the creator at contest/challenge open time; the runner reads it
