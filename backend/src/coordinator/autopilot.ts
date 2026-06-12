@@ -99,7 +99,12 @@ async function resolveChallengeOnce(id: number, broadcast: (message: unknown) =>
 }
 
 async function startChallengeSweeper(broadcast: (message: unknown) => void): Promise<void> {
-  const everyMs = Number(process.env.AUTOPILOT_SWEEP_SECONDS ?? "60") * 1000;
+  // Challenges get a faster sweep than contests: the moment a join window
+  // closes (or fills 4/4), we want to lock and start the live race right away,
+  // not leave it sitting "window closed, waiting for first frame" for up to a
+  // minute. Defaults to 12s; falls back to the shared sweep if that's faster.
+  const everyMs =
+    Number(process.env.AUTOPILOT_CHALLENGE_SWEEP_SECONDS ?? process.env.AUTOPILOT_SWEEP_SECONDS ?? "12") * 1000;
   for (;;) {
     await sleep(everyMs);
     try {
