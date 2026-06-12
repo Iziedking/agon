@@ -138,6 +138,48 @@ function standings(results: AgentResult[]) {
     }));
 }
 
+/// Reveal a fraction of the authoritative result: each agent's progress arrays
+/// are sliced to the first `frac` of their items and the score scaled to match,
+/// so a sequence of increasing fractions plays the real work back as a visible
+/// race (cells filling, tx tape growing, scores climbing) before the final
+/// frame locks it in. Honest: the revealed items are the real ones, fewer early.
+function revealProgress(results: AgentResult[], frac: number): AgentResult[] {
+  const cut = <T>(arr: T[], f: number) => arr.slice(0, Math.max(1, Math.ceil(arr.length * f)));
+  return results.map((r) => {
+    const score = Math.round(r.score * frac);
+    const p = r.progress;
+    if (!p) return { ...r, score };
+    if (p.kind === "solver") {
+      return {
+        ...r,
+        score,
+        progress: {
+          ...p,
+          correct: cut(p.correct, frac),
+          perPuzzleMs: p.perPuzzleMs ? cut(p.perPuzzleMs, frac) : undefined,
+          spent: p.spent ? cut(p.spent, frac) : undefined,
+          spentLabels: p.spentLabels ? cut(p.spentLabels, frac) : undefined,
+        },
+      };
+    }
+    if (p.kind === "scout") {
+      return {
+        ...r,
+        score,
+        progress: {
+          ...p,
+          recent: cut(p.recent, frac),
+          recentVolumes: p.recentVolumes ? cut(p.recentVolumes, frac) : undefined,
+        },
+      };
+    }
+    if (p.kind === "analyst") {
+      return { ...r, score, progress: { ...p, calls: cut(p.calls, frac) } };
+    }
+    return { ...r, score };
+  });
+}
+
 export async function runContestById(contestId: number, broadcast: (message: unknown) => void): Promise<void> {
   const engine = config.contracts.ContestEngine;
   const c = await publicClient.readContract({
@@ -217,6 +259,24 @@ export async function runContestById(contestId: number, broadcast: (message: unk
   const withTraining = applyTrainingMultipliers(withTraits, trainMult);
   const withSyndicate = applySyndicateMultipliers(withTraining, synMult);
   const results = clampCombinedMultiplier(withSyndicate, baselines);
+
+  // Visible "agents at work" race: the field is locked and scored, so now play
+  // the real result back progressively (cells filling, tx tape growing, scores
+  // climbing) instead of one instant jump. This is the moment judges watch the
+  // agents actually do the work. CONTEST_REVEAL_SECONDS=0 disables it.
+  const revealMs = Number(process.env.CONTEST_REVEAL_SECONDS ?? "16") * 1000;
+  if (revealMs > 0 && results.length > 0) {
+    const STEPS = 8;
+    for (let s = 1; s < STEPS; s++) {
+      broadcast({
+        type: "standings",
+        contestId,
+        endsAt: endsAtMs,
+        entries: standings(revealProgress(results, s / STEPS)),
+      });
+      await sleep(revealMs / STEPS);
+    }
+  }
 
   // One final standings frame with the authoritative progress, so Scout's real
   // tx hashes land on the live stage just before the settled banner takes

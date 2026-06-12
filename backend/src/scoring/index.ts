@@ -15,11 +15,15 @@ export function jitter(seed: number, spreadBps = 300): number {
   return 1 - spread + r * (2 * spread); // [1-spread, 1+spread]
 }
 
-/// Scout: driven by real on-chain volume, with a small per-agent op bonus and
-/// the anti-gaming jitter. `volumeUsdc6` is total moved in USDC (6 decimals).
+/// Scout: a volume contest, so the agent that moved the most USDC wins.
+/// `volumeUsdc6` (total moved, 6 decimals) dominates; op count is only a tiny
+/// tie-breaker so two agents with identical volume don't draw. The old
+/// `opsCount * 50` bonus let a high-frequency, low-volume agent out-score a
+/// high-volume one (100 tiny swaps beat a few large ones), which inverted the
+/// whole point of a volume contest.
 export function scoutScore(input: { volumeUsdc6: bigint; opsCount: number; seed: number }): number {
   const volumeUnits = Number(input.volumeUsdc6) / 1e6; // USDC
-  const base = volumeUnits * 1000 + input.opsCount * 50;
+  const base = volumeUnits * 1000 + input.opsCount; // op count: tie-breaker only
   return Math.round(base * jitter(input.seed));
 }
 
