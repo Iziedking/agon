@@ -8,6 +8,7 @@ export type NotificationKind =
   | "contest_win"
   | "challenge_win"
   | "challenge_invite"
+  | "challenge_refund"
   | "balance_credit"
   | "balance_debit"
   | "training_done"

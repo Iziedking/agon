@@ -17,7 +17,7 @@ import {
 } from "../chain/abi.js";
 import { getLatestMarkets, isOpen } from "../lib/arcana.js";
 import { pinArcanaMarketsForContest } from "../lib/arcanaPins.js";
-import { notify } from "../notifications/index.js";
+import { notify, notifyMany } from "../notifications/index.js";
 
 /// Polls eth_getLogs over block ranges, writes raw events to events_log, and
 /// updates the denormalized read tables. Resumes from the last processed block
@@ -356,9 +356,43 @@ async function applyDenormalized(client: PoolClient, log: Log) {
         s(a.winnerRoot),
       ]);
       break;
-    case "ChallengeCancelled":
-      await client.query("update challenges set status = 'cancelled' where id = $1", [s(a.id)]);
+    case "ChallengeCancelled": {
+      // Only the first transition to cancelled notifies, so a replay of the
+      // same event can't double-message. rowCount is 0 if it was already
+      // cancelled.
+      const cancelRes = await client.query(
+        "update challenges set status = 'cancelled' where id = $1 and status <> 'cancelled'",
+        [s(a.id)],
+      );
+      if ((cancelRes.rowCount ?? 0) > 0) {
+        // Everyone who staked into this challenge can pull their stake back.
+        // Tell them so the refund doesn't sit unclaimed on the dashboard.
+        const entrants = await client.query<{ operator: string; stake: string | null }>(
+          `select distinct ce.operator, c.stake
+             from challenge_entries ce
+             join challenges c on c.id = ce.challenge_id
+            where ce.challenge_id = $1`,
+          [s(a.id)],
+        );
+        if (entrants.rows.length > 0) {
+          const stakeRaw = entrants.rows[0]?.stake;
+          const stakeLabel = stakeRaw
+            ? `${(Number(stakeRaw) / 1e6).toLocaleString(undefined, { maximumFractionDigits: 2 })} USDC`
+            : "your stake";
+          void notifyMany(
+            entrants.rows.map((r) => r.operator),
+            {
+              kind: "challenge_refund",
+              title: "Challenge cancelled, refund ready",
+              body: `challenge #${s(a.id)} was cancelled. pull ${stakeLabel} back from your dashboard.`,
+              href: "/dashboard",
+              context: { challengeId: Number(a.id) },
+            },
+          );
+        }
+      }
       break;
+    }
 
     // ----- SyndicateFactory -----
     case "SyndicateCreated":
