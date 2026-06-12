@@ -52,9 +52,9 @@ export function NotificationBell() {
   if (!isSignedIn) return null;
 
   function toggle() {
-    const next = !open;
-    setOpen(next);
-    if (next && unread > 0) void markAllRead();
+    // Don't auto-mark on open; the user marks read explicitly via the button
+    // so unread items stay highlighted until they choose to clear the state.
+    setOpen((v) => !v);
   }
 
   return (
@@ -79,6 +79,15 @@ export function NotificationBell() {
               <span aria-hidden className="text-accent">■</span> NOTIFICATIONS
             </span>
             <div className="flex items-center gap-3">
+              {unread > 0 ? (
+                <button
+                  onClick={() => void markAllRead()}
+                  className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3 hover:text-ink"
+                  title="mark all as read"
+                >
+                  MARK READ
+                </button>
+              ) : null}
               {items.length > 0 ? (
                 <button
                   onClick={() => void clearAll()}
@@ -118,11 +127,15 @@ export function NotificationBell() {
 
 function Row({ n, onNavigate }: { n: AppNotification; onNavigate: () => void }) {
   const inner = (
-    <div className="flex gap-3 border-b border-[color:var(--hairline)] px-4 py-3 transition-colors hover:bg-canvas-2 last:border-0">
-      <span aria-hidden className="mt-0.5 text-accent">{KIND_MARK[n.kind] ?? "■"}</span>
+    <div
+      className={`flex gap-3 border-b border-[color:var(--hairline)] px-4 py-3 transition-colors hover:bg-canvas-2 last:border-0 ${
+        n.read ? "" : "bg-canvas-2"
+      }`}
+    >
+      <span aria-hidden className={`mt-0.5 ${n.read ? "text-ink-3" : "text-accent"}`}>{KIND_MARK[n.kind] ?? "■"}</span>
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-2">
-          <span className="font-mono text-[12px] text-ink">{n.title}</span>
+          <span className={`font-mono text-[12px] ${n.read ? "text-ink-2" : "text-ink"}`}>{n.title}</span>
           <span className="flex-none font-mono text-[10px] text-ink-3">{timeAgo(n.createdAt)}</span>
         </div>
         {n.body ? <p className="mt-1 font-mono text-[11px] leading-[1.5] text-ink-2">{n.body}</p> : null}
