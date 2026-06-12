@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNotifications } from "@/hooks/useNotifications";
 import type { AppNotification } from "@/lib/notifications";
+import { setSoundMuted } from "@/lib/sounds";
 
 /// Bell in the top nav. Shows an unread badge, opens a dropdown feed, plays a
 /// chime on new notifications (handled by the hook). Renders nothing when the
@@ -37,7 +38,8 @@ export function NotificationBell() {
   const [soundOn, setSoundOn] = useState(true);
 
   useEffect(() => {
-    setSound(soundOn);
+    setSound(soundOn); // notification chime
+    setSoundMuted(!soundOn); // all other UI sounds (join, win, mystery)
   }, [soundOn, setSound]);
 
   useEffect(() => {

@@ -20,8 +20,8 @@ const NETWORK = [
 ];
 
 const SOCIALS = [
-  { label: "X ↗", href: "https://x.com", external: true },
-  { label: "GITHUB ↗", href: "https://github.com", external: true },
+  { label: "X ↗", href: "https://x.com/arc_run", external: true },
+  { label: "GITHUB ↗", href: "https://github.com/Iziedking/arcrun", external: true },
   { label: "DISCORD SOON", href: "#" },
 ];
 

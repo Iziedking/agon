@@ -57,7 +57,7 @@ export function SideRail() {
       {/* Social links. Stay clickable; rest of rail is pointer-events-none. */}
       <div className="pointer-events-auto flex flex-col gap-2">
         <a
-          href="https://x.com/arcrun_app"
+          href="https://x.com/arc_run"
           target="_blank"
           rel="noreferrer"
           aria-label="X"
@@ -66,7 +66,7 @@ export function SideRail() {
           X
         </a>
         <a
-          href="https://github.com/arcrun"
+          href="https://github.com/Iziedking/arcrun"
           target="_blank"
           rel="noreferrer"
           aria-label="GitHub"
@@ -74,15 +74,13 @@ export function SideRail() {
         >
           GH
         </a>
-        <a
-          href="https://discord.gg/arc"
-          target="_blank"
-          rel="noreferrer"
-          aria-label="Discord"
-          className="flex h-7 w-7 items-center justify-center border border-[color:var(--hairline-strong)] bg-canvas font-mono text-[10px] text-ink transition-colors hover:border-ink hover:bg-canvas-3"
+        <span
+          aria-label="Discord (coming soon)"
+          title="Discord — coming soon"
+          className="flex h-7 w-7 cursor-default items-center justify-center border border-[color:var(--hairline)] bg-canvas font-mono text-[10px] text-ink-3 opacity-60"
         >
           DC
-        </a>
+        </span>
       </div>
 
       <span className="block h-8 w-px bg-[color:var(--hairline-strong)]" />

@@ -9,6 +9,7 @@ import {
   playNotificationChime,
   type AppNotification,
 } from "@/lib/notifications";
+import { playWin } from "@/lib/sounds";
 
 const POLL_MS = 20_000;
 
@@ -32,9 +33,15 @@ export function useNotifications() {
 
     const fresh = feed.items.filter((n) => !seenIds.current.has(n.id));
     for (const n of feed.items) seenIds.current.add(n.id);
-    // First poll just primes the seen-set; later polls chime on anything new.
-    if (primed.current && soundOn.current && fresh.some((n) => !n.read)) {
-      playNotificationChime();
+    // First poll just primes the seen-set; later polls sound on anything new.
+    // A win gets the triumphant flourish; everything else the standard chime.
+    if (primed.current && soundOn.current) {
+      const freshUnread = fresh.filter((n) => !n.read);
+      if (freshUnread.some((n) => n.kind === "contest_win" || n.kind === "challenge_win")) {
+        playWin();
+      } else if (freshUnread.length > 0) {
+        playNotificationChime();
+      }
     }
     primed.current = true;
   }, [isSignedIn]);

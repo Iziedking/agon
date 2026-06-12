@@ -16,6 +16,7 @@ import {
 } from "@/lib/agents";
 import { friendlyError } from "@/lib/errors";
 import { reportEvent } from "@/lib/report";
+import { playJoin } from "@/lib/sounds";
 import { LoginCTA } from "@/components/pengu/LoginCTA";
 import { AgentPicker } from "@/components/pengu/AgentPicker";
 import { EquipTraitsPanel } from "@/components/pengu/EquipTraitsPanel";
@@ -154,6 +155,7 @@ export function EnterPanel({ contestId, status, endTime, contestType }: { contes
       });
       await publicClient.waitForTransactionReceipt({ hash });
       setEntered(true);
+      playJoin();
       reportEvent("contest_enter", { context: { contestId, agentId: active.id }, address });
     } catch (e) {
       setError(friendlyError(e, "could not enter."));

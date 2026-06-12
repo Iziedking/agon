@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { BracketedCell, TagButton } from "@/components/redesign";
+import { useAuth } from "@/hooks/useAuth";
 import {
   STATS,
   MAX_STAT_LEVEL,
@@ -52,6 +53,8 @@ function fmtMinutes(seconds: number): string {
 }
 
 export function TrainingPanel({ agentId }: { agentId: number }) {
+  const { me } = useAuth();
+  const cycles = me?.cycles ?? 0;
   const [state, setState] = useState<TrainingState | null | "loading">("loading");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -101,8 +104,18 @@ export function TrainingPanel({ agentId }: { agentId: number }) {
   const speedupParams = state.speedup ?? FALLBACK_SPEEDUP;
 
   async function onStart(stat: Stat) {
-    setBusy(true); setError(null);
+    setError(null);
     const steps = speedupByStat[stat] ?? 0;
+    // Graceful pre-flight check: cycles come from winning, so a fresh operator
+    // often can't afford training yet. Catch it here with friendly copy instead
+    // of letting the server reject the write.
+    const lvl = (state !== "loading" && state ? state.stats[stat] : 0) ?? 0;
+    const need = cyclesCost(lvl, steps, (state !== "loading" && state ? state.speedup?.cyclesPerStep : undefined) ?? FALLBACK_SPEEDUP.cyclesPerStep);
+    if (need > cycles) {
+      setError(`not enough cycles — this costs ${need.toLocaleString()} and you have ${cycles.toLocaleString()}. win a contest or challenge to stack cycles, then train.`);
+      return;
+    }
+    setBusy(true);
     const res = await startTraining(agentId, stat, steps);
     setBusy(false);
     if (!res.ok) { setError(res.error); return; }
@@ -127,6 +140,12 @@ export function TrainingPanel({ agentId }: { agentId: number }) {
 
   return (
     <BracketedCell pad="sm">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-[color:var(--hairline)] pb-3">
+        <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">YOUR CYCLES</span>
+        <span className="font-mono text-[15px] tabular-nums text-ink">
+          {cycles.toLocaleString()} <span aria-hidden className="text-ink-3">⊙</span>
+        </span>
+      </div>
       <div className="flex flex-col">
         {STATS.map((s) => {
           const level = state.stats[s] ?? 0;

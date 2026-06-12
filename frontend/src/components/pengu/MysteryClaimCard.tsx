@@ -12,6 +12,7 @@ import {
   type PoolStatus,
   type Trait,
 } from "@/lib/traits";
+import { playMystery } from "@/lib/sounds";
 
 /// The mystery card on the dashboard. One UTC day, one claim per operator,
 /// drawn from a finite global pool. Rarity-weighted; some boxes come up empty.
@@ -80,6 +81,7 @@ export function MysteryClaimCard({
       await refresh();
     } else if (res.trait) {
       setAwarded(res.trait);
+      playMystery();
       await onClaimed?.(res.trait);
       await refresh();
     }
