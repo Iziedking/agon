@@ -53,7 +53,7 @@ function fmtMinutes(seconds: number): string {
 }
 
 export function TrainingPanel({ agentId }: { agentId: number }) {
-  const { me } = useAuth();
+  const { me, refresh: refreshMe } = useAuth();
   const cycles = me?.cycles ?? 0;
   const [state, setState] = useState<TrainingState | null | "loading">("loading");
   const [busy, setBusy] = useState(false);
@@ -112,7 +112,7 @@ export function TrainingPanel({ agentId }: { agentId: number }) {
     const lvl = (state !== "loading" && state ? state.stats[stat] : 0) ?? 0;
     const need = cyclesCost(lvl, steps, (state !== "loading" && state ? state.speedup?.cyclesPerStep : undefined) ?? FALLBACK_SPEEDUP.cyclesPerStep);
     if (need > cycles) {
-      setError(`not enough cycles — this costs ${need.toLocaleString()} and you have ${cycles.toLocaleString()}. win a contest or challenge to stack cycles, then train.`);
+      setError(`not enough cycles. this costs ${need.toLocaleString()} and you have ${cycles.toLocaleString()}. win a contest or challenge to stack cycles, then train.`);
       return;
     }
     setBusy(true);
@@ -121,21 +121,22 @@ export function TrainingPanel({ agentId }: { agentId: number }) {
     if (!res.ok) { setError(res.error); return; }
     // Reset the picker for this stat after a successful queue.
     setSpeedupByStat((prev) => ({ ...prev, [stat]: 0 }));
-    await refresh();
+    // Refresh training state AND the cycle balance (training just spent cycles).
+    await Promise.all([refresh(), refreshMe()]);
   }
   async function onCancel() {
     setBusy(true); setError(null);
     const res = await cancelTraining(agentId);
     setBusy(false);
     if (!res.ok) { setError(res.error); return; }
-    await refresh();
+    await Promise.all([refresh(), refreshMe()]); // cancel refunds 50% cycles
   }
   async function onFinishEarly() {
     setBusy(true); setError(null);
     const res = await finishEarly(agentId);
     setBusy(false);
     if (!res.ok) { setError(res.error); return; }
-    await refresh();
+    await Promise.all([refresh(), refreshMe()]); // finish-now charges extra cycles
   }
 
   return (

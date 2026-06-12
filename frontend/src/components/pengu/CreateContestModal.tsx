@@ -198,21 +198,15 @@ export function CreateContestModal({ open, onClose }: { open: boolean; onClose: 
               <div className="mt-5 flex flex-col gap-4">
                 <div>
                   <div className={labelCls}>TYPE</div>
-                  <div className="mt-2 flex flex-wrap gap-2">
+                  <select
+                    value={cType}
+                    onChange={(e) => { setCType(Number(e.target.value)); setError(null); }}
+                    className={`${inputCls} mt-2 uppercase tracking-[0.08em]`}
+                  >
                     {TYPES.map((t, i) => (
-                      <button
-                        key={t}
-                        onClick={() => { setCType(i); setError(null); }}
-                        className={
-                          cType === i
-                            ? "border border-accent bg-accent px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-accent-ink"
-                            : "border border-ink-3 bg-canvas px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:border-ink hover:text-ink"
-                        }
-                      >
-                        {t}
-                      </button>
+                      <option key={t} value={i}>{t}</option>
                     ))}
-                  </div>
+                  </select>
                   {/* What this type does, so a sponsor picks the right one. */}
                   <div className="mt-3 border-l-2 border-[color:var(--hairline-strong)] bg-canvas-2 px-3 py-2.5">
                     <p className="font-mono text-[11px] leading-[1.55] text-ink-2">{TYPE_INFO[typeName]!.blurb}</p>

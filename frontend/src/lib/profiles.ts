@@ -164,7 +164,7 @@ export async function saveAgentSkin(
 /// avatar), or 'custom' (uploaded skin + nickname). Requires a SIWE session.
 export async function saveAgentDisplayMode(
   agentId: number,
-  mode: "default" | "x" | "custom",
+  mode: "default" | "x" | "discord" | "custom",
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
     const res = await fetch(`${AUTH_URL}/agents/${agentId}/display-mode`, {
@@ -206,7 +206,7 @@ export async function clearAgentSkin(agentId: number): Promise<{ ok: true } | { 
 /// (X) or data URL (custom), or null to render the robot mascot. `name` is null
 /// to use the caller's default (`agent #id`).
 export interface AgentIdentity {
-  kind: "default" | "x" | "custom";
+  kind: "default" | "x" | "discord" | "custom";
   name: string | null;
   avatar: string | null;
 }

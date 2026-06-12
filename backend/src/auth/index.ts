@@ -1238,7 +1238,7 @@ app.delete("/agents/:id/skin", requireAuth, async (c) => {
 // Resolved with graceful fallback to 'default' when the chosen source is
 // missing (e.g. mode 'x' but the wallet never linked X).
 
-const DISPLAY_MODES = new Set(["default", "x", "custom"]);
+const DISPLAY_MODES = new Set(["default", "x", "discord", "custom"]);
 
 /// Switch an agent's display identity. Owner-gated like the name/skin routes.
 app.post("/agents/:id/display-mode", requireAuth, async (c) => {
@@ -1248,7 +1248,7 @@ app.post("/agents/:id/display-mode", requireAuth, async (c) => {
 
   const { mode } = await c.req.json<{ mode?: string }>();
   if (!mode || !DISPLAY_MODES.has(mode)) {
-    return c.json({ error: "mode must be default, x, or custom" }, 400);
+    return c.json({ error: "mode must be default, x, discord, or custom" }, 400);
   }
 
   const { rows } = await query<{ owner: string }>("select owner from agents where id = $1", [agentId]);
@@ -1280,8 +1280,11 @@ app.get("/agents/identities", async (c) => {
     skin: string | null;
     x_handle: string | null;
     x_avatar: string | null;
+    discord_username: string | null;
+    discord_avatar: string | null;
   }>(
-    `select a.id, a.display_mode, a.nickname, a.skin, o.x_handle, o.x_avatar
+    `select a.id, a.display_mode, a.nickname, a.skin,
+            o.x_handle, o.x_avatar, o.discord_username, o.discord_avatar
        from agents a
        left join operators o on lower(o.address) = lower(a.owner)
       where a.id = any($1::bigint[])`,
@@ -1297,6 +1300,8 @@ app.get("/agents/identities", async (c) => {
       // started storing the profile image.
       const avatar = r.x_avatar ?? `https://unavatar.io/x/${r.x_handle}`;
       identities[r.id] = { kind: "x", name: `@${r.x_handle}`, avatar };
+    } else if (mode === "discord" && r.discord_username) {
+      identities[r.id] = { kind: "discord", name: r.discord_username, avatar: r.discord_avatar ?? null };
     } else if (mode === "custom" && r.skin) {
       identities[r.id] = { kind: "custom", name: r.nickname ?? null, avatar: r.skin };
     } else {
@@ -2595,6 +2600,8 @@ app.get("/leaderboard", async (c) => {
     primary_skin: string | null;
     primary_display_mode: string | null;
     primary_nickname: string | null;
+    discord_username: string | null;
+    discord_avatar: string | null;
     x_handle: string | null;
     x_avatar: string | null;
   }>(
@@ -2615,7 +2622,9 @@ app.get("/leaderboard", async (c) => {
        pa.display_mode         as primary_display_mode,
        pa.nickname             as primary_nickname,
        op.x_handle             as x_handle,
-       op.x_avatar             as x_avatar
+       op.x_avatar             as x_avatar,
+       op.discord_username     as discord_username,
+       op.discord_avatar       as discord_avatar
      from operators op
      -- Entries: union of contest + challenge participation so the
      -- "ENTERED" column reflects everything the operator showed up for.
@@ -2665,6 +2674,9 @@ app.get("/leaderboard", async (c) => {
       if (mode === "x" && r.x_handle) {
         primarySkin = r.x_avatar ?? `https://unavatar.io/x/${r.x_handle}`;
         primaryName = `@${r.x_handle}`;
+      } else if (mode === "discord" && r.discord_username) {
+        primarySkin = r.discord_avatar ?? null;
+        primaryName = r.discord_username;
       } else if (mode === "custom" && r.primary_skin) {
         primarySkin = r.primary_skin;
         primaryName = r.primary_nickname ?? null;

@@ -65,7 +65,7 @@ export interface AgentState {
   skin?: string | null;
   /// Chosen display identity: 'default' (robot), 'x' (X handle+avatar), or
   /// 'custom' (uploaded skin+nickname). Defaults to 'x'.
-  displayMode?: "default" | "x" | "custom";
+  displayMode?: "default" | "x" | "discord" | "custom";
 }
 
 /// Fallback-aware display name for an agent. Always returns something to show.

@@ -173,6 +173,30 @@ export default function DashboardPage() {
         </div>
       </section>
 
+      {/* LIVE ENTRIES: contests this operator is currently in (open/scoring),
+          surfaced up top with a watch link so you can jump straight to the
+          stage. Challenges the operator joined are a follow-up (need a backend
+          endpoint that lists an operator's active challenges). */}
+      {inFlight.length > 0 ? (
+        <section className="mx-auto max-w-[1600px] px-6 pb-4">
+          <div className="mb-3 flex items-center justify-between">
+            <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
+              <span aria-hidden style={{ color: "var(--ok)" }}>●</span> LIVE ENTRIES
+            </span>
+            <a href="/live" className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:text-accent">
+              WATCH ALL →
+            </a>
+          </div>
+          <BracketedCell pad="sm">
+            <ActivityLedger>
+              {inFlight.map((c) => (
+                <ContestActivityRow key={c.contestId} c={c} />
+              ))}
+            </ActivityLedger>
+          </BracketedCell>
+        </section>
+      ) : null}
+
       {/* MY AGENTS + PRIZES PENDING */}
       <section className="mx-auto max-w-[1600px] px-6 pb-10">
         <div className="grid gap-6 lg:grid-cols-12">

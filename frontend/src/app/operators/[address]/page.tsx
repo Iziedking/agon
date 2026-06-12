@@ -159,6 +159,7 @@ export default function OperatorPage() {
                   agent={a}
                   isMe
                   xLinked={profile !== "loading" && !!profile?.xHandle}
+                  discordLinked={profile !== "loading" && !!profile?.discordUsername}
                 />
               ) : (
                 <PublicAgentCard key={a.id} agent={a} />
@@ -429,10 +430,10 @@ async function downscaleToDataUrl(file: File, max = 256): Promise<string> {
   }
 }
 
-function AgentCustomizeCard({ agent, isMe, xLinked }: { agent: AgentState; isMe: boolean; xLinked: boolean }) {
+function AgentCustomizeCard({ agent, isMe, xLinked, discordLinked }: { agent: AgentState; isMe: boolean; xLinked: boolean; discordLinked: boolean }) {
   const [name, setName] = useState<string>(agent.nickname ?? "");
   const [skin, setSkin] = useState<string | null>(agent.skin ?? null);
-  const [mode, setMode] = useState<"default" | "x" | "custom">(agent.displayMode ?? "x");
+  const [mode, setMode] = useState<"default" | "x" | "discord" | "custom">(agent.displayMode ?? "x");
   const [busy, setBusy] = useState(false);
   const [skinBusy, setSkinBusy] = useState(false);
   const [savedNote, setSavedNote] = useState(false);
@@ -446,7 +447,7 @@ function AgentCustomizeCard({ agent, isMe, xLinked }: { agent: AgentState; isMe:
     setMode(agent.displayMode ?? "x");
   }, [agent.id, agent.nickname, agent.skin, agent.displayMode]);
 
-  async function pickMode(next: "default" | "x" | "custom") {
+  async function pickMode(next: "default" | "x" | "discord" | "custom") {
     if (next === mode) return;
     const prev = mode;
     setMode(next); // optimistic
@@ -528,6 +529,7 @@ function AgentCustomizeCard({ agent, isMe, xLinked }: { agent: AgentState; isMe:
               {([
                 { k: "default", label: "ROBOT", enabled: true, hint: "" },
                 { k: "x", label: "X PROFILE", enabled: xLinked, hint: "link your X first" },
+                { k: "discord", label: "DISCORD", enabled: discordLinked, hint: "link your discord first" },
                 { k: "custom", label: "CUSTOM", enabled: !!skin, hint: "upload a skin first" },
               ] as const).map((opt) => (
                 <button
