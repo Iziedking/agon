@@ -88,7 +88,7 @@ export async function executeScout(
   // Real DEX swaps when configured. Returns null (and falls through to
   // self-transfers) if the adapter isn't installed or nothing swapped.
   if (swapEnabled()) {
-    const swapped = await executeScoutSwaps(agentId, tier).catch((err) => {
+    const swapped = await executeScoutSwaps(agentId, tier, opts?.ops).catch((err) => {
       console.warn(`[scout] real-swap path failed, falling back: ${err instanceof Error ? err.message : err}`);
       return null;
     });
@@ -107,8 +107,11 @@ export async function executeScout(
   });
 
   const ops = Math.max(0, Math.min(opts?.ops ?? limit.maxOps, limit.maxOps));
-  // Leave headroom for gas; self-transfers return the principal each time.
-  let perOp = opts?.perOpUsdc6 ?? balance / BigInt(ops + 1);
+  // Per-op size is the tier funding (10/25/40/70/100 USDC), recirculated via
+  // self-transfer each op, not the balance sliced across all ops (which made
+  // 0.5 USDC dust). So a higher tier moves bigger amounts per transaction.
+  const tierSize6 = BigInt(Math.round(fundingCapUsdc(tier) * 1e6));
+  let perOp = opts?.perOpUsdc6 ?? (tierSize6 < balance ? tierSize6 : balance);
   if (perOp > limit.maxPerOpUsdc6) perOp = limit.maxPerOpUsdc6;
 
   const txHashes: Hash[] = [];
@@ -171,7 +174,7 @@ async function recordSwaps(agentId: number, n: number): Promise<void> {
 /// tier funding ceiling; swap count is bounded by the shared daily budget and
 /// the per-run cap. Returns null when no swap landed (adapter missing) so the
 /// caller falls back to self-transfers.
-async function executeScoutSwaps(agentId: number, tier: number): Promise<ScoutExecution | null> {
+async function executeScoutSwaps(agentId: number, tier: number, ops?: number): Promise<ScoutExecution | null> {
   if (!config.scout.masterMnemonic) return null;
   // Re-derive as an HD account so we can extract the private key the App Kit
   // viem adapter needs (deriveHotWallet's return type is the generic Account).
@@ -193,7 +196,10 @@ async function executeScoutSwaps(agentId: number, tier: number): Promise<ScoutEx
   }
 
   const remaining = await dailySwapsRemaining(agentId);
-  const swapsThisRun = Math.min(config.scout.swapsPerRun, remaining);
+  // Trait/training boost arrives as `ops` (more swaps = more real volume).
+  // Falls back to the per-run default. Always bounded by the shared daily cap.
+  const want = ops != null && ops > 0 ? ops : config.scout.swapsPerRun;
+  const swapsThisRun = Math.min(want, remaining);
   if (swapsThisRun <= 0) {
     return { address: account.address, volumeUsdc6: 0n, opsCount: 0, txHashes: [], txVolumesUsdc6: [] };
   }
@@ -411,20 +417,26 @@ export class ScoutRunner implements Runner {
         ? await pickScoutStrategy(contestId, e, balance, limit, params)
         : { opsCount: Math.min(this.opsPerContest, limit.maxOps), perOpUsdc6: balance / BigInt(this.opsPerContest + 1), rationale: "no llm" };
 
-      const exec = await executeScout(e.agentId, e.tier, {
-        ops: strategy.opsCount,
-        perOpUsdc6: strategy.perOpUsdc6,
-      });
-      const rawScore = scoutScore({
+      // Strength up front: tier already sets the per-swap SIZE (10/25/40/70/100),
+      // so the training x traits portion becomes MORE swaps (real volume), not a
+      // post-hoc score multiplier. tierBase is excluded — tier's edge is already
+      // the bigger swap. This is the lever a well-trained, well-equipped lower
+      // tier uses to out-volume a bare higher tier; the game is in positioning.
+      const stats = await loadAgentStats(e.agentId).catch(() => ({}));
+      const equipped = await getLoadout("contest", contestId, e.agentId).catch(() => [] as string[]);
+      const strength = effectiveStrength(e.tier, stats, equipped, "scout");
+      const opBoost = strength.training * strength.traits;
+      const boostedOps = Math.max(1, Math.min(Math.round(strategy.opsCount * opBoost), limit.maxOps));
+
+      const exec = await executeScout(e.agentId, e.tier, { ops: boostedOps });
+      // Score IS the real USDC volume moved. No multiplier flip: traits/training
+      // already paid out as the extra swaps above, so the agent that genuinely
+      // moved the most volume wins.
+      const score = scoutScore({
         volumeUsdc6: exec.volumeUsdc6,
         opsCount: exec.opsCount,
         seed: contestId * 1000 + e.agentId,
       });
-      // tier x training x traits per docs/agentTier.md
-      const stats = await loadAgentStats(e.agentId).catch(() => ({}));
-      const equipped = await getLoadout("contest", contestId, e.agentId).catch(() => [] as string[]);
-      const strength = effectiveStrength(e.tier, stats, equipped, "scout");
-      const score = applyRouting(rawScore, strength, contestId * 1000 + e.agentId);
       // Surface the real tx hashes (most recent first) so the volume stage on
       // the live page renders the actual onchain activity. recentVolumes is
       // aligned 1:1 so each tape row can show its own value.
@@ -439,7 +451,9 @@ export class ScoutRunner implements Runner {
           opsCount: exec.opsCount,
           hot: account.address,
           strategy: strategy.rationale,
-          rawScore,
+          baseOps: strategy.opsCount,
+          boostedOps,
+          opBoost: Number(opBoost.toFixed(3)),
           strength: {
             effective: Number(strength.effective.toFixed(2)),
             tierBase: strength.tierBase,

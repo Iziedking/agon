@@ -127,7 +127,7 @@ const envSchema = z.object({
   // working balance further when their requirements are wired in.
   SCOUT_FUNDING_BY_TIER: z
     .string()
-    .default("10,25,50,100,200")
+    .default("10,25,40,70,100")
     .transform((s) => s.split(",").map((n) => Number(n.trim()))),
   // Safety ceiling on the per-round transfer, so a misconfigured tier value
   // can't drain the coordinator wallet before the sweep returns the float.
