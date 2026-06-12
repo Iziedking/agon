@@ -308,38 +308,60 @@ function FaucetCard() {
   const { address } = useOperatorAddress();
   const [copied, setCopied] = useState(false);
 
-  async function onClick() {
+  function onClick() {
+    // Fire the clipboard write without awaiting so window.open stays inside the
+    // user gesture (an await before it can trip the popup blocker). The faucet
+    // opens in a new tab, so the inline "copied" line is easy to miss; the
+    // toast below plus a 5s hold make the confirmation visible on return.
     if (address) {
-      try {
-        await navigator.clipboard.writeText(address);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      } catch {
-        // Clipboard blocked (rare); open the faucet anyway.
-      }
+      navigator.clipboard
+        .writeText(address)
+        .then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 5000);
+        })
+        .catch(() => {
+          /* clipboard blocked (rare); the faucet still opens */
+        });
     }
     window.open("https://faucet.circle.com", "_blank", "noopener,noreferrer");
   }
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      title="Copies your wallet address, then opens the Circle USDC faucet in a new tab"
-      className="group mt-4 flex w-full items-center justify-between gap-3 border border-[color:var(--hairline-strong)] bg-canvas-2 px-4 py-3 text-left transition-colors hover:border-ink"
-    >
-      <span className="min-w-0">
-        <span className="block font-mono text-[11px] uppercase tracking-[0.14em] text-ink">
-          <span aria-hidden className="text-accent">■</span> NO GAS? GRAB FREE USDC
+    <>
+      <button
+        type="button"
+        onClick={onClick}
+        title="Copies your wallet address, then opens the Circle USDC faucet in a new tab"
+        className="group mt-4 flex w-full items-center justify-between gap-3 border border-[color:var(--hairline-strong)] bg-canvas-2 px-4 py-3 text-left transition-colors hover:border-ink"
+      >
+        <span className="min-w-0">
+          <span className="block font-mono text-[11px] uppercase tracking-[0.14em] text-ink">
+            <span aria-hidden className="text-accent">■</span> NO GAS? GRAB FREE USDC
+          </span>
+          <span className="mt-1 block font-mono text-[11px] leading-[1.5] text-ink-2">
+            on arc, gas is usdc.{" "}
+            {copied ? (
+              <span className="text-[color:var(--ok)]">✓ address copied. paste it on the faucet.</span>
+            ) : (
+              "tap to copy your wallet and open the faucet."
+            )}
+          </span>
         </span>
-        <span className="mt-1 block font-mono text-[11px] leading-[1.5] text-ink-2">
-          on arc, gas is usdc. {copied ? "address copied. paste it on the faucet." : "tap to copy your wallet and open the faucet."}
+        <span aria-hidden className="flex-none font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3 group-hover:text-ink">
+          {copied ? "COPIED ✓" : "COPY & OPEN"} ↗
         </span>
-      </span>
-      <span aria-hidden className="flex-none font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3 group-hover:text-ink">
-        {copied ? "COPIED" : "COPY & OPEN"} ↗
-      </span>
-    </button>
+      </button>
+      {copied ? (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-6 left-1/2 z-modal -translate-x-1/2 border border-[color:var(--accent-ink)] bg-accent px-4 py-2.5 font-mono text-[12px] uppercase tracking-[0.12em] text-accent-ink shadow-[0_8px_24px_rgba(26,22,18,0.2)]"
+        >
+          ✓ wallet address copied. paste it on the faucet.
+        </div>
+      ) : null}
+    </>
   );
 }
 
