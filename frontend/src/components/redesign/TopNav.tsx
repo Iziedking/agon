@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { LoginButton } from "@/components/pengu/LoginButton";
 import { ProfileLink } from "@/components/pengu/ProfileLink";
 import { ArcChainChip } from "@/components/redesign/ArcChainChip";
-import { ChainBalanceChip } from "@/components/redesign/ChainBalanceChip";
+import { WalletBalanceChip } from "@/components/redesign/WalletBalanceChip";
 import { ArcRunMark } from "@/components/redesign/ArcRunMark";
 import { NotificationBell } from "@/components/redesign/NotificationBell";
 
@@ -66,7 +66,7 @@ export function TopNav() {
         </nav>
 
         <div className="flex items-center gap-2">
-          <ChainBalanceChip />
+          <WalletBalanceChip />
           <ArcChainChip />
           <NotificationBell />
           <LoginButton />
@@ -85,6 +85,9 @@ export function TopNav() {
       {open ? (
         <div className="border-t border-[color:var(--hairline)] bg-canvas md:hidden">
           <nav className="mx-auto flex max-w-[1600px] flex-col px-4 py-2 sm:px-6">
+            {/* balance up top: the nav chip is hidden on phones, so this is
+                where mobile users see their USDC. */}
+            <WalletBalanceChip variant="row" />
             {ROUTES.map((r) => {
               const active = pathname === r.href || pathname.startsWith(`${r.href}/`);
               return (
