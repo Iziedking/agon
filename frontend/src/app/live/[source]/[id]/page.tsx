@@ -6,6 +6,7 @@ import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/redesign/Footer";
 import { BracketedCell, Robot, robotVariantForId, StatusChip, TagButton } from "@/components/redesign";
 import { EventHero, EventStage, normalizeStageKind, RealSolves, type StageKind } from "@/components/redesign/stages";
+import { PrizeSplitNote } from "@/components/redesign/PrizeSplitNote";
 import { useContestSocket } from "@/hooks/useContestSocket";
 import { fetchArcanaPins, type PinnedMarket } from "@/lib/arcanaPins";
 import { nameFor, useAgentNames } from "@/hooks/useAgentNames";
@@ -120,6 +121,7 @@ function ContestFocus({ id }: { id: number }) {
             endHint="results land shortly after"
             meta={`${c.entrants} ENTRANTS · TOP ${c.topN} SHARE`}
           />
+          <PrizeSplitNote source="contest" id={id} />
 
           <ConnectionLine connected={connected} live={!!live && entries.length > 0} />
 
@@ -218,6 +220,7 @@ function ChallengeFocus({ id }: { id: number }) {
             endHint={ch.status === 0 ? "scoring opens after" : "results land shortly after"}
             meta={`${ch.entrants}/${ch.maxEntrants} STAKED · ${formatUsdc(ch.stake)} STAKE`}
           />
+          <PrizeSplitNote source="challenge" id={id} />
 
           <ConnectionLine connected={connected} live={!!live && entries.length > 0} />
 

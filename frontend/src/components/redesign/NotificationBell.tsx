@@ -14,6 +14,7 @@ const KIND_MARK: Record<string, string> = {
   challenge_win: "■",
   challenge_invite: "■",
   challenge_refund: "■",
+  syndicate_payout: "■",
   balance_credit: "■",
   balance_debit: "■",
   training_done: "■",

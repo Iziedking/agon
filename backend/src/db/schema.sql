@@ -182,6 +182,12 @@ create index if not exists entries_operator_idx on entries(operator);
 -- Idempotent column add so existing DBs pick up scoring_mode without a
 -- manual migration. Default null = treat as pnl_mtm at scoring time.
 alter table contests add column if not exists scoring_mode text;
+-- Creator-set prize distribution. payout_preset is a key from PAYOUT_PRESETS
+-- (winner_take_all | top2 | top3 | top5_half_field | even_all) or 'custom';
+-- payout_config holds the custom { winnersBps:[], restSharedBps } when custom.
+-- Null = legacy scoring-mode curve, so old contests settle unchanged.
+alter table contests add column if not exists payout_preset text;
+alter table contests add column if not exists payout_config jsonb;
 
 -- Tier snapshot at entry time. The indexer reads getTier(agentId, cType)
 -- once when EntryRegistered fires and stores it here, so the runner's
@@ -248,6 +254,30 @@ create table if not exists syndicate_war_results (
 );
 create index if not exists war_results_week_idx on syndicate_war_results(week_id, rank);
 
+-- Weekly syndicate reward pool. One row per ISO-week with the total USDC set
+-- aside (6-dec), computed once at week close. The row's existence is the guard
+-- that the week was already split, so the computation is idempotent.
+create table if not exists syndicate_pool_weeks (
+  week_id     text primary key,
+  pool_usdc6  numeric not null,
+  computed_at timestamptz not null default now()
+);
+
+-- Per-member share of a week's pool, split by contribution. claimed flips when
+-- the member pulls it; claim_tx records the on-chain transfer. Unclaimed shares
+-- simply accumulate across weeks until claimed.
+create table if not exists syndicate_pool_shares (
+  week_id      text not null,
+  operator     text not null,
+  syndicate_id bigint not null,
+  share_usdc6  numeric not null,
+  claimed      boolean not null default false,
+  claim_tx     text,
+  claimed_at   timestamptz,
+  primary key (week_id, operator)
+);
+create index if not exists syndicate_pool_shares_op_idx on syndicate_pool_shares(operator, claimed);
+
 -- Email OTP proof-of-ownership. Required before a never-seen email can
 -- register a passkey for the first time (so an attacker can't claim
 -- someone else's email and mint a Circle wallet under it). Returning
@@ -276,6 +306,9 @@ create table if not exists challenges (
 );
 
 alter table challenges add column if not exists scoring_mode text;
+-- Creator-set prize distribution, same shape as contests above.
+alter table challenges add column if not exists payout_preset text;
+alter table challenges add column if not exists payout_config jsonb;
 
 create table if not exists syndicates (
   id               bigint primary key,

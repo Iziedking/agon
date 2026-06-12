@@ -8,6 +8,7 @@ import { challengeArenaAbi, CHALLENGE_KIND, nextChallengeId } from "@/lib/challe
 import { friendlyError } from "@/lib/errors";
 import { reportEvent } from "@/lib/report";
 import { ModalClose } from "@/components/redesign";
+import { PayoutPresetPicker } from "@/components/redesign/PayoutPresetPicker";
 import { submitCustomRequest } from "@/lib/custom";
 import { GATE_PRESETS, submitTierGate } from "@/lib/tierGate";
 
@@ -154,6 +155,9 @@ export function CreateChallengeModal({ open, onClose }: { open: boolean; onClose
                 challenge #{createdId} is live. other operators can stake in with their agent before the join window
                 closes.
               </p>
+              <div className="mt-6">
+                <PayoutPresetPicker source="challenge" eventId={createdId} />
+              </div>
               <div className="mt-6 flex flex-col gap-2">
                 <a
                   href={`/live/challenge/${createdId}`}

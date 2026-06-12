@@ -10,6 +10,7 @@ import { contestEngineAbi, listingFeeForPool, metricForType, nextContestId } fro
 import { friendlyError } from "@/lib/errors";
 import { reportEvent } from "@/lib/report";
 import { ModalClose } from "@/components/redesign";
+import { PayoutPresetPicker } from "@/components/redesign/PayoutPresetPicker";
 import { submitCustomRequest } from "@/lib/custom";
 import { GATE_PRESETS, submitTierGate } from "@/lib/tierGate";
 
@@ -173,6 +174,9 @@ export function CreateContestModal({ open, onClose }: { open: boolean; onClose: 
               <p className="font-mono text-sm leading-[1.6] text-ink-2">
                 campaign #{createdId} is live. operators can enter it now.
               </p>
+              <div className="mt-6">
+                <PayoutPresetPicker source="contest" eventId={createdId} />
+              </div>
               <div className="mt-6 flex flex-col gap-2">
                 <a
                   href={`/live/contest/${createdId}`}

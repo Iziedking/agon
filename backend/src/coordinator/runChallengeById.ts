@@ -11,7 +11,7 @@ import { SolverRunner } from "../runners/solver.js";
 import type { AgentResult, ContestEntryInput } from "../runners/types.js";
 import { fundHotWallets, sweepHotWallets } from "./contestOps.js";
 import { merkleRoot, payoutLeaf } from "./merkle.js";
-import { computePayoutsForMode, normalizeScoringMode } from "./payouts.js";
+import { computeDistribution, normalizeScoringMode } from "./payouts.js";
 import { creditPoints, postValidatorFeedback } from "./reputation.js";
 import { applyTraitMultipliers, awardPlacementTraits, fetchAgentMultipliers } from "./traits.js";
 import { notify } from "../notifications/index.js";
@@ -450,11 +450,13 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
       // challenges fall back to rank-based; Arcana challenges use
       // pnl_mtm / pnl_realized / volume depending on what the creator
       // picked at create time.
-      const modeRow = await query<{ scoring_mode: string | null }>(
-        "select scoring_mode from challenges where id = $1",
+      const modeRow = await query<{ scoring_mode: string | null; payout_preset: string | null; payout_config: unknown }>(
+        "select scoring_mode, payout_preset, payout_config from challenges where id = $1",
         [challengeId],
       );
       const scoringMode = normalizeScoringMode(modeRow.rows[0]?.scoring_mode);
+      const payoutPreset = modeRow.rows[0]?.payout_preset ?? null;
+      const payoutConfig = modeRow.rows[0]?.payout_config ?? null;
 
       // PNL_REALIZED gate: same logic as runContestById. Bail
       // early if pinned markets unresolved and under 48h. Resolver sweep
@@ -485,7 +487,7 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
         }
       }
 
-      payouts = computePayoutsForMode(scoringMode, results, pot - fee);
+      payouts = computeDistribution(payoutPreset, payoutConfig, scoringMode, results, pot - fee);
       if (payouts.length === 0) {
         // A LOCKED challenge can only be cancelled after its resolve deadline,
         // so leave it; if it never scores, the deadline path above cancels it

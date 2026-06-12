@@ -149,6 +149,13 @@ const envSchema = z.object({
   ARCANA_START_BLOCK: z.coerce.bigint().nonnegative().default(43667548n),
   ARCANA_INDEXING: z.coerce.boolean().default(true),
 
+  // Weekly syndicate reward pool, in whole USDC. At each ISO-week close the
+  // coordinator splits this across every member by their contribution share
+  // that week, and members claim their slice from the dashboard (paid from the
+  // treasury/coordinator wallet, same dev-controlled path as withdrawals).
+  // Default 0 disables the pool, so it ships dark until funded.
+  SYNDICATE_POOL_WEEKLY_USDC: z.coerce.number().nonnegative().default(0),
+
   // Analyst autofund. Coordinator drips USDC to an agent's hot wallet when
   // it enters an Analyst contest and is under-funded, so agents can actually
   // trade on Arcana. Per-agent: one drip per UTC day. Global: a daily cap so
@@ -324,6 +331,7 @@ export const config = {
   contracts: deployments.contracts,
   external: deployments.external,
   adminToken: env.ADMIN_TOKEN,
+  syndicatePoolWeeklyUsdc: env.SYNDICATE_POOL_WEEKLY_USDC,
   auth: {
     jwtSecret: env.JWT_SECRET,
     port: env.AUTH_PORT,

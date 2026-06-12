@@ -12,7 +12,7 @@ import type { AgentResult, ContestEntryInput } from "../runners/types.js";
 import { fundHotWallets, sweepHotWallets } from "./contestOps.js";
 import { applyReputation, creditPoints, postValidatorFeedback, qualifiedField } from "./reputation.js";
 import { merkleRoot, payoutLeaf } from "./merkle.js";
-import { computePayoutsForMode, normalizeScoringMode } from "./payouts.js";
+import { computeDistribution, normalizeScoringMode } from "./payouts.js";
 import { applyTraitMultipliers, awardPlacementTraits, fetchAgentMultipliers } from "./traits.js";
 import { notify } from "../notifications/index.js";
 import { getTierGate, tierAllowed } from "../lib/tierGate.js";
@@ -289,11 +289,18 @@ export async function runContestById(contestId: number, broadcast: (message: unk
   // Pick the payout curve based on the creator's scoring_mode (Arcana
   // contests only; Scout/Solver fall through to the rank-based curve
   // inside the dispatcher). Default null = pnl_mtm.
-  const modeRow = await query<{ scoring_mode: string | null; end_block: string | null }>(
-    "select scoring_mode, created_block::text as end_block from contests where id = $1",
+  const modeRow = await query<{
+    scoring_mode: string | null;
+    payout_preset: string | null;
+    payout_config: unknown;
+    end_block: string | null;
+  }>(
+    "select scoring_mode, payout_preset, payout_config, created_block::text as end_block from contests where id = $1",
     [contestId],
   );
   const scoringMode = normalizeScoringMode(modeRow.rows[0]?.scoring_mode);
+  const payoutPreset = modeRow.rows[0]?.payout_preset ?? null;
+  const payoutConfig = modeRow.rows[0]?.payout_config ?? null;
 
   // PNL_REALIZED gate: if any pinned market is still unresolved and we're
   // under the 48h timeout, bail. The autopilot sweeper retries every 60s
@@ -324,7 +331,7 @@ export async function runContestById(contestId: number, broadcast: (message: unk
     }
   }
 
-  const payouts = computePayoutsForMode(scoringMode, results, claimable);
+  const payouts = computeDistribution(payoutPreset, payoutConfig, scoringMode, results, claimable);
 
   // Persist the payout tree (in leaf order) so the claim-proof endpoint can
   // rebuild the exact tree and serve each winner their proof.

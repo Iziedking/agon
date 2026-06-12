@@ -6,8 +6,11 @@ import { deleteCookie, setCookie } from "hono/cookie";
 import { createHash, createHmac, randomBytes } from "node:crypto";
 import { generateSiweNonce, parseSiweMessage } from "viem/siwe";
 
+import { createWalletClient, http, parseAbi } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 import { config } from "../config/index.js";
-import { publicClient } from "../chain/arc.js";
+import { publicClient, arcTestnet } from "../chain/arc.js";
+import { usdcMinimalAbi } from "../chain/abi.js";
 import { query } from "../db/pool.js";
 import { logEvent } from "../events.js";
 import { notify } from "../notifications/index.js";
@@ -852,6 +855,293 @@ app.get("/admin/events", async (c) => {
   return c.json({ events: rows });
 });
 
+// ----- Admin console: live contract state + treasury actions -----
+//
+// All gated by the x-admin-token header (same token as /admin/events). Reads
+// expose every contract's live USDC balance so the team can show the system
+// running in front of judges. Writes are signed by the coordinator wallet,
+// which holds COORDINATOR_ROLE and is the treasury for now (the standalone
+// Treasury contract is parked in todo.md). USDC on Arc is the native token, so
+// balances come from balanceOf at the canonical USDC address.
+
+function adminAuthed(c: { req: { header: (k: string) => string | undefined } }): boolean {
+  return Boolean(config.adminToken) && c.req.header("x-admin-token") === config.adminToken;
+}
+
+function coordinatorSigner() {
+  const pk = config.coordinator.privateKey;
+  if (!pk) return null;
+  const account = privateKeyToAccount(pk);
+  const wallet = createWalletClient({ account, chain: arcTestnet, transport: http(config.rpcHttp) });
+  return { account, wallet };
+}
+
+const usdc6 = (b: bigint) => (Number(b) / 1e6).toFixed(2);
+const cancelContestAbi = parseAbi(["function cancelContest(uint256 contestId)"]);
+const cancelChallengeAbi = parseAbi(["function cancelChallenge(uint256 id)"]);
+const treasuryViewAbi = parseAbi(["function treasury() view returns (address)"]);
+
+// Live snapshot: contract addresses, their USDC balances, the treasury and
+// coordinator wallets, and headline DB counts.
+app.get("/admin/overview", async (c) => {
+  if (!config.adminToken) return c.json({ error: "admin disabled (set ADMIN_TOKEN)" }, 503);
+  if (!adminAuthed(c)) return c.json({ error: "unauthorized" }, 401);
+
+  const contracts = [
+    { key: "ContestEngine", address: config.contracts.ContestEngine },
+    { key: "ChallengeArena", address: config.contracts.ChallengeArena },
+    { key: "PrizeEscrow", address: config.contracts.PrizeEscrow },
+    { key: "AgentRegistry", address: config.contracts.AgentRegistry },
+    { key: "SyndicateFactory", address: config.contracts.SyndicateFactory },
+    { key: "PointsLedger", address: config.contracts.PointsLedger },
+  ];
+
+  // Treasury is wherever PrizeEscrow currently sends skimmed fees.
+  let treasuryAddr: `0x${string}` | null = null;
+  try {
+    treasuryAddr = (await publicClient.readContract({
+      address: config.contracts.PrizeEscrow,
+      abi: treasuryViewAbi,
+      functionName: "treasury",
+    })) as `0x${string}`;
+  } catch { /* leave null if the read fails */ }
+
+  const signer = coordinatorSigner();
+  const coordinatorAddress = signer?.account.address ?? null;
+
+  const targets: `0x${string}`[] = [
+    ...contracts.map((x) => x.address as `0x${string}`),
+    ...(treasuryAddr ? [treasuryAddr] : []),
+    ...(coordinatorAddress ? [coordinatorAddress] : []),
+  ];
+  const balances = await Promise.all(
+    targets.map((a) =>
+      publicClient
+        .readContract({ address: config.external.USDC, abi: usdcMinimalAbi, functionName: "balanceOf", args: [a] })
+        .then((b) => b as bigint)
+        .catch(() => 0n),
+    ),
+  );
+  const balMap = new Map<string, bigint>();
+  targets.forEach((a, i) => balMap.set(a.toLowerCase(), balances[i] ?? 0n));
+  const coordGas = coordinatorAddress
+    ? await publicClient.getBalance({ address: coordinatorAddress }).catch(() => 0n)
+    : 0n;
+
+  const counts = await query<{
+    contests: string; challenges: string; operators: string; agents: string;
+    open_contests: string; live_challenges: string;
+  }>(
+    `select
+       (select count(*) from contests) as contests,
+       (select count(*) from challenges) as challenges,
+       (select count(*) from operators) as operators,
+       (select count(*) from agents) as agents,
+       (select count(*) from contests where status = 'open') as open_contests,
+       (select count(*) from challenges where status in ('open','locked')) as live_challenges`,
+  );
+  const k = counts.rows[0];
+
+  return c.json({
+    chainId: config.chainId,
+    usdc: config.external.USDC,
+    coordinator: coordinatorAddress
+      ? { address: coordinatorAddress, usdc: usdc6(balMap.get(coordinatorAddress.toLowerCase()) ?? 0n), gas: usdc6(coordGas) }
+      : null,
+    treasury: treasuryAddr
+      ? { address: treasuryAddr, usdc: usdc6(balMap.get(treasuryAddr.toLowerCase()) ?? 0n) }
+      : null,
+    contracts: contracts.map((x) => ({
+      key: x.key,
+      address: x.address,
+      usdc: usdc6(balMap.get(x.address.toLowerCase()) ?? 0n),
+    })),
+    counts: {
+      contests: Number(k?.contests ?? 0),
+      challenges: Number(k?.challenges ?? 0),
+      operators: Number(k?.operators ?? 0),
+      agents: Number(k?.agents ?? 0),
+      openContests: Number(k?.open_contests ?? 0),
+      liveChallenges: Number(k?.live_challenges ?? 0),
+    },
+  });
+});
+
+// Withdraw treasury USDC to a destination. Signed by the coordinator wallet
+// (the treasury for now). amount is a USDC decimal string. Balance-checked so
+// it can't overdraw the signer.
+app.post("/admin/treasury/withdraw", async (c) => {
+  if (!config.adminToken) return c.json({ error: "admin disabled (set ADMIN_TOKEN)" }, 503);
+  if (!adminAuthed(c)) return c.json({ error: "unauthorized" }, 401);
+
+  const body = await c.req.json<{ to?: string; amount?: string | number }>();
+  const to = (body.to ?? "").trim();
+  if (!/^0x[a-fA-F0-9]{40}$/.test(to)) return c.json({ error: "invalid destination address" }, 400);
+  const amountNum = Number(body.amount);
+  if (!Number.isFinite(amountNum) || amountNum <= 0) return c.json({ error: "amount must be positive" }, 400);
+  const amount6 = BigInt(Math.round(amountNum * 1e6));
+
+  const signer = coordinatorSigner();
+  if (!signer) return c.json({ error: "no coordinator signer configured" }, 503);
+
+  const bal = (await publicClient.readContract({
+    address: config.external.USDC,
+    abi: usdcMinimalAbi,
+    functionName: "balanceOf",
+    args: [signer.account.address],
+  })) as bigint;
+  if (amount6 > bal) return c.json({ error: `insufficient treasury balance (have ${usdc6(bal)} USDC)` }, 400);
+
+  try {
+    const hash = await signer.wallet.writeContract({
+      address: config.external.USDC,
+      abi: usdcMinimalAbi,
+      functionName: "transfer",
+      args: [to as `0x${string}`, amount6],
+    });
+    await logEvent({
+      level: "warn",
+      kind: "admin_treasury_withdraw",
+      message: `withdrew ${usdc6(amount6)} USDC to ${to}`,
+      source: "auth",
+      context: { to, amount6: amount6.toString(), hash },
+    });
+    return c.json({ ok: true, hash });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : "withdraw failed" }, 500);
+  }
+});
+
+// Cancel a wrongly-opened contest or challenge. The coordinator wallet holds
+// COORDINATOR_ROLE, so it can cancel either. A cancelled contest refunds the
+// sponsor's pool; a cancelled challenge lets entrants pull their stake back.
+app.post("/admin/:source/:id/cancel", async (c) => {
+  if (!config.adminToken) return c.json({ error: "admin disabled (set ADMIN_TOKEN)" }, 503);
+  if (!adminAuthed(c)) return c.json({ error: "unauthorized" }, 401);
+  const source = c.req.param("source");
+  const id = Number(c.req.param("id"));
+  if (!["contest", "challenge"].includes(source) || !Number.isFinite(id)) {
+    return c.json({ error: "bad source or id" }, 400);
+  }
+  const signer = coordinatorSigner();
+  if (!signer) return c.json({ error: "no coordinator signer configured" }, 503);
+
+  try {
+    const hash =
+      source === "contest"
+        ? await signer.wallet.writeContract({
+            address: config.contracts.ContestEngine,
+            abi: cancelContestAbi,
+            functionName: "cancelContest",
+            args: [BigInt(id)],
+          })
+        : await signer.wallet.writeContract({
+            address: config.contracts.ChallengeArena,
+            abi: cancelChallengeAbi,
+            functionName: "cancelChallenge",
+            args: [BigInt(id)],
+          });
+    await logEvent({
+      level: "warn",
+      kind: "admin_cancel",
+      message: `cancelled ${source} #${id}`,
+      source: "auth",
+      context: { source, id, hash },
+    });
+    return c.json({ ok: true, hash });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : "cancel failed" }, 500);
+  }
+});
+
+// ----- Weekly syndicate reward pool -----
+//
+// The coordinator splits a config-funded pool across syndicate members each
+// week (see computeSyndicatePool). These endpoints let a member see their
+// unclaimed share and pull it. The payout is a dev-controlled USDC transfer
+// from the coordinator/treasury wallet, the same path as withdrawals.
+
+// Public read: an operator's unclaimed syndicate share total + per-week rows.
+app.get("/operators/:address/syndicate-pool", async (c) => {
+  const address = (c.req.param("address") ?? "").toLowerCase();
+  if (!/^0x[a-f0-9]{40}$/.test(address)) return c.json({ error: "invalid address" }, 400);
+  const { rows } = await query<{ week_id: string; share_usdc6: string; claimed: boolean; claim_tx: string | null }>(
+    `select week_id, share_usdc6::text as share_usdc6, claimed, claim_tx
+       from syndicate_pool_shares where operator = $1 order by week_id desc limit 20`,
+    [address],
+  );
+  const unclaimed6 = rows
+    .filter((r) => !r.claimed)
+    .reduce((s, r) => s + BigInt(r.share_usdc6), 0n);
+  return c.json({
+    unclaimedUsdc6: unclaimed6.toString(),
+    weeks: rows.map((r) => ({
+      weekId: r.week_id,
+      shareUsdc6: r.share_usdc6,
+      claimed: r.claimed,
+      claimTx: r.claim_tx,
+    })),
+  });
+});
+
+// Claim all of the caller's unclaimed syndicate shares in one transfer. Flips
+// the rows to claimed first (atomic, so a concurrent call can't double-claim),
+// then sends; on send failure it reverts the rows it just flipped.
+app.post("/syndicate-pool/claim", requireAuth, async (c) => {
+  const operator = (c.get("address") as string).toLowerCase();
+  const signer = coordinatorSigner();
+  if (!signer) return c.json({ error: "payouts unavailable (no signer configured)" }, 503);
+
+  // Atomically claim the unclaimed rows and capture them.
+  const claimed = await query<{ week_id: string; share_usdc6: string }>(
+    `update syndicate_pool_shares set claimed = true, claimed_at = now()
+      where operator = $1 and claimed = false
+      returning week_id, share_usdc6::text as share_usdc6`,
+    [operator],
+  );
+  if (claimed.rows.length === 0) return c.json({ error: "nothing to claim" }, 400);
+  const weekIds = claimed.rows.map((r) => r.week_id);
+  const total6 = claimed.rows.reduce((s, r) => s + BigInt(r.share_usdc6), 0n);
+
+  const revert = async () => {
+    await query(
+      `update syndicate_pool_shares set claimed = false, claimed_at = null
+        where operator = $1 and claim_tx is null and week_id = any($2::text[])`,
+      [operator, weekIds],
+    );
+  };
+
+  // Don't pay out more than the treasury wallet holds.
+  const bal = (await publicClient.readContract({
+    address: config.external.USDC,
+    abi: usdcMinimalAbi,
+    functionName: "balanceOf",
+    args: [signer.account.address],
+  })) as bigint;
+  if (total6 > bal) {
+    await revert();
+    return c.json({ error: "treasury is funding the pool, try again shortly" }, 503);
+  }
+
+  try {
+    const hash = await signer.wallet.writeContract({
+      address: config.external.USDC,
+      abi: usdcMinimalAbi,
+      functionName: "transfer",
+      args: [operator as `0x${string}`, total6],
+    });
+    await query(
+      `update syndicate_pool_shares set claim_tx = $2
+        where operator = $1 and claim_tx is null and week_id = any($3::text[])`,
+      [operator, hash, weekIds],
+    );
+    return c.json({ ok: true, hash, amountUsdc6: total6.toString() });
+  } catch (e) {
+    await revert();
+    return c.json({ error: e instanceof Error ? e.message : "claim transfer failed" }, 500);
+  }
+});
+
 // Set the scoring_mode for a contest or challenge after creation. Called
 // by the create-modal once the on-chain tx confirms. Accepts one of:
 // pnl_mtm | pnl_realized | volume. Falls through to pnl_mtm if anything
@@ -889,6 +1179,82 @@ app.post("/events/:source/:id/scoring-mode", requireAuth, async (c) => {
     await query("update challenges set scoring_mode = $1 where id = $2", [mode, id]);
   }
   return c.json({ ok: true, mode });
+});
+
+// Set the prize distribution for a contest or challenge after creation.
+// Creator-gated like scoring-mode. preset is one of the fixed keys, or
+// 'custom' with a { winnersBps:[], restSharedBps } config that must sum to
+// 10000 (basis points). Stored off-chain; settlement reads it to split the
+// pool. Null preset keeps the legacy curve.
+const PAYOUT_PRESET_KEYS = new Set([
+  "standard",
+  "winner_take_all",
+  "top2",
+  "top3",
+  "top5_half_field",
+  "even_all",
+  "custom",
+]);
+
+function validCustomPayout(config: unknown): boolean {
+  const c = config as { winnersBps?: unknown; restSharedBps?: unknown } | null;
+  if (!c || !Array.isArray(c.winnersBps)) return false;
+  const rest = typeof c.restSharedBps === "number" ? c.restSharedBps : 0;
+  if (c.winnersBps.length > 20) return false;
+  if (!c.winnersBps.every((n) => Number.isInteger(n) && n >= 0 && n <= 10000)) return false;
+  if (!Number.isInteger(rest) || rest < 0 || rest > 10000) return false;
+  const sum = (c.winnersBps as number[]).reduce((a, b) => a + b, 0) + rest;
+  return sum === 10000;
+}
+
+app.post("/events/:source/:id/payout", requireAuth, async (c) => {
+  const operator = (c.get("address") as string).toLowerCase();
+  const source = c.req.param("source");
+  const id = Number(c.req.param("id"));
+  if (!["contest", "challenge"].includes(source) || !Number.isFinite(id)) {
+    return c.json({ error: "bad source or id" }, 400);
+  }
+  const body = await c.req.json<{ preset?: string; config?: unknown }>();
+  const preset = body.preset && PAYOUT_PRESET_KEYS.has(body.preset) ? body.preset : null;
+  if (!preset) return c.json({ error: "unknown payout preset" }, 400);
+  const config = preset === "custom" ? body.config ?? null : null;
+  if (preset === "custom" && !validCustomPayout(config)) {
+    return c.json({ error: "custom shares must be whole basis points summing to 10000" }, 400);
+  }
+  // 'standard' clears the override back to the legacy curve.
+  const storedPreset = preset === "standard" ? null : preset;
+
+  const table = source === "contest" ? "contests" : "challenges";
+  const ownerCol = source === "contest" ? "sponsor" : "creator";
+  const { rows } = await query<{ owner: string }>(
+    `select ${ownerCol} as owner from ${table} where id = $1`,
+    [id],
+  );
+  if (!rows[0]) return c.json({ error: `${source} not found` }, 404);
+  if (rows[0].owner.toLowerCase() !== operator) {
+    return c.json({ error: source === "contest" ? "not the sponsor" : "not the creator" }, 403);
+  }
+  await query(
+    `update ${table} set payout_preset = $1, payout_config = $2 where id = $3`,
+    [storedPreset, config ? JSON.stringify(config) : null, id],
+  );
+  return c.json({ ok: true, preset: storedPreset, config });
+});
+
+// Read the prize distribution so the live / detail page can show "top 5 take
+// 50%, rest shared" or similar. Public.
+app.get("/events/:source/:id/payout", async (c) => {
+  const source = c.req.param("source");
+  const id = Number(c.req.param("id"));
+  if (!["contest", "challenge"].includes(source) || !Number.isFinite(id)) {
+    return c.json({ preset: null, config: null });
+  }
+  const table = source === "contest" ? "contests" : "challenges";
+  const { rows } = await query<{ payout_preset: string | null; payout_config: unknown }>(
+    `select payout_preset, payout_config from ${table} where id = $1`,
+    [id],
+  );
+  return c.json({ preset: rows[0]?.payout_preset ?? null, config: rows[0]?.payout_config ?? null });
 });
 
 // Read the scoring_mode for a contest or challenge so the live page can
@@ -2910,6 +3276,42 @@ function verifyTelegramHash(data: Record<string, string>, botToken: string): boo
   return hmac === hash;
 }
 
+/// Fetch the user's Telegram profile photo through the Bot API and return it
+/// as a self-contained data URL. The login widget only includes photo_url when
+/// the user's privacy allows it, so this is the reliable path. We download the
+/// bytes server-side (the file link carries the bot token, so it must never
+/// reach the client) and inline them. Best-effort: returns null on any miss.
+async function fetchTelegramAvatarDataUrl(userId: string, botToken: string): Promise<string | null> {
+  try {
+    const photosRes = await fetch(
+      `https://api.telegram.org/bot${botToken}/getUserProfilePhotos?user_id=${userId}&limit=1`,
+    );
+    const photos = (await photosRes.json()) as {
+      result?: { photos?: Array<Array<{ file_id: string; width: number }>> };
+    };
+    const sizes = photos.result?.photos?.[0];
+    if (!sizes || sizes.length === 0) return null;
+    // Smallest size that is at least 160px, else the largest available, so the
+    // 40px avatar stays crisp without bloating the row.
+    const sorted = [...sizes].sort((a, b) => a.width - b.width);
+    const pick = sorted.find((s) => s.width >= 160) ?? sorted[sorted.length - 1]!;
+
+    const fileRes = await fetch(`https://api.telegram.org/bot${botToken}/getFile?file_id=${pick.file_id}`);
+    const fileJson = (await fileRes.json()) as { result?: { file_path?: string } };
+    const path = fileJson.result?.file_path;
+    if (!path) return null;
+
+    const imgRes = await fetch(`https://api.telegram.org/file/bot${botToken}/${path}`);
+    if (!imgRes.ok) return null;
+    const buf = Buffer.from(await imgRes.arrayBuffer());
+    if (buf.length === 0 || buf.length > 200_000) return null;
+    const mime = path.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg";
+    return `data:${mime};base64,${buf.toString("base64")}`;
+  } catch {
+    return null;
+  }
+}
+
 app.get("/auth/telegram/config", (c) =>
   c.json({ configured: telegramConfigured(), botUsername: config.auth.telegram.botUsername ?? null }),
 );
@@ -2935,12 +3337,14 @@ app.get("/auth/telegram/callback", requireAuth, async (c) => {
   }
 
   const username = q.username ?? null;
-  // The login widget includes photo_url; it's the only way to get a Telegram
-  // avatar (it can't be resolved from a username afterward), so capture it now.
-  const photoUrl = typeof q.photo_url === "string" ? q.photo_url : null;
+  // Prefer a self-hosted data URL fetched through the Bot API (works even when
+  // the widget omits photo_url, e.g. the user's privacy hides it from the
+  // widget). Fall back to the widget's photo_url string when the API misses.
+  const fetched = await fetchTelegramAvatarDataUrl(q.id, config.auth.telegram.botToken!);
+  const avatar = fetched ?? (typeof q.photo_url === "string" ? q.photo_url : null);
   await query(
     "update operators set telegram_id = $2, telegram_username = $3, telegram_avatar = $4 where address = $1",
-    [address, q.id, username, photoUrl],
+    [address, q.id, username, avatar],
   );
 
   const redirectTo = new URL(config.auth.appUrl);

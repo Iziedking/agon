@@ -22,6 +22,7 @@ import { HostCampaignButton } from "@/components/pengu/HostCampaignButton";
 import { LoginCTA } from "@/components/pengu/LoginCTA";
 import { MysteryClaimCard } from "@/components/pengu/MysteryClaimCard";
 import { RefundsWaiting } from "@/components/pengu/RefundsWaiting";
+import { SyndicatePoolCard } from "@/components/pengu/SyndicatePoolCard";
 import { PrizesPending } from "@/components/pengu/PrizesPending";
 import {
   CONTEST_TYPES,
@@ -297,6 +298,9 @@ export default function DashboardPage() {
 
       {/* REFUNDS WAITING: only renders when the user has cancelled challenges to pull back */}
       <RefundsWaiting address={address as `0x${string}`} />
+
+      {/* SYNDICATE POOL: weekly reward share, self-hides when nothing to claim */}
+      <SyndicatePoolCard address={address as `0x${string}`} />
 
       {/* MYSTERY CLAIM: kept as a bracketed sidecar */}
       {agents.length > 0 ? (

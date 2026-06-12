@@ -28,6 +28,140 @@ export function computePayouts(results: AgentResult[], claimable: bigint): Payou
   ];
 }
 
+// ----- Creator-set distribution presets -----
+//
+// A distribution preset decides how the claimable pool SPLITS across the
+// ranked field. It is orthogonal to scoring_mode, which only decides how the
+// field is RANKED. Every preset reduces to the same shape: a list of winner
+// shares (basis points, rank 1 first) plus a remainder split equally across
+// everyone else who joined. The two always sum to 10000.
+
+export interface PayoutSpec {
+  /// Basis-point share for each winner slot, rank 1 first. May be empty (the
+  /// whole pool is shared across the field, e.g. an even split).
+  winnersBps: number[];
+  /// Basis points shared equally across entrants ranked below the winner
+  /// slots. When nobody ranks below them, it falls back to the whole field so
+  /// the pool is never stranded in escrow.
+  restSharedBps: number;
+}
+
+/// The fixed preset menu offered in the create modal. Keys are stored on the
+/// contest / challenge row. 'standard' (or null) keeps the legacy curve.
+export const PAYOUT_PRESETS: Record<string, PayoutSpec> = {
+  // One winner takes the whole pool.
+  winner_take_all: { winnersBps: [10000], restSharedBps: 0 },
+  // Two winners, 60 / 40.
+  top2: { winnersBps: [6000, 4000], restSharedBps: 0 },
+  // Three winners, 50 / 30 / 20.
+  top3: { winnersBps: [5000, 3000, 2000], restSharedBps: 0 },
+  // Top five share half the pool (graded), the rest of the field splits the
+  // other half equally. The headline "top 5 take 50%, rest shared" preset.
+  top5_half_field: { winnersBps: [2000, 1200, 800, 600, 400], restSharedBps: 5000 },
+  // Everyone who joined splits the pool equally.
+  even_all: { winnersBps: [], restSharedBps: 10000 },
+};
+
+/// Resolve a stored preset key + optional custom config into a spec, or null
+/// to mean "use the legacy curve". Custom config is validated strictly: the
+/// shares must be whole basis points that sum to exactly 10000, so the pool is
+/// never over- or under-allocated.
+export function resolvePayoutSpec(
+  preset: string | null | undefined,
+  config: unknown,
+): PayoutSpec | null {
+  if (!preset || preset === "standard") return null;
+  if (preset !== "custom") return PAYOUT_PRESETS[preset] ?? null;
+
+  // Custom: { winnersBps: number[], restSharedBps: number }.
+  const c = config as { winnersBps?: unknown; restSharedBps?: unknown } | null;
+  if (!c || !Array.isArray(c.winnersBps)) return null;
+  const winnersBps = c.winnersBps;
+  const restSharedBps = typeof c.restSharedBps === "number" ? c.restSharedBps : 0;
+  if (winnersBps.length > 20) return null;
+  if (!winnersBps.every((n) => Number.isInteger(n) && n >= 0 && n <= 10000)) return null;
+  if (!Number.isInteger(restSharedBps) || restSharedBps < 0 || restSharedBps > 10000) return null;
+  const sum = winnersBps.reduce((a: number, b: number) => a + b, 0) + restSharedBps;
+  if (sum !== 10000) return null;
+  return { winnersBps: winnersBps as number[], restSharedBps };
+}
+
+/// Apply a distribution spec to ranked runner results. Aggregates by operator
+/// (best score wins the rank slot) so an operator who fielded two agents still
+/// occupies one slot and claims one leaf. Pays nothing when no one scored, so
+/// an empty field refunds / sweeps exactly as before.
+export function computePresetPayouts(
+  spec: PayoutSpec,
+  results: AgentResult[],
+  claimable: bigint,
+): Payout[] {
+  const ranked = [...results].sort((a, b) => b.score - a.score);
+  if (!ranked.some((r) => r.score > 0)) return [];
+
+  // One slot per operator, highest score first (ranked is already desc, so the
+  // first time we see an operator is their best result).
+  const seen = new Set<string>();
+  const ops: `0x${string}`[] = [];
+  for (const r of ranked) {
+    const key = r.operator.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    ops.push(r.operator);
+  }
+
+  const amounts = new Map<`0x${string}`, bigint>();
+  let allocated = 0n;
+  const add = (op: `0x${string}`, amt: bigint) => {
+    if (amt <= 0n) return;
+    amounts.set(op, (amounts.get(op) ?? 0n) + amt);
+    allocated += amt;
+  };
+
+  const winners = ops.slice(0, spec.winnersBps.length);
+  winners.forEach((op, i) => add(op, (claimable * BigInt(spec.winnersBps[i]!)) / 10_000n));
+
+  if (spec.restSharedBps > 0) {
+    const below = ops.slice(spec.winnersBps.length);
+    // When nobody ranks below the winners, share the remainder across the
+    // whole field so the pool isn't left in escrow.
+    const group = below.length > 0 ? below : ops;
+    const restPool = (claimable * BigInt(spec.restSharedBps)) / 10_000n;
+    if (group.length > 0 && restPool > 0n) {
+      const each = restPool / BigInt(group.length);
+      for (const op of group) add(op, each);
+    }
+  }
+
+  // Rounding residual (floor division above) lands on rank 1 so the leaves sum
+  // to claimable exactly and escrow never strands dust.
+  const head = winners[0] ?? ops[0];
+  if (head) {
+    const residual = claimable - allocated;
+    if (residual !== 0n) amounts.set(head, (amounts.get(head) ?? 0n) + residual);
+  }
+
+  return Array.from(amounts.entries())
+    .map(([operator, amount]) => ({ operator, amount }))
+    .filter((p) => p.amount > 0n)
+    .sort((a, b) => (b.amount > a.amount ? 1 : b.amount < a.amount ? -1 : 0));
+}
+
+/// Top-level settlement entry point. When the creator pinned a distribution
+/// preset, it wins and splits the pool over the ranked field. Otherwise we
+/// fall back to the legacy scoring-mode curve, so every event created before
+/// this feature settles exactly as it did.
+export function computeDistribution(
+  preset: string | null | undefined,
+  config: unknown,
+  mode: ScoringMode,
+  results: AgentResult[],
+  claimable: bigint,
+): Payout[] {
+  const spec = resolvePayoutSpec(preset, config);
+  if (!spec) return computePayoutsForMode(mode, results, claimable);
+  return computePresetPayouts(spec, results, claimable);
+}
+
 /// True when the results came from the Arcana branch of the Analyst runner
 /// (any result with detail.source === "arcana" qualifies). Used by the
 /// settlement path to switch payout curves.
