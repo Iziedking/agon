@@ -36,7 +36,7 @@ export default function LeaderboardPage() {
 
   useEffect(() => {
     let live = true;
-    fetchLeaderboard(100).then((r) => { if (live) setRows(r); });
+    fetchLeaderboard(200).then((r) => { if (live) setRows(r); });
     return () => { live = false; };
   }, []);
 
@@ -111,7 +111,9 @@ export default function LeaderboardPage() {
                       <Robot variant={robotVariantForOperator(r.operator)} size={22} decorative />
                     )}
                   </span>
-                  <span className="truncate font-mono text-[13px] text-ink">{short(r.operator)}</span>
+                  <span className="truncate font-mono text-[13px] text-ink" title={r.operator}>
+                    {r.primaryName ?? short(r.operator)}
+                  </span>
                 </span>
                 <span className="hidden text-right font-mono text-[13px] text-ink-2 sm:block">{r.entered}</span>
                 <span className="text-right font-mono text-[13px] text-ink-2">{r.wins}</span>

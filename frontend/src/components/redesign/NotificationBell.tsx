@@ -32,7 +32,7 @@ function timeAgo(iso: string): string {
 }
 
 export function NotificationBell() {
-  const { items, unread, markAllRead, clearAll, setSound, isSignedIn } = useNotifications();
+  const { items, unread, markRead, markAllRead, clearAll, setSound, isSignedIn } = useNotifications();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const [soundOn, setSoundOn] = useState(true);
@@ -116,7 +116,12 @@ export function NotificationBell() {
             ) : (
               <ul className="flex flex-col">
                 {items.map((n) => (
-                  <Row key={n.id} n={n} onNavigate={() => setOpen(false)} />
+                  <Row
+                    key={n.id}
+                    n={n}
+                    onRead={() => void markRead(n.id)}
+                    onNavigate={() => setOpen(false)}
+                  />
                 ))}
               </ul>
             )}
@@ -127,7 +132,7 @@ export function NotificationBell() {
   );
 }
 
-function Row({ n, onNavigate }: { n: AppNotification; onNavigate: () => void }) {
+function Row({ n, onRead, onNavigate }: { n: AppNotification; onRead: () => void; onNavigate: () => void }) {
   const inner = (
     <div
       className={`flex gap-3 border-b border-[color:var(--hairline)] px-4 py-3 transition-colors hover:bg-canvas-2 last:border-0 ${
@@ -147,13 +152,24 @@ function Row({ n, onNavigate }: { n: AppNotification; onNavigate: () => void }) 
   if (n.href) {
     return (
       <li>
-        <a href={n.href} onClick={onNavigate} className="block">
+        <a
+          href={n.href}
+          onClick={() => { onRead(); onNavigate(); }}
+          className="block"
+        >
           {inner}
         </a>
       </li>
     );
   }
-  return <li>{inner}</li>;
+  // No destination, but a click still clears the unread state.
+  return (
+    <li>
+      <button type="button" onClick={onRead} className="block w-full text-left">
+        {inner}
+      </button>
+    </li>
+  );
 }
 
 function BellGlyph() {

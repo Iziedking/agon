@@ -22,8 +22,15 @@ export function useNotifications() {
   const [items, setItems] = useState<AppNotification[]>([]);
   const [unread, setUnread] = useState(0);
   const seenIds = useRef<Set<number>>(new Set());
+  const itemsRef = useRef<AppNotification[]>([]);
   const primed = useRef(false);
   const soundOn = useRef(true);
+
+  // Keep a ref mirror of items so event handlers (markRead on click) read the
+  // latest feed without going through a setState updater side effect.
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
 
   const refresh = useCallback(async () => {
     if (!isSignedIn) return;
@@ -59,6 +66,16 @@ export function useNotifications() {
     return () => clearInterval(t);
   }, [isSignedIn, refresh]);
 
+  // Mark a single notification read, e.g. when the operator clicks it. Flips
+  // the row and decrements the badge only if it was unread, then persists.
+  const markRead = useCallback(async (id: number) => {
+    const target = itemsRef.current.find((n) => n.id === id);
+    if (!target || target.read) return;
+    setItems((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
+    setUnread((u) => Math.max(0, u - 1));
+    await markNotificationsRead([id]);
+  }, []);
+
   const markAllRead = useCallback(async () => {
     if (unread === 0) return;
     setUnread(0);
@@ -77,5 +94,5 @@ export function useNotifications() {
     soundOn.current = on;
   }, []);
 
-  return { items, unread, refresh, markAllRead, clearAll, setSound, isSignedIn };
+  return { items, unread, refresh, markRead, markAllRead, clearAll, setSound, isSignedIn };
 }

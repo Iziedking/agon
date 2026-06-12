@@ -17,6 +17,7 @@ import {
   saveAgentDisplayMode,
   saveAgentName,
   saveAgentSkin,
+  saveIdentityMode,
   setSetting,
   short,
   type OperatorProfile,
@@ -67,16 +68,24 @@ export default function OperatorPage() {
     } catch {/* silent */}
   }
 
-  // Header avatar resolves the operator's primary (first) agent identity: its
-  // X avatar, custom skin, or the robot, the same way the agent reads
-  // everywhere else. Falls back to the Robot while agents load.
+  // Header identity resolves the operator-level choice (identity_mode): 'auto'
+  // prefers X, then Discord, then the first agent's custom skin, then the
+  // masked wallet. A pinned mode resolves just its source. This is the same
+  // rule the leaderboard row uses, so the two always agree.
   const primaryAgent = Array.isArray(agents) ? agents[0] ?? null : null;
   const headerXHandle = profile !== "loading" ? profile?.xHandle ?? null : null;
+  const headerDiscord = profile !== "loading" ? profile?.discordUsername ?? null : null;
+  const headerDiscordAvatar = profile !== "loading" ? profile?.discordAvatar ?? null : null;
+  const identityMode = profile !== "loading" ? profile?.identityMode ?? "auto" : "auto";
   let headerAvatar: string | null = null;
-  if (primaryAgent) {
-    const m = primaryAgent.displayMode ?? "x";
-    if (m === "x" && headerXHandle) headerAvatar = `https://unavatar.io/x/${headerXHandle}`;
-    else if (m === "custom" && primaryAgent.skin) headerAvatar = primaryAgent.skin;
+  let headerLabel: string | null = null;
+  {
+    const order = identityMode === "auto" ? (["x", "discord", "custom"] as const) : ([identityMode] as const);
+    for (const k of order) {
+      if (k === "x" && headerXHandle) { headerAvatar = `https://unavatar.io/x/${headerXHandle}`; headerLabel = `@${headerXHandle}`; break; }
+      if (k === "discord" && headerDiscord) { headerAvatar = headerDiscordAvatar; headerLabel = headerDiscord; break; }
+      if (k === "custom" && primaryAgent?.skin) { headerAvatar = primaryAgent.skin; headerLabel = primaryAgent.nickname ?? null; break; }
+    }
   }
 
   return (
@@ -112,9 +121,9 @@ export default function OperatorPage() {
             >
               {short(address)}
             </h1>
-            {profile !== "loading" && profile?.xHandle ? (
+            {headerLabel ? (
               <p className="mt-2 font-mono text-[12px] uppercase tracking-[0.12em] text-ink-2">
-                @{profile.xHandle}
+                {headerLabel}
               </p>
             ) : null}
           </div>
@@ -132,6 +141,24 @@ export default function OperatorPage() {
           <p className="mt-8 font-mono text-sm text-ink-2">reading the profile…</p>
         ) : null}
       </section>
+
+      {/* IDENTITY: how this operator shows on the leaderboard and profile
+          header. isMe only; one operator-level choice, separate from how each
+          agent appears inside a live event. */}
+      {isMe && profile !== "loading" ? (
+        <section className="mx-auto max-w-[1600px] px-6 pt-12">
+          <div className="mb-4 font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
+            <span aria-hidden className="text-accent">■</span> IDENTITY
+          </div>
+          <IdentityPicker
+            current={identityMode}
+            xLinked={!!headerXHandle}
+            discordLinked={!!headerDiscord}
+            customLinked={!!primaryAgent?.skin}
+            onChanged={async () => setProfile(await fetchOperator(address))}
+          />
+        </section>
+      ) : null}
 
       {/* AGENTS */}
       <section className="mx-auto max-w-[1600px] px-6 pt-12">
@@ -260,6 +287,83 @@ export default function OperatorPage() {
 
       <Footer />
     </div>
+  );
+}
+
+/// Operator-level identity picker. Sets what shows on the leaderboard row and
+/// the profile header: AUTO (X, then Discord, then wallet), or pinned to a
+/// single source. Disabled options point at what to link first. Optimistic,
+/// reverts on error.
+function IdentityPicker({
+  current,
+  xLinked,
+  discordLinked,
+  customLinked,
+  onChanged,
+}: {
+  current: "auto" | "x" | "discord" | "custom" | "wallet";
+  xLinked: boolean;
+  discordLinked: boolean;
+  customLinked: boolean;
+  onChanged: () => Promise<void> | void;
+}) {
+  const [mode, setMode] = useState(current);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => setMode(current), [current]);
+
+  async function pick(next: typeof mode) {
+    if (next === mode || busy) return;
+    const prev = mode;
+    setBusy(true);
+    setError(null);
+    setMode(next); // optimistic
+    const res = await saveIdentityMode(next);
+    setBusy(false);
+    if (!res.ok) {
+      setMode(prev);
+      setError(res.error);
+      return;
+    }
+    await onChanged();
+  }
+
+  const opts = [
+    { k: "auto" as const, label: "AUTO", enabled: true, hint: "" },
+    { k: "x" as const, label: "X PROFILE", enabled: xLinked, hint: "link your X first" },
+    { k: "discord" as const, label: "DISCORD", enabled: discordLinked, hint: "link your discord first" },
+    { k: "custom" as const, label: "CUSTOM", enabled: customLinked, hint: "upload an agent skin first" },
+    { k: "wallet" as const, label: "WALLET", enabled: true, hint: "" },
+  ];
+
+  return (
+    <BracketedCell pad="sm">
+      <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">SHOWN AS</div>
+      <div className="mt-1.5 flex flex-wrap gap-2">
+        {opts.map((opt) => (
+          <button
+            key={opt.k}
+            onClick={() => opt.enabled && void pick(opt.k)}
+            disabled={!opt.enabled || busy}
+            title={!opt.enabled ? opt.hint : undefined}
+            className={
+              mode === opt.k
+                ? "border border-accent bg-accent px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-accent-ink"
+                : opt.enabled
+                  ? "border border-ink-3 bg-canvas px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:border-ink hover:text-ink disabled:opacity-60"
+                  : "cursor-not-allowed border border-[color:var(--hairline)] bg-canvas px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3 opacity-50"
+            }
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+      <p className="mt-2 font-mono text-[10px] text-ink-3">
+        auto shows your X, then discord, then your wallet. this is the name and picture on the leaderboard and at the top of your profile.
+      </p>
+      {error ? <p className="mt-2 font-mono text-[10px] text-[color:var(--err)]">{error}</p> : null}
+    </BracketedCell>
   );
 }
 
@@ -550,7 +654,7 @@ function AgentCustomizeCard({ agent, isMe, xLinked, discordLinked }: { agent: Ag
               ))}
             </div>
             <p className="mt-1.5 font-mono text-[10px] text-ink-3">
-              how this agent appears everywhere: leaderboard, live, contests.
+              how this agent appears inside a live event. your leaderboard name is set under identity above.
             </p>
           </div>
 

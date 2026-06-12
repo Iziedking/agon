@@ -1262,6 +1262,29 @@ app.post("/agents/:id/display-mode", requireAuth, async (c) => {
   return c.json({ id: agentId, mode });
 });
 
+// ----- Operator identity (leaderboard row + public profile) -----
+//
+// Operator-level choice of what shows on the leaderboard and profile header:
+//   'auto'   -> X, then Discord, then masked wallet (default)
+//   'x'      -> X handle + avatar
+//   'discord'-> Discord username + avatar
+//   'custom' -> first agent's skin + nickname
+//   'wallet' -> masked address (opt out of socials)
+// Distinct from per-agent display_mode, which only governs a live event.
+
+const IDENTITY_MODES = new Set(["auto", "x", "discord", "custom", "wallet"]);
+
+/// Set the operator's identity mode. Writes to the caller's own row.
+app.post("/operators/identity-mode", requireAuth, async (c) => {
+  const operator = c.get("address");
+  const { mode } = await c.req.json<{ mode?: string }>();
+  if (!mode || !IDENTITY_MODES.has(mode)) {
+    return c.json({ error: "mode must be auto, x, discord, custom, or wallet" }, 400);
+  }
+  await query("update operators set identity_mode = $2 where lower(address) = lower($1)", [operator, mode]);
+  return c.json({ operator, mode });
+});
+
 /// Bulk resolved display identity for agents. Public, like /agents/names and
 /// /agents/skins. For each id returns { kind, name, avatar }: avatar is an
 /// image URL (X) or data URL (custom), or null to render the robot mascot;
@@ -2604,6 +2627,7 @@ app.get("/leaderboard", async (c) => {
     discord_avatar: string | null;
     x_handle: string | null;
     x_avatar: string | null;
+    identity_mode: string | null;
   }>(
     // Primary agent is the operator's first non-delisted agent by id. Its
     // skin shows in the leaderboard row so identifiable operators (the
@@ -2624,7 +2648,8 @@ app.get("/leaderboard", async (c) => {
        op.x_handle             as x_handle,
        op.x_avatar             as x_avatar,
        op.discord_username     as discord_username,
-       op.discord_avatar       as discord_avatar
+       op.discord_avatar       as discord_avatar,
+       op.identity_mode        as identity_mode
      from operators op
      -- Entries: union of contest + challenge participation so the
      -- "ENTERED" column reflects everything the operator showed up for.
@@ -2666,21 +2691,27 @@ app.get("/leaderboard", async (c) => {
   );
   return c.json({
     leaders: rows.map((r) => {
-      // Resolve the primary agent's display identity so the row avatar honors
-      // its mode (X avatar / custom skin / robot), matching everywhere else.
-      const mode = r.primary_display_mode ?? "x";
-      let primarySkin: string | null = null;
-      let primaryName: string | null = null;
-      if (mode === "x" && r.x_handle) {
-        primarySkin = r.x_avatar ?? `https://unavatar.io/x/${r.x_handle}`;
-        primaryName = `@${r.x_handle}`;
-      } else if (mode === "discord" && r.discord_username) {
-        primarySkin = r.discord_avatar ?? null;
-        primaryName = r.discord_username;
-      } else if (mode === "custom" && r.primary_skin) {
-        primarySkin = r.primary_skin;
-        primaryName = r.primary_nickname ?? null;
+      // The leaderboard row shows the operator's chosen identity, not the
+      // masked wallet. identity_mode lives on the operator ('auto' by default).
+      // 'auto' prefers X, then Discord, then the first agent's custom skin, then
+      // falls back to the masked wallet (primaryName null). Pinned modes resolve
+      // their one source and only fall through to the wallet when it's empty.
+      const xSkin = () => r.x_avatar ?? (r.x_handle ? `https://unavatar.io/x/${r.x_handle}` : null);
+      const resolvers: Record<string, () => { skin: string | null; name: string | null } | null> = {
+        x: () => (r.x_handle ? { skin: xSkin(), name: `@${r.x_handle}` } : null),
+        discord: () => (r.discord_username ? { skin: r.discord_avatar ?? null, name: r.discord_username } : null),
+        custom: () => (r.primary_skin ? { skin: r.primary_skin, name: r.primary_nickname ?? null } : null),
+        wallet: () => null,
+      };
+      const mode = r.identity_mode ?? "auto";
+      const order = mode === "auto" ? ["x", "discord", "custom"] : [mode];
+      let resolved: { skin: string | null; name: string | null } | null = null;
+      for (const key of order) {
+        resolved = resolvers[key]?.() ?? null;
+        if (resolved) break;
       }
+      const primarySkin: string | null = resolved?.skin ?? null;
+      const primaryName: string | null = resolved?.name ?? null;
       return {
         operator: r.operator,
         entered: Number(r.entered),
@@ -2710,10 +2741,11 @@ app.get("/operators/:address", async (c) => {
     discord_id: string | null;
     discord_username: string | null;
     discord_avatar: string | null;
+    identity_mode: string | null;
     current_syndicate_id: string | null;
     cycles: string;
   }>(
-    "select address, x_handle, telegram_id, telegram_username, telegram_avatar, discord_id, discord_username, discord_avatar, current_syndicate_id, cycles from operators where address = $1",
+    "select address, x_handle, telegram_id, telegram_username, telegram_avatar, discord_id, discord_username, discord_avatar, identity_mode, current_syndicate_id, cycles from operators where address = $1",
     [address],
   );
   const agents = await query<{ id: string; scout_tier: number; analyst_tier: number; solver_tier: number; reputation: string; nickname: string | null; display_mode: string | null; has_skin: boolean }>(
@@ -2747,8 +2779,11 @@ app.get("/operators/:address", async (c) => {
     xHandle: op.rows[0]?.x_handle ?? null,
     telegramId: op.rows[0]?.telegram_id ?? null,
     telegramUsername: op.rows[0]?.telegram_username ?? null,
+    telegramAvatar: op.rows[0]?.telegram_avatar ?? null,
     discordId: op.rows[0]?.discord_id ?? null,
     discordUsername: op.rows[0]?.discord_username ?? null,
+    discordAvatar: op.rows[0]?.discord_avatar ?? null,
+    identityMode: op.rows[0]?.identity_mode ?? "auto",
     syndicateId: op.rows[0]?.current_syndicate_id ?? null,
     cycles: Number(op.rows[0]?.cycles ?? "0"),
     reputation,

@@ -34,6 +34,12 @@ alter table operators add column if not exists x_avatar text;
 -- resolved from a username after the fact, so we store the URL when linking.
 alter table operators add column if not exists telegram_avatar text;
 alter table operators add column if not exists discord_avatar text;
+-- Operator-level identity shown on the leaderboard row and public profile.
+-- 'auto' resolves X first, then Discord, then the masked wallet. The operator
+-- can pin it from their profile: 'x', 'discord', 'custom' (first agent skin +
+-- name), or 'wallet' to force the masked address. Distinct from per-agent
+-- display_mode, which only governs how an agent appears inside a live event.
+alter table operators add column if not exists identity_mode text not null default 'auto';
 -- Email and Circle Dev-Controlled wallet linkage. An operator row exists for
 -- both SIWE-only users (email/circle null) and email-login users (email set,
 -- circle_wallet_id set). When circle_wallet_id is non-null the backend signs

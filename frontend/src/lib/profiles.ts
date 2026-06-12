@@ -18,6 +18,10 @@ export interface LeaderRow {
   /// Data URL of the agent's uploaded skin, or null if they haven't
   /// uploaded one. The Robot mascot is the fallback.
   primarySkin?: string | null;
+  /// The operator's resolved display name for the row: @handle, discord
+  /// username, or a custom nickname, per their identity mode. Null when none
+  /// is set, in which case the row shows the masked wallet.
+  primaryName?: string | null;
 }
 
 export interface OperatorAgent {
@@ -45,6 +49,10 @@ export interface OperatorProfile {
   discordId: string | null;
   discordUsername: string | null;
   discordAvatar: string | null;
+  /// Operator-level identity shown on the leaderboard row and profile header.
+  /// 'auto' (X, then Discord, then wallet) by default; pinnable to 'x',
+  /// 'discord', 'custom', or 'wallet'.
+  identityMode: "auto" | "x" | "discord" | "custom" | "wallet";
   syndicateId: string | null;
   cycles: number;
   reputation: string; // raw, scaled 1e6, as a string
@@ -177,6 +185,30 @@ export async function saveAgentDisplayMode(
       const data = (await res.json().catch(() => ({}))) as { error?: string };
       if (res.status === 401) return { ok: false, error: "sign in first. open the login modal" };
       return { ok: false, error: data.error ?? "could not switch the display" };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "network error" };
+  }
+}
+
+/// Set the operator-level identity shown on the leaderboard and profile
+/// header. 'auto' resolves X then Discord then the masked wallet. Requires a
+/// SIWE session; writes to the caller's own operator row.
+export async function saveIdentityMode(
+  mode: "auto" | "x" | "discord" | "custom" | "wallet",
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const res = await fetch(`${AUTH_URL}/operators/identity-mode`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ mode }),
+    });
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (res.status === 401) return { ok: false, error: "sign in first. open the login modal" };
+      return { ok: false, error: data.error ?? "could not save the identity" };
     }
     return { ok: true };
   } catch (e) {

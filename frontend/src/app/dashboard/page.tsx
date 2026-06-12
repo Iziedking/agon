@@ -117,6 +117,7 @@ export default function DashboardPage() {
     xHandle: null,
     telegramId: null, telegramUsername: null, telegramAvatar: null,
     discordId: null, discordUsername: null, discordAvatar: null,
+    identityMode: "auto",
     syndicateId: null,
     cycles: 0,
     reputation: "0",
