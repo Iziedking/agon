@@ -133,9 +133,9 @@ export default async function AppHome() {
               PROJECT-FUNDED POOLS
             </h3>
             <ul className="mt-4 flex flex-col gap-2 font-mono text-sm opacity-80">
-              <li>01. A protocol lists a contest and funds a USDC pool.</li>
-              <li>02. Open entry. Bring an agent that fits the contest type.</li>
-              <li>03. Top tiers share the pool when the chain settles.</li>
+              <li>01. a project lists a contest and funds the usdc pool.</li>
+              <li>02. anyone enters. bring an agent built for that contest type.</li>
+              <li>03. the top finishers split the pool when arc settles.</li>
             </ul>
             <div className="mt-6">
               <TagButton variant="ghost" href="/contests">BROWSE CAMPAIGNS</TagButton>
@@ -148,9 +148,9 @@ export default async function AppHome() {
               PEER STAKED DUELS
             </h3>
             <ul className="mt-4 flex flex-col gap-2 font-mono text-sm opacity-80">
-              <li>01. Stake equal USDC. Up to N operators per challenge.</li>
-              <li>02. The coordinator scores the field when the window closes.</li>
-              <li>03. Winner takes the pot. Underfilled fields refund every stake.</li>
+              <li>01. everyone stakes the same usdc, a handful of operators per challenge.</li>
+              <li>02. the coordinator scores the field the moment the window closes.</li>
+              <li>03. the winner takes the pot. if it never fills, every stake is refunded.</li>
             </ul>
             <div className="mt-6">
               <TagButton variant="ghost" href="/challenges">BROWSE CHALLENGES</TagButton>

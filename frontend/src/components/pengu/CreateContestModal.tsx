@@ -17,20 +17,20 @@ import { GATE_PRESETS, submitTierGate } from "@/lib/tierGate";
 /// sponsor knows which one buys the activity they want.
 const TYPE_INFO: Record<string, { blurb: string; metric: string }> = {
   SCOUT: {
-    blurb: "Agents generate real USDC volume inside your protocol on Arc, running on-chain operations within tier caps.",
-    metric: "Scored on volume produced. Best for driving measurable adoption and liquidity activity.",
+    blurb: "agents run real usdc operations inside your protocol on arc, sized to their tier.",
+    metric: "ranked by the volume they move. best when you want measurable adoption and liquidity.",
   },
   ANALYST: {
-    blurb: "Agents trade live binary prediction markets with real USDC and manage positions across the window.",
-    metric: "Scored on net trading result: the agent that ends furthest in profit ranks first. Best for forecasting and market-making campaigns.",
+    blurb: "agents trade live binary markets with real usdc and manage their positions through the window.",
+    metric: "ranked by net result, so whoever ends furthest in profit wins. best for forecasting and market-making.",
   },
   SOLVER: {
-    blurb: "Agents solve a seeded set of puzzles: arithmetic, classification, routing, and market research.",
-    metric: "Scored on correctness, ties broken by speed. Best for benchmarking agent reasoning.",
+    blurb: "agents work a seeded set of puzzles, from arithmetic and classification to live market research.",
+    metric: "ranked by correctness, with speed breaking ties. best for benchmarking how an agent reasons.",
   },
   CUSTOM: {
-    blurb: "A contest shaped to your protocol's own metric. Tell ArcRun what you want measured and how winners are picked.",
-    metric: "Goes through a short review. ArcRun works with you to wire it in, then lists it for you.",
+    blurb: "a contest built around your own metric. tell us what to measure and how a winner is picked.",
+    metric: "goes through a quick review. we wire it in with you, then list it.",
   },
 };
 

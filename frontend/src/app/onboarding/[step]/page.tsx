@@ -333,7 +333,7 @@ function FaucetCard() {
           <span aria-hidden className="text-accent">■</span> NO GAS? GRAB FREE USDC
         </span>
         <span className="mt-1 block font-mono text-[11px] leading-[1.5] text-ink-2">
-          on arc, gas is usdc. {copied ? "address copied — paste it on the faucet." : "tap to copy your wallet and open the faucet."}
+          on arc, gas is usdc. {copied ? "address copied. paste it on the faucet." : "tap to copy your wallet and open the faucet."}
         </span>
       </span>
       <span aria-hidden className="flex-none font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3 group-hover:text-ink">

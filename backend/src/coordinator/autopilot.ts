@@ -391,6 +391,14 @@ export async function startAutopilot(broadcast: (message: unknown) => void): Pro
       await openGated(nextType(configured, cycle * 2), { min: 0, max: 2 });
       await sleep(LOW_HIGH_GAP_MS);
       await openGated(nextType(configured, cycle * 2 + 1), { min: 3, max: 4 });
+      // Roughly once an hour, at random, also open a campaign every tier can
+      // enter (0-4). It lets a well-trained, well-positioned lower tier take on
+      // the whole field, and the open arena keeps the lobby lively. Probability
+      // and timing are randomized so it isn't a predictable slot.
+      if (Math.random() < ALL_TIER_CHANCE) {
+        await sleep(Math.floor(Math.random() * LOW_HIGH_GAP_MS));
+        await openGated(nextType(configured, cycle * 2 + 2), { min: 0, max: 4 });
+      }
     } catch (err) {
       console.error("autopilot cycle failed:", err instanceof Error ? err.message : err);
     }
@@ -403,3 +411,7 @@ export async function startAutopilot(broadcast: (message: unknown) => void): Pro
 
 /// Gap between the lower-tier and higher-tier contest in each pair.
 const LOW_HIGH_GAP_MS = Number(process.env.AUTOPILOT_TIER_PAIR_GAP_SECONDS ?? "900") * 1000;
+
+/// Per-cycle probability of also opening an all-tier (0-4) "open arena"
+/// campaign. 0 disables it, 1 makes it every cycle. Default ~half the cycles.
+const ALL_TIER_CHANCE = Number(process.env.AUTOPILOT_ALL_TIER_CHANCE ?? "0.5");
