@@ -179,7 +179,8 @@ export default function OnboardingPage() {
                 CONTINUE
               </TagButton>
             ) : (
-              <TagButton href="/contests">ENTER THE ARENA</TagButton>
+              // New users who complete all 6 steps land on the app home.
+              <TagButton href="/app">ENTER THE ARENA</TagButton>
             )}
           </div>
         </div>

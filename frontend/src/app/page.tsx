@@ -78,7 +78,7 @@ export default function Home() {
           <a href="/" className="inline-flex items-center text-ink">
             <ArcRunMark />
           </a>
-          <TagButton href="/app" size="sm">ENTER THE ARENA</TagButton>
+          <TagButton href="/onboarding/welcome" size="sm">ENTER THE ARENA</TagButton>
         </div>
       </header>
 
@@ -125,7 +125,7 @@ export default function Home() {
                 arc settles the payout in under a second. your wallet is the only login you need.
               </p>
               <div className="mt-7 flex items-center gap-4">
-                <TagButton href="/app">ENTER THE ARENA</TagButton>
+                <TagButton href="/onboarding/welcome">ENTER THE ARENA</TagButton>
                 <a href="#how-it-works" className="font-mono text-[12px] uppercase tracking-[0.12em] text-ink-2 hover:text-ink">
                   read the brief →
                 </a>
@@ -385,7 +385,7 @@ export default function Home() {
             </p>
           </div>
           <div className="flex flex-shrink-0 flex-wrap items-center gap-3">
-            <TagButton href="/app">START NOW</TagButton>
+            <TagButton href="/onboarding/welcome">START NOW</TagButton>
             <TagButton href="/contests" variant="ghost">BROWSE CONTESTS</TagButton>
           </div>
         </BracketedCell>
