@@ -879,6 +879,17 @@ function coordinatorSigner() {
   return { account, wallet };
 }
 
+/// Signer for the treasury EOA (where PrizeEscrow forwards fees). Distinct from
+/// the coordinator: fees never touch the coordinator wallet, so a treasury
+/// withdraw must sign with this key.
+function treasurySigner() {
+  const pk = config.treasury.privateKey;
+  if (!pk) return null;
+  const account = privateKeyToAccount(pk);
+  const wallet = createWalletClient({ account, chain: arcTestnet, transport: http(config.rpcHttp) });
+  return { account, wallet };
+}
+
 const usdc6 = (b: bigint) => (Number(b) / 1e6).toFixed(2);
 const cancelContestAbi = parseAbi(["function cancelContest(uint256 contestId)"]);
 const cancelChallengeAbi = parseAbi(["function cancelChallenge(uint256 id)"]);
@@ -970,9 +981,11 @@ app.get("/admin/overview", async (c) => {
   });
 });
 
-// Withdraw treasury USDC to a destination. Signed by the coordinator wallet
-// (the treasury for now). amount is a USDC decimal string. Balance-checked so
-// it can't overdraw the signer.
+// Withdraw treasury USDC to a destination. PrizeEscrow forwards fees straight
+// to the treasury EOA, so this MUST sign with the treasury key. It falls back
+// to the coordinator only when the coordinator IS the on-chain treasury;
+// otherwise it refuses rather than silently moving coordinator funds (the bug
+// this replaces). amount is a USDC decimal string; balance-checked.
 app.post("/admin/treasury/withdraw", async (c) => {
   if (!config.adminToken) return c.json({ error: "admin disabled (set ADMIN_TOKEN)" }, 503);
   if (!adminAuthed(c)) return c.json({ error: "unauthorized" }, 401);
@@ -984,8 +997,36 @@ app.post("/admin/treasury/withdraw", async (c) => {
   if (!Number.isFinite(amountNum) || amountNum <= 0) return c.json({ error: "amount must be positive" }, 400);
   const amount6 = BigInt(Math.round(amountNum * 1e6));
 
-  const signer = coordinatorSigner();
-  if (!signer) return c.json({ error: "no coordinator signer configured" }, 503);
+  // Where the contract actually sends fees.
+  const onchainTreasury = (await publicClient
+    .readContract({ address: config.contracts.PrizeEscrow, abi: treasuryViewAbi, functionName: "treasury" })
+    .catch(() => null)) as `0x${string}` | null;
+
+  // Pick the right signer: treasury key if present (and matching), else the
+  // coordinator only when it is itself the treasury.
+  const tre = treasurySigner();
+  const coord = coordinatorSigner();
+  let signer: NonNullable<ReturnType<typeof coordinatorSigner>>;
+  if (tre) {
+    if (onchainTreasury && tre.account.address.toLowerCase() !== onchainTreasury.toLowerCase()) {
+      return c.json(
+        { error: `TREASURY_PRIVATE_KEY is ${tre.account.address} but the on-chain treasury is ${onchainTreasury}` },
+        400,
+      );
+    }
+    signer = tre;
+  } else if (coord && onchainTreasury && coord.account.address.toLowerCase() === onchainTreasury.toLowerCase()) {
+    signer = coord;
+  } else {
+    return c.json(
+      {
+        error: onchainTreasury
+          ? `treasury key not configured. set TREASURY_PRIVATE_KEY for ${onchainTreasury} to withdraw fees (the coordinator is a different wallet, so it cannot move treasury funds).`
+          : "treasury address unreadable and no treasury key configured.",
+      },
+      503,
+    );
+  }
 
   const bal = (await publicClient.readContract({
     address: config.external.USDC,
@@ -1005,9 +1046,9 @@ app.post("/admin/treasury/withdraw", async (c) => {
     await logEvent({
       level: "warn",
       kind: "admin_treasury_withdraw",
-      message: `withdrew ${usdc6(amount6)} USDC to ${to}`,
+      message: `withdrew ${usdc6(amount6)} USDC from treasury ${signer.account.address} to ${to}`,
       source: "auth",
-      context: { to, amount6: amount6.toString(), hash },
+      context: { from: signer.account.address, to, amount6: amount6.toString(), hash },
     });
     return c.json({ ok: true, hash });
   } catch (e) {

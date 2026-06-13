@@ -218,10 +218,35 @@ function ContractsTable({ contracts }: { contracts: Overview["contracts"] }) {
 }
 
 function AddrLine({ address }: { address: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(address);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+      /* clipboard blocked; the explorer link still works */
+    }
+  };
   return (
-    <a href={`${EXPLORER}/address/${address}`} target="_blank" rel="noreferrer" className="font-mono text-[11px] text-ink-3 hover:text-ink" title={address}>
-      {short(address)} ↗
-    </a>
+    <span className="inline-flex items-center gap-2">
+      <a
+        href={`${EXPLORER}/address/${address}`}
+        target="_blank"
+        rel="noreferrer"
+        className="font-mono text-[11px] text-ink-3 hover:text-ink"
+        title={address}
+      >
+        {short(address)} ↗
+      </a>
+      <button
+        onClick={copy}
+        title="copy full address"
+        className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3 hover:text-accent"
+      >
+        {copied ? "COPIED" : "COPY"}
+      </button>
+    </span>
   );
 }
 

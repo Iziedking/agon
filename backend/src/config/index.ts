@@ -104,6 +104,11 @@ const envSchema = z.object({
 
   // Coordinator service
   COORDINATOR_PRIVATE_KEY: z.string().optional(),
+  // Treasury EOA key. PrizeEscrow sends listing fees and platform-fee skims
+  // straight to the treasury address, so the admin treasury withdraw must sign
+  // with THIS key, not the coordinator's. Optional: when unset, the withdraw
+  // only works if the on-chain treasury equals the coordinator address.
+  TREASURY_PRIVATE_KEY: z.string().optional(),
   WS_PORT: z.coerce.number().int().positive().default(8788),
 
   // Scout runner: master mnemonic for deriving per-agent hot wallets
@@ -404,6 +409,9 @@ export const config = {
   coordinator: {
     privateKey: normalizePrivateKey(env.COORDINATOR_PRIVATE_KEY),
     wsPort: env.WS_PORT,
+  },
+  treasury: {
+    privateKey: normalizePrivateKey(env.TREASURY_PRIVATE_KEY, "TREASURY_PRIVATE_KEY"),
   },
   scout: {
     masterMnemonic: env.SCOUT_MASTER_MNEMONIC?.trim() || undefined,
