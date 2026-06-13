@@ -137,10 +137,10 @@ function PuzzleCard({
         ) : null}
       </div>
       <p
-        className="mt-2 font-mono text-[12px] sm:text-[13px] leading-[1.45] text-ink-2"
-        style={{ display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}
+        className="mt-2 whitespace-pre-wrap font-mono text-[12px] sm:text-[13px] leading-[1.5] text-ink-2"
+        style={{ display: "-webkit-box", WebkitLineClamp: 10, WebkitBoxOrient: "vertical", overflow: "hidden" }}
       >
-        {firstLine(prompt)}
+        {puzzleBody(prompt)}
       </p>
       <div className="mt-3 flex flex-col gap-1.5">
         {order.map((aid) => {
@@ -326,12 +326,23 @@ function familyOf(prompt: string): string {
   return "PUZZLE";
 }
 
-/// First paragraph of the prompt for the compact feed card; the choices and
-/// instructions sit below the question and aren't needed in the stream.
-function firstLine(prompt: string): string {
-  const trimmed = prompt.trim();
-  const q = trimmed.split(/\n/).find((l) => l.trim().length > 0) ?? trimmed;
-  return q.length > 200 ? `${q.slice(0, 199)}…` : q;
+/// The question plus its answer options, so a viewer can tell what "answer · C"
+/// means. Strips the leading RESEARCH (search results) block the agent reads
+/// and the trailing "answer with…" boilerplate, keeping the question and the
+/// A/B/C/D choices. Free-form puzzles (no options) just show the question.
+function puzzleBody(prompt: string): string {
+  let text = prompt.trim();
+  // Drop a leading "RESEARCH (...)" block up to the first blank line: that's
+  // the seller's search feed the agent paid for, not the question.
+  if (/^RESEARCH\b/i.test(text)) {
+    const idx = text.indexOf("\n\n");
+    if (idx >= 0) text = text.slice(idx + 2).trim();
+  }
+  // Drop instruction-only lines that aren't part of the question or options.
+  const noise = /^(answer with|finish with|commit to|if the search results|search query to run)\b/i;
+  const lines = text.split(/\n/).filter((l) => l.trim().length > 0 && !noise.test(l.trim()));
+  const body = lines.join("\n");
+  return body.length > 600 ? `${body.slice(0, 599)}…` : body;
 }
 
 function extractAnswer(response: string, expected: string | null): string {
