@@ -29,10 +29,13 @@ export function computeWinProbabilities(entries: StandingsEntry[]): WinProbabili
     return entries.map((e) => ({ agentId: e.agentId, p: u }));
   }
 
-  // Temperature: scales with how separated the field is. A wide spread
-  // makes the leader sharper; a narrow spread keeps things contested.
-  const spread = Math.max(1, max - min);
-  const temperature = Math.max(1, spread * 0.4);
+  // Temperature scales with the score MAGNITUDE, not the spread, so the odds
+  // reflect how CLOSE the field actually is. A small lead over a large base
+  // reads as a modest favorite (e.g. 321 vs 303 → ~35%, not 76%); a genuine
+  // blowout reads as a near-lock. The old spread-based temperature normalized
+  // the gap away and made the leader a ~76% favorite on even a 6% score lead.
+  void min;
+  const temperature = Math.max(1, max * 0.12);
 
   // Softmax with chosen temperature.
   const exps = scores.map((s) => Math.exp((s - max) / temperature));
