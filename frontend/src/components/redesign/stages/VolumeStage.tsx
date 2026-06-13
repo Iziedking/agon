@@ -97,17 +97,20 @@ export function VolumeStage({ entries }: { entries: StandingsEntry[] }) {
                       href={`${ARCSCAN}${row.hash}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-3 border-b border-[color:var(--hairline)] py-2 last:border-0 hover:bg-canvas-2"
-                      style={{ animation: "synBob 0s" /* anchor; the row itself slides via tick-up on mount via key */ }}
+                      className="grid grid-cols-[auto_1fr_auto] items-center gap-3 border-b border-[color:var(--hairline)] py-2 last:border-0 hover:bg-canvas-2"
                     >
                       <span className="flex h-5 w-5 flex-none items-center justify-center" style={{ background: accent }}>
                         <span className="text-[9px] font-mono text-white">■</span>
                       </span>
-                      <span className="min-w-0 truncate font-mono text-[11px] text-ink">
-                        {nameFor(names, row.agentId)}
-                      </span>
-                      <span className="font-mono text-[11px] text-ink-2">
-                        {row.hash.slice(0, 10)}…{row.hash.slice(-6)}
+                      {/* Name on top, tx hash beneath, so a phone never has to
+                          fit name + hash + value on one line. */}
+                      <span className="min-w-0">
+                        <span className="block truncate font-mono text-[11px] text-ink">
+                          {nameFor(names, row.agentId)}
+                        </span>
+                        <span className="block truncate font-mono text-[10px] text-ink-3">
+                          {row.hash.slice(0, 10)}…{row.hash.slice(-6)}
+                        </span>
                       </span>
                       <span className="font-mono text-[11px] text-ink whitespace-nowrap">
                         {row.volume ? usdc(row.volume) : "—"}

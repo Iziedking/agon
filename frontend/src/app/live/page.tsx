@@ -8,11 +8,12 @@ import {
   CornerMarkers,
   Robot,
   robotVariantForId,
-  type RobotVariant,
   SectionHeader,
   StatusChip,
 } from "@/components/redesign";
 import { useContestSocket } from "@/hooks/useContestSocket";
+import { useAgentSkins, skinFor } from "@/hooks/useAgentNames";
+import { fetchResults } from "@/lib/results";
 import { fetchContests, CONTEST_TYPE, formatUsdc, type Contest } from "@/lib/contests";
 import { fetchChallenges, CHALLENGE_KIND, type Challenge } from "@/lib/challenges";
 
@@ -33,8 +34,8 @@ interface EventCardData {
   poolLabel: string;
   pool: string;
   entrantsLabel: string;
+  entrantsCount: number; // numeric count, drives the avatar cluster + overflow
   endSec: number | null;
-  mascotIds: number[]; // up to 3 agent ids for the mini-stage strip; synthetic if unknown
   isActive: boolean;
 }
 
@@ -51,10 +52,8 @@ function contestCard(c: Contest): EventCardData {
     poolLabel: "PRIZE POOL",
     pool: formatUsdc(c.prizePool),
     entrantsLabel: `${c.entrants} ENTRANTS`,
+    entrantsCount: c.entrants,
     endSec: isActive ? Number(c.endTime) : null,
-    // Synthetic mascot ids derived from the contest id so each card's
-    // strip is stable + visually distinct.
-    mascotIds: [c.id * 3 + 1, c.id * 3 + 2, c.id * 3 + 3],
     isActive,
   };
 }
@@ -72,8 +71,8 @@ function challengeCard(ch: Challenge): EventCardData {
     poolLabel: "POT",
     pool: formatUsdc(pot),
     entrantsLabel: `${ch.entrants}/${ch.maxEntrants} IN`,
+    entrantsCount: ch.entrants,
     endSec: isActive ? Number(ch.status === 0 ? ch.joinDeadline : ch.resolveDeadline) : null,
-    mascotIds: [ch.id * 7 + 1, ch.id * 7 + 2, ch.id * 7 + 3],
     isActive,
   };
 }
@@ -279,17 +278,9 @@ function LobbyCard({ card, streaming }: { card: EventCardData; streaming: boolea
       </div>
       <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">{card.poolLabel}</div>
 
-      {/* Mini-stage: three agent mascots */}
-      <div className="mt-4 flex items-end justify-start gap-2 border-t border-[color:var(--hairline)] pt-4">
-        {card.mascotIds.map((mid, i) => {
-          const variant: RobotVariant = robotVariantForId(mid);
-          return (
-            <span key={`${mid}-${i}`} className="flex h-10 w-10 items-center justify-center bg-canvas-3">
-              <Robot variant={variant} size={32} decorative />
-            </span>
-          );
-        })}
-      </div>
+      {/* Real entrants: a cluster of operator pfps (X / Discord where set,
+          robot otherwise) that grows with the field and overflows to +N. */}
+      <EntrantCluster source={card.source} id={card.id} total={card.entrantsCount} />
 
       <div className="mt-3 flex items-center justify-between font-mono text-[11px] text-ink-3">
         <span>{card.entrantsLabel}</span>
@@ -300,6 +291,69 @@ function LobbyCard({ card, streaming }: { card: EventCardData; streaming: boolea
         WATCH <span aria-hidden className="ml-2">→</span>
       </div>
     </a>
+  );
+}
+
+/// The card's entrant cluster: fetches the event's entrants, resolves each
+/// operator's agent pfp, and renders overlapping circles that scale with the
+/// field. Past MAX_SHOWN it collapses the rest into a +N chip, so a 50-agent
+/// event reads as a dense cluster instead of a fixed row of bots. Falls back
+/// to a quiet count line before the indexer has any entrants.
+const CLUSTER_MAX = 6;
+function EntrantCluster({ source, id, total }: { source: Source; id: number; total: number }) {
+  const [entrants, setEntrants] = useState<{ agentId: number; operator: string }[]>([]);
+  useEffect(() => {
+    let alive = true;
+    void fetchResults(source === "contest" ? "contests" : "challenges", id)
+      .then((r) => { if (alive) setEntrants(r.entrants); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [source, id]);
+
+  const agentIds = useMemo(() => entrants.map((e) => e.agentId), [entrants]);
+  const skins = useAgentSkins(agentIds);
+  const shown = entrants.slice(0, CLUSTER_MAX);
+  const overflow = Math.max(0, Math.max(total, entrants.length) - shown.length);
+
+  if (shown.length === 0) {
+    return (
+      <div className="mt-4 flex items-center border-t border-[color:var(--hairline)] pt-4 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
+        {total > 0 ? `${total} ENTERED` : "NO AGENTS YET"}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-4 flex items-center border-t border-[color:var(--hairline)] pt-4">
+      <div className="flex items-center">
+        {shown.map((e, i) => {
+          const skin = skinFor(skins, e.agentId);
+          return (
+            <span
+              key={e.agentId}
+              title={e.operator}
+              className="flex h-8 w-8 flex-none items-center justify-center overflow-hidden rounded-full border-2 bg-canvas-3"
+              style={{ marginLeft: i === 0 ? 0 : -10, zIndex: shown.length - i, borderColor: "var(--canvas)" }}
+            >
+              {skin ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={skin} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" />
+              ) : (
+                <Robot variant={robotVariantForId(e.agentId)} size={22} decorative />
+              )}
+            </span>
+          );
+        })}
+        {overflow > 0 ? (
+          <span
+            className="flex h-8 w-8 flex-none items-center justify-center rounded-full border-2 font-mono text-[10px]"
+            style={{ marginLeft: -10, background: "var(--ink)", color: "var(--canvas)", borderColor: "var(--canvas)" }}
+          >
+            +{overflow}
+          </span>
+        ) : null}
+      </div>
+    </div>
   );
 }
 

@@ -6,6 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/redesign/Footer";
 import { BracketedCell, CornerMarkers, Robot } from "@/components/redesign";
+import { SkinCropModal } from "@/components/redesign/SkinCropModal";
 import { AgentTraits } from "@/components/pengu/AgentTraits";
 import { NftBadge } from "@/components/pengu/NftBadge";
 import { EXPLORER } from "@/lib/arc";
@@ -517,30 +518,6 @@ function PublicSocialStrip({
   );
 }
 
-/// Read a File, downscale to fit 256x256, return a PNG data URL.
-async function downscaleToDataUrl(file: File, max = 256): Promise<string> {
-  const url = URL.createObjectURL(file);
-  try {
-    const img = await new Promise<HTMLImageElement>((res, rej) => {
-      const im = new Image();
-      im.onload = () => res(im);
-      im.onerror = (e) => rej(e);
-      im.src = url;
-    });
-    const scale = Math.min(1, max / Math.max(img.width, img.height));
-    const w = Math.max(1, Math.round(img.width * scale));
-    const h = Math.max(1, Math.round(img.height * scale));
-    const canvas = document.createElement("canvas");
-    canvas.width = w; canvas.height = h;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("canvas 2d context unavailable");
-    ctx.drawImage(img, 0, 0, w, h);
-    return canvas.toDataURL("image/png");
-  } finally {
-    URL.revokeObjectURL(url);
-  }
-}
-
 function AgentCustomizeCard({ agent, isMe, xLinked, discordLinked }: { agent: AgentState; isMe: boolean; xLinked: boolean; discordLinked: boolean }) {
   const [name, setName] = useState<string>(agent.nickname ?? "");
   const [skin, setSkin] = useState<string | null>(agent.skin ?? null);
@@ -550,6 +527,7 @@ function AgentCustomizeCard({ agent, isMe, xLinked, discordLinked }: { agent: Ag
   const [savedNote, setSavedNote] = useState(false);
   const [skinNote, setSkinNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [cropFile, setCropFile] = useState<File | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -580,11 +558,19 @@ function AgentCustomizeCard({ agent, isMe, xLinked, discordLinked }: { agent: Ag
     } else setError(res.error);
   }
 
-  async function onPickSkin(file: File) {
+  // Picking a file no longer saves straight away: it opens the square crop
+  // modal so the operator frames their pfp before it's stored.
+  function onPickSkin(file: File) {
     if (!file.type.startsWith("image/")) { setError("file must be an image"); return; }
+    setError(null);
+    setCropFile(file);
+  }
+
+  // Save the cropped square the modal hands back (already a 256x256 data URL).
+  async function saveCroppedSkin(dataUrl: string) {
+    setCropFile(null);
     setSkinBusy(true); setError(null); setSkinNote(null);
     try {
-      const dataUrl = await downscaleToDataUrl(file, 256);
       const res = await saveAgentSkin(agent.id, dataUrl);
       if (res.ok) {
         setSkin(dataUrl);
@@ -592,11 +578,16 @@ function AgentCustomizeCard({ agent, isMe, xLinked, discordLinked }: { agent: Ag
         setTimeout(() => setSkinNote(null), 1500);
       } else setError(res.error);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "could not process image");
+      setError(e instanceof Error ? e.message : "could not save image");
     } finally {
       setSkinBusy(false);
       if (fileInput.current) fileInput.current.value = "";
     }
+  }
+
+  function cancelCrop() {
+    setCropFile(null);
+    if (fileInput.current) fileInput.current.value = "";
   }
 
   async function onClearSkin() {
@@ -710,9 +701,13 @@ function AgentCustomizeCard({ agent, isMe, xLinked, discordLinked }: { agent: Ag
             ) : null}
             {skinNote ? <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-[color:var(--ok)]">{skinNote}</span> : null}
           </div>
-          <p className="font-mono text-[10px] text-ink-3">auto-resized to 256×256 png · &lt;200kb</p>
+          <p className="font-mono text-[10px] text-ink-3">crop to a 256×256 square · &lt;200kb</p>
 
           {error ? <p className="font-mono text-[11px] text-[color:var(--err)]">{error}</p> : null}
+
+          {cropFile ? (
+            <SkinCropModal file={cropFile} onCancel={cancelCrop} onCrop={saveCroppedSkin} />
+          ) : null}
         </>
       ) : null}
 

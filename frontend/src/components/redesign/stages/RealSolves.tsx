@@ -5,25 +5,25 @@ import { BracketedCell, Robot, robotVariantForId } from "@/components/redesign";
 import { nameFor, skinFor, useAgentNames, useAgentSkins } from "@/hooks/useAgentNames";
 import { fetchLlmRuns, type LlmRun } from "@/lib/llmRuns";
 
-/// Surfaces the real audit trail on the focused /live/[source]/[id] page.
-/// Shows one card per puzzle in the round: the actual prompt text the
-/// agents read, plus every agent's answer with a verdict pip. Tells the
-/// "real LLM, real puzzles" story concretely instead of leaving the
-/// viewer to infer it from grid cells. Renders nothing while the contest
-/// is still in the open window (no solves yet).
+/// The live solve feed on /live/[source]/[id]. A mobile-first vertical stream:
+/// newest puzzle on top, each a compact card with the question and every
+/// agent's answer chip + solve time. An agent with no row yet shows "solving".
+/// The expected answer is hidden while the event is live and only revealed once
+/// it has settled, so the feed never spoils the race. Skipped / errored solves
+/// read as a neutral pass, not an alarm.
 
-// 8s cadence: standings come in via the WS so the in-flight stage stays
-// real-time; this poll only backfills the audit-row panel underneath which
-// is fine on a slower beat. Halves auth-service load vs the previous 4s.
+// 8s cadence: standings stream over the WS so the stage stays real-time; this
+// poll only backfills the per-answer feed underneath, which is fine slower.
 const POLL_MS = 8000;
 
 interface Props {
-  /// The contest or challenge id. The backend stores both kinds in
-  /// llm_runs.contest_id, so the same endpoint works for either.
+  /// Contest or challenge id. Both kinds live in llm_runs.contest_id.
   id: number;
+  /// True once the event has settled. Gates the expected-answer reveal.
+  settled?: boolean;
 }
 
-export function RealSolves({ id }: Props) {
+export function RealSolves({ id, settled = false }: Props) {
   const [runs, setRuns] = useState<LlmRun[] | null>(null);
 
   useEffect(() => {
@@ -41,8 +41,8 @@ export function RealSolves({ id }: Props) {
     };
   }, [id]);
 
-  // Group by puzzle index. Each puzzle was given to every agent in the
-  // round so each group has 1..N rows.
+  // Group solver rows by puzzle index, newest first so the latest posted
+  // puzzle sits at the top of the feed as the round grows.
   const puzzles = useMemo(() => {
     if (!runs || runs.length === 0) return [];
     const map = new Map<number, LlmRun[]>();
@@ -53,35 +53,39 @@ export function RealSolves({ id }: Props) {
       map.set(r.puzzleIdx, list);
     }
     return Array.from(map.entries())
-      .sort((a, b) => a[0] - b[0])
+      .sort((a, b) => b[0] - a[0])
       .map(([idx, rows]) => ({ idx, rows }));
   }, [runs]);
 
-  const ids = useMemo(() => {
+  // Every agent that has answered anything this round. Used so a card can show
+  // a "solving" row for agents that haven't answered THAT puzzle yet.
+  const agentIds = useMemo(() => {
     const set = new Set<number>();
-    if (runs) for (const r of runs) set.add(r.agentId);
-    return Array.from(set);
+    if (runs) for (const r of runs) if (r.kind === "solver") set.add(r.agentId);
+    return Array.from(set).sort((a, b) => a - b);
   }, [runs]);
-  const names = useAgentNames(ids);
-  const skins = useAgentSkins(ids);
+  const names = useAgentNames(agentIds);
+  const skins = useAgentSkins(agentIds);
 
   if (puzzles.length === 0) return null;
 
   return (
     <div className="mt-8">
-      <div className="mb-3 flex flex-wrap items-center gap-3 font-mono text-[11px] uppercase tracking-[0.16em]">
+      <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[11px] uppercase tracking-[0.16em]">
         <span aria-hidden className="text-accent">■</span>
-        <span className="text-ink-3">REAL SOLVES</span>
+        <span className="text-ink-3">SOLVE FEED</span>
         <span className="text-ink">{puzzles.length} PUZZLES · {runs?.length ?? 0} ANSWERS</span>
+        {!settled ? <span className="text-ink-3">· ANSWERS REVEAL AT SETTLE</span> : null}
       </div>
-      {/* Two puzzles per row on lg+ so a 6-puzzle round reads as a 3x2 grid
-          instead of a long stack. Stacks on mobile and tablet. */}
-      <div className="grid gap-3 lg:grid-cols-2">
-        {puzzles.map(({ idx, rows }) => (
+      <div className="flex flex-col gap-3">
+        {puzzles.map(({ idx, rows }, i) => (
           <PuzzleCard
             key={idx}
             idx={idx}
             rows={rows}
+            agentIds={agentIds}
+            newest={i === 0 && !settled}
+            settled={settled}
             agentName={(n) => nameFor(names, n)}
             agentSkin={(n) => skinFor(skins, n)}
           />
@@ -94,51 +98,82 @@ export function RealSolves({ id }: Props) {
 function PuzzleCard({
   idx,
   rows,
+  agentIds,
+  newest,
+  settled,
   agentName,
   agentSkin,
 }: {
   idx: number;
   rows: LlmRun[];
+  agentIds: number[];
+  newest: boolean;
+  settled: boolean;
   agentName: (id: number) => string;
   agentSkin: (id: number) => string | null;
 }) {
   const prompt = rows[0]?.prompt ?? "(no prompt)";
   const expected = rows[0]?.expected ?? null;
+  const family = familyOf(prompt);
+  const byAgent = new Map<number, LlmRun>();
+  for (const r of rows) if (!byAgent.has(r.agentId)) byAgent.set(r.agentId, r);
+  // Show every known agent so viewers see who's still solving this one.
+  const order = agentIds.length > 0 ? agentIds : rows.map((r) => r.agentId);
+
   return (
     <BracketedCell pad="sm">
-      <div className="flex items-baseline gap-3">
-        <span className="font-stencil text-[18px] text-ink">PUZZLE {idx + 1}</span>
-        {expected ? (
-          <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
-            EXPECTED · {truncate(expected, 24)}
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+        <span className="font-stencil text-[16px] sm:text-[18px] text-ink">PUZZLE {idx + 1}</span>
+        <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">{family}</span>
+        {newest ? (
+          <span className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.12em] text-accent">
+            <span aria-hidden className="inline-block h-1.5 w-1.5 rounded-full bg-accent" /> SOLVING
+          </span>
+        ) : null}
+        {settled && expected ? (
+          <span className="ml-auto font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
+            ANSWER · {truncate(expected, 24)}
           </span>
         ) : null}
       </div>
-      <p className="mt-2 font-mono text-[13px] leading-[1.45] text-ink-2 whitespace-pre-wrap">{prompt}</p>
+      <p
+        className="mt-2 font-mono text-[12px] sm:text-[13px] leading-[1.45] text-ink-2"
+        style={{ display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}
+      >
+        {firstLine(prompt)}
+      </p>
       <div className="mt-3 flex flex-col gap-1.5">
-        {rows.map((r) => (
-          <AnswerRow
-            key={`${r.agentId}-${idx}`}
-            row={r}
-            name={agentName(r.agentId)}
-            skin={agentSkin(r.agentId)}
-          />
-        ))}
+        {order.map((aid) => {
+          const row = byAgent.get(aid);
+          return (
+            <AnswerRow
+              key={`${aid}-${idx}`}
+              row={row ?? null}
+              agentId={aid}
+              name={agentName(aid)}
+              skin={agentSkin(aid)}
+            />
+          );
+        })}
       </div>
     </BracketedCell>
   );
 }
 
-function AnswerRow({ row, name, skin }: { row: LlmRun; name: string; skin: string | null }) {
-  const variant = robotVariantForId(row.agentId);
-  const tone = verdictTone(row.verdict);
-  // Server-side answer wins. Older rows (pre answer-column) fall back to
-  // local extraction so we still get a tight cell, not a paragraph.
-  const finalAnswer = row.answer && row.answer.trim().length > 0
-    ? row.answer
-    : extractAnswer(row.response, row.expected);
+function AnswerRow({
+  row,
+  agentId,
+  name,
+  skin,
+}: {
+  row: LlmRun | null;
+  agentId: number;
+  name: string;
+  skin: string | null;
+}) {
+  const variant = robotVariantForId(agentId);
   return (
-    <div className="flex items-center gap-3 border-t border-[color:var(--hairline)] pt-1.5 first:border-0 first:pt-0">
+    <div className="flex items-center gap-2.5 border-t border-[color:var(--hairline)] pt-1.5 first:border-0 first:pt-0">
       <span className="flex h-4 w-4 flex-none items-center justify-center overflow-hidden bg-canvas-3">
         {skin ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -150,30 +185,56 @@ function AnswerRow({ row, name, skin }: { row: LlmRun; name: string; skin: strin
       <span className="min-w-0 flex-1 truncate font-mono text-[11px] uppercase tracking-[0.12em] text-ink">
         {name}
       </span>
-      <ResponsePopover answer={finalAnswer} response={row.response} />
-      <span
-        className="inline-flex items-center gap-1 border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em]"
-        style={{ borderColor: tone.border, color: tone.text }}
-      >
-        {tone.label}
-      </span>
+      {row ? <Verdict row={row} /> : (
+        <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">solving…</span>
+      )}
     </div>
   );
 }
 
+/// The answer chip + outcome pip. Correct reads green with the solve time;
+/// wrong reads a muted miss; skipped / errored read as a calm "pass" so a
+/// model that didn't commit never looks like the product broke.
+function Verdict({ row }: { row: LlmRun }) {
+  const finalAnswer =
+    row.answer && row.answer.trim().length > 0 ? row.answer : extractAnswer(row.response, row.expected);
+  const secs = row.latencyMs > 0 ? `${(row.latencyMs / 1000).toFixed(1)}s` : null;
+
+  if (row.verdict === "correct") {
+    return (
+      <span className="flex flex-none items-center gap-2">
+        <ResponsePopover answer={finalAnswer} response={row.response} />
+        <span className="font-mono text-[11px]" style={{ color: "var(--ok)" }}>✓</span>
+        {secs ? <span className="font-mono text-[10px] text-ink-3 tabular-nums">{secs}</span> : null}
+      </span>
+    );
+  }
+  if (row.verdict === "wrong") {
+    return (
+      <span className="flex flex-none items-center gap-2">
+        <ResponsePopover answer={finalAnswer} response={row.response} />
+        <span className="font-mono text-[11px] text-ink-3">✗</span>
+        {secs ? <span className="font-mono text-[10px] text-ink-3 tabular-nums">{secs}</span> : null}
+      </span>
+    );
+  }
+  // skipped / error: neutral pass.
+  return (
+    <span className="flex flex-none items-center gap-2">
+      <span className="font-mono text-[11px] text-ink-3">—</span>
+      <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">pass</span>
+    </span>
+  );
+}
+
 /// Click/hover popover that shows the LLM's full chain-of-thought while
-/// staying inside the viewport. Replaces the browser-native `title` tooltip
-/// which renders unstyled and overflows off-screen on rows near the right
-/// edge of the page. The trigger shows the extracted answer only.
+/// staying inside the viewport. The trigger shows the extracted answer only.
 function ResponsePopover({ answer, response }: { answer: string; response: string }) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
 
-  // Recompute the popover position so it sits below the trigger and never
-  // bleeds past the viewport. Runs synchronously after the panel mounts so
-  // the user never sees a flash at the wrong spot.
   useLayoutEffect(() => {
     if (!open) { setPos(null); return; }
     const trigger = triggerRef.current;
@@ -181,13 +242,12 @@ function ResponsePopover({ answer, response }: { answer: string; response: strin
     const rect = trigger.getBoundingClientRect();
     const margin = 8;
     const desiredWidth = Math.min(560, window.innerWidth - margin * 2);
-    let left = rect.right - desiredWidth; // right-align to the trigger
+    let left = rect.right - desiredWidth;
     if (left < margin) left = margin;
     if (left + desiredWidth > window.innerWidth - margin) {
       left = window.innerWidth - desiredWidth - margin;
     }
     let top = rect.bottom + 6;
-    // If there's not enough room below, place above.
     const panelMaxHeight = Math.min(360, window.innerHeight - margin * 2);
     if (top + panelMaxHeight > window.innerHeight - margin) {
       const above = rect.top - panelMaxHeight - 6;
@@ -196,7 +256,6 @@ function ResponsePopover({ answer, response }: { answer: string; response: strin
     setPos({ top, left, width: desiredWidth });
   }, [open]);
 
-  // Close on outside click, Escape, or scroll.
   useEffect(() => {
     if (!open) return;
     const onClick = (e: MouseEvent) => {
@@ -232,7 +291,7 @@ function ResponsePopover({ answer, response }: { answer: string; response: strin
         aria-expanded={open}
         aria-haspopup="dialog"
         title="click for the agent's reasoning"
-        className="max-w-[40%] truncate border-b border-dotted border-[color:var(--hairline-strong)] font-mono text-[11px] text-ink hover:border-accent hover:text-accent"
+        className="max-w-[120px] truncate border-b border-dotted border-[color:var(--hairline-strong)] font-mono text-[11px] text-ink hover:border-accent hover:text-accent"
       >
         {answer}
       </button>
@@ -243,9 +302,7 @@ function ResponsePopover({ answer, response }: { answer: string; response: strin
           className="fixed z-50 max-h-[360px] overflow-auto border border-ink bg-canvas-2 p-3 font-mono text-[11px] leading-[1.45] text-ink shadow-[0_8px_30px_rgba(26,22,18,0.18)]"
           style={{ top: pos.top, left: pos.left, width: pos.width }}
         >
-          <div className="mb-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-ink-3">
-            AGENT REASONING
-          </div>
+          <div className="mb-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-ink-3">AGENT REASONING</div>
           <p className="whitespace-pre-wrap break-words">{response}</p>
         </div>
       ) : null}
@@ -253,50 +310,46 @@ function ResponsePopover({ answer, response }: { answer: string; response: strin
   );
 }
 
-function verdictTone(v: LlmRun["verdict"]): { label: string; border: string; text: string } {
-  switch (v) {
-    case "correct":
-      return { label: "CORRECT", border: "var(--ok)", text: "var(--ok)" };
-    case "wrong":
-      return { label: "WRONG", border: "var(--err)", text: "var(--err)" };
-    case "skipped":
-      return { label: "SKIPPED", border: "var(--hairline-strong)", text: "var(--ink-3)" };
-    case "error":
-    default:
-      return { label: "ERROR", border: "var(--err)", text: "var(--err)" };
-  }
+/// Best-effort puzzle family from the prompt text, for the card's kind chip.
+/// Falls back to a neutral label so a new template never breaks the header.
+function familyOf(prompt: string): string {
+  const p = prompt.toLowerCase();
+  if (p.includes("calldata") || p.includes("0xa9059cbb")) return "DECODE";
+  if (p.includes("classify this")) return "CLASSIFY";
+  if (p.includes("continue the sequence")) return "PATTERN";
+  if (p.includes("count the words")) return "WORD COUNT";
+  if (p.startsWith("routing") || p.includes("which pool")) return "ROUTING";
+  if (p.includes("apy") || p.includes("micro-usdc") || p.includes("whole usdc remain")) return "QUANT";
+  if (p.includes("research") || p.includes("search results") || p.includes("search query")) return "RESEARCH";
+  if (/\n\s*a\)\s/.test(prompt.toLowerCase())) return "QUIZ";
+  if (p.includes("times") || p.includes("divided") || p.includes("squared")) return "ARITHMETIC";
+  return "PUZZLE";
 }
 
-/// Pull the final answer out of an LLM response, mirroring the backend
-/// judge in `backend/src/runners/judge.ts`. The rule is "answer with a
-/// single letter" or "answer with the integer only", so the cell shows
-/// only that. The full chain-of-thought stays available on hover via
-/// the `title` attr.
-///
-/// Inference order:
-///   - expected looks like a single A..D letter → return the last A..D
-///   - expected parses as a number → return the last number in the response
-///   - expected is one of the classify words → return the last matching word
-///   - fallback → tight summary of the response (legacy behavior)
+/// First paragraph of the prompt for the compact feed card; the choices and
+/// instructions sit below the question and aren't needed in the stream.
+function firstLine(prompt: string): string {
+  const trimmed = prompt.trim();
+  const q = trimmed.split(/\n/).find((l) => l.trim().length > 0) ?? trimmed;
+  return q.length > 200 ? `${q.slice(0, 199)}…` : q;
+}
+
 function extractAnswer(response: string, expected: string | null): string {
   const cleaned = response.replace(/```[\s\S]*?```/g, " ").trim();
   if (!cleaned) return "—";
 
   if (expected != null) {
     const exp = expected.trim();
-    // Single A-D letter (multiple choice / routing / quiz)
     if (/^[A-Da-d]$/.test(exp)) {
       const matches = Array.from(cleaned.matchAll(/\b([A-D])\b/g));
       const last = matches[matches.length - 1];
       if (last) return last[1]!;
     }
-    // Numeric
     if (/^-?\d+(?:\.\d+)?$/.test(exp)) {
       const numbers = Array.from(cleaned.matchAll(/-?\d[\d,]*(?:\.\d+)?/g)).map((m) => m[0].replace(/,/g, ""));
       const last = numbers[numbers.length - 1];
       if (last != null) return last;
     }
-    // Word from a known classify set
     const classifyWords = ["transfer", "swap", "mint", "bridge"];
     if (classifyWords.includes(exp.toLowerCase())) {
       const lower = cleaned.toLowerCase();
@@ -308,7 +361,6 @@ function extractAnswer(response: string, expected: string | null): string {
       }
       if (pick) return pick;
     }
-    // Research bucket (none / few / some / many)
     const buckets = ["none", "few", "some", "many"];
     if (buckets.includes(exp.toLowerCase())) {
       const lower = cleaned.toLowerCase();
@@ -321,10 +373,6 @@ function extractAnswer(response: string, expected: string | null): string {
       if (pick) return pick.toUpperCase();
     }
   }
-
-  // No clean answer found. Never leak the response text into the cell — the
-  // full reasoning is one click away in the popover. A dash reads as "the
-  // agent didn't commit to an answer".
   return "—";
 }
 

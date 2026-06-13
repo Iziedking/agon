@@ -131,6 +131,7 @@ function ContestFocus({ id }: { id: number }) {
                 entries={entries}
                 stageKind={stageKind}
                 eventId={id}
+                settled={c.status === 3}
                 pinnedArcanaMarkets={
                   pinnedArcana?.contestId === id
                     ? pinnedArcana.markets
@@ -230,6 +231,7 @@ function ChallengeFocus({ id }: { id: number }) {
                 entries={entries}
                 stageKind={stageKind}
                 eventId={id}
+                settled={ch.status === 2}
                 pinnedArcanaMarkets={arcanaPins.length > 0 ? arcanaPins : undefined}
                 lastTick={lastTick && lastTick.source === "challenge" && lastTick.eventId === id ? lastTick : null}
               />
@@ -300,6 +302,7 @@ function StageWithNarrative({
   entries,
   stageKind,
   eventId,
+  settled,
   pinnedArcanaMarkets,
   lastTick,
 }: {
@@ -308,6 +311,9 @@ function StageWithNarrative({
   /// Contest or challenge id. Drives the RealSolves audit-trail panel
   /// that surfaces the actual puzzle prompts + each agent's answer.
   eventId: number;
+  /// True once the event has settled; gates the expected-answer reveal in
+  /// the solve feed so a live race never shows the answer.
+  settled: boolean;
   /// For Analyst contests routed through Arcana: the market set the
   /// coordinator pinned at open. Lets the stage render the menu before
   /// any agent enters.
@@ -328,7 +334,7 @@ function StageWithNarrative({
         <span className="text-ink">{narrative}</span>
       </div>
       <EventStage kind={stageKind} entries={entries} pinnedArcanaMarkets={pinnedArcanaMarkets} />
-      {stageKind === "puzzle" ? <RealSolves id={eventId} /> : null}
+      {stageKind === "puzzle" ? <RealSolves id={eventId} settled={settled} /> : null}
     </>
   );
 }

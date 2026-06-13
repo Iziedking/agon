@@ -228,14 +228,14 @@ export function PredictionStage({
             return (
               <div
                 key={e.agentId}
-                className="grid grid-cols-[2rem_auto_1fr_auto] items-center gap-4 border-b border-[color:var(--hairline)] py-3 last:border-0"
+                className="flex flex-col gap-2 border-b border-[color:var(--hairline)] py-3 last:border-0"
               >
-                <span className={`font-stencil text-[16px] ${e.rank === 1 ? "text-accent" : "text-ink"}`}>
-                  #{e.rank}
-                </span>
                 <div className="flex items-center gap-3">
+                  <span className={`font-stencil text-[16px] ${e.rank === 1 ? "text-accent" : "text-ink"}`}>
+                    #{e.rank}
+                  </span>
                   <AgentAvatar skin={skinFor(skins, e.agentId)} variant={variant} size={28} />
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <div className="font-mono text-[12px] uppercase tracking-[0.12em] text-ink truncate">
                       {nameFor(names, e.agentId)}
                     </div>
@@ -244,25 +244,19 @@ export function PredictionStage({
                       {correctIdx ? ` · NAILED ${correctIdx}` : ""}
                     </div>
                   </div>
+                  <span
+                    key={e.score}
+                    className="tick-up flex-none text-right font-mono text-[12px] tabular-nums text-ink"
+                  >
+                    {Math.round(e.score).toLocaleString()}
+                  </span>
                 </div>
-                <div
-                  className="h-2 border border-[color:var(--hairline-strong)] bg-canvas-2"
-                  style={{ minWidth: 80 }}
-                >
+                <div className="h-2 w-full border border-[color:var(--hairline-strong)] bg-canvas-2">
                   <div
                     className="h-full"
-                    style={{
-                      width: total > 0 ? `${(correct / total) * 100}%` : "0%",
-                      background: accent,
-                    }}
+                    style={{ width: total > 0 ? `${(correct / total) * 100}%` : "0%", background: accent }}
                   />
                 </div>
-                <span
-                  key={e.score}
-                  className="tick-up min-w-[64px] text-right font-mono text-[12px] tabular-nums text-ink"
-                >
-                  {Math.round(e.score).toLocaleString()}
-                </span>
               </div>
             );
           })}
@@ -479,14 +473,14 @@ function ArcanaBranch({
             return (
               <div
                 key={e.agentId}
-                className="grid grid-cols-[2rem_auto_1fr_auto] items-start gap-4 border-b border-[color:var(--hairline)] py-3 last:border-0"
+                className="flex flex-col gap-2 border-b border-[color:var(--hairline)] py-3 last:border-0"
               >
-                <span className={`font-stencil text-[16px] ${e.rank === 1 ? "text-accent" : "text-ink"}`}>
-                  #{e.rank}
-                </span>
                 <div className="flex items-start gap-3">
+                  <span className={`font-stencil text-[16px] ${e.rank === 1 ? "text-accent" : "text-ink"}`}>
+                    #{e.rank}
+                  </span>
                   <AgentAvatar skin={skinFor(skins, e.agentId)} variant={variant} size={28} />
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-[12px] uppercase tracking-[0.12em] text-ink truncate">
                         {nameFor(names, e.agentId)}
@@ -544,21 +538,22 @@ function ArcanaBranch({
                       ) : null}
                     </div>
                   </div>
+                  <span
+                    key={e.score}
+                    className="tick-up flex-none text-right font-mono text-[12px] tabular-nums text-ink"
+                  >
+                    {Math.round(e.score).toLocaleString()}
+                  </span>
                 </div>
 
-                {/* Per-position chips */}
-                <div className="flex flex-wrap gap-1.5">
-                  {positions.map((p) => (
-                    <PositionChip key={`${p.marketId}-${p.side}`} pos={p} accent={accent} />
-                  ))}
-                </div>
-
-                <span
-                  key={e.score}
-                  className="tick-up min-w-[64px] text-right font-mono text-[12px] tabular-nums text-ink"
-                >
-                  {Math.round(e.score).toLocaleString()}
-                </span>
+                {/* Per-position chips, full width below the name row */}
+                {positions.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {positions.map((p) => (
+                      <PositionChip key={`${p.marketId}-${p.side}`} pos={p} accent={accent} />
+                    ))}
+                  </div>
+                ) : null}
               </div>
             );
           })}

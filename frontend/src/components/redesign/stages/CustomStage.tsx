@@ -35,24 +35,24 @@ export function CustomStage({ entries }: { entries: StandingsEntry[] }) {
           return (
             <div
               key={e.agentId}
-              className="grid grid-cols-[2rem_auto_1fr_auto] items-center gap-4 border-b border-[color:var(--hairline)] py-3 last:border-0"
+              className="flex flex-col gap-2 border-b border-[color:var(--hairline)] py-3 last:border-0"
             >
-              <span className={`font-stencil text-[16px] ${e.rank === 1 ? "text-accent" : "text-ink"}`}>
-                #{e.rank}
-              </span>
               <div className="flex items-center gap-3">
+                <span className={`font-stencil text-[16px] ${e.rank === 1 ? "text-accent" : "text-ink"}`}>
+                  #{e.rank}
+                </span>
                 <AgentAvatar skin={skinFor(skins, e.agentId)} variant={variant} size={28} />
-                <div className="font-mono text-[12px] uppercase tracking-[0.12em] text-ink truncate">
+                <div className="min-w-0 flex-1 font-mono text-[12px] uppercase tracking-[0.12em] text-ink truncate">
                   {nameFor(names, e.agentId)}
                 </div>
+                <span
+                  key={e.score}
+                  className="tick-up flex-none text-right font-mono text-[12px] tabular-nums text-ink"
+                >
+                  {Math.round(e.score).toLocaleString()}
+                </span>
               </div>
               <Heartbeat accent={accent} amp={pct} />
-              <span
-                key={e.score}
-                className="tick-up min-w-[64px] text-right font-mono text-[12px] tabular-nums text-ink"
-              >
-                {Math.round(e.score).toLocaleString()}
-              </span>
             </div>
           );
         })}

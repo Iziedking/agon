@@ -138,7 +138,7 @@ export function PuzzleStage({ entries }: { entries: StandingsEntry[] }) {
               THIS ROUND
             </span>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {cards.map((card, i) => (
+              {cards.slice(0, 6).map((card, i) => (
                 <div
                   key={i}
                   className="flex flex-col gap-1 border border-[color:var(--hairline)] p-2 font-mono text-[10px] uppercase tracking-[0.08em]"
@@ -159,6 +159,11 @@ export function PuzzleStage({ entries }: { entries: StandingsEntry[] }) {
                 </div>
               ))}
             </div>
+            {cards.length > 6 ? (
+              <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
+                + {cards.length - 6} MORE THIS ROUND
+              </span>
+            ) : null}
           </div>
         </BracketedCell>
       ) : kinds ? (
@@ -205,16 +210,19 @@ export function PuzzleStage({ entries }: { entries: StandingsEntry[] }) {
             const totalMs = solver?.perPuzzleMs?.reduce((s, m) => s + m, 0);
             const isFastest = fastest?.entry.agentId === e.agentId;
             return (
+              // Mobile-first: name row on top, puzzle grid full-width below.
+              // The old 4-column grid squeezed the cells on small screens; a
+              // stacked card reads cleanly at 360px and on desktop alike.
               <div
                 key={e.agentId}
-                className="grid grid-cols-[2rem_auto_1fr_auto] items-center gap-4 border-b border-[color:var(--hairline)] py-3 last:border-0"
+                className="flex flex-col gap-2 border-b border-[color:var(--hairline)] py-3 last:border-0"
               >
-                <span className={`font-stencil text-[16px] ${e.rank === 1 ? "text-accent" : "text-ink"}`}>
-                  #{e.rank}
-                </span>
                 <div className="flex items-center gap-3">
+                  <span className={`font-stencil text-[16px] ${e.rank === 1 ? "text-accent" : "text-ink"}`}>
+                    #{e.rank}
+                  </span>
                   <AgentAvatar skin={skinFor(skins, e.agentId)} variant={variant} size={28} />
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <div className="font-mono text-[12px] uppercase tracking-[0.12em] text-ink truncate">
                       {nameFor(names, e.agentId)}
                       {isFastest ? <span className="ml-2 text-accent">★</span> : null}
@@ -235,15 +243,15 @@ export function PuzzleStage({ entries }: { entries: StandingsEntry[] }) {
                       })()}
                     </div>
                   </div>
+                  <span
+                    key={e.score}
+                    className="tick-up flex-none text-right font-mono text-[12px] tabular-nums text-ink"
+                  >
+                    {Math.round(e.score).toLocaleString()}
+                  </span>
                 </div>
-                {/* Per-puzzle cells, full-width */}
+                {/* Per-puzzle cells, full-width under the name row. */}
                 <PuzzleRow entry={e} accent={accent} maxScore={maxScore} />
-                <span
-                  key={e.score}
-                  className="tick-up min-w-[64px] text-right font-mono text-[12px] tabular-nums text-ink"
-                >
-                  {Math.round(e.score).toLocaleString()}
-                </span>
               </div>
             );
           })}
