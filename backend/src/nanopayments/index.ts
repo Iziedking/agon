@@ -334,6 +334,13 @@ async function payViaSdk(opts: PayX402Opts): Promise<PayX402Result> {
       response: res.data,
     });
   } catch (err) {
+    // The seller may not offer the Gateway batching option (e.g. an exact-only
+    // scheme). Rather than leave the agent dataless, fall back to a direct
+    // HTTPS fetch when enabled, so it still gets real research to reason on
+    // (no USDC moves on that path).
+    if (config.nanopay.httpFallback) {
+      return httpFallbackFetch(opts);
+    }
     return persistAndReturn(opts, {
       status: "failed",
       usdcAmount6: 0n,

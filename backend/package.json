@@ -18,6 +18,7 @@
     "fund-scouts": "tsx src/coordinator/fundScouts.ts",
     "nanopay:doctor": "tsx scripts/nanopay-doctor.ts",
     "nanopay:deposit": "tsx scripts/nanopay-deposit.ts",
+    "nanopay:probe": "tsx scripts/nanopay-probe.ts",
     "test:prediction": "tsx scripts/prediction-examples.ts",
     "typecheck": "tsc --noEmit"
   },
