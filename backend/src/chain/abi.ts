@@ -15,6 +15,11 @@ export const contestEngineEvents = parseAbi([
 
 export const challengeArenaEvents = parseAbi([
   "event ChallengeCreated(uint256 indexed id, address indexed creator, uint8 kind, uint128 stake)",
+  // Emitted once per invitee when a creator invites to a private challenge.
+  // The indexer's ChallengeInvited handler populates challenge_invites AND
+  // notifies the invitee (in-app + Telegram). Without this signature getLogs
+  // never returns the event, so neither happened.
+  "event ChallengeInvited(uint256 indexed id, address indexed invitee)",
   "event ChallengeJoined(uint256 indexed id, address indexed operator, uint256 indexed agentId)",
   "event ChallengeLocked(uint256 indexed id, uint256 pot, uint64 entrants)",
   "event ChallengeSettled(uint256 indexed id, bytes32 winnerRoot)",
