@@ -421,31 +421,50 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
         fetchSyndicateMultipliers(operators),
       ]);
 
-      // Stream a preview race so the challenge detail board animates before
-      // the winner root posts. Only on the first sweep that sees this
-      // challenge locked in this process, and only when there is enough
-      // resolve window left to fit the preview.
-      const previewSecs = Number(process.env.CHALLENGE_PREVIEW_SECONDS ?? "20");
-      const haveTime = Number(ch.resolveDeadline) - nowSec > previewSecs + 5;
-      if (!previewed.has(challengeId) && field.length >= 2 && haveTime) {
-        previewed.add(challengeId);
-        const previewUntil = Date.now() + previewSecs * 1000;
+      let baseResults: AgentResult[];
+      if (cType === 0) {
+        // VOLUME (Scout): run the REAL swap race live. The runner does
+        // USDC<->EURC round-trips from each hot wallet, broadcasting a
+        // standings frame after every leg so the tx tape fills as the
+        // countdown ticks. Swapping stops 60s before the resolve deadline.
+        // Trait/training boost already became MORE swaps inside the runner,
+        // so the volume the agents actually moved is the score.
+        const deadlineMs = Number(ch.resolveDeadline) * 1000 - 60_000;
         console.log(
-          `challenge ${challengeId}: streaming ${previewSecs}s preview to ${field.length} entrant(s) (kind ${ch.kind}, randomness ±${(factor * 100).toFixed(0)}%)`,
+          `challenge ${challengeId}: streaming live scout swap race to ${field.length} entrant(s), ending 60s before resolve deadline`,
         );
-        while (Date.now() < previewUntil) {
-          const preview = await previewScores(cType, challengeId, field);
-          const baselines = new Map(preview.map((r) => [r.agentId, r.score] as const));
-          const withTraits = applyTraitMultipliers(preview, traitMult);
-          const withTraining = applyTrainingMultipliers(withTraits, trainMult);
-          const withSyndicate = applySyndicateMultipliers(withTraining, synMult);
-          const clamped = clampCombinedMultiplier(withSyndicate, baselines);
-          broadcast({ type: "challenge_standings", challengeId, entries: standings(applyRandomness(clamped, factor)) });
-          await sleep(2500);
+        baseResults = await new ScoutRunner(5).run(challengeId, field, {
+          broadcast,
+          deadlineMs,
+          source: "challenge",
+        });
+      } else {
+        // Stream a preview race so the challenge detail board animates before
+        // the winner root posts. Only on the first sweep that sees this
+        // challenge locked in this process, and only when there is enough
+        // resolve window left to fit the preview.
+        const previewSecs = Number(process.env.CHALLENGE_PREVIEW_SECONDS ?? "20");
+        const haveTime = Number(ch.resolveDeadline) - nowSec > previewSecs + 5;
+        if (!previewed.has(challengeId) && field.length >= 2 && haveTime) {
+          previewed.add(challengeId);
+          const previewUntil = Date.now() + previewSecs * 1000;
+          console.log(
+            `challenge ${challengeId}: streaming ${previewSecs}s preview to ${field.length} entrant(s) (kind ${ch.kind}, randomness ±${(factor * 100).toFixed(0)}%)`,
+          );
+          while (Date.now() < previewUntil) {
+            const preview = await previewScores(cType, challengeId, field);
+            const baselines = new Map(preview.map((r) => [r.agentId, r.score] as const));
+            const withTraits = applyTraitMultipliers(preview, traitMult);
+            const withTraining = applyTrainingMultipliers(withTraits, trainMult);
+            const withSyndicate = applySyndicateMultipliers(withTraining, synMult);
+            const clamped = clampCombinedMultiplier(withSyndicate, baselines);
+            broadcast({ type: "challenge_standings", challengeId, entries: standings(applyRandomness(clamped, factor)) });
+            await sleep(2500);
+          }
         }
-      }
 
-      const baseResults = await scoreField(cType, challengeId, field);
+        baseResults = await scoreField(cType, challengeId, field);
+      }
       const baselines = new Map(baseResults.map((r) => [r.agentId, r.score] as const));
       const withTraits = applyTraitMultipliers(baseResults, traitMult);
       const withTraining = applyTrainingMultipliers(withTraits, trainMult);

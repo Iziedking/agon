@@ -440,14 +440,115 @@ function parseStrategy(text: string): { opsCount: number | null; perOpUsdc6: big
   };
 }
 
+/// Streaming context for a live volume race. When present (challenge/contest
+/// resolver passes it), the runner performs the real swaps progressively and
+/// broadcasts a standings frame after each one so the tx tape fills as the
+/// countdown ticks, instead of bursting every swap at settlement.
+export interface ScoutRunCtx {
+  broadcast?: (message: unknown) => void;
+  /// Hard stop (epoch ms). The runner starts no new swap after this. The
+  /// challenge resolver passes resolveDeadline - 60s so swapping ends a full
+  /// minute before the event closes.
+  deadlineMs?: number;
+  /// Picks the loadout namespace for trait reads and the broadcast message
+  /// type ("challenge_standings" vs "contest_standings").
+  source?: "contest" | "challenge";
+}
+
+/// Hard ceiling on how long the live race blocks the resolver, so a single
+/// challenge can't eat the sweeper's per-event timeout (default 150s). The
+/// race also stops at deadlineMs (resolveDeadline - 60s), whichever is sooner.
+const RACE_MAX_SECONDS = Number(process.env.SCOUT_RACE_SECONDS ?? "75");
+const RACE_INTER_ROUND_MS = Number(process.env.SCOUT_RACE_DELAY_MS ?? "600");
+const raceSleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+interface SwapAbility {
+  privateKey: `0x${string}`;
+  perSwapUsdc: number;
+  /// Bound on swap legs this agent may run this round: trait-boosted target
+  /// (round-trips x2) clamped by the shared 1024/day budget remaining.
+  targetLegs: number;
+}
+
+/// Resolve an agent's hot wallet, per-swap size, and remaining swap budget for
+/// the live race. perSwapUsdc 0 means it can't swap (empty wallet or daily cap
+/// hit); the caller skips it.
+async function prepareSwapAbility(
+  agentId: number,
+  tier: number,
+  targetRoundTrips: number,
+): Promise<SwapAbility | null> {
+  if (!config.scout.masterMnemonic) return null;
+  const account = mnemonicToAccount(config.scout.masterMnemonic, { addressIndex: agentId });
+  const pkBytes = account.getHdKey().privateKey;
+  if (!pkBytes) return null;
+  const privateKey = toHex(pkBytes) as `0x${string}`;
+
+  const balance = await publicClient.readContract({
+    address: config.external.USDC,
+    abi: USDC_ABI,
+    functionName: "balanceOf",
+    args: [account.address],
+  });
+  const balanceUsdc = Number(balance) / 1e6;
+  const dailyRemaining = await dailySwapsRemaining(agentId); // in legs
+  const targetLegs = Math.max(0, Math.min(targetRoundTrips * 2, dailyRemaining));
+  if (targetLegs <= 0) return { privateKey, perSwapUsdc: 0, targetLegs: 0 };
+
+  // The principal recirculates each round-trip, so a flat gas buffer covers
+  // every leg's gas; no need to scale the reserve by the full round count.
+  const gasReserveUsdc = Number(process.env.SCOUT_GAS_RESERVE_USDC ?? "0.10");
+  const spendableUsdc = Math.max(0, balanceUsdc - gasReserveUsdc * 3);
+  const perSwapUsdc = Math.min(fundingCapUsdc(tier), spendableUsdc);
+  return { privateKey, perSwapUsdc, targetLegs };
+}
+
+/// One USDC -> EURC -> USDC round-trip. Returns the legs that actually landed
+/// (0, 1, or 2) with each leg's USDC-equivalent volume. Recirculates the
+/// principal so the next round-trip can run from the same wallet.
+async function oneRoundTrip(
+  privateKey: `0x${string}`,
+  perSwapUsdc: number,
+): Promise<Array<{ txHash: Hash; vol6: bigint }>> {
+  const legs: Array<{ txHash: Hash; vol6: bigint }> = [];
+  const usdc = config.scout.swapTokenIn;
+  const alt = config.scout.swapTokenOut;
+  const fwd = await executeSwap({ privateKey, tokenIn: usdc, tokenOut: alt, amountIn: perSwapUsdc.toFixed(6) });
+  if (!fwd) return legs;
+  if (fwd.txHash) legs.push({ txHash: fwd.txHash as Hash, vol6: BigInt(Math.round(perSwapUsdc * 1e6)) });
+  const altOut = Number(fwd.amountOut);
+  if (Number.isFinite(altOut) && altOut > 0) {
+    const rev = await executeSwap({ privateKey, tokenIn: alt, tokenOut: usdc, amountIn: altOut.toFixed(6) });
+    if (rev?.txHash) {
+      const back = Number(rev.amountOut) > 0 ? Number(rev.amountOut) : perSwapUsdc;
+      legs.push({ txHash: rev.txHash as Hash, vol6: BigInt(Math.round(back * 1e6)) });
+    }
+  }
+  return legs;
+}
+
+interface ScoutPlan {
+  entry: ContestEntryInput;
+  account: Account;
+  strategy: ScoutStrategy;
+  strength: ReturnType<typeof effectiveStrength>;
+  opBoost: number;
+  /// Trait-boosted target round-trips, clamped to the tier op cap.
+  target: number;
+}
+
 export class ScoutRunner implements Runner {
   readonly kind = "scout" as const;
   constructor(private readonly opsPerContest = 5) {}
 
-  async run(contestId: number, entries: ContestEntryInput[]): Promise<AgentResult[]> {
-    const results: AgentResult[] = [];
+  async run(contestId: number, entries: ContestEntryInput[], ctx?: ScoutRunCtx): Promise<AgentResult[]> {
     const real = llmConfigured();
+    const source = ctx?.source ?? "contest";
+    const results: AgentResult[] = [];
+    const plans: ScoutPlan[] = [];
 
+    // Pre-pass: pick each agent's strategy and trait-boosted swap target. The
+    // execution (sequential burst, or the live streamed race) happens after.
     for (const e of entries) {
       const account = deriveHotWallet(e.agentId);
       const balance = await hotWalletBalance(e.agentId);
@@ -471,44 +572,53 @@ export class ScoutRunner implements Runner {
       // so the training x traits portion becomes MORE swaps (real volume), not a
       // post-hoc score multiplier. tierBase is excluded — tier's edge is already
       // the bigger swap. This is the lever a well-trained, well-equipped lower
-      // tier uses to out-volume a bare higher tier; the game is in positioning.
+      // tier uses to out-volume a bare higher tier: the right traits = more
+      // round-trips = more on-chain volume. Loadout is read from the right
+      // namespace ("challenge" vs "contest") so equipped traits actually count.
       const stats = await loadAgentStats(e.agentId).catch(() => ({}));
-      const equipped = await getLoadout("contest", contestId, e.agentId).catch(() => [] as string[]);
+      const equipped = await getLoadout(source, contestId, e.agentId).catch(() => [] as string[]);
       const strength = effectiveStrength(e.tier, stats, equipped, "scout");
       const opBoost = strength.training * strength.traits;
-      const boostedOps = Math.max(1, Math.min(Math.round(strategy.opsCount * opBoost), limit.maxOps));
+      const target = Math.max(1, Math.min(Math.round(strategy.opsCount * opBoost), limit.maxOps));
+      plans.push({ entry: e, account, strategy, strength, opBoost, target });
+    }
 
-      const exec = await executeScout(e.agentId, e.tier, { ops: boostedOps });
+    const execMap =
+      ctx?.broadcast && swapEnabled()
+        ? await this.streamedRace(contestId, plans, ctx)
+        : await this.sequentialExec(plans);
+
+    for (const p of plans) {
+      const exec =
+        execMap.get(p.entry.agentId) ??
+        ({ address: p.account.address, volumeUsdc6: 0n, opsCount: 0, txHashes: [], txVolumesUsdc6: [] } as ScoutExecution);
       // Score IS the real USDC volume moved. No multiplier flip: traits/training
       // already paid out as the extra swaps above, so the agent that genuinely
       // moved the most volume wins.
       const score = scoutScore({
         volumeUsdc6: exec.volumeUsdc6,
         opsCount: exec.opsCount,
-        seed: contestId * 1000 + e.agentId,
+        seed: contestId * 1000 + p.entry.agentId,
       });
-      // Surface the real tx hashes (most recent first) so the volume stage on
-      // the live page renders the actual onchain activity. recentVolumes is
-      // aligned 1:1 so each tape row can show its own value.
       const recent = exec.txHashes.slice(-6).reverse().map((h) => h as string);
       const recentVolumes = exec.txVolumesUsdc6.slice(-6).reverse();
       results.push({
-        agentId: e.agentId,
-        operator: e.operator,
+        agentId: p.entry.agentId,
+        operator: p.entry.operator,
         score,
         detail: {
           volumeUsdc6: exec.volumeUsdc6.toString(),
           opsCount: exec.opsCount,
-          hot: account.address,
-          strategy: strategy.rationale,
-          baseOps: strategy.opsCount,
-          boostedOps,
-          opBoost: Number(opBoost.toFixed(3)),
+          hot: p.account.address,
+          strategy: p.strategy.rationale,
+          baseOps: p.strategy.opsCount,
+          boostedOps: p.target,
+          opBoost: Number(p.opBoost.toFixed(3)),
           strength: {
-            effective: Number(strength.effective.toFixed(2)),
-            tierBase: strength.tierBase,
-            training: Number(strength.training.toFixed(3)),
-            traits: Number(strength.traits.toFixed(3)),
+            effective: Number(p.strength.effective.toFixed(2)),
+            tierBase: p.strength.tierBase,
+            training: Number(p.strength.training.toFixed(3)),
+            traits: Number(p.strength.traits.toFixed(3)),
           },
         },
         progress: {
@@ -516,15 +626,144 @@ export class ScoutRunner implements Runner {
           opsCount: exec.opsCount,
           recent,
           recentVolumes,
-          researchSpent6: strategy.researchSpent6 && strategy.researchSpent6 > 0n
-            ? strategy.researchSpent6.toString()
-            : undefined,
-          researchLabel: strategy.researchSpent6 && strategy.researchSpent6 > 0n
-            ? strategy.researchLabel
-            : undefined,
+          researchSpent6:
+            p.strategy.researchSpent6 && p.strategy.researchSpent6 > 0n ? p.strategy.researchSpent6.toString() : undefined,
+          researchLabel:
+            p.strategy.researchSpent6 && p.strategy.researchSpent6 > 0n ? p.strategy.researchLabel : undefined,
         },
       });
     }
     return results;
+  }
+
+  /// Burst path (contests, and the fallback when no broadcast ctx is given):
+  /// run each agent's swaps to its target, one agent fully then the next.
+  private async sequentialExec(plans: ScoutPlan[]): Promise<Map<number, ScoutExecution>> {
+    const map = new Map<number, ScoutExecution>();
+    for (const p of plans) {
+      const exec = await executeScout(p.entry.agentId, p.entry.tier, { ops: p.target });
+      map.set(p.entry.agentId, exec);
+    }
+    return map;
+  }
+
+  /// Live path: interleave agents one round-trip at a time, broadcasting a
+  /// standings frame after every leg so the tx tape fills as the countdown
+  /// ticks. Stops at deadlineMs (resolveDeadline - 60s) or RACE_MAX_SECONDS,
+  /// whichever comes first, and never exceeds an agent's trait-boosted target
+  /// or the shared 1024/day budget.
+  private async streamedRace(
+    eventId: number,
+    plans: ScoutPlan[],
+    ctx: ScoutRunCtx,
+  ): Promise<Map<number, ScoutExecution>> {
+    interface Lane {
+      agentId: number;
+      operator: `0x${string}`;
+      account: Account;
+      ability: SwapAbility | null;
+      volume6: bigint;
+      txHashes: Hash[];
+      txVolumes6: string[];
+      legs: number;
+    }
+    const lanes: Lane[] = [];
+    for (const p of plans) {
+      // The live race is time-bounded (stops at deadline / RACE_MAX_SECONDS),
+      // so aim high: keep swapping for the whole window up to the tier op cap
+      // and the 1024/day budget. Traits/training raise the ceiling (more
+      // round-trips = more volume); time is the real limiter. The burst path
+      // keeps the conservative `p.target` so a contest settlement doesn't
+      // block on hundreds of sequential swaps.
+      const maxOps = tierLimit(p.entry.tier).maxOps;
+      const raceTarget = Math.min(
+        maxOps,
+        Math.max(1, Math.round(Math.max(p.strategy.opsCount, config.scout.swapsPerRun) * p.opBoost)),
+      );
+      const ability = await prepareSwapAbility(p.entry.agentId, p.entry.tier, raceTarget).catch(() => null);
+      lanes.push({
+        agentId: p.entry.agentId,
+        operator: p.entry.operator,
+        account: p.account,
+        ability: ability && ability.perSwapUsdc > 0 ? ability : null,
+        volume6: 0n,
+        txHashes: [],
+        txVolumes6: [],
+        legs: 0,
+      });
+    }
+
+    const hardStop = Math.min(ctx.deadlineMs ?? Number.MAX_SAFE_INTEGER, Date.now() + RACE_MAX_SECONDS * 1000);
+    const msgType = ctx.source === "challenge" ? "challenge_standings" : "contest_standings";
+    const idKey = ctx.source === "challenge" ? "challengeId" : "contestId";
+
+    const emit = () => {
+      if (!ctx.broadcast) return;
+      const ranked = lanes
+        .slice()
+        .sort((a, b) => (b.volume6 > a.volume6 ? 1 : b.volume6 < a.volume6 ? -1 : 0))
+        .map((l, i) => ({
+          rank: i + 1,
+          agentId: l.agentId,
+          operator: l.operator,
+          score: Math.round(Number(l.volume6) / 1e6),
+          progress: {
+            kind: "scout" as const,
+            opsCount: l.legs,
+            recent: l.txHashes.slice(-6).reverse().map((h) => h as string),
+            recentVolumes: l.txVolumes6.slice(-6).reverse(),
+          },
+        }));
+      ctx.broadcast({ type: msgType, [idKey]: eventId, entries: ranked });
+    };
+
+    emit(); // initial frame so the stage shows the field before the first swap
+
+    let active = true;
+    while (active && Date.now() < hardStop) {
+      active = false;
+      for (const lane of lanes) {
+        if (Date.now() >= hardStop) break;
+        const ab = lane.ability;
+        if (!ab || lane.legs >= ab.targetLegs) continue;
+        active = true;
+        const legs = await oneRoundTrip(ab.privateKey, ab.perSwapUsdc).catch(
+          () => [] as Array<{ txHash: Hash; vol6: bigint }>,
+        );
+        if (legs.length === 0) {
+          // Route unavailable for this agent right now: retire its lane so the
+          // loop doesn't spin on it, and let the others keep swapping.
+          lane.ability = null;
+          continue;
+        }
+        for (const leg of legs) {
+          lane.txHashes.push(leg.txHash);
+          lane.txVolumes6.push(leg.vol6.toString());
+          lane.volume6 += leg.vol6;
+          lane.legs++;
+        }
+        await recordSwaps(lane.agentId, legs.length).catch(() => {});
+        emit();
+        if (RACE_INTER_ROUND_MS > 0) await raceSleep(RACE_INTER_ROUND_MS);
+      }
+    }
+
+    const map = new Map<number, ScoutExecution>();
+    let total = 0n;
+    for (const lane of lanes) {
+      map.set(lane.agentId, {
+        address: lane.account.address,
+        volumeUsdc6: lane.volume6,
+        opsCount: lane.legs,
+        txHashes: lane.txHashes,
+        txVolumesUsdc6: lane.txVolumes6,
+      });
+      total += lane.volume6;
+    }
+    // No real volume (adapter missing, every route failed, wallets empty):
+    // fall back to self-transfers so the event still settles with payouts
+    // instead of cancelling for "no scoring entrants".
+    if (total === 0n) return this.sequentialExec(plans);
+    return map;
   }
 }
