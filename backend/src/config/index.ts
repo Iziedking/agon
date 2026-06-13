@@ -188,6 +188,15 @@ const envSchema = z.object({
   // Circle's `wallet limit set` policy is mainnet-only.
   NANOPAY_ENABLED: z.coerce.boolean().default(false),
   NANOPAY_CLI_PATH: z.string().default("circle"),
+  // When the Circle CLI isn't installed (e.g. a slim container), fetch the
+  // research endpoint directly over HTTPS so the agent still gets real data.
+  // The x402 paid call stays primary; this is the fallback when it can't run.
+  // Off by default so behavior is unchanged unless explicitly enabled.
+  NANOPAY_HTTP_FALLBACK: z.coerce.boolean().default(false),
+  // Optional per-host API keys for the direct-HTTP fallback, as a JSON object
+  // keyed by hostname, e.g. {"api.exa.ai":"...","api.itsgloria.ai":"..."}.
+  // Sent as `Authorization: Bearer <key>` and `x-api-key: <key>`.
+  NANOPAY_API_KEYS: z.string().default("{}"),
   // Circle Agent wallet address that pays for x402 research. Created via
   // `circle wallet create --type agent`, funded via `circle gateway deposit`.
   // The wallet's keys live with the operator's CLI login session; the backend
@@ -422,6 +431,15 @@ export const config = {
   nanopay: {
     enabled: env.NANOPAY_ENABLED,
     cliPath: env.NANOPAY_CLI_PATH,
+    httpFallback: env.NANOPAY_HTTP_FALLBACK,
+    apiKeysByHost: ((): Record<string, string> => {
+      try {
+        const parsed = JSON.parse(env.NANOPAY_API_KEYS);
+        return parsed && typeof parsed === "object" ? (parsed as Record<string, string>) : {};
+      } catch {
+        return {};
+      }
+    })(),
     /// Per-tier per-puzzle research budget in USDC (decimal). Index 0 = tier 0.
     perPuzzleByTier: [
       env.NANOPAY_TIER_0_BUDGET_USDC,

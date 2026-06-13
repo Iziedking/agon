@@ -43,15 +43,19 @@ export async function ensureTierPools(): Promise<void> {
     return;
   }
   const wallet = config.nanopay.walletAddress;
-  if (!wallet) {
+  if (!wallet && !config.nanopay.httpFallback) {
     console.warn(
       "[tier-pools] NANOPAY_WALLET_ADDRESS is not set. " +
         "Create a Circle Agent wallet with `circle wallet create --type agent` " +
-        "and paste its address into the env. Research-spend will no-op until then.",
+        "and paste its address into the env, or set NANOPAY_HTTP_FALLBACK=1 to " +
+        "fetch research over plain HTTPS. Research-spend will no-op until then.",
     );
     cache = new Map();
     return;
   }
+  // In HTTP-fallback mode there's no Circle wallet; the fetch path ignores it.
+  // Use a placeholder so pools still provision and research data flows.
+  const effectiveWallet = (wallet ?? "0x0000000000000000000000000000000000000000") as `0x${string}`;
 
   const next = new Map<Tier, TierPool>();
   const sessionBudget6 = usdcToInt6(config.nanopay.sessionBudgetUsdc);
@@ -59,7 +63,7 @@ export async function ensureTierPools(): Promise<void> {
     const perPuzzleCap6 = usdcToInt6(config.nanopay.perPuzzleByTier[tier] ?? 0);
     const pool: TierPool = {
       tier,
-      walletAddress: wallet,
+      walletAddress: effectiveWallet,
       balanceUsdc6: sessionBudget6,
       perPuzzleCap6,
     };

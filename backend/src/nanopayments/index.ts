@@ -97,12 +97,21 @@ export interface PayX402Result {
 /// outcome. The runner is expected to inspect `status` and proceed even on
 /// rejection.
 export async function payX402(opts: PayX402Opts): Promise<PayX402Result> {
+  if (!config.nanopay.enabled) {
+    return persistAndReturn(opts, { status: "rejected", usdcAmount6: 0n, errorMessage: "nanopay disabled" });
+  }
   const present = await isCliPresent();
-  if (!present || !config.nanopay.enabled) {
+  if (!present) {
+    // The Circle CLI isn't on PATH (e.g. a slim container). Fall back to a
+    // direct HTTPS fetch so the agent still gets real research data, instead
+    // of reasoning blind. No USDC moves on this path; it's marked accordingly.
+    if (config.nanopay.httpFallback) {
+      return httpFallbackFetch(opts);
+    }
     return persistAndReturn(opts, {
       status: "rejected",
       usdcAmount6: 0n,
-      errorMessage: present ? "nanopay disabled" : "circle cli unavailable",
+      errorMessage: "circle cli unavailable",
     });
   }
 
@@ -175,6 +184,57 @@ export async function payX402(opts: PayX402Opts): Promise<PayX402Result> {
       status: "failed",
       usdcAmount6: 0n,
       errorMessage: msg,
+    });
+  }
+}
+
+/// Direct-HTTPS fallback for when the Circle CLI isn't available. Calls the
+/// research endpoint with the same payload, attaching a per-host API key if one
+/// is configured. Returns "settled" with a zero charge (no USDC moves) so the
+/// runner injects the real data into the prompt; the row's error_message notes
+/// it was the HTTP path. A GET is used when there's no payload, else a POST.
+async function httpFallbackFetch(opts: PayX402Opts): Promise<PayX402Result> {
+  try {
+    const host = (() => {
+      try { return new URL(opts.endpoint).host; } catch { return ""; }
+    })();
+    const key = config.nanopay.apiKeysByHost[host];
+    const headers: Record<string, string> = { accept: "application/json" };
+    if (key) {
+      headers["authorization"] = `Bearer ${key}`;
+      headers["x-api-key"] = key;
+    }
+    const init: RequestInit = opts.payload
+      ? { method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(opts.payload) }
+      : { method: "GET", headers };
+    const ac = new AbortController();
+    const t = setTimeout(() => ac.abort(), 20_000);
+    let res: Response;
+    try {
+      res = await fetch(opts.endpoint, { ...init, signal: ac.signal });
+    } finally {
+      clearTimeout(t);
+    }
+    if (!res.ok) {
+      return persistAndReturn(opts, {
+        status: "failed",
+        usdcAmount6: 0n,
+        errorMessage: `http fallback ${res.status}`,
+      });
+    }
+    const text = await res.text();
+    const parsed = safeJsonParse(text) ?? text;
+    return persistAndReturn(opts, {
+      status: "settled",
+      usdcAmount6: 0n,
+      response: parsed,
+      errorMessage: "http fallback (no payment)",
+    });
+  } catch (err) {
+    return persistAndReturn(opts, {
+      status: "failed",
+      usdcAmount6: 0n,
+      errorMessage: `http fallback error: ${err instanceof Error ? err.message : String(err)}`,
     });
   }
 }

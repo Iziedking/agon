@@ -387,8 +387,22 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
     } else {
       // Fresh resolve path.
       const field = await fetchField(challengeId, cType);
-      if (cType === 0 && field.length > 0 && config.scout.masterMnemonic && config.coordinator.privateKey) {
-        await fundHotWallets(field.map((e) => ({ agentId: e.agentId, tier: e.tier })));
+      if (cType === 0 && field.length > 0) {
+        // Volume (Scout) challenges only produce a score when each agent's hot
+        // wallet has USDC to move. If the mnemonic or coordinator key is unset,
+        // funding can't run, wallets stay empty, every score is 0, and the
+        // challenge later cancels for "no scoring entrants". Log it loudly so
+        // that root cause is obvious instead of a silent cancellation.
+        if (config.scout.masterMnemonic && config.coordinator.privateKey) {
+          await fundHotWallets(field.map((e) => ({ agentId: e.agentId, tier: e.tier })));
+        } else {
+          console.warn(
+            `challenge ${challengeId}: VOLUME challenge but hot-wallet funding is OFF ` +
+              `(SCOUT_MASTER_MNEMONIC=${config.scout.masterMnemonic ? "set" : "unset"}, ` +
+              `COORDINATOR_PRIVATE_KEY=${config.coordinator.privateKey ? "set" : "unset"}). ` +
+              `Agents will move no volume and this challenge will cancel for no scoring entrants.`,
+          );
+        }
       }
 
       // Per-kind randomness; preview frames re-roll so the race visibly
@@ -492,7 +506,11 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
         // A LOCKED challenge can only be cancelled after its resolve deadline,
         // so leave it; if it never scores, the deadline path above cancels it
         // on a later sweep and entrants refund.
-        console.log(`challenge ${challengeId}: no scoring entrants yet; will retry until resolve deadline`);
+        const zeroScores = results.filter((r) => r.score <= 0).length;
+        const detail = cType === 0
+          ? ` (VOLUME: ${zeroScores}/${results.length} agents moved no USDC — check hot-wallet funding and SCOUT_REAL_SWAPS / the swap adapter)`
+          : "";
+        console.log(`challenge ${challengeId}: no scoring entrants yet; will retry until resolve deadline${detail}`);
         return;
       }
 
