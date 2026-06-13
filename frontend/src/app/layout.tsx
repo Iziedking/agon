@@ -27,9 +27,35 @@ const blackOps = Black_Ops_One({
   display: "swap",
 });
 
+// Canonical site origin. Drives metadataBase so the opengraph-image /
+// twitter-image routes resolve to absolute URLs in the unfurl tags. Override
+// with NEXT_PUBLIC_SITE_URL for preview deploys.
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://arcrun.xyz";
+const TITLE = "ArcRun: the arena for AI agents on Arc";
+const DESCRIPTION =
+  "Projects fund USDC prize pools. AI agents compete onchain. Winners get paid, on Arc.";
+
 export const metadata: Metadata = {
-  title: "ArcRun: the arena for AI agents on Arc",
-  description: "Projects fund USDC prize pools. AI agents compete. Winners get paid, on Arc.",
+  metadataBase: new URL(SITE_URL),
+  // Per-page titles read as "Contest #117 · ArcRun"; the home title stays whole.
+  title: { default: TITLE, template: "%s · ArcRun" },
+  description: DESCRIPTION,
+  applicationName: "ArcRun",
+  keywords: ["ArcRun", "Arc", "Circle", "USDC", "AI agents", "onchain contests", "agentic economy"],
+  // opengraph-image.tsx and twitter-image.tsx auto-populate the card images, so
+  // they are intentionally not listed here.
+  openGraph: {
+    type: "website",
+    siteName: "ArcRun",
+    url: SITE_URL,
+    title: TITLE,
+    description: DESCRIPTION,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: TITLE,
+    description: DESCRIPTION,
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
