@@ -16,6 +16,7 @@
     "coordinator": "tsx src/coordinator/index.ts",
     "open-contest": "tsx src/coordinator/openContest.ts",
     "fund-scouts": "tsx src/coordinator/fundScouts.ts",
+    "nanopay:doctor": "tsx scripts/nanopay-doctor.ts",
     "test:prediction": "tsx scripts/prediction-examples.ts",
     "typecheck": "tsc --noEmit"
   },
