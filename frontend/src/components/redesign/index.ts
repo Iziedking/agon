@@ -1,6 +1,7 @@
 /// Public surface of the redesign primitives. Import from here.
 
 export { Robot, robotVariantForId, type RobotVariant } from "./Robot";
+export { EntrantAvatars } from "./EntrantAvatars";
 export { AgentAvatar } from "./AgentAvatar";
 export { TagButton } from "./TagButton";
 export { BracketedCell } from "./BracketedCell";

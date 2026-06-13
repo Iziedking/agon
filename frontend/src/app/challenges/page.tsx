@@ -8,12 +8,11 @@ import {
   BracketedCell,
   CornerMarkers,
   Countdown,
+  EntrantAvatars,
   MicroLabel,
-  Robot,
   SectionHeader,
   StatusChip,
   TagButton,
-  robotVariantForId,
 } from "@/components/redesign";
 import { CreateChallengeModal } from "@/components/pengu/CreateChallengeModal";
 import { Pagination } from "@/components/pengu/Pagination";
@@ -120,10 +119,6 @@ function ChallengeCard({ ch }: { ch: Challenge }) {
   const s = statusChip(ch.status);
   const kind = CHALLENGE_KIND[ch.kind] ?? "CHALLENGE";
   const pot = ch.stake * BigInt(Math.max(ch.entrants, 1));
-  // Synthetic participant avatars from the challenge id so each card shows two
-  // distinct robot variants (the real entrant list is on the detail page).
-  const aVariant = robotVariantForId(ch.id);
-  const bVariant = robotVariantForId(ch.id + 1);
 
   return (
     <BracketedCell hover className="flex flex-col gap-4">
@@ -146,13 +141,10 @@ function ChallengeCard({ ch }: { ch: Challenge }) {
           </div>
         </div>
         <div className="flex shrink-0 items-end">
-          {/* Two overlapping 24px Robot avatars */}
-          <span className="block">
-            <Robot variant={aVariant} size={24} decorative />
-          </span>
-          <span className="-ml-2 block">
-            <Robot variant={bVariant} size={24} decorative />
-          </span>
+          {/* Real entrants: one pfp per agent that joined (X / Discord where
+              set, robot otherwise), scaling with the field; a single default
+              robot when nobody has joined yet. */}
+          <EntrantAvatars source="challenge" id={ch.id} total={ch.entrants} size={24} />
         </div>
       </div>
 
