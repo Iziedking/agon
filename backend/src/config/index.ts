@@ -187,6 +187,20 @@ const envSchema = z.object({
   // biggest research budget. Caps are enforced in the runner because
   // Circle's `wallet limit set` policy is mainnet-only.
   NANOPAY_ENABLED: z.coerce.boolean().default(false),
+  // Which x402 payment path to use:
+  //   "sdk" - @circle-fin/x402-batching GatewayClient (container-native, real
+  //           payments, signs from NANOPAY_WALLET_PRIVATE_KEY). Recommended.
+  //   "cli" - shell out to `circle services pay` (needs the Circle CLI + local
+  //           auth state). The legacy default.
+  NANOPAY_PROVIDER: z.enum(["cli", "sdk"]).default("cli"),
+  // Private key of the Gateway-funded agent wallet that pays for research via
+  // the SDK. Only used when NANOPAY_PROVIDER=sdk.
+  NANOPAY_WALLET_PRIVATE_KEY: z.string().optional(),
+  // Gateway chain the agent wallet deposited into (where its Gateway balance
+  // lives). One of @circle-fin/x402-batching's SupportedChainName, e.g.
+  // baseSepolia / polygonAmoy / arcTestnet. Default matches the BASE deposit
+  // flow in the setup docs.
+  NANOPAY_GATEWAY_CHAIN: z.string().default("baseSepolia"),
   NANOPAY_CLI_PATH: z.string().default("circle"),
   // When the Circle CLI isn't installed (e.g. a slim container), fetch the
   // research endpoint directly over HTTPS so the agent still gets real data.
@@ -430,6 +444,9 @@ export const config = {
   },
   nanopay: {
     enabled: env.NANOPAY_ENABLED,
+    provider: env.NANOPAY_PROVIDER,
+    walletPrivateKey: normalizePrivateKey(env.NANOPAY_WALLET_PRIVATE_KEY, "NANOPAY_WALLET_PRIVATE_KEY"),
+    gatewayChain: env.NANOPAY_GATEWAY_CHAIN,
     cliPath: env.NANOPAY_CLI_PATH,
     httpFallback: env.NANOPAY_HTTP_FALLBACK,
     apiKeysByHost: ((): Record<string, string> => {

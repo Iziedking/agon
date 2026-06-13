@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 
+import type { SupportedChainName } from "@circle-fin/x402-batching/client";
 import { config } from "../config/index.js";
 import { query } from "../db/pool.js";
 
@@ -99,6 +100,11 @@ export interface PayX402Result {
 export async function payX402(opts: PayX402Opts): Promise<PayX402Result> {
   if (!config.nanopay.enabled) {
     return persistAndReturn(opts, { status: "rejected", usdcAmount6: 0n, errorMessage: "nanopay disabled" });
+  }
+  // SDK path: real x402 payment via the Gateway batching client, signed from a
+  // private key. Container-native, no CLI. The recommended provider.
+  if (config.nanopay.provider === "sdk") {
+    return payViaSdk(opts);
   }
   const present = await isCliPresent();
   if (!present) {
@@ -235,6 +241,103 @@ async function httpFallbackFetch(opts: PayX402Opts): Promise<PayX402Result> {
       status: "failed",
       usdcAmount6: 0n,
       errorMessage: `http fallback error: ${err instanceof Error ? err.message : String(err)}`,
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// SDK provider: @circle-fin/x402-batching GatewayClient.
+// ---------------------------------------------------------------------------
+
+type GatewayClientInstance = InstanceType<
+  typeof import("@circle-fin/x402-batching/client")["GatewayClient"]
+>;
+
+let gatewayClient: GatewayClientInstance | null = null;
+let gatewayInit = false;
+
+/// Lazily build one GatewayClient per process from the agent wallet private
+/// key. Cached (including the null result) so a missing key or import only
+/// warns once. The package is a real dependency, so the import is typed.
+async function getGatewayClient(): Promise<GatewayClientInstance | null> {
+  if (gatewayInit) return gatewayClient;
+  gatewayInit = true;
+  const pk = config.nanopay.walletPrivateKey;
+  if (!pk) {
+    console.warn("[nanopay] NANOPAY_PROVIDER=sdk but NANOPAY_WALLET_PRIVATE_KEY is unset; research-spend will no-op.");
+    return null;
+  }
+  try {
+    const { GatewayClient } = await import("@circle-fin/x402-batching/client");
+    gatewayClient = new GatewayClient({
+      chain: config.nanopay.gatewayChain as SupportedChainName,
+      privateKey: pk,
+    });
+    console.log(`[nanopay] x402 SDK ready on ${config.nanopay.gatewayChain} (wallet ${gatewayClient.address})`);
+  } catch (err) {
+    console.warn(`[nanopay] x402 SDK init failed: ${err instanceof Error ? err.message : err}`);
+    gatewayClient = null;
+  }
+  return gatewayClient;
+}
+
+/// Best-effort parse of a seller's asking price (6-dec USDC) from the x402
+/// payment requirements, so we can enforce the per-call budget cap before
+/// paying. Returns null when the shape isn't recognized (then we just pay,
+/// still bounded by the session pool).
+function parseRequirementAmount6(req: unknown): bigint | null {
+  if (!req || typeof req !== "object") return null;
+  const r = req as Record<string, unknown>;
+  const amt = r["amount"] ?? r["maxAmountRequired"] ?? r["price"];
+  if (typeof amt === "number") return usdcToInt6(amt);
+  if (typeof amt === "string") {
+    if (amt.includes(".")) return usdcToInt6(Number(amt));
+    try { return BigInt(amt); } catch { return null; }
+  }
+  return null;
+}
+
+/// One real x402 payment via the Gateway batching client. The SDK runs the
+/// full 402 round-trip (request, sign EIP-3009 authorization, retry) and
+/// settles off the wallet's Gateway balance. Mirrors payX402's structured
+/// result so the runners are provider-agnostic.
+async function payViaSdk(opts: PayX402Opts): Promise<PayX402Result> {
+  const client = await getGatewayClient();
+  if (!client) {
+    return persistAndReturn(opts, {
+      status: "rejected",
+      usdcAmount6: 0n,
+      errorMessage: "x402 sdk unavailable (set NANOPAY_WALLET_PRIVATE_KEY)",
+    });
+  }
+  try {
+    // Cap guard: refuse if the seller's price exceeds the remaining budget,
+    // mirroring the CLI --max-amount behavior.
+    const sup = await client.supports(opts.endpoint).catch(() => null);
+    const price6 = parseRequirementAmount6(sup?.requirements);
+    if (price6 != null && price6 > opts.budgetRemaining6) {
+      return persistAndReturn(opts, {
+        status: "rejected",
+        usdcAmount6: 0n,
+        errorMessage: `price ${int6ToUsdcString(price6)} over budget ${int6ToUsdcString(opts.budgetRemaining6)}`,
+      });
+    }
+
+    const res = await client.pay(
+      opts.endpoint,
+      opts.payload ? { method: "POST", body: opts.payload } : { method: "GET" },
+    );
+    return persistAndReturn(opts, {
+      status: "settled",
+      usdcAmount6: typeof res.amount === "bigint" ? res.amount : 0n,
+      txHash: typeof res.transaction === "string" ? res.transaction : undefined,
+      response: res.data,
+    });
+  } catch (err) {
+    return persistAndReturn(opts, {
+      status: "failed",
+      usdcAmount6: 0n,
+      errorMessage: err instanceof Error ? err.message : String(err),
     });
   }
 }

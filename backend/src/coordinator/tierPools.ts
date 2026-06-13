@@ -43,18 +43,22 @@ export async function ensureTierPools(): Promise<void> {
     return;
   }
   const wallet = config.nanopay.walletAddress;
-  if (!wallet && !config.nanopay.httpFallback) {
+  // Pools provision when there's a paying path: a Circle wallet (CLI), the SDK
+  // provider, or the HTTP fallback. Only the bare CLI-without-wallet case
+  // no-ops.
+  const hasPayingPath = Boolean(wallet) || config.nanopay.provider === "sdk" || config.nanopay.httpFallback;
+  if (!hasPayingPath) {
     console.warn(
-      "[tier-pools] NANOPAY_WALLET_ADDRESS is not set. " +
-        "Create a Circle Agent wallet with `circle wallet create --type agent` " +
-        "and paste its address into the env, or set NANOPAY_HTTP_FALLBACK=1 to " +
-        "fetch research over plain HTTPS. Research-spend will no-op until then.",
+      "[tier-pools] No research-spend path configured. Set NANOPAY_PROVIDER=sdk " +
+        "with NANOPAY_WALLET_PRIVATE_KEY (recommended), or NANOPAY_WALLET_ADDRESS " +
+        "for the CLI, or NANOPAY_HTTP_FALLBACK=1. Research-spend will no-op until then.",
     );
     cache = new Map();
     return;
   }
-  // In HTTP-fallback mode there's no Circle wallet; the fetch path ignores it.
-  // Use a placeholder so pools still provision and research data flows.
+  // The SDK signs from its own wallet and the HTTP fallback ignores the wallet,
+  // so a placeholder is fine when NANOPAY_WALLET_ADDRESS isn't set; it's only
+  // used by the CLI path and the admin display.
   const effectiveWallet = (wallet ?? "0x0000000000000000000000000000000000000000") as `0x${string}`;
 
   const next = new Map<Tier, TierPool>();
