@@ -438,6 +438,21 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
           deadlineMs,
           source: "challenge",
         });
+      } else if (cType === 2) {
+        // PUZZLE / CUSTOM (Solver): post puzzles in rounds (more puzzles,
+        // wider categories) and stream the solve feed live, stopping 60s
+        // before the resolve deadline. Trait/training boost applies through
+        // the runner; the field is locked so every entrant faces the same
+        // growing set.
+        const deadlineMs = Number(ch.resolveDeadline) * 1000 - 60_000;
+        console.log(
+          `challenge ${challengeId}: streaming live puzzle solve to ${field.length} entrant(s), ending 60s before resolve deadline`,
+        );
+        baseResults = await new SolverRunner(6).run(challengeId, field, {
+          broadcast,
+          deadlineMs,
+          source: "challenge",
+        });
       } else {
         // Stream a preview race so the challenge detail board animates before
         // the winner root posts. Only on the first sweep that sees this

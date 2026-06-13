@@ -119,67 +119,214 @@ interface SolveOutcome {
   spentTx?: string[];
 }
 
+/// Streaming context for a live puzzle event. When present, the runner posts
+/// puzzles in rounds (more puzzles, wider categories) and broadcasts a
+/// standings frame after each round so the solve feed fills as the countdown
+/// ticks, stopping at deadlineMs. Mirrors the scout swap race.
+export interface SolverRunCtx {
+  broadcast?: (message: unknown) => void;
+  /// Stop starting new rounds after this epoch-ms (event end - 60s).
+  deadlineMs?: number;
+  source?: "contest" | "challenge";
+  /// For contest frames, the real end time shown in the "endsAt" field.
+  endsAtMs?: number;
+}
+
+const SOLVER_ROUND_PUZZLES = Number(process.env.SOLVER_ROUND_PUZZLES ?? "3");
+const SOLVER_MAX_PUZZLES = Number(process.env.SOLVER_MAX_PUZZLES ?? "30");
+const SOLVER_RACE_SECONDS = Number(process.env.SOLVER_RACE_SECONDS ?? "75");
+const SOLVER_ROUND_DELAY_MS = Number(process.env.SOLVER_ROUND_DELAY_MS ?? "500");
+const solverSleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+function emptyOutcome(): SolveOutcome {
+  return {
+    correct: 0,
+    total: 0,
+    elapsedMs: 0,
+    perPuzzle: [],
+    perPuzzleMs: [],
+    costUsd: 0,
+    spent: [],
+    spentLabels: [],
+    spentTx: [],
+  };
+}
+
+/// Append one batch's outcome onto the agent's running total. spent/labels/tx
+/// are padded to the batch length when a path omits them so all per-puzzle
+/// arrays stay aligned with perPuzzle.
+function mergeOutcome(acc: SolveOutcome, b: SolveOutcome): void {
+  acc.correct += b.correct;
+  acc.total += b.total;
+  acc.elapsedMs += b.elapsedMs;
+  acc.costUsd += b.costUsd;
+  acc.perPuzzle.push(...b.perPuzzle);
+  acc.perPuzzleMs.push(...b.perPuzzleMs);
+  const pad = (arr: string[] | undefined, fill: string) =>
+    arr && arr.length === b.perPuzzle.length ? arr : b.perPuzzle.map(() => fill);
+  acc.spent!.push(...pad(b.spent, "0"));
+  acc.spentLabels!.push(...pad(b.spentLabels, ""));
+  acc.spentTx!.push(...pad(b.spentTx, ""));
+}
+
+/// Build the per-agent AgentResult from an accumulated solve. Shared by the
+/// single-set and streamed paths. `source` selects the loadout namespace so
+/// traits equipped for a challenge actually count (the bug the scout runner
+/// also had).
+async function buildSolverResult(
+  contestId: number,
+  entry: ContestEntryInput,
+  solve: SolveOutcome,
+  puzzleKinds: string[],
+  puzzleCards: ReturnType<typeof toCards>,
+  source: "contest" | "challenge",
+): Promise<AgentResult> {
+  const stats = await loadAgentStats(entry.agentId).catch(() => ({}));
+  const equipped = await getLoadout(source, contestId, entry.agentId).catch(() => [] as string[]);
+  const strength = effectiveStrength(entry.tier, stats, equipped, "solver");
+  const rawScore = solverScore(solve);
+  const finalScore = applyRouting(rawScore, strength, contestId * 1000 + entry.agentId);
+  const { perPuzzle, perPuzzleMs, costUsd: _unused, spent, spentLabels, spentTx, ...detail } = solve;
+  return {
+    agentId: entry.agentId,
+    operator: entry.operator,
+    score: finalScore,
+    detail: {
+      ...detail,
+      puzzles: solve.total,
+      rawScore,
+      strength: {
+        effective: Number(strength.effective.toFixed(2)),
+        tierBase: strength.tierBase,
+        training: Number(strength.training.toFixed(3)),
+        traits: Number(strength.traits.toFixed(3)),
+      },
+    },
+    progress: {
+      kind: "solver" as const,
+      correct: perPuzzle,
+      total: solve.total,
+      perPuzzleMs,
+      puzzleKinds,
+      puzzleCards,
+      spent: spent ?? perPuzzle.map(() => "0"),
+      spentLabels: spentLabels ?? perPuzzle.map(() => ""),
+      spentTx: spentTx ?? perPuzzle.map(() => ""),
+    },
+  };
+}
+
+// Local alias so buildSolverResult's card param has a name without importing
+// the type twice.
+function toCards(puzzles: Puzzle[]) {
+  return puzzles.map((p) => p.presentation);
+}
+
 export class SolverRunner implements Runner {
   readonly kind = "solver" as const;
   constructor(private readonly puzzleCount = 5) {}
 
-  async run(contestId: number, entries: ContestEntryInput[]): Promise<AgentResult[]> {
+  async run(contestId: number, entries: ContestEntryInput[], ctx?: SolverRunCtx): Promise<AgentResult[]> {
     // Difficulty tracks the strongest agent in the field: a tier-4 field (the
     // tier gate keeps weaker agents out of high-tier contests) draws the hard
     // set, a tier 0-1 field stays on easy recall. So a higher-graded contest
     // visibly puts its agents to harder work.
     const fieldTier = entries.length > 0 ? Math.max(...entries.map((e) => e.tier)) : 0;
-    const puzzles = generatePuzzles(contestId, this.puzzleCount, difficultyForTier(fieldTier));
-    const puzzleKinds = puzzles.map((p) => p.kind);
-    const puzzleCards = puzzles.map((p) => p.presentation);
+    const difficulty = difficultyForTier(fieldTier);
     const real = llmConfigured();
+    const source = ctx?.source ?? "contest";
 
-    const results = await Promise.all(
+    if (ctx?.broadcast) {
+      return this.streamedSolve(contestId, entries, difficulty, real, source, ctx);
+    }
+
+    // Single-set path (contests, and any caller without a live ctx): one fixed
+    // puzzle set scored once. puzzleCount is the wider default now.
+    const puzzles = generatePuzzles(contestId, this.puzzleCount, difficulty);
+    const puzzleKinds = puzzles.map((p) => p.kind);
+    const puzzleCards = toCards(puzzles);
+    return Promise.all(
       entries.map(async (e) => {
         const params = real ? await resolveRuntimeParams(e.agentId, e.tier).catch(() => null) : null;
         const solve = params
           ? await runWithCapabilities(contestId, e, puzzles, params)
           : guessOnlySolve(puzzles, e.tier, contestId * 1000 + e.agentId);
-
-        // Tier x training x traits per docs/agentTier.md.
-        const stats = await loadAgentStats(e.agentId).catch(() => ({}));
-        const equipped = await getLoadout("contest", contestId, e.agentId).catch(() => [] as string[]);
-        const strength = effectiveStrength(e.tier, stats, equipped, "solver");
-        const rawScore = solverScore(solve);
-        const finalScore = applyRouting(rawScore, strength, contestId * 1000 + e.agentId);
-
-        const { perPuzzle, perPuzzleMs, costUsd: _unused, spent, spentLabels, spentTx, ...detail } = solve;
-        return {
-          agentId: e.agentId,
-          operator: e.operator,
-          score: finalScore,
-          detail: {
-            ...detail,
-            puzzles: puzzles.length,
-            rawScore,
-            strength: {
-              effective: Number(strength.effective.toFixed(2)),
-              tierBase: strength.tierBase,
-              training: Number(strength.training.toFixed(3)),
-              traits: Number(strength.traits.toFixed(3)),
-            },
-          },
-          progress: {
-            kind: "solver" as const,
-            correct: perPuzzle,
-            total: puzzles.length,
-            perPuzzleMs,
-            puzzleKinds,
-            puzzleCards,
-            spent: spent ?? puzzles.map(() => "0"),
-            spentLabels: spentLabels ?? puzzles.map(() => ""),
-            spentTx: spentTx ?? puzzles.map(() => ""),
-          },
-        };
+        return buildSolverResult(contestId, e, solve, puzzleKinds, puzzleCards, source);
       }),
     );
+  }
 
-    return results;
+  /// Live path: post puzzles in rounds of SOLVER_ROUND_PUZZLES, each round a
+  /// fresh seed so kinds widen as it runs. Every agent solves the batch, the
+  /// cumulative standings broadcast after each round (the solve feed), and the
+  /// loop stops at deadlineMs (event end - 60s) / SOLVER_RACE_SECONDS /
+  /// SOLVER_MAX_PUZZLES, whichever first.
+  private async streamedSolve(
+    contestId: number,
+    entries: ContestEntryInput[],
+    difficulty: ReturnType<typeof difficultyForTier>,
+    real: boolean,
+    source: "contest" | "challenge",
+    ctx: SolverRunCtx,
+  ): Promise<AgentResult[]> {
+    const params = new Map<number, RuntimeParams | null>();
+    for (const e of entries) {
+      params.set(e.agentId, real ? await resolveRuntimeParams(e.agentId, e.tier).catch(() => null) : null);
+    }
+
+    const allKinds: string[] = [];
+    const allCards = [] as ReturnType<typeof toCards>;
+    const acc = new Map<number, SolveOutcome>();
+    for (const e of entries) acc.set(e.agentId, emptyOutcome());
+
+    const hardStop = Math.min(ctx.deadlineMs ?? Number.MAX_SAFE_INTEGER, Date.now() + SOLVER_RACE_SECONDS * 1000);
+
+    const emit = async () => {
+      if (!ctx.broadcast) return;
+      const results = await Promise.all(
+        entries.map((e) => buildSolverResult(contestId, e, acc.get(e.agentId)!, allKinds, allCards, source)),
+      );
+      const ranked = results
+        .slice()
+        .sort((a, b) => b.score - a.score)
+        .map((r, i) => ({ rank: i + 1, agentId: r.agentId, operator: r.operator, score: Math.round(r.score), progress: r.progress }));
+      const msg =
+        source === "challenge"
+          ? { type: "challenge_standings", challengeId: contestId, entries: ranked }
+          : { type: "standings", contestId, endsAt: ctx.endsAtMs, entries: ranked };
+      ctx.broadcast(msg);
+    };
+
+    await emit(); // empty board first, so the feed shows the field before puzzle 1
+
+    let round = 0;
+    while (Date.now() < hardStop && allKinds.length < SOLVER_MAX_PUZZLES) {
+      const n = Math.min(SOLVER_ROUND_PUZZLES, SOLVER_MAX_PUZZLES - allKinds.length);
+      // Distinct seed per round so kinds and items differ each round.
+      const batch = generatePuzzles(contestId * 1009 + round, n, difficulty);
+      const offset = allKinds.length;
+      for (const e of entries) {
+        if (Date.now() >= hardStop) break;
+        const p = params.get(e.agentId) ?? null;
+        const out = p
+          ? p.llmEnabled
+            ? await runLlmPath(contestId, e, batch, p, offset)
+            : await runGuessPath(contestId, e, batch, p, offset)
+          : guessOnlySolve(batch, e.tier, contestId * 1000 + e.agentId + offset);
+        mergeOutcome(acc.get(e.agentId)!, out);
+      }
+      for (const p of batch) {
+        allKinds.push(p.kind);
+        allCards.push(p.presentation);
+      }
+      round++;
+      await emit();
+      if (SOLVER_ROUND_DELAY_MS > 0) await solverSleep(SOLVER_ROUND_DELAY_MS);
+    }
+
+    return Promise.all(
+      entries.map((e) => buildSolverResult(contestId, e, acc.get(e.agentId)!, allKinds, allCards, source)),
+    );
   }
 }
 
@@ -285,8 +432,9 @@ async function runGuessPath(
   entry: ContestEntryInput,
   puzzles: Puzzle[],
   params: RuntimeParams,
+  idxOffset = 0,
 ): Promise<SolveOutcome> {
-  const r = seededRng(contestId * 1000 + entry.agentId);
+  const r = seededRng(contestId * 1000 + entry.agentId + idxOffset);
   const perPuzzle: boolean[] = [];
   const perPuzzleMs: number[] = [];
   let correct = 0;
@@ -306,7 +454,7 @@ async function runGuessPath(
       agentId: entry.agentId,
       operator: entry.operator,
       roundIdx: 0,
-      puzzleIdx: i,
+      puzzleIdx: idxOffset + i,
       kind: "solver",
       model: "guess",
       prompt: puzzle.prompt,
@@ -395,6 +543,7 @@ async function runLlmPath(
   entry: ContestEntryInput,
   puzzles: Puzzle[],
   params: RuntimeParams,
+  idxOffset = 0,
 ): Promise<SolveOutcome> {
   const perPuzzle: boolean[] = [];
   const perPuzzleMs: number[] = [];
@@ -426,7 +575,7 @@ async function runLlmPath(
     const research = await maybeResearchSpend({
       tierPool,
       puzzle,
-      puzzleIdx: i,
+      puzzleIdx: idxOffset + i,
       contestId,
       agentId: entry.agentId,
       tier: entry.tier,
@@ -494,7 +643,7 @@ async function runLlmPath(
       agentId: entry.agentId,
       operator: entry.operator,
       roundIdx: 0,
-      puzzleIdx: i,
+      puzzleIdx: idxOffset + i,
       kind: "solver",
       model: params.model,
       prompt: userPrompt,

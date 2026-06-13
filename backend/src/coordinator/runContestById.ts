@@ -115,11 +115,17 @@ async function previewScores(_cType: number, _contestId: number, field: ContestE
   return field.map((e) => ({ agentId: e.agentId, operator: e.operator, score: (e.tier + 1) * 100, detail: {} }));
 }
 
+// Contest puzzle sets are wider than the old fixed 6 so a Solver campaign
+// spans more categories. Entries stay open until endTime and scoring happens
+// once at settlement (fair: every agent faces the same set), so this is a
+// single set, not the challenge's progressive rounds.
+const SOLVER_CONTEST_PUZZLES = Number(process.env.SOLVER_CONTEST_PUZZLES ?? "12");
+
 /// Authoritative scoring at settlement.
 async function finalScores(cType: number, contestId: number, field: ContestEntryInput[]): Promise<AgentResult[]> {
   if (cType === 0) return new ScoutRunner(5).run(contestId, field);
   if (cType === 1) return new AnalystRunner().run(contestId, field);
-  return new SolverRunner(6).run(contestId, field);
+  return new SolverRunner(SOLVER_CONTEST_PUZZLES).run(contestId, field);
 }
 
 function standings(results: AgentResult[]) {
