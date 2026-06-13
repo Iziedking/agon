@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { ArcanaMark, BracketedCell, Robot, robotVariantForId } from "@/components/redesign";
+import { AgentAvatar, ArcanaMark, BracketedCell, robotVariantForId } from "@/components/redesign";
 
 /// Live Arcana Markets contract on Arc Testnet. Single source of truth for
 /// the wait state's "powered by" strip and the active branch banner. When
@@ -11,7 +11,7 @@ const ARCANA_CONTRACT = "0x443a47eF1025e047879b1BA08c94e6dedB354D54";
 const ARCANA_SCAN_URL = `https://arcscan.net/address/${ARCANA_CONTRACT}`;
 const ARCANA_SITE_URL = "https://www.arcanamarkets.xyz";
 const ARCANA_SITE_LABEL = "ARCANAMARKETS.XYZ";
-import { nameFor, useAgentNames } from "@/hooks/useAgentNames";
+import { nameFor, skinFor, useAgentNames, useAgentSkins } from "@/hooks/useAgentNames";
 import type { StandingsEntry } from "@/lib/live";
 
 /// Promoted stage for ANALYST contests and PREDICTION challenges. Two
@@ -57,6 +57,7 @@ export function PredictionStage({
   pinnedArcanaMarkets?: PinnedMarket[];
 }) {
   const names = useAgentNames(entries.map((e) => e.agentId));
+  const skins = useAgentSkins(entries.map((e) => e.agentId));
 
   // Detect the Arcana branch when any agent carries positions OR the
   // contest has a pinned menu (set at open). Either signal is enough.
@@ -69,7 +70,7 @@ export function PredictionStage({
   }, [entries, pinnedArcanaMarkets]);
 
   if (hasArcana) {
-    return <ArcanaBranch entries={entries} names={names} pinnedMarkets={pinnedArcanaMarkets ?? []} />;
+    return <ArcanaBranch entries={entries} names={names} skins={skins} pinnedMarkets={pinnedArcanaMarkets ?? []} />;
   }
 
   // Total YES/NO calls across analyst entries. With the synthetic fallback
@@ -233,7 +234,7 @@ export function PredictionStage({
                   #{e.rank}
                 </span>
                 <div className="flex items-center gap-3">
-                  <Robot variant={variant} size={28} decorative />
+                  <AgentAvatar skin={skinFor(skins, e.agentId)} variant={variant} size={28} />
                   <div className="min-w-0">
                     <div className="font-mono text-[12px] uppercase tracking-[0.12em] text-ink truncate">
                       {nameFor(names, e.agentId)}
@@ -405,10 +406,12 @@ function SyntheticFallbackBadge() {
 function ArcanaBranch({
   entries,
   names,
+  skins,
   pinnedMarkets,
 }: {
   entries: StandingsEntry[];
   names: ReturnType<typeof useAgentNames>;
+  skins: ReturnType<typeof useAgentSkins>;
   /// Coordinator-pinned market set. Shown immediately at contest open so
   /// the menu is visible before agents trade. Merges with any markets
   /// agents have already taken positions in (which may be a subset).
@@ -482,7 +485,7 @@ function ArcanaBranch({
                   #{e.rank}
                 </span>
                 <div className="flex items-start gap-3">
-                  <Robot variant={variant} size={28} decorative />
+                  <AgentAvatar skin={skinFor(skins, e.agentId)} variant={variant} size={28} />
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-[12px] uppercase tracking-[0.12em] text-ink truncate">

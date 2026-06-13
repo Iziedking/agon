@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { BracketedCell, Robot, robotVariantForId } from "@/components/redesign";
-import { nameFor, useAgentNames } from "@/hooks/useAgentNames";
+import { AgentAvatar, BracketedCell, robotVariantForId } from "@/components/redesign";
+import { nameFor, skinFor, useAgentNames, useAgentSkins } from "@/hooks/useAgentNames";
 import type { StandingsEntry } from "@/lib/live";
 
 /// Promoted stage for CUSTOM challenges. No runner-supplied progress; we show
@@ -19,6 +19,7 @@ const VARIANT_COLOR: Record<string, string> = {
 
 export function CustomStage({ entries }: { entries: StandingsEntry[] }) {
   const names = useAgentNames(entries.map((e) => e.agentId));
+  const skins = useAgentSkins(entries.map((e) => e.agentId));
   const maxScore = Math.max(...entries.map((e) => e.score), 1);
   return (
     <BracketedCell pad="sm">
@@ -40,7 +41,7 @@ export function CustomStage({ entries }: { entries: StandingsEntry[] }) {
                 #{e.rank}
               </span>
               <div className="flex items-center gap-3">
-                <Robot variant={variant} size={28} decorative />
+                <AgentAvatar skin={skinFor(skins, e.agentId)} variant={variant} size={28} />
                 <div className="font-mono text-[12px] uppercase tracking-[0.12em] text-ink truncate">
                   {nameFor(names, e.agentId)}
                 </div>

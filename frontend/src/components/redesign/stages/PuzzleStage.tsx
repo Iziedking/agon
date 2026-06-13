@@ -1,7 +1,7 @@
 "use client";
 
-import { BracketedCell, Robot, robotVariantForId } from "@/components/redesign";
-import { nameFor, useAgentNames } from "@/hooks/useAgentNames";
+import { AgentAvatar, BracketedCell, robotVariantForId } from "@/components/redesign";
+import { nameFor, skinFor, useAgentNames, useAgentSkins } from "@/hooks/useAgentNames";
 import type { PuzzleCard, StandingsEntry } from "@/lib/live";
 
 /// Promoted stage for SOLVER contests and PUZZLE challenges. Shows:
@@ -74,6 +74,7 @@ function sumSpent6(spent?: string[]): bigint {
 
 export function PuzzleStage({ entries }: { entries: StandingsEntry[] }) {
   const names = useAgentNames(entries.map((e) => e.agentId));
+  const skins = useAgentSkins(entries.map((e) => e.agentId));
   const maxScore = Math.max(...entries.map((e) => e.score), 1);
 
   // Round-total nanopayment spend, summed across every agent. Drives the
@@ -212,7 +213,7 @@ export function PuzzleStage({ entries }: { entries: StandingsEntry[] }) {
                   #{e.rank}
                 </span>
                 <div className="flex items-center gap-3">
-                  <Robot variant={variant} size={28} decorative />
+                  <AgentAvatar skin={skinFor(skins, e.agentId)} variant={variant} size={28} />
                   <div className="min-w-0">
                     <div className="font-mono text-[12px] uppercase tracking-[0.12em] text-ink truncate">
                       {nameFor(names, e.agentId)}

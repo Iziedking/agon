@@ -88,7 +88,10 @@ app.use(
   cors({
     origin: config.auth.appUrl,
     credentials: true,
-    allowHeaders: ["Content-Type", "Authorization"],
+    // x-admin-token is the custom header the /admin console sends. Without it
+    // in allowHeaders the browser's CORS preflight rejects the request and the
+    // console shows "Failed to fetch".
+    allowHeaders: ["Content-Type", "Authorization", "x-admin-token"],
     allowMethods: ["GET", "POST", "OPTIONS"],
   }),
 );

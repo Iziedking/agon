@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
-import { BracketedCell, Robot, robotVariantForId } from "@/components/redesign";
-import { nameFor, useAgentNames } from "@/hooks/useAgentNames";
+import { AgentAvatar, BracketedCell, robotVariantForId } from "@/components/redesign";
+import { nameFor, skinFor, useAgentNames, useAgentSkins } from "@/hooks/useAgentNames";
 import type { StandingsEntry } from "@/lib/live";
 
 /// Promoted stage for SCOUT contests and VOLUME challenges. Two layers:
@@ -34,6 +34,7 @@ interface TapeRow {
 
 export function VolumeStage({ entries }: { entries: StandingsEntry[] }) {
   const names = useAgentNames(entries.map((e) => e.agentId));
+  const skins = useAgentSkins(entries.map((e) => e.agentId));
 
   // Per-agent volume totals (raw bigint string), used for bars.
   const totalsByAgent = useMemo(() => {
@@ -142,7 +143,7 @@ export function VolumeStage({ entries }: { entries: StandingsEntry[] }) {
                 >
                   <div className="flex items-center justify-between gap-3 font-mono">
                     <div className="flex min-w-0 items-center gap-2.5">
-                      <Robot variant={variant} size={22} decorative />
+                      <AgentAvatar skin={skinFor(skins, e.agentId)} variant={variant} size={22} />
                       <span className="truncate text-[12px] uppercase tracking-[0.12em] text-ink">
                         {nameFor(names, e.agentId)}
                       </span>
