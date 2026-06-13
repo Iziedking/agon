@@ -56,6 +56,9 @@ export type AgentProgress =
       researchSpent6?: string;
       /// Endpoint label for the research spend (e.g. "Gloria AI news").
       researchLabel?: string;
+      /// x402 settlement tx hash (Base) for the research spend, linked to
+      /// Basescan on the stage.
+      researchTx?: string;
       /// Arcana Markets positions the agent took this round. Present when
       /// the contest routed through Arcana; undefined / empty when it fell
       /// back to synthetic predictions.

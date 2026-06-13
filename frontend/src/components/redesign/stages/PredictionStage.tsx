@@ -497,13 +497,34 @@ function ArcanaBranch({
                         </span>
                       ) : null}
                       {analyst?.researchSpent6 && BigInt(analyst.researchSpent6) > 0n ? (
-                        <span
-                          className="border border-[color:var(--hairline-strong)] px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em] text-accent"
-                          title={`paid ${analyst.researchLabel ?? "research"} before trading`}
-                        >
-                          ${(Number(BigInt(analyst.researchSpent6)) / 1e6).toFixed(4)}
-                          {analyst.researchLabel ? ` · ${analyst.researchLabel}` : " RESEARCH"}
-                        </span>
+                        (() => {
+                          const tx = analyst.researchTx && /^0x[a-fA-F0-9]{64}$/.test(analyst.researchTx) ? analyst.researchTx : "";
+                          const label = (
+                            <>
+                              ${(Number(BigInt(analyst.researchSpent6)) / 1e6).toFixed(4)}
+                              {analyst.researchLabel ? ` · ${analyst.researchLabel}` : " RESEARCH"}
+                              {tx ? " ↗" : null}
+                            </>
+                          );
+                          const cls = "border border-[color:var(--hairline-strong)] px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em] text-accent";
+                          // When the x402 payment settled on-chain, link the chip
+                          // straight to the Base tx so judges can verify it.
+                          return tx ? (
+                            <a
+                              href={`https://basescan.org/tx/${tx}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className={`${cls} cursor-pointer`}
+                              title={`paid ${analyst.researchLabel ?? "research"} via x402 · view on basescan`}
+                            >
+                              {label}
+                            </a>
+                          ) : (
+                            <span className={cls} title={`paid ${analyst.researchLabel ?? "research"} before trading`}>
+                              {label}
+                            </span>
+                          );
+                        })()
                       ) : null}
                     </div>
                     <div className="font-mono text-[10px] text-ink-3">

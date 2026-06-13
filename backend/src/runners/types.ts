@@ -70,6 +70,9 @@ export type AgentProgress =
       researchSpent6?: string;
       /// Endpoint label for the research spend (e.g. "Gloria AI news").
       researchLabel?: string;
+      /// x402 settlement tx hash (Base) for the research spend, linked to
+      /// Basescan on the live stage. Undefined when no settled tx.
+      researchTx?: string;
       /// Arcana Markets positions the agent took this round, when the
       /// runner routed through Arcana instead of (or in addition to) the
       /// synthetic Brier-scored question loop. Empty / undefined when the

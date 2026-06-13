@@ -258,6 +258,7 @@ async function runArcanaContest(
           ticksBudget: budget,
           researchSpent6: research.total6 > 0n ? research.total6.toString() : undefined,
           researchLabel: research.total6 > 0n ? (research.label ?? undefined) : undefined,
+          researchTx: research.txHash ?? undefined,
           arcana: positions.map((p) => ({
             marketId: Number(p.marketId),
             title: p.title,

@@ -88,19 +88,27 @@ export async function paidAgentResearch(opts: {
 export async function sumAgentResearchSpend(
   contestId: number,
   agentId: number,
-): Promise<{ total6: bigint; label: string | null }> {
+): Promise<{ total6: bigint; label: string | null; txHash: string | null }> {
   try {
-    const { rows } = await query<{ total: string; label: string | null }>(
+    const { rows } = await query<{ total: string; label: string | null; tx_hash: string | null }>(
       `select coalesce(sum(usdc_amount_6::numeric), 0)::text as total,
-              max(endpoint_label) as label
+              max(endpoint_label) as label,
+              (select tx_hash from nanopayments n2
+                where n2.contest_id = $1 and n2.agent_id = $2
+                  and n2.status = 'settled' and n2.tx_hash is not null
+                order by n2.id desc limit 1) as tx_hash
          from nanopayments
         where contest_id = $1 and agent_id = $2 and status = 'settled'`,
       [contestId, agentId],
     );
     const raw = rows[0]?.total ?? "0";
-    return { total6: BigInt(raw.split(".")[0] ?? "0"), label: rows[0]?.label ?? null };
+    return {
+      total6: BigInt(raw.split(".")[0] ?? "0"),
+      label: rows[0]?.label ?? null,
+      txHash: rows[0]?.tx_hash ?? null,
+    };
   } catch {
-    return { total6: 0n, label: null };
+    return { total6: 0n, label: null, txHash: null };
   }
 }
 
