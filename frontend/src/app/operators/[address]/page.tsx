@@ -219,7 +219,14 @@ export default function OperatorPage() {
                 isMe={isMe}
                 handle={profile !== "loading" ? profile?.telegramUsername ?? null : null}
                 telegramId={profile !== "loading" ? profile?.telegramId ?? null : null}
-                avatarUrl={profile !== "loading" ? profile?.telegramAvatar ?? null : null}
+                avatarUrl={
+                  profile !== "loading"
+                    ? (profile?.telegramAvatar
+                        ?? (profile?.telegramUsername
+                          ? `https://unavatar.io/telegram/${profile.telegramUsername}`
+                          : null))
+                    : null
+                }
                 onUnbind={async () => {
                   await fetch(`${AUTH_URL}/auth/telegram/unbind`, { method: "POST", credentials: "include" });
                   setProfile(await fetchOperator(address));

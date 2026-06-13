@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { AgentProgress, StandingsEntry } from "@/lib/live";
 import { AgentMascot, type AgentVariant } from "@/components/pengu/AgentMascot";
-import { nameFor, useAgentNames } from "@/hooks/useAgentNames";
+import { nameFor, skinFor, useAgentNames, useAgentSkins } from "@/hooks/useAgentNames";
 
 /// The visible competition surface that sits above the standings list. Picks
 /// the right "stage" for the contest's type so the page declares "agents are
@@ -140,11 +140,13 @@ function AgentRoster({
   bodies: React.ReactNode[];
 }) {
   const names = useAgentNames(featured.map((e) => e.agentId));
+  const skins = useAgentSkins(featured.map((e) => e.agentId));
   return (
     <div className="grid gap-4 sm:grid-cols-3">
       {featured.map((e, i) => {
         const pct = Math.min(1, e.score / maxScore);
         const leader = e.rank === 1;
+        const skin = skinFor(skins, e.agentId);
         return (
           <div
             key={e.agentId}
@@ -169,12 +171,23 @@ function AgentRoster({
               </span>
             </div>
 
-            <AgentMascot
-              variant={variantFor(e.agentId)}
-              mood={leader ? "win" : "focus"}
-              live
-              className={`mt-2 h-20 w-auto ${leader ? "drift" : ""}`}
-            />
+            {skin ? (
+              <span
+                className={`mt-2 flex h-20 w-20 flex-none items-center justify-center overflow-hidden rounded-full bg-canvas-3 ${
+                  leader ? "drift" : ""
+                }`}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={skin} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" />
+              </span>
+            ) : (
+              <AgentMascot
+                variant={variantFor(e.agentId)}
+                mood={leader ? "win" : "focus"}
+                live
+                className={`mt-2 h-20 w-auto ${leader ? "drift" : ""}`}
+              />
+            )}
 
             <div className="mt-2 w-full truncate text-center font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
               {nameFor(names, e.agentId)}

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useAccount } from "wagmi";
 import { useContestSocket } from "@/hooks/useContestSocket";
-import { useAgentNames, nameFor } from "@/hooks/useAgentNames";
+import { useAgentNames, nameFor, useAgentSkins, skinFor } from "@/hooks/useAgentNames";
 import { OperatorAvatar } from "@/components/pengu/OperatorAvatar";
 import { ContestStage } from "@/components/pengu/ContestStage";
 import { BracketedCell, StatusChip } from "@/components/redesign";
@@ -23,6 +23,22 @@ import type { StandingsEntry } from "@/lib/live";
 function rankColor(rank: number): string {
   if (rank === 1) return "var(--accent)";
   return "var(--ink)";
+}
+
+/// Row avatar that prefers the agent's resolved identity image (X / Discord /
+/// custom skin) and falls back to the address-derived operator mascot when the
+/// agent has no linked picture. Keeps the live board consistent with the
+/// leaderboard, which already shows the X pfp.
+function EntrantAvatar({ skin, address }: { skin: string | null; address: string }) {
+  if (skin) {
+    return (
+      <span className="flex h-6 w-6 flex-none items-center justify-center overflow-hidden rounded-full bg-canvas-3">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={skin} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" />
+      </span>
+    );
+  }
+  return <OperatorAvatar address={address} className="h-6 w-6" />;
 }
 
 function YouTag() {
@@ -190,6 +206,7 @@ function LiveStandings({
   // return. Keep it at the top so the hook count is stable across renders
   // (React error #310 otherwise).
   const names = useAgentNames(entries.map((e) => e.agentId));
+  const skins = useAgentSkins(entries.map((e) => e.agentId));
 
   if (entries.length === 0) {
     if (entrants.length > 0) return <Field entrants={entrants} me={me} />;
@@ -226,7 +243,7 @@ function LiveStandings({
             >
               #{e.rank}
             </span>
-            <OperatorAvatar address={e.operator} className="h-6 w-6" />
+            <EntrantAvatar skin={skinFor(skins, e.agentId)} address={e.operator} />
             <div className="min-w-0">
               <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-ink">
                 <span className="truncate">
@@ -257,6 +274,7 @@ function LiveStandings({
 /// "agent #17" id. Falls back to the id when no nickname is set.
 function Field({ entrants, me }: { entrants: ResultEntrant[]; me?: string }) {
   const names = useAgentNames(entrants.map((e) => e.agentId));
+  const skins = useAgentSkins(entrants.map((e) => e.agentId));
   return (
     <div className="mt-4 flex flex-col">
       {entrants.map((e) => {
@@ -270,7 +288,7 @@ function Field({ entrants, me }: { entrants: ResultEntrant[]; me?: string }) {
               mine ? "bg-canvas-2" : ""
             }`}
           >
-            <OperatorAvatar address={e.operator} className="h-6 w-6" />
+            <EntrantAvatar skin={skinFor(skins, e.agentId)} address={e.operator} />
             <span className="flex min-w-0 items-center gap-2">
               <span className="truncate font-mono text-[12px] text-ink">{short(e.operator)}</span>
               {mine ? <YouTag /> : null}

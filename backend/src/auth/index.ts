@@ -2932,6 +2932,55 @@ app.get("/operators/:address/refunds-pending", async (c) => {
   });
 });
 
+/// Resolve a mixed list of invite recipients (wallet address, @X handle, or
+/// Discord username) to operator wallet addresses. The private-challenge
+/// invite flow calls this so a creator can invite by social handle instead of
+/// pasting a 0x address; the on-chain ChallengeArena.invite still takes
+/// addresses. Public read: it only maps a handle to a wallet, and wallets are
+/// already public on-chain. An unmatched handle returns address: null so the
+/// UI can tell the creator that person has not signed in yet.
+app.post("/operators/resolve", async (c) => {
+  const body = await c.req.json<{ recipients?: string[] }>().catch(() => ({ recipients: [] as string[] }));
+  const recipients = Array.isArray(body.recipients) ? body.recipients.slice(0, 50) : [];
+  const ADDR = /^0x[a-f0-9]{40}$/i;
+
+  // Collect the non-address tokens (handles), @ stripped and lowercased, for
+  // one batched lookup across both x_handle and discord_username.
+  const handles: string[] = [];
+  for (const raw of recipients) {
+    const t = (raw ?? "").trim();
+    if (t && !ADDR.test(t)) handles.push(t.replace(/^@/, "").toLowerCase());
+  }
+
+  const byX = new Map<string, string>();
+  const byDiscord = new Map<string, string>();
+  if (handles.length > 0) {
+    const { rows } = await query<{ address: string; x_handle: string | null; discord_username: string | null }>(
+      `select address, x_handle, discord_username
+         from operators
+        where lower(x_handle) = any($1::text[])
+           or lower(discord_username) = any($1::text[])`,
+      [handles],
+    );
+    for (const o of rows) {
+      if (o.x_handle) byX.set(o.x_handle.toLowerCase(), o.address);
+      if (o.discord_username) byDiscord.set(o.discord_username.toLowerCase(), o.address);
+    }
+  }
+
+  const resolved = recipients.map((raw) => {
+    const t = (raw ?? "").trim();
+    if (!t) return { input: raw, address: null, via: null as null | "wallet" | "x" | "discord" };
+    if (ADDR.test(t)) return { input: raw, address: t.toLowerCase(), via: "wallet" as const };
+    const h = t.replace(/^@/, "").toLowerCase();
+    if (byX.has(h)) return { input: raw, address: byX.get(h)!, via: "x" as const };
+    if (byDiscord.has(h)) return { input: raw, address: byDiscord.get(h)!, via: "discord" as const };
+    return { input: raw, address: null, via: null };
+  });
+
+  return c.json({ resolved });
+});
+
 // ----- Activity feed -----
 
 // Recent on-chain activity across the arena, newest first, from the raw event
@@ -3091,6 +3140,12 @@ app.get("/leaderboard", async (c) => {
         primaryAgentId: r.primary_agent_id ? Number(r.primary_agent_id) : null,
         primarySkin,
         primaryName,
+        // Raw identity handles so the leaderboard search can match by wallet,
+        // X, Discord, or custom name regardless of which one the operator
+        // pinned as their primary display.
+        xHandle: r.x_handle,
+        discordUsername: r.discord_username,
+        customName: r.primary_nickname,
       };
     }),
   });

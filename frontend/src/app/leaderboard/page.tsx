@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useAccount } from "wagmi";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/redesign/Footer";
 import { CornerMarkers, Robot, SectionHeader, robotVariantForId } from "@/components/redesign";
@@ -30,9 +31,31 @@ function robotVariantForOperator(addr: string): Parameters<typeof Robot>[0]["var
   return robotVariantForId(h);
 }
 
+type RankedRow = LeaderRow & { rank: number };
+
+/// True if the row's wallet, X handle, Discord username, or custom name
+/// contains the query. Case-insensitive, `@` and `0x` prefixes ignored so
+/// "izie", "@izie", "0xab" all match naturally.
+function matchesQuery(r: RankedRow, q: string): boolean {
+  const needle = q.trim().toLowerCase().replace(/^[@#]/, "");
+  if (!needle) return true;
+  const hay = [
+    r.operator,
+    r.primaryName,
+    r.xHandle ? `@${r.xHandle}` : null,
+    r.xHandle,
+    r.discordUsername,
+    r.customName,
+  ];
+  return hay.some((h) => h != null && h.toLowerCase().includes(needle));
+}
+
 export default function LeaderboardPage() {
+  const { address } = useAccount();
+  const me = address?.toLowerCase();
   const [rows, setRows] = useState<LeaderRow[] | null>(null);
   const [page, setPage] = useState(1);
+  const [queryText, setQueryText] = useState("");
 
   useEffect(() => {
     let live = true;
@@ -40,10 +63,24 @@ export default function LeaderboardPage() {
     return () => { live = false; };
   }, []);
 
-  const total = rows?.length ?? 0;
+  // Absolute rank is the position in the full sorted board, stamped once so it
+  // survives searching and paging (a filtered row still shows its real rank).
+  const ranked: RankedRow[] = useMemo(
+    () => (rows ?? []).map((r, i) => ({ ...r, rank: i + 1 })),
+    [rows],
+  );
+  const searching = queryText.trim().length > 0;
+  const filtered = useMemo(
+    () => (searching ? ranked.filter((r) => matchesQuery(r, queryText)) : ranked),
+    [ranked, searching, queryText],
+  );
+
+  const total = filtered.length;
   const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
   const safePage = Math.min(page, totalPages);
-  const pageRows = (rows ?? []).slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE);
+  // Searching shows every match on one screen so the operator finds their
+  // position without paging; the normal board stays paginated.
+  const pageRows = searching ? filtered : filtered.slice((safePage - 1) * PER_PAGE, safePage * PER_PAGE);
 
   return (
     <div className="min-h-screen bg-canvas text-ink">
@@ -57,7 +94,40 @@ export default function LeaderboardPage() {
         />
       </section>
 
-      <section className="mx-auto max-w-[1600px] px-6 py-10 pb-16">
+      <section className="mx-auto max-w-[1600px] px-6 pt-6">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative flex-1 min-w-[240px] max-w-[420px]">
+            <span
+              aria-hidden
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-mono text-[12px] text-ink-3"
+            >
+              ⌕
+            </span>
+            <input
+              value={queryText}
+              onChange={(e) => { setQueryText(e.target.value); setPage(1); }}
+              placeholder="SEARCH WALLET · X · DISCORD · NAME"
+              aria-label="Search the leaderboard by wallet, X handle, Discord, or custom name"
+              className="w-full border border-[color:var(--hairline-strong)] bg-canvas py-2.5 pl-8 pr-3 font-mono text-[12px] uppercase tracking-[0.08em] text-ink placeholder:text-ink-3 focus:border-ink focus:outline-none"
+            />
+          </div>
+          {queryText ? (
+            <button
+              onClick={() => { setQueryText(""); setPage(1); }}
+              className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3 hover:text-accent"
+            >
+              CLEAR ✕
+            </button>
+          ) : null}
+          {searching ? (
+            <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3">
+              {total} {total === 1 ? "MATCH" : "MATCHES"}
+            </span>
+          ) : null}
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-[1600px] px-6 py-6 pb-16">
         {/* Header row. Column visibility tracks the grid breakpoints. */}
         <div className={`grid ${COLS} items-center gap-3 border-b border-[color:var(--hairline-strong)] py-3 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3`}>
           <span>RANK</span>
@@ -75,17 +145,22 @@ export default function LeaderboardPage() {
           <p className="py-8 font-mono text-sm text-ink-2">
             no results yet. once contests settle, operators show up here.
           </p>
+        ) : pageRows.length === 0 ? (
+          <p className="py-8 font-mono text-sm text-ink-2">
+            no operator matches “{queryText.trim()}”. try a wallet, @x handle, discord, or name.
+          </p>
         ) : (
           pageRows.map((r, i) => {
-            const rank = (safePage - 1) * PER_PAGE + i + 1;
+            const rank = r.rank;
             const topThree = rank <= 3;
             const isAlt = i % 2 === 1;
+            const mine = !!me && r.operator.toLowerCase() === me;
             return (
               <a
                 key={r.operator}
                 href={`/operators/${r.operator}`}
                 className={`grid ${COLS} items-center gap-3 border-b border-[color:var(--hairline)] py-3 transition-colors hover:bg-canvas-3 last:border-0`}
-                style={{ background: isAlt ? "var(--canvas-2)" : undefined }}
+                style={{ background: mine ? "var(--canvas-3)" : isAlt ? "var(--canvas-2)" : undefined }}
               >
                 <span
                   className="font-stencil"
@@ -114,6 +189,11 @@ export default function LeaderboardPage() {
                   <span className="truncate font-mono text-[13px] text-ink" title={r.operator}>
                     {r.primaryName ?? short(r.operator)}
                   </span>
+                  {mine ? (
+                    <span className="flex-none border border-ink bg-canvas px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink">
+                      YOU
+                    </span>
+                  ) : null}
                 </span>
                 <span className="hidden text-right font-mono text-[13px] text-ink-2 sm:block">{r.entered}</span>
                 <span className="text-right font-mono text-[13px] text-ink-2">{r.wins}</span>
@@ -125,7 +205,7 @@ export default function LeaderboardPage() {
           })
         )}
 
-        {totalPages > 1 ? (
+        {!searching && totalPages > 1 ? (
           <div className="mt-8 flex items-center justify-center gap-6">
             <PageBtn disabled={safePage <= 1} onClick={() => setPage(safePage - 1)}>← PREV</PageBtn>
             <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3">

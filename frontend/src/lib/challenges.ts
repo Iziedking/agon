@@ -189,98 +189,73 @@ const STATUS_OPEN = 0;
 const STATUS_LOCKED = 1;
 const STATUS_CANCELLED = 3;
 
-interface ChainChallenge {
-  status: number;
-  joinDeadline: bigint;
-  resolveDeadline: bigint;
-}
-
 export async function fetchPendingRefunds(operator: `0x${string}`): Promise<PendingRefundsBundle> {
+  // Discover refundable challenges from CHAIN truth, not the indexer. We used
+  // to read the backend's challenge_entries table here, but that table can
+  // miss a join the indexer never caught (node downtime, a join before
+  // START_BLOCK, a DB rebuild). When that happened the challenge detail page
+  // still showed the REFUND STAKE button (it reads the contract directly via
+  // hasJoined) while the dashboard silently dropped the row. Now the
+  // dashboard mirrors the detail page exactly: scan every challenge on chain,
+  // keep the ones this wallet actually staked into that are cancelled (or
+  // stale and cancellable) and not yet refunded. publicClient batches these
+  // reads through Multicall3, same as the /challenges grid.
+  let challenges: PendingRefund[] = [];
   try {
-    const res = await fetch(`${AUTH_URL}/operators/${operator}/refunds-pending`, { cache: "no-store" });
-    if (!res.ok) return { challenges: [], contests: [] };
-    const data = (await res.json()) as {
-      challenges?: Array<{ id: number; stake: string; indexedStatus?: string }>;
-      contests?: Array<{ id: number }>;
-    };
-    const chRows = data.challenges ?? [];
-    const ctRows = data.contests ?? [];
+    const all = await fetchChallenges();
     const nowSec = BigInt(Math.floor(Date.now() / 1000));
 
-    // Read chain truth for each row: actual status + deadlines + entrant
-    // count + refunded flag for this operator. Multicall on one batch so
-    // we make ~4 reads per row in parallel rather than 4 sequential.
+    // Narrow to challenges whose stake is recoverable before touching the
+    // per-operator joined/refunded reads, so we only do that work for the
+    // handful of cancelled/stale challenges rather than every one ever made.
+    const candidates = all.filter((ch) => {
+      if (ch.status === STATUS_CANCELLED) return true;
+      // OPEN past joinDeadline with under 2 entrants: the contract's stale
+      // underfilled rule lets anyone cancel, so the stake is recoverable via
+      // a cancel tx then a refund tx.
+      if (ch.status === STATUS_OPEN && nowSec > ch.joinDeadline && ch.entrants < 2) return true;
+      // LOCKED past resolveDeadline: coordinator never resolved, anyone can
+      // cancel. Stake is recoverable the same way.
+      if (ch.status === STATUS_LOCKED && nowSec > ch.resolveDeadline) return true;
+      return false;
+    });
+
     const enriched = await Promise.all(
-      chRows.map(async (r) => {
-        try {
-          const [ch, entrants, refundedFlag] = await Promise.all([
-            publicClient.readContract({
-              address: CONTRACTS.ChallengeArena,
-              abi: challengeArenaAbi,
-              functionName: "getChallenge",
-              args: [BigInt(r.id)],
-            }) as Promise<ChainChallenge>,
-            publicClient.readContract({
-              address: CONTRACTS.ChallengeArena,
-              abi: challengeArenaAbi,
-              functionName: "entrantCount",
-              args: [BigInt(r.id)],
-            }) as Promise<bigint>,
-            publicClient.readContract({
-              address: CONTRACTS.ChallengeArena,
-              abi: challengeArenaAbi,
-              functionName: "refunded",
-              args: [BigInt(r.id), operator],
-            }).catch(() => false) as Promise<boolean>,
-          ]);
-          return { row: r, ch, entrants, refundedFlag };
-        } catch {
-          return null;
-        }
+      candidates.map(async (ch) => {
+        const [didJoin, didRefund] = await Promise.all([
+          hasJoined(ch.id, operator),
+          hasRefunded(ch.id, operator),
+        ]);
+        return { ch, didJoin, didRefund };
       }),
     );
 
-    const challenges: PendingRefund[] = [];
-    for (const slot of enriched) {
-      if (!slot) continue;
-      const { row, ch, entrants, refundedFlag } = slot;
-      const status = Number(ch.status);
-
-      // Already pulled the stake back.
-      if (refundedFlag) continue;
-
-      if (status === STATUS_CANCELLED) {
-        challenges.push({ id: row.id, stake: BigInt(row.stake), action: "refund" });
-        continue;
-      }
-
-      // OPEN past joinDeadline with under 2 entrants: anyone can cancel
-      // per the contract's stale-underfilled rule. Stake is recoverable
-      // via a cancel tx then a refund tx.
-      if (
-        status === STATUS_OPEN &&
-        nowSec > ch.joinDeadline &&
-        entrants < 2n
-      ) {
-        challenges.push({ id: row.id, stake: BigInt(row.stake), action: "cancel_then_refund" });
-        continue;
-      }
-
-      // LOCKED past resolveDeadline: coordinator failed to resolve in
-      // time, anyone can cancel. Stake is recoverable.
-      if (status === STATUS_LOCKED && nowSec > ch.resolveDeadline) {
-        challenges.push({ id: row.id, stake: BigInt(row.stake), action: "cancel_then_refund" });
-        continue;
-      }
-      // Otherwise the challenge is still healthy: open with a live join
-      // window, or locked but the resolve window hasn't expired. Nothing
-      // to do from the dashboard.
-    }
-
-    return { challenges, contests: ctRows.map((r) => ({ id: r.id })) };
+    challenges = enriched
+      .filter((s) => s.didJoin && !s.didRefund)
+      .map((s) => ({
+        id: s.ch.id,
+        stake: s.ch.stake,
+        action: s.ch.status === STATUS_CANCELLED ? "refund" : "cancel_then_refund",
+      }));
   } catch {
-    return { challenges: [], contests: [] };
+    challenges = [];
   }
+
+  // Cancelled contests the operator entered stay an indexer read: contest
+  // entry is free, so these rows are purely informational and there is no
+  // chain stake to recover. The endpoint still returns them.
+  let contests: CancelledContestRef[] = [];
+  try {
+    const res = await fetch(`${AUTH_URL}/operators/${operator}/refunds-pending`, { cache: "no-store" });
+    if (res.ok) {
+      const data = (await res.json()) as { contests?: Array<{ id: number }> };
+      contests = (data.contests ?? []).map((r) => ({ id: r.id }));
+    }
+  } catch {
+    // contests list is non-critical; leave it empty on failure.
+  }
+
+  return { challenges, contests };
 }
 
 export async function hasRefunded(id: number, operator: `0x${string}`): Promise<boolean> {

@@ -22,6 +22,11 @@ export interface LeaderRow {
   /// username, or a custom nickname, per their identity mode. Null when none
   /// is set, in which case the row shows the masked wallet.
   primaryName?: string | null;
+  /// Raw identity handles, independent of which one is pinned as primary, so
+  /// the leaderboard search can match any of them. Null when not linked.
+  xHandle?: string | null;
+  discordUsername?: string | null;
+  customName?: string | null;
 }
 
 export interface OperatorAgent {
@@ -69,6 +74,35 @@ export async function fetchLeaderboard(limit = 50): Promise<LeaderRow[]> {
     return data.leaders ?? [];
   } catch {
     return [];
+  }
+}
+
+/// One resolved invite recipient. `address` is null when no ArcRun operator
+/// matches the handle (they have not signed in yet), so the UI can list who
+/// could not be invited. `via` records how it matched.
+export interface ResolvedRecipient {
+  input: string;
+  address: string | null;
+  via: "wallet" | "x" | "discord" | null;
+}
+
+/// Resolve a mixed list of wallet addresses, @X handles, and Discord usernames
+/// to operator wallet addresses for the private-challenge invite flow. Order
+/// is preserved 1:1 with the input. Network failure degrades to "all
+/// unresolved" so the caller surfaces a clear error instead of inviting wrong
+/// addresses.
+export async function resolveRecipients(recipients: string[]): Promise<ResolvedRecipient[]> {
+  try {
+    const res = await fetch(`${AUTH_URL}/operators/resolve`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ recipients }),
+    });
+    if (!res.ok) return recipients.map((r) => ({ input: r, address: null, via: null }));
+    const data = (await res.json()) as { resolved?: ResolvedRecipient[] };
+    return data.resolved ?? recipients.map((r) => ({ input: r, address: null, via: null }));
+  } catch {
+    return recipients.map((r) => ({ input: r, address: null, via: null }));
   }
 }
 

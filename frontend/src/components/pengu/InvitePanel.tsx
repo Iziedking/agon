@@ -6,15 +6,18 @@ import { useOperatorAddress } from "@/hooks/useAuth";
 import { BracketedCell } from "@/components/redesign";
 import { CONTRACTS, publicClient } from "@/lib/arc";
 import { challengeArenaAbi, fetchChallengeInvites, type ChallengeInvitee } from "@/lib/challenges";
+import { resolveRecipients } from "@/lib/profiles";
 import { friendlyError } from "@/lib/errors";
 import { logRawError, reportEvent } from "@/lib/report";
 
 /// Invite panel for private challenges. Renders for the creator while the
-/// challenge is OPEN. Accepts a comma or newline separated list of
-/// addresses, validates them, and fires one ChallengeArena.invite tx for
-/// all of them. Shows the already-invited list below, populated from the
-/// indexer's challenge_invites table. Also gives the creator a one-click
-/// COPY INVITE LINK to share offchain.
+/// challenge is OPEN. Accepts a comma or newline separated list of wallet
+/// addresses, @X handles, and Discord usernames; resolves the handles to
+/// operator wallets, then fires one ChallengeArena.invite tx for all of them.
+/// Each invitee is notified in-app and on Telegram (if linked) with a link to
+/// the challenge, via the indexer's ChallengeInvited handler. Shows the
+/// already-invited list below, populated from the indexer's challenge_invites
+/// table. Also gives the creator a one-click COPY INVITE LINK to share offchain.
 
 interface Props {
   challengeId: number;
@@ -23,8 +26,6 @@ interface Props {
   /// 0 = OPEN, 1 = LOCKED, 2 = SETTLED, 3 = CANCELLED
   status: number;
 }
-
-const ADDR_RE = /^0x[a-fA-F0-9]{40}$/;
 
 function short(addr: string): string {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
@@ -54,22 +55,8 @@ export function InvitePanel({ challengeId, creator, isPrivate, status }: Props) 
 
   if (!visible) return null;
 
-  function parseAddresses(raw: string): { good: `0x${string}`[]; bad: string[] } {
-    const candidates = raw
-      .split(/[\s,;]+/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-    const good: `0x${string}`[] = [];
-    const bad: string[] = [];
-    const seen = new Set<string>();
-    for (const c of candidates) {
-      if (!ADDR_RE.test(c)) { bad.push(c); continue; }
-      const lower = c.toLowerCase();
-      if (seen.has(lower)) continue;
-      seen.add(lower);
-      good.push(c as `0x${string}`);
-    }
-    return { good, bad };
+  function tokenize(raw: string): string[] {
+    return raw.split(/[\s,;]+/).map((s) => s.trim()).filter(Boolean);
   }
 
   async function copyLink() {
@@ -84,18 +71,34 @@ export function InvitePanel({ challengeId, creator, isPrivate, status }: Props) 
   }
 
   async function sendInvites() {
-    const { good, bad } = parseAddresses(input);
-    if (good.length === 0) {
-      setError("paste one or more 0x addresses (separated by spaces, commas, or new lines).");
-      return;
-    }
-    if (bad.length > 0) {
-      setError(`not a valid address: ${bad[0]}`);
+    const tokens = tokenize(input);
+    if (tokens.length === 0) {
+      setError("add one or more wallet addresses, @x handles, or discord usernames.");
       return;
     }
     setBusy(true);
     setError(null);
     try {
+      // Resolve @x handles and discord usernames to operator wallets; plain
+      // 0x addresses pass through. invite() is on-chain and takes addresses.
+      const resolved = await resolveRecipients(tokens);
+      const seen = new Set<string>();
+      const good: `0x${string}`[] = [];
+      for (const r of resolved) {
+        if (!r.address) continue;
+        const lower = r.address.toLowerCase();
+        if (seen.has(lower)) continue;
+        seen.add(lower);
+        good.push(r.address as `0x${string}`);
+      }
+      const unresolved = resolved.filter((r) => !r.address).map((r) => r.input);
+      if (good.length === 0) {
+        setError(
+          `couldn't find an arcrun account for ${unresolved.join(", ")}. they need to sign in once before you can invite them.`,
+        );
+        setBusy(false);
+        return;
+      }
       const hash = await writeContractAsync({
         address: CONTRACTS.ChallengeArena,
         abi: challengeArenaAbi,
@@ -108,6 +111,11 @@ export function InvitePanel({ challengeId, creator, isPrivate, status }: Props) 
         address,
       });
       setNote(`INVITED ${good.length}`);
+      // Partial success: tell the creator which handles didn't map to an
+      // account so they can chase them, while still confirming the rest.
+      if (unresolved.length > 0) {
+        setError(`couldn't find: ${unresolved.join(", ")}. invited the ${good.length} we could.`);
+      }
       setInput("");
       setTimeout(() => setNote(null), 1500);
       // Optimistically merge the just-invited addresses so the creator sees
@@ -143,12 +151,12 @@ export function InvitePanel({ challengeId, creator, isPrivate, status }: Props) 
       </div>
       <BracketedCell pad="md">
         <p className="font-mono text-[12px] leading-[1.55] text-ink-2">
-          only invited operators can join this challenge. paste their wallet addresses below; they receive the on-chain invite in one tx.
+          only invited operators can join this challenge. add them by wallet address, @x handle, or discord username. they get an in-app and telegram alert with a link, and the on-chain invite goes out in one tx.
         </p>
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="0x... 0x..."
+          placeholder="0xabc...  @xhandle  discordname"
           rows={3}
           disabled={busy}
           className="mt-4 w-full border border-[color:var(--hairline-strong)] bg-canvas px-3 py-2 font-mono text-[12px] text-ink outline-none transition-colors focus:border-ink"
