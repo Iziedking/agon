@@ -111,7 +111,14 @@ async function startChallengeSweeper(broadcast: (message: unknown) => void): Pro
       const active = await findActiveChallenges();
       for (const id of active) {
         if (challengeInFlight.has(id)) continue;
-        await resolveChallengeOnce(id, broadcast);
+        // Isolate per-challenge failures: a single challenge whose lock or
+        // settle keeps reverting (low gas, an RPC blip, a stuck tx) must not
+        // throw out of the loop and starve every other challenge of its sweep.
+        try {
+          await resolveChallengeOnce(id, broadcast);
+        } catch (err) {
+          console.error(`autopilot: challenge ${id} sweep failed:`, err instanceof Error ? err.message : err);
+        }
       }
     } catch (err) {
       console.error("autopilot challenge sweeper failed:", err instanceof Error ? err.message : err);

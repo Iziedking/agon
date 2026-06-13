@@ -33,11 +33,13 @@ export function judge(puzzle: Puzzle, raw: string): JudgeOutcome {
     case "classify":
       return judgeOneOf(cleaned, ["transfer", "swap", "mint", "bridge"], puzzle.expected);
     case "routing":
-      return judgeOneOf(cleaned, ["a", "b", "c"], puzzle.expected.toLowerCase());
+      return judgeLetter(cleaned, ["a", "b", "c"], puzzle.expected);
     case "quiz":
-      return judgeOneOf(cleaned, ["a", "b", "c", "d"], puzzle.expected.toLowerCase());
+      return judgeLetter(cleaned, ["a", "b", "c", "d"], puzzle.expected);
     case "research":
-      return judgeOneOf(cleaned, ["none", "few", "some", "many"], puzzle.expected.toLowerCase());
+      // Research answers are a single letter A-D the agent commits to after a
+      // paid web search. Extract the committed letter, not a substring match.
+      return judgeLetter(cleaned, ["a", "b", "c", "d"], puzzle.expected);
     default:
       return assertNever(puzzle.kind);
   }
@@ -70,6 +72,41 @@ function judgeOneOf(text: string, choices: string[], expected: string): JudgeOut
   }
   if (!lastChoice) return { verdict: "error", extracted: NO_ANSWER };
   return { verdict: lastChoice === expected ? "correct" : "wrong", extracted: lastChoice };
+}
+
+/// Extract the single multiple-choice LETTER the agent committed to (A-D for
+/// quiz/research, A-C for routing). The prompt tells the model to finish with
+/// exactly one letter on its own line, so we read the committed letter instead
+/// of substring-matching — substring matching wrongly catches a letter inside
+/// an ordinary word (the C in "Canada", the d in "decision") or the English
+/// article "a", which is exactly why a correct "B) Mexico ... B" was scored as
+/// C before this.
+function judgeLetter(text: string, valid: string[], expected: string): JudgeOutcome {
+  const want = expected.trim().toLowerCase();
+  const ok = new Set(valid.map((v) => v.toLowerCase()));
+  const decide = (got: string): JudgeOutcome => ({
+    verdict: got.toLowerCase() === want ? "correct" : "wrong",
+    extracted: got.toUpperCase(),
+  });
+
+  // 1) Primary: the committed answer is a line that is just the letter. Scan
+  //    from the bottom so the final answer wins. Tolerates wrapping
+  //    punctuation: "B", "B)", "**B**", "(B)", "- D.", "> C".
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const m = lines[i]!.match(/^[\s(*_."'>-]*([a-dA-D])[\s).:,*_"'>-]*$/);
+    if (m && ok.has(m[1]!.toLowerCase())) return decide(m[1]!);
+  }
+  // 2) Fallback: the LAST standalone UPPERCASE option letter anywhere. Uppercase
+  //    only, so we never grab the article "a" or a lowercase letter buried in
+  //    prose; standalone, so we never grab the C in "Canada". This catches
+  //    "B) Mexico", "Answer: D", "the answer is C".
+  const tokens = Array.from(text.matchAll(/(?:^|[^A-Za-z])([A-D])(?![A-Za-z])/g))
+    .map((m) => m[1]!.toLowerCase())
+    .filter((c) => ok.has(c));
+  if (tokens.length > 0) return decide(tokens[tokens.length - 1]!);
+
+  return { verdict: "error", extracted: NO_ANSWER };
 }
 
 function assertNever(x: PuzzleKind): never {
