@@ -435,7 +435,22 @@ export async function payExactRequest(url: string, init: RequestInit): Promise<E
   let txHash: string | undefined;
   try {
     txHash = http.getPaymentSettleResponse((n) => second.headers.get(n))?.transaction;
-  } catch { /* settle header absent; tx best-effort */ }
+  } catch { /* helper failed; fall back to the raw header below */ }
+  // Fallback: decode the raw X-PAYMENT-RESPONSE header ourselves. The settle
+  // response is base64 JSON like { success, transaction, network, payer };
+  // some sellers/facilitators return it but the SDK helper doesn't surface
+  // `.transaction`, leaving the live stage with a spend but no clickable tx.
+  if (!txHash) {
+    try {
+      const raw = second.headers.get("x-payment-response") ?? second.headers.get("X-PAYMENT-RESPONSE");
+      if (raw) {
+        const json = JSON.parse(Buffer.from(raw, "base64").toString("utf8")) as Record<string, unknown>;
+        const nested = json["payment"] as Record<string, unknown> | undefined;
+        const tx = json["transaction"] ?? json["transactionHash"] ?? json["txHash"] ?? nested?.["transaction"];
+        if (typeof tx === "string" && tx) txHash = tx;
+      }
+    } catch { /* header absent or not decodable; tx stays best-effort */ }
+  }
   const data = await second.json().catch(() => null);
   return { ok: second.ok, status: second.status, data, txHash, amount6 };
 }

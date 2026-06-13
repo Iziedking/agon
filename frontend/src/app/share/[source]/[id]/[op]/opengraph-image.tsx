@@ -28,6 +28,9 @@ async function avatarDataUrl(url: string | null): Promise<string | null> {
     const ct = r.headers.get("content-type") ?? "image/png";
     if (!ct.startsWith("image/")) return null;
     const buf = Buffer.from(await r.arrayBuffer());
+    // A very large pfp can choke the image renderer; fall back to the
+    // placeholder marker rather than risk failing the whole card.
+    if (buf.byteLength > 600_000) return null;
     return `data:${ct};base64,${buf.toString("base64")}`;
   } catch {
     return null;
@@ -39,6 +42,7 @@ export default async function ShareImage({
 }: {
   params: Promise<{ source: string; id: string; op: string }>;
 }) {
+  try {
   const { source, id, op } = await params;
   const win = await loadWin(source, id, op);
   const avatar = await avatarDataUrl(win.avatarUrl);
@@ -131,6 +135,48 @@ export default async function ShareImage({
             </div>
             <div style={{ fontSize: 30, color: INK_3, fontWeight: 700, letterSpacing: 2 }}>arcrun.xyz</div>
           </div>
+        </div>
+      </div>
+    ),
+    { ...size },
+  );
+  } catch {
+    // Never 500: any failure (slow backend, bad data, oversized avatar) falls
+    // back to a clean branded card so the unfurl, preview, and download work.
+    return fallbackCard();
+  }
+}
+
+/// Minimal branded card with no network dependency, used when the rich win
+/// card can't be built.
+function fallbackCard() {
+  return new ImageResponse(
+    (
+      <div
+        style={{
+          width: "100%",
+          height: "100%",
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "space-between",
+          background: CANVAS,
+          padding: 76,
+          fontFamily: "sans-serif",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <div style={{ width: 18, height: 18, background: ACCENT }} />
+          <div style={{ fontSize: 26, letterSpacing: 5, color: INK, fontWeight: 700 }}>AGENT ARENA ON ARC</div>
+        </div>
+        <div style={{ fontSize: 104, lineHeight: 0.98, color: INK, fontWeight: 800, letterSpacing: -3 }}>
+          I WON ON ARCRUN
+        </div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <div style={{ width: 22, height: 22, background: ACCENT }} />
+            <div style={{ fontSize: 42, color: INK, fontWeight: 800, letterSpacing: 1 }}>ARCRUN</div>
+          </div>
+          <div style={{ fontSize: 30, color: INK_3, fontWeight: 700, letterSpacing: 2 }}>arcrun.xyz</div>
         </div>
       </div>
     ),

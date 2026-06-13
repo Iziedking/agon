@@ -295,7 +295,9 @@ function PuzzleRow({
       };
     });
     return (
-      <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${Math.min(total, 6)}, 1fr)` }}>
+      // Fixed small cells that wrap, instead of full-width 1fr aspect-square
+      // squares (which blew up to huge boxes on a wide stage).
+      <div className="flex flex-wrap gap-1.5">
         {cells.map((c, i) => {
           const titleParts: string[] = [];
           if (c.ms) titleParts.push(`${c.ms}ms`);
@@ -323,7 +325,7 @@ function PuzzleRow({
             border: c.hit ? `1px solid ${accent}` : "1px solid var(--hairline)",
             color: c.hit ? "#fff" : "var(--ink-3)",
           };
-          const cellCls = "relative flex aspect-square items-center justify-center text-[9px] font-mono";
+          const cellCls = "relative flex h-7 w-7 items-center justify-center text-[9px] font-mono";
           // A paid puzzle's cell links straight to the on-chain x402 settlement
           // tx on Basescan, so judges can verify the nanopayment in one click.
           return c.tx ? (
@@ -351,11 +353,11 @@ function PuzzleRow({
   // without solver data). Show empty cells numbered 1-6 so the row reads as
   // "six puzzles, none solved yet" instead of faking progress from the score.
   return (
-    <div className="grid grid-cols-6 gap-1">
+    <div className="flex flex-wrap gap-1.5">
       {Array.from({ length: 6 }, (_, i) => (
         <span
           key={i}
-          className="flex aspect-square items-center justify-center font-mono text-[9px] text-ink-3"
+          className="flex h-7 w-7 items-center justify-center font-mono text-[9px] text-ink-3"
           style={{ background: "transparent", border: "1px solid var(--hairline)" }}
         >
           {i + 1}
