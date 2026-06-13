@@ -40,6 +40,9 @@ export type AgentProgress =
       /// Per-puzzle nanopayment endpoint label. Aligned 1:1 with `spent[]`.
       /// Empty string when no spend.
       spentLabels?: string[];
+      /// Per-puzzle x402 settlement tx hash (Base). Aligned 1:1 with `spent[]`.
+      /// Empty string when no spend. PuzzleStage links each to Basescan.
+      spentTx?: string[];
     }
   | {
       kind: "analyst";

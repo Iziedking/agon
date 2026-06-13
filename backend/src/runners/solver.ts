@@ -114,6 +114,9 @@ interface SolveOutcome {
   spent?: string[];
   /// Per-puzzle endpoint label aligned with spent[]. Empty string for no spend.
   spentLabels?: string[];
+  /// Per-puzzle x402 settlement tx hash (Base) aligned with spent[]. Empty
+  /// string for no spend. Surfaced as a clickable explorer link on the stage.
+  spentTx?: string[];
 }
 
 export class SolverRunner implements Runner {
@@ -145,7 +148,7 @@ export class SolverRunner implements Runner {
         const rawScore = solverScore(solve);
         const finalScore = applyRouting(rawScore, strength, contestId * 1000 + e.agentId);
 
-        const { perPuzzle, perPuzzleMs, costUsd: _unused, spent, spentLabels, ...detail } = solve;
+        const { perPuzzle, perPuzzleMs, costUsd: _unused, spent, spentLabels, spentTx, ...detail } = solve;
         return {
           agentId: e.agentId,
           operator: e.operator,
@@ -170,6 +173,7 @@ export class SolverRunner implements Runner {
             puzzleCards,
             spent: spent ?? puzzles.map(() => "0"),
             spentLabels: spentLabels ?? puzzles.map(() => ""),
+            spentTx: spentTx ?? puzzles.map(() => ""),
           },
         };
       }),
@@ -396,6 +400,7 @@ async function runLlmPath(
   const perPuzzleMs: number[] = [];
   const spent: string[] = [];
   const spentLabels: string[] = [];
+  const spentTx: string[] = [];
   let correct = 0;
   let elapsedMs = 0;
   let costUsd = 0;
@@ -417,6 +422,7 @@ async function runLlmPath(
     let userPrompt = puzzle.prompt;
     let puzzleSpent6 = 0n;
     let puzzleSpentLabel = "";
+    let puzzleSpentTx = "";
     const research = await maybeResearchSpend({
       tierPool,
       puzzle,
@@ -428,6 +434,7 @@ async function runLlmPath(
     if (research) {
       puzzleSpent6 = research.usdcAmount6;
       puzzleSpentLabel = research.label;
+      puzzleSpentTx = research.txHash ?? "";
       userPrompt = `RESEARCH (${research.label}):\n${research.summary}\n\n${puzzle.prompt}`;
     }
 
@@ -480,6 +487,7 @@ async function runLlmPath(
     costUsd += cost;
     spent.push(puzzleSpent6.toString());
     spentLabels.push(puzzleSpentLabel);
+    spentTx.push(puzzleSpentTx);
 
     await recordLlmRun({
       contestId,
@@ -510,6 +518,7 @@ async function runLlmPath(
         perPuzzleMs.push(0);
         spent.push("0");
         spentLabels.push("");
+        spentTx.push("");
       }
       break;
     }
@@ -521,7 +530,7 @@ async function runLlmPath(
     elapsedMs = Math.max(1, Math.round(elapsedMs * (1 - params.luckBonus * 0.1)));
   }
 
-  return { correct, total: puzzles.length, elapsedMs, perPuzzle, perPuzzleMs, costUsd, spent, spentLabels };
+  return { correct, total: puzzles.length, elapsedMs, perPuzzle, perPuzzleMs, costUsd, spent, spentLabels, spentTx };
 }
 
 /// Calls payX402 when a research endpoint is configured for the puzzle kind
@@ -535,7 +544,7 @@ async function maybeResearchSpend(opts: {
   contestId: number;
   agentId: number;
   tier: number;
-}): Promise<{ usdcAmount6: bigint; label: string; summary: string } | null> {
+}): Promise<{ usdcAmount6: bigint; label: string; summary: string; txHash?: string } | null> {
   const { tierPool, puzzle, puzzleIdx, contestId, agentId, tier } = opts;
   if (!tierPool) return null;
   const endpoint = researchEndpointFor(puzzle.kind);

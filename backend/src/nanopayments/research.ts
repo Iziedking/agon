@@ -18,6 +18,9 @@ export interface ResearchResult {
   usdcAmount6: bigint;
   label: string;
   summary: string;
+  /// On-chain settlement tx hash of the x402 payment (Base), when the seller
+  /// returned one. Surfaced on the live stage as a clickable explorer link.
+  txHash?: string;
 }
 
 /// True when this tier is allowed to spend on research at all.
@@ -74,6 +77,7 @@ export async function paidAgentResearch(opts: {
     usdcAmount6: result.usdcAmount6,
     label: opts.label,
     summary: opts.summarize(result.response),
+    txHash: result.txHash,
   };
 }
 

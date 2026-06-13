@@ -51,6 +51,10 @@ export type AgentProgress =
       /// markets", "Crypto market data"). Aligned 1:1 with `spent[]`.
       /// Empty string when no spend.
       spentLabels?: string[];
+      /// Per-puzzle x402 settlement tx hash (Base) aligned 1:1 with `spent[]`.
+      /// Empty string when no spend. Rendered as a clickable explorer link so
+      /// judges can open the on-chain nanopayment.
+      spentTx?: string[];
     }
   | {
       kind: "analyst";

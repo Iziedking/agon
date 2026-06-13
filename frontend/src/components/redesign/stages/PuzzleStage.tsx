@@ -262,7 +262,7 @@ function PuzzleRow({
   maxScore: number;
 }) {
   if (entry.progress?.kind === "solver") {
-    const { correct, total, perPuzzleMs, spent, spentLabels } = entry.progress;
+    const { correct, total, perPuzzleMs, spent, spentLabels, spentTx } = entry.progress;
     const cells = Array.from({ length: total }, (_, i) => {
       const spent6 = spent?.[i];
       let spentN = 0n;
@@ -271,11 +271,13 @@ function PuzzleRow({
       } catch {
         spentN = 0n;
       }
+      const tx = spentTx?.[i] ?? "";
       return {
         hit: correct[i] ?? false,
         ms: perPuzzleMs?.[i] ?? null,
         spent6: spentN,
         label: spentLabels?.[i] ?? "",
+        tx: /^0x[a-fA-F0-9]{64}$/.test(tx) ? tx : "",
       };
     });
     return (
@@ -287,19 +289,11 @@ function PuzzleRow({
             const spendStr = formatSpentUsdc(c.spent6.toString());
             titleParts.push(c.label ? `${spendStr} on ${c.label}` : spendStr);
           }
-          return (
-            <span
-              key={i}
-              className="relative flex aspect-square items-center justify-center text-[9px] font-mono"
-              style={{
-                background: c.hit ? accent : "transparent",
-                border: c.hit ? `1px solid ${accent}` : "1px solid var(--hairline)",
-                color: c.hit ? "#fff" : "var(--ink-3)",
-              }}
-              title={titleParts.join(" · ")}
-            >
+          if (c.tx) titleParts.push(`x402 paid · click to view on basescan`);
+          const inner = (
+            <>
               {c.hit ? "■" : i + 1}
-              {c.spent6 > 0n ? (
+              {c.spent6 > 0n || c.tx ? (
                 <span
                   aria-hidden
                   className="absolute -top-1 -right-1 flex h-2.5 w-2.5 items-center justify-center rounded-full bg-accent text-[7px] font-mono leading-none text-canvas"
@@ -308,6 +302,31 @@ function PuzzleRow({
                   $
                 </span>
               ) : null}
+            </>
+          );
+          const cellStyle = {
+            background: c.hit ? accent : "transparent",
+            border: c.hit ? `1px solid ${accent}` : "1px solid var(--hairline)",
+            color: c.hit ? "#fff" : "var(--ink-3)",
+          };
+          const cellCls = "relative flex aspect-square items-center justify-center text-[9px] font-mono";
+          // A paid puzzle's cell links straight to the on-chain x402 settlement
+          // tx on Basescan, so judges can verify the nanopayment in one click.
+          return c.tx ? (
+            <a
+              key={i}
+              href={`https://basescan.org/tx/${c.tx}`}
+              target="_blank"
+              rel="noreferrer"
+              className={`${cellCls} cursor-pointer`}
+              style={cellStyle}
+              title={titleParts.join(" · ")}
+            >
+              {inner}
+            </a>
+          ) : (
+            <span key={i} className={cellCls} style={cellStyle} title={titleParts.join(" · ")}>
+              {inner}
             </span>
           );
         })}
