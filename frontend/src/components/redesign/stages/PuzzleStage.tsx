@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { AgentAvatar, BracketedCell, robotVariantForId } from "@/components/redesign";
 import { nameFor, skinFor, useAgentNames, useAgentSkins } from "@/hooks/useAgentNames";
 import type { PuzzleCard, StandingsEntry } from "@/lib/live";
@@ -76,6 +77,7 @@ export function PuzzleStage({ entries }: { entries: StandingsEntry[] }) {
   const names = useAgentNames(entries.map((e) => e.agentId));
   const skins = useAgentSkins(entries.map((e) => e.agentId));
   const maxScore = Math.max(...entries.map((e) => e.score), 1);
+  const [showAllCards, setShowAllCards] = useState(false);
 
   // Round-total nanopayment spend, summed across every agent. Drives the
   // "■ NANOPAYMENTS" chip at the top of the stage.
@@ -138,7 +140,7 @@ export function PuzzleStage({ entries }: { entries: StandingsEntry[] }) {
               THIS ROUND
             </span>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {cards.slice(0, 6).map((card, i) => (
+              {(showAllCards ? cards : cards.slice(0, 6)).map((card, i) => (
                 <div
                   key={i}
                   className="flex flex-col gap-1 border border-[color:var(--hairline)] p-2 font-mono text-[10px] uppercase tracking-[0.08em]"
@@ -160,9 +162,12 @@ export function PuzzleStage({ entries }: { entries: StandingsEntry[] }) {
               ))}
             </div>
             {cards.length > 6 ? (
-              <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
-                + {cards.length - 6} MORE THIS ROUND
-              </span>
+              <button
+                onClick={() => setShowAllCards((v) => !v)}
+                className="self-start font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3 hover:text-accent"
+              >
+                {showAllCards ? "SHOW LESS ↑" : `+ ${cards.length - 6} MORE THIS ROUND ↓`}
+              </button>
             ) : null}
           </div>
         </BracketedCell>

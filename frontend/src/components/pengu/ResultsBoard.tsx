@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAccount } from "wagmi";
 import { useContestSocket } from "@/hooks/useContestSocket";
 import { useAgentNames, nameFor, useAgentSkins, skinFor } from "@/hooks/useAgentNames";
@@ -97,6 +97,20 @@ export function ResultsBoard({
   const settled = winners.length > 0;
   const myWin = settled && me ? winners.find((w) => w.operator.toLowerCase() === me) : undefined;
 
+  // Resolve each settled winner's pfp by mapping their operator to the agent
+  // they entered with, so the results board shows the X/Discord avatar instead
+  // of the address robot. Winners carry no agentId, but the entrants list does.
+  const skins = useAgentSkins(entrants.map((e) => e.agentId));
+  const agentByOperator = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const e of entrants) m.set(e.operator.toLowerCase(), e.agentId);
+    return m;
+  }, [data]); // eslint-disable-line react-hooks/exhaustive-deps
+  const winnerSkin = (operator: string): string | null => {
+    const aid = agentByOperator.get(operator.toLowerCase());
+    return aid != null ? skinFor(skins, aid) : null;
+  };
+
   return (
     <BracketedCell pad="md">
       <div className="flex items-center justify-between">
@@ -145,7 +159,7 @@ export function ResultsBoard({
                 >
                   #{w.rank}
                 </span>
-                <OperatorAvatar address={w.operator} className="h-6 w-6" />
+                <EntrantAvatar skin={winnerSkin(w.operator)} address={w.operator} />
                 <span className="min-w-0 truncate font-mono text-[12px] text-ink">{short(w.operator)}</span>
                 {mine ? <YouTag /> : <span />}
                 <span

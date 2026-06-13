@@ -481,11 +481,20 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
         baseResults = await scoreField(cType, challengeId, field);
       }
       const baselines = new Map(baseResults.map((r) => [r.agentId, r.score] as const));
-      const withTraits = applyTraitMultipliers(baseResults, traitMult);
-      const withTraining = applyTrainingMultipliers(withTraits, trainMult);
-      const withSyndicate = applySyndicateMultipliers(withTraining, synMult);
-      const clamped = clampCombinedMultiplier(withSyndicate, baselines);
-      const results = applyRandomness(clamped, factor);
+      // PUZZLE / CUSTOM (solver, cType 2) is pure skill: no upgrade
+      // multipliers, so the best solver wins. PREDICTION + VOLUME apply
+      // trait/syndicate (training already counts once in the runner, so its
+      // coordinator pass is a no-op). Per-kind randomness still applies.
+      const results =
+        cType === 2
+          ? applyRandomness(baseResults, factor)
+          : applyRandomness(
+              clampCombinedMultiplier(
+                applySyndicateMultipliers(applyTrainingMultipliers(applyTraitMultipliers(baseResults, traitMult), trainMult), synMult),
+                baselines,
+              ),
+              factor,
+            );
 
       // Final standings frame with the authoritative progress so the live
       // stage gets the real per-agent state (Scout tx hashes especially)

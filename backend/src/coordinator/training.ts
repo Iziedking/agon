@@ -59,27 +59,16 @@ const PER_LEVEL_BONUS = 0.01;
 /// strong but not unbeatable; placing pays even against a maxed field.
 export const MAX_COMBINED_MULTIPLIER = 3.5;
 
-/// Fetch each agent's training multiplier. Returns a Map<agentId, multiplier>;
-/// agents not in the map default to 1.0 (no training).
+/// Training's score effect now lives in each runner (analyst bakes it into
+/// effectiveStrength; scout turns it into more swaps). Re-applying it here was
+/// a double-count that let an upgraded agent overrun a clearly better
+/// performer. This returns an empty map (every agent defaults to 1.0) so the
+/// coordinator pass no longer re-multiplies training; the call sites stay so
+/// the pipeline shape is unchanged. PER_LEVEL_BONUS is kept for reference.
 export async function fetchTrainingMultipliers(agentIds: number[]): Promise<Map<number, number>> {
-  const out = new Map<number, number>();
-  if (agentIds.length === 0) return out;
-
-  const { rows } = await query<{ agent_id: string; level_sum: string }>(
-    `select agent_id::text as agent_id, sum(level)::text as level_sum
-       from agent_stats
-       where agent_id = any($1::bigint[])
-       group by agent_id`,
-    [agentIds],
-  );
-
-  for (const r of rows) {
-    const sum = Number(r.level_sum);
-    if (Number.isFinite(sum) && sum > 0) {
-      out.set(Number(r.agent_id), 1 + sum * PER_LEVEL_BONUS);
-    }
-  }
-  return out;
+  void PER_LEVEL_BONUS;
+  void agentIds;
+  return new Map<number, number>();
 }
 
 /// Apply training multipliers to a scored set. Pure; returns a new array.

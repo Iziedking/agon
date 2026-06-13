@@ -184,8 +184,14 @@ async function buildSolverResult(
   const stats = await loadAgentStats(entry.agentId).catch(() => ({}));
   const equipped = await getLoadout(source, contestId, entry.agentId).catch(() => [] as string[]);
   const strength = effectiveStrength(entry.tier, stats, equipped, "solver");
+  // Puzzle is a pure-skill contest: the agent that solves the most, fastest,
+  // wins. We deliberately do NOT multiply the score by tier/training/traits
+  // here (nor in the coordinator), so an upgrade can never override a clearly
+  // better solve. Tier still matters because a higher tier solves more
+  // correctly to begin with. The strength breakdown stays in detail for
+  // display only. (Volume and prediction contests DO apply multipliers.)
   const rawScore = solverScore(solve);
-  const finalScore = applyRouting(rawScore, strength, contestId * 1000 + entry.agentId);
+  const finalScore = rawScore;
   const { perPuzzle, perPuzzleMs, costUsd: _unused, spent, spentLabels, spentTx, ...detail } = solve;
   return {
     agentId: entry.agentId,

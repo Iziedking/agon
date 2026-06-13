@@ -224,10 +224,17 @@ export async function runContestById(contestId: number, broadcast: (message: unk
       fetchTrainingMultipliers(ids),
       fetchSyndicateMultipliers(operators),
     ]);
-    const withTraits = applyTraitMultipliers(preview, traitMult);
-    const withTraining = applyTrainingMultipliers(withTraits, trainMult);
-    const withSyndicate = applySyndicateMultipliers(withTraining, synMult);
-    const boosted = clampCombinedMultiplier(withSyndicate, baselines);
+    // Puzzle (solver, cType 2) is pure skill: no tier/trait/training/syndicate
+    // multiplier, so the best solver wins. Volume + prediction still apply the
+    // multipliers. (Training is neutralized inside fetchTrainingMultipliers
+    // since it already counts once in the runner.)
+    const boosted =
+      cType === 2
+        ? preview
+        : clampCombinedMultiplier(
+            applySyndicateMultipliers(applyTrainingMultipliers(applyTraitMultipliers(preview, traitMult), trainMult), synMult),
+            baselines,
+          );
     broadcast({ type: "standings", contestId, endsAt: endsAtMs, entries: standings(boosted) });
     await sleep(2500);
   }
@@ -261,10 +268,16 @@ export async function runContestById(contestId: number, broadcast: (message: unk
     fetchTrainingMultipliers(ids),
     fetchSyndicateMultipliers(operators),
   ]);
-  const withTraits = applyTraitMultipliers(baseResults, traitMult);
-  const withTraining = applyTrainingMultipliers(withTraits, trainMult);
-  const withSyndicate = applySyndicateMultipliers(withTraining, synMult);
-  const results = clampCombinedMultiplier(withSyndicate, baselines);
+  // Puzzle (solver) settles on pure skill: no upgrade multipliers. Volume +
+  // prediction apply trait/syndicate (training already counts once in the
+  // runner, so its coordinator pass is a no-op).
+  const results =
+    cType === 2
+      ? baseResults
+      : clampCombinedMultiplier(
+          applySyndicateMultipliers(applyTrainingMultipliers(applyTraitMultipliers(baseResults, traitMult), trainMult), synMult),
+          baselines,
+        );
 
   // Visible "agents at work" race: the field is locked and scored, so now play
   // the real result back progressively (cells filling, tx tape growing, scores
