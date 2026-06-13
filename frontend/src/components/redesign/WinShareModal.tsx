@@ -55,6 +55,10 @@ export function WinShareModal({ source, id, winners, youAddress, onClose }: WinS
   // card. origin keeps it correct across prod and preview deploys.
   const origin = typeof window !== "undefined" ? window.location.origin : "https://arcrun.xyz";
   const shareUrl = `${origin}/share/${source}/${id}/${my.operator}`;
+  // The same dynamic card the link unfurls to, shown in the modal and
+  // downloadable so the branded win image is always in hand even when X is
+  // slow to fetch the unfurl. X's compose intent can't attach media itself.
+  const cardUrl = `${shareUrl}/opengraph-image`;
   const shareHref = `https://x.com/intent/tweet?text=${encodeURIComponent(tweetText(source, amount, my.rank, id, shareUrl))}`;
 
   const label = source === "contest" ? "CAMPAIGN" : "CHALLENGE";
@@ -119,7 +123,25 @@ export function WinShareModal({ source, id, winners, youAddress, onClose }: WinS
             </div>
           ) : null}
 
-          <div className="mt-7 flex flex-col gap-2">
+          {/* The branded win card with the operator's pfp. This is exactly what
+              the X link unfurls to; we show it here and offer a download so the
+              image is always available, even if X is slow to fetch the card. */}
+          <div className="mt-6">
+            <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">YOUR CARD</div>
+            <div className="mt-2 overflow-hidden border border-[color:var(--hairline-strong)] bg-canvas-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={cardUrl} alt="your ArcRun win card" className="block w-full" loading="lazy" />
+            </div>
+            <a
+              href={cardUrl}
+              download={`arcrun-${source}-${id}-win.png`}
+              className="mt-2 inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:text-accent"
+            >
+              DOWNLOAD CARD <span aria-hidden>↓</span>
+            </a>
+          </div>
+
+          <div className="mt-5 flex flex-col gap-2">
             <a
               href={shareHref}
               target="_blank"

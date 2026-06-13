@@ -30,8 +30,9 @@ export async function generateMetadata({ params }: { params: Promise<RouteParams
     // opengraph-image.tsx / twitter-image.tsx populate the card image.
     openGraph: { type: "website", siteName: "ArcRun", title: ogTitle, description },
     twitter: { card: "summary_large_image", title: ogTitle, description },
-    // A redirect stub, not a page to index.
-    robots: { index: false, follow: false },
+    // Intentionally NOT noindex: some crawlers (notably Twitterbot) skip the
+    // social card for a noindex page, which is the opposite of what this route
+    // is for. A redirect stub being indexable is harmless.
   };
 }
 

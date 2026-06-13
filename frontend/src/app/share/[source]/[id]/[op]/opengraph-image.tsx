@@ -21,7 +21,9 @@ const HAIRLINE = "rgba(26,22,18,0.12)";
 async function avatarDataUrl(url: string | null): Promise<string | null> {
   if (!url) return null;
   try {
-    const r = await fetch(url, { cache: "no-store" });
+    // Bounded so a slow avatar host never stalls the card past the crawler's
+    // patience; we fall back to the placeholder marker instead.
+    const r = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(2500) });
     if (!r.ok) return null;
     const ct = r.headers.get("content-type") ?? "image/png";
     if (!ct.startsWith("image/")) return null;

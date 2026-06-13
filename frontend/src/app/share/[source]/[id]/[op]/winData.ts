@@ -37,10 +37,15 @@ export async function loadWin(sourceRaw: string, id: string, op: string): Promis
   const kind = source === "challenge" ? "challenges" : "contests";
   const opLower = op.toLowerCase();
 
+  // Tight timeout: this runs inside the social crawler's fetch of the OG
+  // image. If the backend is slow the card must still render (degraded), or
+  // the crawler times out and shows no card at all.
+  const t = () => AbortSignal.timeout(2500);
+
   let rank: number | null = null;
   let amount6: string | null = null;
   try {
-    const res = await fetch(`${AUTH_URL}/${kind}/${id}/results`, { cache: "no-store" });
+    const res = await fetch(`${AUTH_URL}/${kind}/${id}/results`, { cache: "no-store", signal: t() });
     if (res.ok) {
       const data = (await res.json()) as { winners?: Array<{ rank: number; operator: string; amount: string }> };
       const w = (data.winners ?? []).find((x) => x.operator.toLowerCase() === opLower);
@@ -56,7 +61,7 @@ export async function loadWin(sourceRaw: string, id: string, op: string): Promis
   let handle: string | null = null;
   let avatarUrl: string | null = null;
   try {
-    const res = await fetch(`${AUTH_URL}/operators/${opLower}`, { cache: "no-store" });
+    const res = await fetch(`${AUTH_URL}/operators/${opLower}`, { cache: "no-store", signal: t() });
     if (res.ok) {
       const p = (await res.json()) as {
         xHandle?: string | null;
