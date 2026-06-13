@@ -10,7 +10,16 @@ import { SkinCropModal } from "@/components/redesign/SkinCropModal";
 import { AgentTraits } from "@/components/pengu/AgentTraits";
 import { NftBadge } from "@/components/pengu/NftBadge";
 import { EXPLORER } from "@/lib/arc";
-import { CONTEST_TYPES, fetchAgents, tierOf, type AgentState } from "@/lib/agents";
+import {
+  CONTEST_TYPES,
+  agentDisplayName,
+  fetchAgents,
+  resolveActiveAgent,
+  setActiveAgentId,
+  tierOf,
+  type AgentState,
+} from "@/lib/agents";
+import { AgentAvatar } from "@/components/pengu/AgentAvatar";
 import {
   clearAgentSkin,
   fetchOperator,
@@ -178,21 +187,21 @@ export default function OperatorPage() {
           <p className="font-mono text-sm text-ink-2">reading agents from arc…</p>
         ) : agents.length === 0 ? (
           <p className="font-mono text-sm text-ink-2">no agents claimed yet.</p>
+        ) : isMe ? (
+          // Owner view: a picker that defaults to the active agent and shows
+          // only that agent's card, so a multi-agent operator isn't a wall of
+          // cards (especially on mobile).
+          <AgentManager
+            agents={agents}
+            ownerAddress={address}
+            xLinked={profile !== "loading" && !!profile?.xHandle}
+            discordLinked={profile !== "loading" && !!profile?.discordUsername}
+          />
         ) : (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {agents.map((a) =>
-              isMe ? (
-                <AgentCustomizeCard
-                  key={a.id}
-                  agent={a}
-                  isMe
-                  xLinked={profile !== "loading" && !!profile?.xHandle}
-                  discordLinked={profile !== "loading" && !!profile?.discordUsername}
-                />
-              ) : (
-                <PublicAgentCard key={a.id} agent={a} />
-              ),
-            )}
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {agents.map((a) => (
+              <PublicAgentCard key={a.id} agent={a} />
+            ))}
           </div>
         )}
       </section>
@@ -515,6 +524,68 @@ function PublicSocialStrip({
         ))}
       </div>
     </section>
+  );
+}
+
+/// Owner agent picker: a pill per claimed agent (avatar + name), defaulting to
+/// the active agent, with only the selected agent's full customize card below.
+/// Keeps the workshop/profile tidy on mobile instead of stacking every agent.
+function AgentManager({
+  agents,
+  ownerAddress,
+  xLinked,
+  discordLinked,
+}: {
+  agents: AgentState[];
+  ownerAddress: string;
+  xLinked: boolean;
+  discordLinked: boolean;
+}) {
+  const [activeId, setActiveId] = useState<number | null>(null);
+  useEffect(() => {
+    const resolved = resolveActiveAgent(agents, ownerAddress);
+    setActiveId(resolved?.id ?? agents[0]?.id ?? null);
+  }, [agents, ownerAddress]);
+
+  const active = agents.find((a) => a.id === activeId) ?? agents[0];
+  function pick(id: number) {
+    setActiveAgentId(ownerAddress, id);
+    setActiveId(id);
+  }
+
+  return (
+    <div className="flex flex-col gap-5">
+      {agents.length > 1 ? (
+        <div className="flex flex-wrap gap-2">
+          {agents.map((a) => {
+            const selected = a.id === active?.id;
+            const label = agentDisplayName(a);
+            return (
+              <button
+                key={a.id}
+                onClick={() => pick(a.id)}
+                className={`inline-flex items-center gap-2 border px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] transition-colors ${
+                  selected
+                    ? "border-accent bg-accent text-accent-ink"
+                    : "border-[color:var(--hairline-strong)] bg-canvas text-ink-2 hover:border-ink hover:text-ink"
+                }`}
+              >
+                <span className="flex h-5 w-5 flex-none items-center justify-center overflow-hidden bg-canvas-3">
+                  <AgentAvatar agent={a} size={18} />
+                </span>
+                <span className="max-w-[140px] truncate">{label}</span>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {active ? (
+        <div className="max-w-[760px]">
+          <AgentCustomizeCard key={active.id} agent={active} isMe xLinked={xLinked} discordLinked={discordLinked} />
+        </div>
+      ) : null}
+    </div>
   );
 }
 
