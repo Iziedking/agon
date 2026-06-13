@@ -413,11 +413,17 @@ export async function payExactRequest(url: string, init: RequestInit): Promise<E
   }
   const body = await first.json().catch(() => undefined);
   const required = http.getPaymentRequiredResponse((n) => first.headers.get(n), body);
-  // Price (6-dec USDC) from the selected requirement, for the live-stage amount.
-  const accepts = (required as { accepts?: Array<{ maxAmountRequired?: string }> }).accepts;
+  // Price (6-dec USDC) for the live-stage amount. The raw 402 body's `accepts`
+  // carries it for both dialects (v1 and v2); the parsed `required` nests it
+  // differently per version, so read the raw body and fall back to `required`.
+  const pickAmt = (a: unknown): string | undefined => {
+    const e = (a as { accepts?: Array<Record<string, unknown>> })?.accepts?.[0];
+    const v = e?.["maxAmountRequired"] ?? e?.["amount"] ?? e?.["atomicAmount"];
+    return typeof v === "string" ? v : typeof v === "number" ? String(v) : undefined;
+  };
   let amount6 = 0n;
-  const amtStr = accepts?.[0]?.maxAmountRequired;
-  if (typeof amtStr === "string") { try { amount6 = BigInt(amtStr); } catch { amount6 = 0n; } }
+  const amtStr = pickAmt(body) ?? pickAmt(required);
+  if (amtStr) { try { amount6 = BigInt(amtStr); } catch { amount6 = 0n; } }
 
   const payload = await http.createPaymentPayload(required);
   const payHeaders = http.encodePaymentSignatureHeader(payload);
