@@ -47,6 +47,10 @@ export async function markNotificationsRead(ids?: number[]): Promise<void> {
       method: "POST",
       headers: { "content-type": "application/json" },
       credentials: "include",
+      // keepalive lets the request finish even though clicking a notification
+      // navigates the page away; without it the browser cancels the in-flight
+      // fetch and the row comes back unread on the next poll.
+      keepalive: true,
       body: JSON.stringify(ids ? { ids } : {}),
     });
   } catch {

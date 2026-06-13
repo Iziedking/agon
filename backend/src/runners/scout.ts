@@ -118,7 +118,14 @@ export async function executeScout(
   // self-transfer each op, not the balance sliced across all ops (which made
   // 0.5 USDC dust). So a higher tier moves bigger amounts per transaction.
   const tierSize6 = BigInt(Math.round(fundingCapUsdc(tier) * 1e6));
-  let perOp = opts?.perOpUsdc6 ?? (tierSize6 < balance ? tierSize6 : balance);
+  // On Arc, USDC IS the gas token, so a self-transfer of the FULL balance
+  // reverts with "transfer amount exceeds balance" (no USDC left to pay gas).
+  // The transfer returns to self, so only gas is actually spent; reserve enough
+  // for every op's gas and never move more than what's left after the reserve.
+  const GAS_RESERVE_PER_OP6 = BigInt(Math.round(Number(process.env.SCOUT_GAS_RESERVE_USDC ?? "0.05") * 1e6));
+  const reserve6 = GAS_RESERVE_PER_OP6 * BigInt(Math.max(1, ops));
+  const spendable = balance > reserve6 ? balance - reserve6 : 0n;
+  let perOp = opts?.perOpUsdc6 ?? (tierSize6 < spendable ? tierSize6 : spendable);
   if (perOp > limit.maxPerOpUsdc6) perOp = limit.maxPerOpUsdc6;
 
   const txHashes: Hash[] = [];
@@ -197,43 +204,79 @@ async function executeScoutSwaps(agentId: number, tier: number, ops?: number): P
     args: [account.address],
   });
   const balanceUsdc = Number(balance) / 1e6;
-  const perSwapUsdc = Math.min(fundingCapUsdc(tier), balanceUsdc);
-  if (perSwapUsdc <= 0) {
-    return { address: account.address, volumeUsdc6: 0n, opsCount: 0, txHashes: [], txVolumesUsdc6: [] };
-  }
 
   const remaining = await dailySwapsRemaining(agentId);
-  // Trait/training boost arrives as `ops` (more swaps = more real volume).
+  // Trait/training boost arrives as `ops` (more round-trips = more real volume).
   // Falls back to the per-run default. Always bounded by the shared daily cap.
   const want = ops != null && ops > 0 ? ops : config.scout.swapsPerRun;
-  const swapsThisRun = Math.min(want, remaining);
-  if (swapsThisRun <= 0) {
+  const roundTrips = Math.min(want, remaining);
+  if (roundTrips <= 0) {
     return { address: account.address, volumeUsdc6: 0n, opsCount: 0, txHashes: [], txVolumesUsdc6: [] };
   }
 
-  let tokenIn = config.scout.swapTokenIn;
-  let tokenOut = config.scout.swapTokenOut;
-  const amountIn = perSwapUsdc.toFixed(2);
+  // USDC is the gas token on Arc, so the swap (and its return leg) must leave
+  // headroom or the router pulls the whole balance and the tx reverts for gas.
+  // Reserve a buffer per leg (forward + return per round, plus one spare).
+  const gasReserveUsdc = Number(process.env.SCOUT_GAS_RESERVE_USDC ?? "0.10");
+  const reserveUsdc = gasReserveUsdc * (roundTrips * 2 + 1);
+  const spendableUsdc = Math.max(0, balanceUsdc - reserveUsdc);
+  const perSwapUsdc = Math.min(fundingCapUsdc(tier), spendableUsdc);
+  if (perSwapUsdc <= 0) {
+    // Not enough USDC to swap and still cover gas: let the caller self-transfer.
+    return null;
+  }
+
+  const usdcSymbol = config.scout.swapTokenIn; // "USDC"
+  const altSymbol = config.scout.swapTokenOut; // "EURC"
+  const forwardAmount = perSwapUsdc.toFixed(6);
   const txHashes: Hash[] = [];
   const txVolumesUsdc6: string[] = [];
   let volume = 0n;
-  let done = 0;
+  let legs = 0;
 
-  for (let i = 0; i < swapsThisRun; i++) {
-    const res = await executeSwap({ privateKey, tokenIn, tokenOut, amountIn });
-    if (!res) break; // adapter missing: let the caller self-transfer instead
-    if (res.txHash) txHashes.push(res.txHash as Hash);
-    const vol6 = BigInt(Math.round(perSwapUsdc * 1e6));
-    txVolumesUsdc6.push(vol6.toString());
-    volume += vol6;
-    done++;
-    // Alternate direction so the principal recirculates (USDC -> EURC -> USDC).
-    [tokenIn, tokenOut] = [tokenOut, tokenIn];
+  for (let i = 0; i < roundTrips; i++) {
+    // Forward leg: USDC -> EURC. This is the swap judges see first on arcscan.
+    const fwd = await executeSwap({
+      privateKey,
+      tokenIn: usdcSymbol,
+      tokenOut: altSymbol,
+      amountIn: forwardAmount,
+    });
+    if (!fwd) break; // packages missing / route failed: caller self-transfers
+    if (fwd.txHash) {
+      txHashes.push(fwd.txHash as Hash);
+      const vol6 = BigInt(Math.round(perSwapUsdc * 1e6));
+      txVolumesUsdc6.push(vol6.toString());
+      volume += vol6;
+      legs++;
+    }
+
+    // Return leg: EURC -> USDC, sized to exactly the EURC we just received so
+    // the principal recirculates. Gas is still paid in USDC from the reserve.
+    const eurcOut = Number(fwd.amountOut);
+    if (Number.isFinite(eurcOut) && eurcOut > 0) {
+      const rev = await executeSwap({
+        privateKey,
+        tokenIn: altSymbol,
+        tokenOut: usdcSymbol,
+        amountIn: eurcOut.toFixed(6),
+      });
+      if (rev?.txHash) {
+        txHashes.push(rev.txHash as Hash);
+        // Count the USDC the return leg produced as volume (falls back to the
+        // forward notional when the service omits amountOut).
+        const back = Number(rev.amountOut) > 0 ? Number(rev.amountOut) : perSwapUsdc;
+        const vol6 = BigInt(Math.round(back * 1e6));
+        txVolumesUsdc6.push(vol6.toString());
+        volume += vol6;
+        legs++;
+      }
+    }
   }
 
-  if (done === 0) return null;
-  await recordSwaps(agentId, done).catch(() => {});
-  return { address: account.address, volumeUsdc6: volume, opsCount: done, txHashes, txVolumesUsdc6 };
+  if (legs === 0) return null;
+  await recordSwaps(agentId, legs).catch(() => {});
+  return { address: account.address, volumeUsdc6: volume, opsCount: legs, txHashes, txVolumesUsdc6 };
 }
 
 /// LLM-picked execution strategy. Tier 0/1 skip the LLM and use defaults

@@ -155,6 +155,11 @@ const envSchema = z.object({
   // treasury/coordinator wallet, same dev-controlled path as withdrawals).
   // Default 0 disables the pool, so it ships dark until funded.
   SYNDICATE_POOL_WEEKLY_USDC: z.coerce.number().nonnegative().default(0),
+  // Preferred sizing: the weekly pool is this percent of the platform fees
+  // collected that week (e.g. 20 = 20%). When > 0 it wins over the fixed
+  // amount above. The pool goes to the winning syndicate (war rank 1); its
+  // members claim a share weighted by their contribution that week.
+  SYNDICATE_POOL_FEE_PCT: z.coerce.number().min(0).max(100).default(0),
 
   // Analyst autofund. Coordinator drips USDC to an agent's hot wallet when
   // it enters an Analyst contest and is under-funded, so agents can actually
@@ -361,6 +366,7 @@ export const config = {
   external: deployments.external,
   adminToken: env.ADMIN_TOKEN,
   syndicatePoolWeeklyUsdc: env.SYNDICATE_POOL_WEEKLY_USDC,
+  syndicatePoolFeePct: env.SYNDICATE_POOL_FEE_PCT,
   auth: {
     jwtSecret: env.JWT_SECRET,
     port: env.AUTH_PORT,

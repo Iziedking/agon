@@ -54,11 +54,28 @@ function nextType(configured: string, cycle: number): ContestKind {
 /// between), so two callers can't both pass the guard for the same id.
 const inFlight = new Set<number>();
 
+/// Reject a promise after `ms` so a single hung settlement (a stuck tx because
+/// the coordinator wallet is out of Arc gas, or an RPC that never returns)
+/// can't freeze the whole sweep loop. The underlying work keeps running in the
+/// background; the in-flight guard stops it from being retried while stuck, and
+/// the sweeper moves on to other events.
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)),
+  ]);
+}
+
+const RUN_TIMEOUT_MS = Number(process.env.AUTOPILOT_RUN_TIMEOUT_SECONDS ?? "150") * 1000;
+
 async function runOnce(contestId: number, broadcast: (message: unknown) => void): Promise<void> {
   if (inFlight.has(contestId)) return;
   inFlight.add(contestId);
   try {
-    await runContestById(contestId, broadcast);
+    // Bounded so a hung settlement rejects and clears the in-flight flag,
+    // letting the next sweep retry (e.g. once the coordinator wallet is topped
+    // up) instead of staying flagged forever.
+    await withTimeout(runContestById(contestId, broadcast), RUN_TIMEOUT_MS, `contest ${contestId}`);
   } finally {
     inFlight.delete(contestId);
   }
@@ -76,7 +93,13 @@ async function startDueSweeper(broadcast: (message: unknown) => void): Promise<v
       for (const info of due) {
         if (inFlight.has(info.id)) continue;
         console.log(`autopilot: settling due contest ${info.id}`);
-        await runOnce(info.id, broadcast);
+        // Isolated: a throwing/timed-out settlement (runOnce is already bounded)
+        // is logged and the loop continues to the next contest.
+        try {
+          await runOnce(info.id, broadcast);
+        } catch (err) {
+          console.error(`autopilot: contest ${info.id} settle failed:`, err instanceof Error ? err.message : err);
+        }
       }
     } catch (err) {
       console.error("autopilot sweeper failed:", err instanceof Error ? err.message : err);
@@ -92,7 +115,7 @@ async function resolveChallengeOnce(id: number, broadcast: (message: unknown) =>
   if (challengeInFlight.has(id)) return;
   challengeInFlight.add(id);
   try {
-    await resolveChallengeById(id, broadcast);
+    await withTimeout(resolveChallengeById(id, broadcast), RUN_TIMEOUT_MS, `challenge ${id}`);
   } finally {
     challengeInFlight.delete(id);
   }
@@ -111,9 +134,8 @@ async function startChallengeSweeper(broadcast: (message: unknown) => void): Pro
       const active = await findActiveChallenges();
       for (const id of active) {
         if (challengeInFlight.has(id)) continue;
-        // Isolate per-challenge failures: a single challenge whose lock or
-        // settle keeps reverting (low gas, an RPC blip, a stuck tx) must not
-        // throw out of the loop and starve every other challenge of its sweep.
+        // Isolate per-challenge failures (resolveChallengeOnce is already
+        // bounded): one stuck challenge can't freeze or starve the loop.
         try {
           await resolveChallengeOnce(id, broadcast);
         } catch (err) {

@@ -96,53 +96,86 @@ export async function settleWarWeek(opts: {
   return standings;
 }
 
-/// Compute and persist the syndicate reward pool for a closed week. The pool
-/// size is config-driven (SYNDICATE_POOL_WEEKLY_USDC); it splits across every
-/// member by their contribution share that week. Idempotent: the week row in
-/// syndicate_pool_weeks is the guard, so re-running does nothing once a week is
-/// split (it never overwrites a share, which could already be claimed). No-op
-/// when the pool is unfunded (0) or nobody contributed.
+/// Compute and persist the weekly syndicate reward pool. The pool is a percent
+/// of the platform fees collected that week (SYNDICATE_POOL_FEE_PCT), or a fixed
+/// amount as a fallback (SYNDICATE_POOL_WEEKLY_USDC). The WINNING syndicate
+/// (war rank 1 for the week) takes the whole pool, and its members claim a share
+/// weighted by their contribution that week. Idempotent: the week row in
+/// syndicate_pool_weeks is the guard, so re-running never re-pays. No-op when the
+/// pool is unfunded, no syndicate won, or the winner had no contributions.
 export async function computeSyndicatePool(opts: {
   weekId: string;
   windowStart: Date;
   windowEnd: Date;
 }): Promise<{ weekId: string; pool6: bigint; members: number } | null> {
   const { weekId, windowStart, windowEnd } = opts;
-  const weeklyUsdc = config.syndicatePoolWeeklyUsdc;
-  if (!weeklyUsdc || weeklyUsdc <= 0) return null;
+  const feePct = config.syndicatePoolFeePct;
+  const fixedUsdc = config.syndicatePoolWeeklyUsdc;
+  if ((!feePct || feePct <= 0) && (!fixedUsdc || fixedUsdc <= 0)) return null;
 
-  // Claim the week first; if it already exists, another run already split it.
+  // Claim the week first (pool size filled in below); if it already exists,
+  // another run already settled it.
   const claimWeek = await query(
-    "insert into syndicate_pool_weeks (week_id, pool_usdc6) values ($1, $2) on conflict (week_id) do nothing",
-    [weekId, Math.round(weeklyUsdc * 1e6)],
+    "insert into syndicate_pool_weeks (week_id, pool_usdc6) values ($1, 0) on conflict (week_id) do nothing",
+    [weekId],
   );
   if ((claimWeek.rowCount ?? 0) === 0) return null;
 
-  const pool6 = BigInt(Math.round(weeklyUsdc * 1e6));
-  const { rows } = await query<{ member: string; syndicate_id: string; amount: string }>(
-    `select sc.member, sc.syndicate_id::text as syndicate_id, sum(sc.amount)::text as amount
-       from syndicate_contributions sc
-      where sc.recorded_at >= $1 and sc.recorded_at < $2
-      group by sc.member, sc.syndicate_id
-      order by sum(sc.amount) desc`,
-    [windowStart.toISOString(), windowEnd.toISOString()],
+  // Pool size: percent of the week's platform fees (preferred), else fixed.
+  let pool6: bigint;
+  if (feePct && feePct > 0) {
+    const feeRow = await query<{ total: string }>(
+      `select coalesce(sum((args->>'platformFee')::numeric), 0)::text as total
+         from events_log
+        where event_name = 'ContestSettled'
+          and created_at >= $1 and created_at < $2`,
+      [windowStart.toISOString(), windowEnd.toISOString()],
+    );
+    const fees6 = BigInt((feeRow.rows[0]?.total ?? "0").split(".")[0] ?? "0");
+    pool6 = (fees6 * BigInt(Math.round(feePct * 100))) / 10_000n;
+  } else {
+    pool6 = BigInt(Math.round(fixedUsdc * 1e6));
+  }
+  await query("update syndicate_pool_weeks set pool_usdc6 = $2 where week_id = $1", [weekId, pool6.toString()]);
+  if (pool6 <= 0n) {
+    console.log(`syndicate pool ${weekId}: pool is 0 (no fees / unfunded); nothing to split`);
+    return { weekId, pool6: 0n, members: 0 };
+  }
+
+  // Winning syndicate = war rank 1 for the week (settleWarWeek runs just before
+  // this in the settler, ranking syndicates by weekly contribution).
+  const winnerRow = await query<{ syndicate_id: string }>(
+    "select syndicate_id::text as syndicate_id from syndicate_war_results where week_id = $1 and rank = 1 limit 1",
+    [weekId],
   );
-  if (rows.length === 0) {
-    // Funded pool but no contributions: leave the week row (so we don't retry)
-    // with no shares. Nothing to pay out.
+  const winningSyn = winnerRow.rows[0]?.syndicate_id ? Number(winnerRow.rows[0].syndicate_id) : null;
+  if (!winningSyn) {
+    console.log(`syndicate pool ${weekId}: no winning syndicate this week; pool rolls over`);
     return { weekId, pool6, members: 0 };
   }
 
-  const totals = rows.map((r) => ({ member: r.member.toLowerCase(), synId: Number(r.syndicate_id), amount: BigInt(r.amount) }));
+  // Winning syndicate's members and their contributions that week.
+  const { rows } = await query<{ member: string; amount: string }>(
+    `select sc.member, sum(sc.amount)::text as amount
+       from syndicate_contributions sc
+      where sc.syndicate_id = $1
+        and sc.recorded_at >= $2 and sc.recorded_at < $3
+      group by sc.member
+      order by sum(sc.amount) desc`,
+    [winningSyn, windowStart.toISOString(), windowEnd.toISOString()],
+  );
+  if (rows.length === 0) return { weekId, pool6, members: 0 };
+
+  const totals = rows.map((r) => ({ member: r.member.toLowerCase(), amount: BigInt(r.amount) }));
   const grand = totals.reduce((s, t) => s + t.amount, 0n);
   if (grand <= 0n) return { weekId, pool6, members: 0 };
 
-  // Proportional split, largest contributor absorbs the rounding residual so
-  // the shares sum to the pool exactly.
+  // Proportional split among the winning syndicate's members; the largest
+  // contributor absorbs the rounding residual so shares sum to the pool exactly.
   let allocated = 0n;
   const shares = totals.map((t, i) => {
     const share = i === totals.length - 1 ? pool6 - allocated : (pool6 * t.amount) / grand;
-    allocated += i === totals.length - 1 ? 0n : share;
+    if (i < totals.length - 1) allocated += share;
     return { ...t, share };
   });
 
@@ -152,17 +185,17 @@ export async function computeSyndicatePool(opts: {
       `insert into syndicate_pool_shares (week_id, operator, syndicate_id, share_usdc6)
        values ($1, $2, $3, $4)
        on conflict (week_id, operator) do nothing`,
-      [weekId, s.member, s.synId, s.share.toString()],
+      [weekId, s.member, winningSyn, s.share.toString()],
     );
     void notify(s.member, {
       kind: "syndicate_payout",
-      title: "Your syndicate share is ready",
-      body: `you earned ${(Number(s.share) / 1e6).toLocaleString(undefined, { maximumFractionDigits: 2 })} USDC from the ${weekId} syndicate pool. claim it on your dashboard.`,
+      title: "Your syndicate won the weekly pool",
+      body: `your syndicate took the ${weekId} pool. claim ${(Number(s.share) / 1e6).toLocaleString(undefined, { maximumFractionDigits: 2 })} USDC on your dashboard.`,
       href: "/dashboard",
-      context: { weekId, syndicateId: s.synId },
+      context: { weekId, syndicateId: winningSyn },
     });
   }
-  console.log(`syndicate pool ${weekId}: split ${(Number(pool6) / 1e6).toFixed(2)} USDC across ${shares.length} member(s)`);
+  console.log(`syndicate pool ${weekId}: winning syndicate ${winningSyn} splits ${(Number(pool6) / 1e6).toFixed(2)} USDC across ${shares.length} member(s)`);
   return { weekId, pool6, members: shares.length };
 }
 

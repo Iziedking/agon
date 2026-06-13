@@ -19,6 +19,7 @@
     "nanopay:doctor": "tsx scripts/nanopay-doctor.ts",
     "nanopay:deposit": "tsx scripts/nanopay-deposit.ts",
     "nanopay:probe": "tsx scripts/nanopay-probe.ts",
+    "swap:probe": "tsx scripts/swap-probe.ts",
     "test:prediction": "tsx scripts/prediction-examples.ts",
     "typecheck": "tsc --noEmit"
   },
@@ -28,6 +29,8 @@
     "@circle-fin/adapter-viem-v2": "^1.11.2",
     "@circle-fin/app-kit": "latest",
     "@circle-fin/developer-controlled-wallets": "^9.2.0",
+    "@circle-fin/provider-stablecoin-service-swap": "^1.1.5",
+    "@circle-fin/swap-kit": "^1.2.3",
     "@circle-fin/x402-batching": "^3.0.4",
     "@hono/node-server": "^1.13.7",
     "@simplewebauthn/server": "^13.0.0",

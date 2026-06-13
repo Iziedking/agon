@@ -1,6 +1,12 @@
+import { parseAbi } from "viem";
 import { pool, query } from "../db/pool.js";
 import { config } from "../config/index.js";
 import { publicClient } from "../chain/arc.js";
+
+/// Minimal ABI to read a contest's on-chain end time (the DB doesn't store it).
+const contestEndAbi = parseAbi([
+  "function getContest(uint256 contestId) view returns ((uint8 contestType,uint8 status,uint16 winnerCutBps,uint16 topN,uint16 platformFeeBps,address sponsor,address protocolTarget,bytes32 metric,uint64 startTime,uint64 endTime,uint256 prizePool,bytes32 finalRoot))",
+]);
 import { usdcMinimalAbi, arcanaMarketsAbi } from "../chain/abi.js";
 import { fetchPinnedArcanaMarkets } from "../lib/arcanaPins.js";
 import {
@@ -497,13 +503,14 @@ interface OpenAnalystEvent {
 
 async function findOpenAnalystEvents(): Promise<OpenAnalystEvent[]> {
   const out: OpenAnalystEvent[] = [];
-  // Open analyst contests (contest_type = 1)
+  // Open analyst contests (contest_type = 1). The contests table doesn't store
+  // an end time, so we select the open ones and read endTime on-chain per
+  // contest to filter out closed windows and drive the tick countdown.
   const { rows: contests } = await query<{
     id: string;
-    end_time: string;
     entries: string;
   }>(
-    `select c.id::text, extract(epoch from c.end_time)::bigint::text as end_time,
+    `select c.id::text,
             coalesce(
               json_agg(json_build_object('agent_id', e.agent_id, 'operator', e.operator)) filter (where e.agent_id is not null),
               '[]'::json
@@ -511,10 +518,22 @@ async function findOpenAnalystEvents(): Promise<OpenAnalystEvent[]> {
        from contests c
        left join entries e on e.contest_id = c.id
       where c.status = 'open' and c.contest_type = 1
-        and c.end_time > now()
-      group by c.id, c.end_time`,
+      group by c.id`,
   );
   for (const c of contests) {
+    let endsAtMs = 0;
+    try {
+      const onchain = await publicClient.readContract({
+        address: config.contracts.ContestEngine,
+        abi: contestEndAbi,
+        functionName: "getContest",
+        args: [BigInt(c.id)],
+      });
+      endsAtMs = Number((onchain as { endTime: bigint }).endTime) * 1000;
+    } catch {
+      continue; // can't read the contest; skip this tick
+    }
+    if (endsAtMs <= Date.now()) continue; // window closed; the settler handles it
     const parsed = JSON.parse(c.entries) as Array<{ agent_id: number; operator: string }>;
     const entries = await Promise.all(
       parsed.map(async (e) => ({
@@ -526,7 +545,7 @@ async function findOpenAnalystEvents(): Promise<OpenAnalystEvent[]> {
     out.push({
       source: "contest",
       eventId: Number(c.id),
-      endsAtMs: Number(c.end_time) * 1000,
+      endsAtMs,
       entries,
     });
   }

@@ -1,17 +1,23 @@
+import { createPublicClient, createWalletClient, http, type Chain } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 import { config } from "../config/index.js";
 
-/// Real same-chain DEX swaps on Arc through Circle App Kit Swap. Arc Testnet
-/// supports USDC, EURC, and cirBTC. The Scout runner uses this to produce
-/// genuine swap volume instead of self-transfers.
+/// Real same-chain DEX swaps on Arc through Circle Swap Kit (the Stablecoin
+/// Service). Arc Testnet supports USDC, EURC, and cirBTC. The Scout runner
+/// uses this to produce genuine swap volume instead of self-transfers, so the
+/// arcscan tape shows real token-to-token swaps (USDC -> EURC and back).
 ///
-/// The App Kit packages are loaded with a dynamic import and the whole path
-/// is gated behind SCOUT_REAL_SWAPS + CIRCLE_KIT_KEY, so the backend builds
-/// and runs without the adapter installed; Scout simply self-transfers until
-/// the operator installs @circle-fin/adapter-viem-v2 and sets the kit key.
+/// The kit packages load via dynamic import and the whole path is gated behind
+/// SCOUT_REAL_SWAPS + CIRCLE_KIT_KEY, so the backend builds and runs without
+/// the adapter installed; Scout self-transfers until the operator installs
+/// @circle-fin/swap-kit + @circle-fin/adapter-viem-v2 and sets the kit key.
 
 export interface SwapResult {
   txHash: string;
+  /// Input token amount, human-readable decimal string (e.g. "10.0").
   amountIn: string;
+  /// Output token amount the swap produced, human-readable decimal string.
+  /// Used to size the return leg (EURC -> USDC) off exactly what we received.
   amountOut: string;
 }
 
@@ -24,27 +30,30 @@ export function swapEnabled(): boolean {
 }
 
 /// One swap from a private-key-controlled wallet. Returns null when the path
-/// is disabled or the adapter package isn't installed, so the caller can fall
+/// is disabled or the kit packages aren't installed, so the caller can fall
 /// back to self-transfers.
 export async function executeSwap(opts: {
   privateKey: `0x${string}`;
   tokenIn: string;
   tokenOut: string;
+  /// Human-readable decimal amount of `tokenIn` to swap (e.g. "10.0").
   amountIn: string;
 }): Promise<SwapResult | null> {
   if (!swapEnabled()) return null;
 
-  let AppKit: typeof import("@circle-fin/app-kit").AppKit;
+  let swap: typeof import("@circle-fin/swap-kit").swap;
+  let createSwapKitContext: typeof import("@circle-fin/swap-kit").createSwapKitContext;
+  let SwapChain: typeof import("@circle-fin/swap-kit").SwapChain;
   let createViemAdapterFromPrivateKey: typeof import("@circle-fin/adapter-viem-v2").createViemAdapterFromPrivateKey;
   try {
-    ({ AppKit } = await import("@circle-fin/app-kit"));
+    ({ swap, createSwapKitContext, SwapChain } = await import("@circle-fin/swap-kit"));
     ({ createViemAdapterFromPrivateKey } = await import("@circle-fin/adapter-viem-v2"));
     available = true;
   } catch {
     if (available !== false) {
       console.warn(
-        "[scout-swap] SCOUT_REAL_SWAPS is on but @circle-fin/adapter-viem-v2 is not installed; " +
-          "falling back to self-transfers. Run `npm i @circle-fin/adapter-viem-v2` in backend.",
+        "[scout-swap] SCOUT_REAL_SWAPS is on but @circle-fin/swap-kit / adapter-viem-v2 are not installed; " +
+          "falling back to self-transfers. Run `npm i @circle-fin/swap-kit @circle-fin/adapter-viem-v2` in backend.",
       );
     }
     available = false;
@@ -52,23 +61,43 @@ export async function executeSwap(opts: {
   }
 
   try {
-    const adapter = await createViemAdapterFromPrivateKey({ privateKey: opts.privateKey } as never);
-    const kit = new AppKit();
-    const result = (await kit.swap({
-      // Viem adapter signs from the key, so the address is omitted.
-      from: { adapter, chain: "Arc_Testnet" as never },
+    const account = privateKeyToAccount(opts.privateKey);
+    // Pin every client the adapter builds to Arc's configured RPC so the swap
+    // broadcasts through the same node as the rest of the backend. The zero
+    // config adapter would otherwise use viem's default Arc RPC, which may
+    // differ from a paid or regional endpoint set in CHAIN_RPC_HTTP.
+    // The cast targets the factory's own parameter type: the adapter bundles
+    // its own viem build, so our viem's PublicClient/WalletClient are
+    // structurally identical but nominally distinct. The callbacks still run
+    // with a real viem Chain and return real clients at runtime.
+    const adapterParams = {
+      privateKey: opts.privateKey,
+      getPublicClient: ({ chain }: { chain: Chain }) =>
+        createPublicClient({ chain, transport: http(config.rpcHttp) }),
+      getWalletClient: ({ chain }: { chain: Chain }) =>
+        createWalletClient({ account, chain, transport: http(config.rpcHttp) }),
+    } as unknown as Parameters<typeof createViemAdapterFromPrivateKey>[0];
+    const adapter = createViemAdapterFromPrivateKey(adapterParams);
+
+    const context = createSwapKitContext();
+    const result = await swap(context, {
+      // The viem adapter signs from the private key, so the from-address is
+      // implicit. EURC and USDC both expose EIP-2612, so the default 'permit'
+      // allowance strategy spares an extra approval tx on most legs.
+      // swap-kit's Adapter and adapter-viem-v2's ViemAdapter are structurally
+      // the same shape but nominally distinct types across the two packages.
+      from: { adapter: adapter as never, chain: SwapChain.Arc_Testnet },
       tokenIn: opts.tokenIn as never,
       tokenOut: opts.tokenOut as never,
       amountIn: opts.amountIn,
-      config: { kitKey: config.scout.kitKey! },
-    } as never)) as { txHash?: string; steps?: Array<{ txHash?: string }>; amountIn?: string; amountOut?: string };
+      // kitKey is validated by swap-kit's params schema and forwarded to the
+      // Stablecoin Service provider; the public SwapConfig type omits it, so
+      // the cast keeps the field without loosening the rest of the call.
+      config: { kitKey: config.scout.kitKey!, slippageBps: 300 } as never,
+    });
 
-    const txHash =
-      result.txHash ??
-      (result.steps ?? []).map((s) => s.txHash).filter(Boolean).at(-1) ??
-      "";
     return {
-      txHash,
+      txHash: result.txHash ?? "",
       amountIn: result.amountIn ?? opts.amountIn,
       amountOut: result.amountOut ?? "0",
     };
