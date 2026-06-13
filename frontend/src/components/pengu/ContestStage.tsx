@@ -19,8 +19,6 @@ import { nameFor, skinFor, useAgentNames, useAgentSkins } from "@/hooks/useAgent
 /// don't recognize) the stage falls back to score-derived placeholders so the
 /// surface never goes blank.
 
-const FEATURED = 3;
-
 function normalizeKind(raw?: string): "puzzle" | "volume" | "prediction" | "custom" {
   const k = (raw ?? "").toUpperCase();
   if (k === "SCOUT" || k === "VOLUME") return "volume";
@@ -57,7 +55,9 @@ export function ContestStage({
   entries: StandingsEntry[];
 }) {
   const kind = normalizeKind(contestType);
-  const featured = entries.slice(0, FEATURED);
+  // Show every agent in a horizontal slider rather than capping at the top 3,
+  // so a viewer can swipe through the whole field in the pulse.
+  const featured = entries;
   const maxScore = Math.max(...entries.map((e) => e.score), 1);
 
   return (
@@ -68,7 +68,8 @@ export function ContestStage({
           STAGE · {kind.toUpperCase()}
         </div>
         <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3">
-          TOP {Math.min(FEATURED, featured.length)} OF {entries.length}
+          {entries.length} AGENT{entries.length === 1 ? "" : "S"}
+          {entries.length > 3 ? <span className="ml-2 text-ink-3">· SWIPE →</span> : null}
         </span>
       </div>
 
@@ -142,7 +143,9 @@ function AgentRoster({
   const names = useAgentNames(featured.map((e) => e.agentId));
   const skins = useAgentSkins(featured.map((e) => e.agentId));
   return (
-    <div className="grid gap-4 sm:grid-cols-3">
+    // Horizontal slider: every agent gets a card; swipe/scroll to see the
+    // whole field. Snap so cards settle cleanly on touch.
+    <div className="-mx-1 flex snap-x snap-mandatory gap-4 overflow-x-auto px-1 pb-2">
       {featured.map((e, i) => {
         const pct = Math.min(1, e.score / maxScore);
         const leader = e.rank === 1;
@@ -150,7 +153,7 @@ function AgentRoster({
         return (
           <div
             key={e.agentId}
-            className={`relative flex flex-col items-center border p-4 ${
+            className={`relative flex w-[220px] shrink-0 snap-start flex-col items-center border p-4 ${
               leader
                 ? "border-accent bg-canvas-2"
                 : "border-[color:var(--hairline-strong)] bg-canvas"
