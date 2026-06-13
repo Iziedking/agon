@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 
 import type { SupportedChainName } from "@circle-fin/x402-batching/client";
+import { wrapFetchWithPayment, createSigner } from "x402-fetch";
 import { config } from "../config/index.js";
 import { query } from "../db/pool.js";
 
@@ -102,9 +103,14 @@ export async function payX402(opts: PayX402Opts): Promise<PayX402Result> {
     return persistAndReturn(opts, { status: "rejected", usdcAmount6: 0n, errorMessage: "nanopay disabled" });
   }
   // SDK path: real x402 payment via the Gateway batching client, signed from a
-  // private key. Container-native, no CLI. The recommended provider.
+  // private key. Container-native, no CLI. For Gateway-batched sellers.
   if (config.nanopay.provider === "sdk") {
     return payViaSdk(opts);
+  }
+  // Exact path: standard x402 "exact" scheme via x402-fetch, for normal x402
+  // sellers (Gloria, Exa) that settle on their own chain. Container-native.
+  if (config.nanopay.provider === "exact") {
+    return payViaExact(opts);
   }
   const present = await isCliPresent();
   if (!present) {
@@ -341,6 +347,109 @@ async function payViaSdk(opts: PayX402Opts): Promise<PayX402Result> {
     if (config.nanopay.httpFallback) {
       return httpFallbackFetch(opts);
     }
+    return persistAndReturn(opts, {
+      status: "failed",
+      usdcAmount6: 0n,
+      errorMessage: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Exact-scheme provider: x402-fetch (standard x402 "exact" scheme).
+// ---------------------------------------------------------------------------
+
+let exactFetch: ((input: string, init?: RequestInit) => Promise<Response>) | null = null;
+let exactInit = false;
+
+/// Lazily build the payment-wrapped fetch once. createSigner builds a viem
+/// signer for the configured network from the private key; wrapFetchWithPayment
+/// runs the full 402 round-trip (sign EIP-3009, retry) on each call. maxValue is
+/// the hard per-call ceiling.
+async function getExactFetch(): Promise<typeof exactFetch> {
+  if (exactInit) return exactFetch;
+  exactInit = true;
+  const pk = config.nanopay.walletPrivateKey;
+  if (!pk) {
+    console.warn("[nanopay] NANOPAY_PROVIDER=exact but NANOPAY_WALLET_PRIVATE_KEY is unset; research-spend will no-op.");
+    return null;
+  }
+  try {
+    const signer = await createSigner(config.nanopay.exactNetwork, pk);
+    const maxValue = BigInt(Math.round(config.nanopay.maxPerCallUsdc * 1e6));
+    exactFetch = wrapFetchWithPayment(fetch, signer, maxValue) as typeof exactFetch;
+    console.log(`[nanopay] x402 exact-scheme ready on ${config.nanopay.exactNetwork}`);
+  } catch (err) {
+    console.warn(`[nanopay] x402 exact init failed: ${err instanceof Error ? err.message : err}`);
+    exactFetch = null;
+  }
+  return exactFetch;
+}
+
+/// Best-effort: read the seller's asking price (6-dec USDC) from a raw 402 so
+/// the live stage can show a real amount. Free (no payment on a bare request).
+async function readSellerPrice6(opts: PayX402Opts): Promise<bigint> {
+  try {
+    const raw = await fetch(opts.endpoint, opts.payload
+      ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(opts.payload) }
+      : { method: "GET" });
+    if (raw.status !== 402) return 0n;
+    const j = (await raw.json().catch(() => ({}))) as { accepts?: Array<Record<string, unknown>> };
+    const amt = j.accepts?.[0]?.["maxAmountRequired"] ?? j.accepts?.[0]?.["amount"];
+    if (typeof amt === "string") { try { return BigInt(amt); } catch { return 0n; } }
+    if (typeof amt === "number") return BigInt(Math.round(amt));
+    return 0n;
+  } catch {
+    return 0n;
+  }
+}
+
+/// One real x402 payment via the exact scheme. The wrapped fetch handles the
+/// 402, signs, and retries; the settlement tx hash comes back in the
+/// X-PAYMENT-RESPONSE header. Falls back to a data-only HTTPS fetch when the
+/// payment can't complete (and the fallback is enabled).
+async function payViaExact(opts: PayX402Opts): Promise<PayX402Result> {
+  const f = await getExactFetch();
+  if (!f) {
+    return persistAndReturn(opts, {
+      status: "rejected",
+      usdcAmount6: 0n,
+      errorMessage: "x402 exact signer unavailable (set NANOPAY_WALLET_PRIVATE_KEY)",
+    });
+  }
+  const price6 = await readSellerPrice6(opts);
+  if (price6 > 0n && price6 > opts.budgetRemaining6) {
+    return persistAndReturn(opts, {
+      status: "rejected",
+      usdcAmount6: 0n,
+      errorMessage: `price ${int6ToUsdcString(price6)} over budget ${int6ToUsdcString(opts.budgetRemaining6)}`,
+    });
+  }
+  try {
+    const res = await f(
+      opts.endpoint,
+      opts.payload
+        ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(opts.payload) }
+        : { method: "GET" },
+    );
+    if (!res.ok) {
+      if (config.nanopay.httpFallback) return httpFallbackFetch(opts);
+      return persistAndReturn(opts, { status: "failed", usdcAmount6: 0n, errorMessage: `exact http ${res.status}` });
+    }
+    const text = await res.text();
+    const data = safeJsonParse(text) ?? text;
+    // Settlement tx hash from the X-PAYMENT-RESPONSE header (base64 JSON).
+    let txHash: string | undefined;
+    const hdr = res.headers.get("x-payment-response");
+    if (hdr) {
+      try {
+        const decoded = JSON.parse(Buffer.from(hdr, "base64").toString("utf8")) as { transaction?: string; txHash?: string };
+        txHash = decoded.transaction ?? decoded.txHash;
+      } catch { /* header shape varies; tx is best-effort */ }
+    }
+    return persistAndReturn(opts, { status: "settled", usdcAmount6: price6, txHash, response: data });
+  } catch (err) {
+    if (config.nanopay.httpFallback) return httpFallbackFetch(opts);
     return persistAndReturn(opts, {
       status: "failed",
       usdcAmount6: 0n,

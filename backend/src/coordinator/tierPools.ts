@@ -46,7 +46,11 @@ export async function ensureTierPools(): Promise<void> {
   // Pools provision when there's a paying path: a Circle wallet (CLI), the SDK
   // provider, or the HTTP fallback. Only the bare CLI-without-wallet case
   // no-ops.
-  const hasPayingPath = Boolean(wallet) || config.nanopay.provider === "sdk" || config.nanopay.httpFallback;
+  const hasPayingPath =
+    Boolean(wallet) ||
+    config.nanopay.provider === "sdk" ||
+    config.nanopay.provider === "exact" ||
+    config.nanopay.httpFallback;
   if (!hasPayingPath) {
     console.warn(
       "[tier-pools] No research-spend path configured. Set NANOPAY_PROVIDER=sdk " +

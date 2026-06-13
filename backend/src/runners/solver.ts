@@ -17,7 +17,7 @@ import { resolveRuntimeParams, loadAgentStats, type RuntimeParams } from "./llm/
 import { getTierPool, type TierPool } from "../coordinator/tierPools.js";
 import { paidAgentResearch, summarizeNews } from "../nanopayments/research.js";
 import { config } from "../config/index.js";
-import { extractSearchTerm, buildResearchUrl } from "./puzzles/research.js";
+import { extractSearchTerm } from "./puzzles/research.js";
 
 /// Maps a puzzle kind to its preferred x402 research endpoint. Returning null
 /// means the runner skips the research-spend step for that puzzle. The
@@ -29,7 +29,10 @@ function researchEndpointFor(
   const url = (() => {
     switch (kind) {
       case "research":
-        return process.env.NANOPAY_PREDICTION_ENDPOINT;
+        // Research questions are answered from live web search (Exa) now,
+        // not the Predexon market-count feed. Falls back to the quiz endpoint
+        // since both point at Exa.
+        return process.env.NANOPAY_RESEARCH_ENDPOINT ?? process.env.NANOPAY_QUIZ_ENDPOINT;
       case "quiz":
         return process.env.NANOPAY_QUIZ_ENDPOINT;
       case "classify":
@@ -43,9 +46,9 @@ function researchEndpointFor(
   if (!url) return null;
   const labelEnv =
     kind === "research"
-      ? process.env.NANOPAY_PREDICTION_LABEL
+      ? process.env.NANOPAY_RESEARCH_LABEL ?? process.env.NANOPAY_QUIZ_LABEL
       : process.env[`NANOPAY_${kind.toUpperCase()}_LABEL`];
-  const label = labelEnv ?? `${kind} research`;
+  const label = labelEnv ?? "Exa web search";
   return { url, label };
 }
 
@@ -60,9 +63,9 @@ function shapeResearchCall(
   prompt: string,
 ): { url: string; payload?: Record<string, unknown>; chain?: string } {
   if (kind === "research") {
-    const term = extractSearchTerm(prompt);
-    if (term) return { url: buildResearchUrl(baseUrl, term) };
-    return { url: baseUrl };
+    // Research now runs an Exa web search for the question's query term.
+    const term = extractSearchTerm(prompt) ?? prompt.slice(0, 200);
+    return { url: baseUrl, payload: { query: term, numResults: 3 }, chain: config.nanopay.researchChain };
   }
   if (baseUrl.includes("api.exa.ai")) {
     return {
@@ -369,7 +372,7 @@ function guessChoices(puzzle: Puzzle): string[] | null {
     case "classify": return ["transfer", "swap", "mint", "bridge"];
     case "routing":  return ["A", "B", "C"];
     case "quiz":     return ["A", "B", "C", "D"];
-    case "research": return ["NONE", "FEW", "SOME", "MANY"];
+    case "research": return ["A", "B", "C", "D"];
     case "arithmetic":
     case "pattern":
     case "wordcount":
@@ -562,11 +565,13 @@ async function maybeResearchSpend(opts: {
 /// stringify when no title-shaped array is present.
 function summarizeResearch(response: unknown, kind: PuzzleKind): string {
   if (response === undefined || response === null) return "no data";
-  if (kind === "research") {
-    const r = summarizePredexonMarkets(response);
-    if (r) return r;
-  }
-  return summarizeNews(response);
+  // Research, quiz, and classify all run Exa web search now, so result titles
+  // are the useful signal. Prefer those; keep the Predexon market-count
+  // summarizer as a fallback for any endpoint still returning that shape.
+  const news = summarizeNews(response);
+  if (news && news !== "no data") return news;
+  if (kind === "research") return summarizePredexonMarkets(response) ?? news;
+  return news;
 }
 
 /// Predexon's markets endpoint returns `{markets: [...], pagination: {count,

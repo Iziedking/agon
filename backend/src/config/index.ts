@@ -190,9 +190,15 @@ const envSchema = z.object({
   // Which x402 payment path to use:
   //   "sdk" - @circle-fin/x402-batching GatewayClient (container-native, real
   //           payments, signs from NANOPAY_WALLET_PRIVATE_KEY). Recommended.
+  //   "exact" - standard x402 "exact" scheme via x402-fetch, signed from
+  //           NANOPAY_WALLET_PRIVATE_KEY. Pays normal x402 sellers (Gloria,
+  //           Exa) directly on their chain (Base). Container-native, real USDC.
   //   "cli" - shell out to `circle services pay` (needs the Circle CLI + local
   //           auth state). The legacy default.
-  NANOPAY_PROVIDER: z.enum(["cli", "sdk"]).default("cli"),
+  NANOPAY_PROVIDER: z.enum(["cli", "sdk", "exact"]).default("cli"),
+  // Network the exact-scheme sellers settle on (x402 network name), e.g.
+  // base | base-sepolia | polygon. Gloria/Exa declare "base" (mainnet).
+  NANOPAY_EXACT_NETWORK: z.string().default("base"),
   // Private key of the Gateway-funded agent wallet that pays for research via
   // the SDK. Only used when NANOPAY_PROVIDER=sdk.
   NANOPAY_WALLET_PRIVATE_KEY: z.string().optional(),
@@ -447,6 +453,7 @@ export const config = {
     provider: env.NANOPAY_PROVIDER,
     walletPrivateKey: normalizePrivateKey(env.NANOPAY_WALLET_PRIVATE_KEY, "NANOPAY_WALLET_PRIVATE_KEY"),
     gatewayChain: env.NANOPAY_GATEWAY_CHAIN,
+    exactNetwork: env.NANOPAY_EXACT_NETWORK,
     cliPath: env.NANOPAY_CLI_PATH,
     httpFallback: env.NANOPAY_HTTP_FALLBACK,
     apiKeysByHost: ((): Record<string, string> => {

@@ -90,15 +90,14 @@ export function generatePuzzles(seed: number, count: number, difficulty: Difficu
   // Track research items used so a round doesn't repeat one. Distinct set
   // from the quiz dedupe because research keys live in their own namespace.
   const usedResearch = new Set<string>();
-  // Research puzzles ask the agent to look up live external data, so they are
-  // only fair when that data can actually be fetched. Gate them on BOTH
-  // NANOPAY_ENABLED and a configured prediction endpoint. Without the endpoint
-  // the runner has nowhere to fetch from, the prompt would stay a bare "look
-  // up X" task, and the agent reasons blind ("I have no access to APIs"). When
-  // the source isn't wired we fall back to the locally-solvable mix so every
-  // agent always gets answerable puzzles.
+  // Research puzzles run a live web search (Exa) the agent pays for, so they
+  // are only fair when that endpoint is configured. Gate them on BOTH
+  // NANOPAY_ENABLED and a research/quiz (Exa) endpoint. Without it the research
+  // questions still have stable answers, but a no-data agent reasons from
+  // training alone, so we fall back to the locally-solvable mix instead.
   const nanopayOn = process.env.NANOPAY_ENABLED === "true" || process.env.NANOPAY_ENABLED === "1";
-  const includeResearch = nanopayOn && Boolean(process.env.NANOPAY_PREDICTION_ENDPOINT);
+  const includeResearch =
+    nanopayOn && Boolean(process.env.NANOPAY_RESEARCH_ENDPOINT ?? process.env.NANOPAY_QUIZ_ENDPOINT);
   for (let i = 0; i < count; i++) {
     out.push(pickPuzzle(r, difficulty, includeResearch, usedQuizIndices, usedResearch));
   }
