@@ -144,8 +144,10 @@ function AgentRoster({
   const skins = useAgentSkins(featured.map((e) => e.agentId));
   return (
     // Horizontal slider: every agent gets a card; swipe/scroll to see the
-    // whole field. Snap so cards settle cleanly on touch.
-    <div className="-mx-1 flex snap-x snap-mandatory gap-4 overflow-x-auto px-1 pb-2">
+    // whole field. Snap so cards settle cleanly on touch. pt-3 leaves room for
+    // the LEAD badge that floats above the #1 card (overflow-x-auto clips the
+    // vertical axis too, which was cutting the badge).
+    <div className="-mx-1 flex snap-x snap-mandatory gap-4 overflow-x-auto px-1 pb-2 pt-3">
       {featured.map((e, i) => {
         const pct = Math.min(1, e.score / maxScore);
         const leader = e.rank === 1;
