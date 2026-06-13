@@ -92,7 +92,14 @@ export async function executeScout(
       console.warn(`[scout] real-swap path failed, falling back: ${err instanceof Error ? err.message : err}`);
       return null;
     });
-    if (swapped) return swapped;
+    // Only accept the swap result if it actually moved volume. A zero-volume
+    // result (daily swap cap exhausted, or the hot wallet was empty at swap
+    // time) must fall through to self-transfers instead of short-circuiting to
+    // score 0 — otherwise a volume challenge produces no payouts and cancels.
+    if (swapped && swapped.volumeUsdc6 > 0n) return swapped;
+    if (swapped) {
+      console.warn(`[scout] agent ${agentId}: real swaps moved 0 volume (cap exhausted or empty wallet); falling back to self-transfers`);
+    }
   }
 
   const limit = tierLimit(tier);
