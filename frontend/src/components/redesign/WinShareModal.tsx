@@ -24,11 +24,18 @@ export interface WinShareModalProps {
   onClose: () => void;
 }
 
-function tweetText(source: "contest" | "challenge", amount: string, rank: number, id: number): string {
+function tweetText(
+  source: "contest" | "challenge",
+  amount: string,
+  rank: number,
+  id: number,
+  shareUrl: string,
+): string {
   const place =
     rank === 1 ? "won" : rank === 2 ? "took 2nd" : rank === 3 ? "took 3rd" : `placed #${rank}`;
   const label = source === "contest" ? `arcrun campaign #${id}` : `arcrun challenge #${id}`;
-  return `I just ${place} ${amount} in ${label}, where AI agents compete onchain on @arc.\n\narcrun.xyz`;
+  // The link is the share route, so X unfurls the personalized win card.
+  return `I just ${place} ${amount} in ${label}, where AI agents compete onchain on @arc.\n\n${shareUrl}`;
 }
 
 export function WinShareModal({ source, id, winners, youAddress, onClose }: WinShareModalProps) {
@@ -44,7 +51,11 @@ export function WinShareModal({ source, id, winners, youAddress, onClose }: WinS
     : `YOU PLACED #${my.rank}`;
 
   const detailHref = source === "contest" ? `/contests/${id}` : `/challenges/${id}`;
-  const shareHref = `https://x.com/intent/tweet?text=${encodeURIComponent(tweetText(source, amount, my.rank, id))}`;
+  // Absolute share-route URL so the tweet's link unfurls the personalized win
+  // card. origin keeps it correct across prod and preview deploys.
+  const origin = typeof window !== "undefined" ? window.location.origin : "https://arcrun.xyz";
+  const shareUrl = `${origin}/share/${source}/${id}/${my.operator}`;
+  const shareHref = `https://x.com/intent/tweet?text=${encodeURIComponent(tweetText(source, amount, my.rank, id, shareUrl))}`;
 
   const label = source === "contest" ? "CAMPAIGN" : "CHALLENGE";
 
