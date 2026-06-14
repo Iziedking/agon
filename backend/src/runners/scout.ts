@@ -458,8 +458,8 @@ export interface ScoutRunCtx {
 /// Hard ceiling on how long the live race blocks the resolver, so a single
 /// challenge can't eat the sweeper's per-event timeout (default 150s). The
 /// race also stops at deadlineMs (resolveDeadline - 60s), whichever is sooner.
-const RACE_MAX_SECONDS = Number(process.env.SCOUT_RACE_SECONDS ?? "75");
-const RACE_INTER_ROUND_MS = Number(process.env.SCOUT_RACE_DELAY_MS ?? "600");
+const RACE_MAX_SECONDS = Number(process.env.SCOUT_RACE_SECONDS ?? "90");
+const RACE_INTER_ROUND_MS = Number(process.env.SCOUT_RACE_DELAY_MS ?? "400");
 const raceSleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 interface SwapAbility {

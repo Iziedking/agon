@@ -134,7 +134,7 @@ export interface SolverRunCtx {
 
 const SOLVER_ROUND_PUZZLES = Number(process.env.SOLVER_ROUND_PUZZLES ?? "3");
 const SOLVER_MAX_PUZZLES = Number(process.env.SOLVER_MAX_PUZZLES ?? "30");
-const SOLVER_RACE_SECONDS = Number(process.env.SOLVER_RACE_SECONDS ?? "75");
+const SOLVER_RACE_SECONDS = Number(process.env.SOLVER_RACE_SECONDS ?? "90");
 const SOLVER_ROUND_DELAY_MS = Number(process.env.SOLVER_ROUND_DELAY_MS ?? "500");
 const solverSleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 

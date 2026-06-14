@@ -65,6 +65,9 @@ export interface TapeEvent {
 export type AgentProgress =
   | {
       kind: "solver";
+      /// Unified economy-tape rows for this agent (derived from the per-puzzle
+      /// spend arrays below). Drives the live tape + output scoreboard.
+      events?: TapeEvent[];
       correct: boolean[];
       total: number;
       /// Per-puzzle wall-clock for the live stage's "fastest solver" leader.
@@ -93,6 +96,8 @@ export type AgentProgress =
     }
   | {
       kind: "analyst";
+      /// Unified economy-tape rows (Arcana trades + research payments).
+      events?: TapeEvent[];
       calls: Array<{ p: number; outcome: 0 | 1; correct: boolean }>;
       /// Tick model: how many decision ticks the agent has used
       /// out of their tier-derived budget. Drives the "T 3/8" chip on
@@ -137,6 +142,8 @@ export type AgentProgress =
     }
   | {
       kind: "scout";
+      /// Unified economy-tape rows (swaps + research payments).
+      events?: TapeEvent[];
       opsCount: number;
       recent: string[];
       /// USDC amount (6-decimals string) per recent tx, aligned 1:1 with

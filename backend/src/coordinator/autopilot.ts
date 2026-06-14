@@ -85,7 +85,9 @@ async function runOnce(contestId: number, broadcast: (message: unknown) => void)
 /// operators (the main loop only runs the coordinator's own). Runs concurrently
 /// with the open-loop; the in-flight guard keeps them from colliding.
 async function startDueSweeper(broadcast: (message: unknown) => void): Promise<void> {
-  const everyMs = Number(process.env.AUTOPILOT_SWEEP_SECONDS ?? "60") * 1000;
+  // Sweep often so a contest's post-close streamed race starts within ~30s of
+  // its window closing, not up to a minute later.
+  const everyMs = Number(process.env.AUTOPILOT_SWEEP_SECONDS ?? "30") * 1000;
   for (;;) {
     await sleep(everyMs);
     try {
@@ -175,7 +177,11 @@ async function startRandomChallengeLoop(broadcast: (message: unknown) => void): 
   const legacyJoin = process.env.AUTOPILOT_CHALLENGE_JOIN_SECONDS;
   const joinMin = Number(process.env.AUTOPILOT_CHALLENGE_JOIN_SECONDS_MIN ?? legacyJoin ?? "900");
   const joinMax = Number(process.env.AUTOPILOT_CHALLENGE_JOIN_SECONDS_MAX ?? legacyJoin ?? "2700");
-  const resolveSecs = Number(process.env.AUTOPILOT_CHALLENGE_RESOLVE_SECONDS ?? "1800");
+  // Resolve window: kept tight on purpose. Agents do their work in seconds, so
+  // a long window is dead air. The streamed race fills ~90s of dense activity
+  // and stops 60s before this deadline, leaving room for postWinnerRoot. The
+  // join window above stays host-configurable; only the resolve span tightens.
+  const resolveSecs = Number(process.env.AUTOPILOT_CHALLENGE_RESOLVE_SECONDS ?? "210");
   // One challenge per cycle. Default 1 hour between creations.
   const cycleSecs = Number(process.env.AUTOPILOT_CHALLENGE_CYCLE_SECONDS ?? "3600");
   const kinds = (process.env.AUTOPILOT_CHALLENGE_KINDS ?? "0,1,2,3")

@@ -5,3 +5,5 @@ export { VolumeStage } from "./VolumeStage";
 export { PredictionStage } from "./PredictionStage";
 export { CustomStage } from "./CustomStage";
 export { RealSolves } from "./RealSolves";
+export { EconomyTape } from "./EconomyTape";
+export { OutputScoreboard } from "./OutputScoreboard";

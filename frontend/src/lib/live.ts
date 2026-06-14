@@ -18,9 +18,44 @@ export interface PuzzleCard {
   toolsAllowed: "none" | "calc" | "calc+web";
 }
 
+/// One row on the live "economy tape": a single real agent action, normalized
+/// across every runner so the tape and the output scoreboard read every kind
+/// the same way. Mirror of TapeEvent in backend/src/runners/types.ts. amount6
+/// is USDC 6-dec as a string; txHash + chain make it a clickable on-chain proof.
+export type TapeVerb =
+  | "SWAP"
+  | "PAY"
+  | "TRADE"
+  | "FUND"
+  | "BRIDGE"
+  | "STREAM"
+  | "SETTLE"
+  | "REBATE";
+
+export interface TapeEvent {
+  agentId: number;
+  verb: TapeVerb;
+  /// USDC 6-decimals as a string. "" / "0" when the amount is not yet known.
+  amount6: string;
+  /// Human token label, e.g. "USDC", "USDC->EURC".
+  token: string;
+  /// On-chain settlement tx. "" when the action has no tx yet.
+  txHash: string;
+  /// Settlement chain, drives the explorer link. "arc" | "base" | "matic" | ...
+  chain: string;
+  /// Short provenance label, e.g. "Circle Swap Kit", "Exa web search".
+  label: string;
+  /// Epoch ms, for stable ordering across cumulative frames.
+  ts: number;
+}
+
 export type AgentProgress =
   | {
       kind: "solver";
+      /// Unified economy-tape rows for this agent. Drives the live tape +
+      /// output scoreboard. Absent on older frames; the tape derives rows
+      /// from the per-puzzle arrays below as a fallback.
+      events?: TapeEvent[];
       correct: boolean[];
       total: number;
       /// Per-puzzle ms, aligned with `correct[]`. Drives the "fastest" leader.
@@ -46,6 +81,8 @@ export type AgentProgress =
     }
   | {
       kind: "analyst";
+      /// Unified economy-tape rows (Arcana trades + research payments).
+      events?: TapeEvent[];
       calls: Array<{ p: number; outcome: 0 | 1; correct: boolean }>;
       /// Phase 1 tick budget surface. Lets the live page render the
       /// "T 3/8" chip per agent so viewers see decision pacing.
@@ -80,6 +117,8 @@ export type AgentProgress =
     }
   | {
       kind: "scout";
+      /// Unified economy-tape rows (swaps + research payments).
+      events?: TapeEvent[];
       opsCount: number;
       recent: string[];
       /// USDC amount (6-decimals string) per recent tx, aligned with `recent[]`.

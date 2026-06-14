@@ -121,11 +121,21 @@ async function previewScores(_cType: number, _contestId: number, field: ContestE
 // single set, not the challenge's progressive rounds.
 const SOLVER_CONTEST_PUZZLES = Number(process.env.SOLVER_CONTEST_PUZZLES ?? "12");
 
-/// Authoritative scoring at settlement.
-async function finalScores(cType: number, contestId: number, field: ContestEntryInput[]): Promise<AgentResult[]> {
-  if (cType === 0) return new ScoutRunner(5).run(contestId, field);
+/// Authoritative scoring at settlement. Volume (Scout) and Puzzle (Solver) run
+/// the REAL work as a live streamed race when given a broadcast ctx: the runner
+/// emits a standings frame after every swap / solve so the economy tape fills
+/// while viewers watch the post-close window, then we score and settle. Analyst
+/// ignores ctx (its real Arcana trades already stream via the tick scheduler
+/// during the open window).
+async function finalScores(
+  cType: number,
+  contestId: number,
+  field: ContestEntryInput[],
+  ctx?: { broadcast: (message: unknown) => void; deadlineMs: number; source: "contest"; endsAtMs: number },
+): Promise<AgentResult[]> {
+  if (cType === 0) return new ScoutRunner(5).run(contestId, field, ctx);
   if (cType === 1) return new AnalystRunner().run(contestId, field);
-  return new SolverRunner(SOLVER_CONTEST_PUZZLES).run(contestId, field);
+  return new SolverRunner(SOLVER_CONTEST_PUZZLES).run(contestId, field, ctx);
 }
 
 function standings(results: AgentResult[]) {
@@ -242,6 +252,50 @@ export async function runContestById(contestId: number, broadcast: (message: unk
   // Window closed. Wait a beat so chain time is past endTime, then settle.
   await sleep(3000);
 
+  // Retry-safe settlement. If a previous sweep already scored this contest and
+  // persisted its payout tree, reuse it so postScoreRoot/settle retry with the
+  // SAME merkle root. Re-running the real race on a retry would roll fresh
+  // randomness and the new root would not match the persisted payouts (the
+  // exact bug runChallengeById already guards against). On the retry path we
+  // skip scoring, the reveal, and the post-settlement rewards (they ran on the
+  // first attempt); only the two on-chain txs retry.
+  {
+    const persisted = await query<{ rank: number; operator: string; amount: string }>(
+      "select rank, operator, amount from payouts where contest_id = $1 order by rank",
+      [contestId],
+    );
+    if (persisted.rows.length > 0) {
+      const payouts = persisted.rows.map((r) => ({ operator: r.operator as `0x${string}`, amount: BigInt(r.amount) }));
+      console.log(`contest ${contestId}: retrying settlement with ${payouts.length} previously persisted payout(s)`);
+      const wallet = coordinatorWallet();
+      const send = async (params: Parameters<typeof wallet.writeContract>[0]) => {
+        const hash = await wallet.writeContract(params as never);
+        await publicClient.waitForTransactionReceipt({ hash });
+        return hash;
+      };
+      const root = merkleRoot(payouts.map((p) => payoutLeaf(p.operator, p.amount)));
+      await send({ address: engine, abi: engineAbi, functionName: "postScoreRoot", args: [BigInt(contestId), root] });
+      await send({ address: engine, abi: engineAbi, functionName: "settle", args: [BigInt(contestId)] });
+      console.log(`contest ${contestId} settled on-chain (retry) with ${payouts.length} winner(s)`);
+      broadcast({
+        type: "settled",
+        contestId,
+        winners: payouts.map((p, i) => ({ rank: i + 1, operator: p.operator, amount: p.amount.toString() })),
+      });
+      for (let i = 0; i < payouts.length; i++) {
+        const p = payouts[i]!;
+        void notify(p.operator, {
+          kind: "contest_win",
+          title: `You placed #${i + 1} in contest #${contestId}`,
+          body: `prize ${(Number(p.amount) / 1e6).toFixed(2)} USDC. claim it from the contest page.`,
+          href: `/contests/${contestId}`,
+          context: { contestId, rank: i + 1, amount: p.amount.toString() },
+        });
+      }
+      return;
+    }
+  }
+
   let field = await fetchField(contestId, cType);
 
   // Off-chain qualification gate (no-op unless QUALIFY_MIN_POINTS is set).
@@ -255,7 +309,25 @@ export async function runContestById(contestId: number, broadcast: (message: unk
     await fundHotWallets(field.map((e) => ({ agentId: e.agentId, tier: e.tier })));
   }
 
-  const baseResults = await finalScores(cType, contestId, field);
+  // Volume (Scout) and Puzzle (Solver) run the real work as a live streamed
+  // race in this post-close window: the runner broadcasts a standings frame per
+  // swap / solve so the economy tape fills while viewers watch, then we score
+  // and settle. The race is time-bounded (CONTEST_RACE_SECONDS, the runner caps
+  // it again internally) so scoring + the two settlement txs land inside the
+  // sweeper's per-event timeout. postScoreRoot is valid because we are already
+  // past endTime here. Analyst burst-scores (its trades streamed during open).
+  const streamed = cType === 0 || cType === 2;
+  const raceSeconds = Number(process.env.CONTEST_RACE_SECONDS ?? "95");
+  const raceCtx = streamed
+    ? { broadcast, deadlineMs: Date.now() + raceSeconds * 1000, source: "contest" as const, endsAtMs }
+    : undefined;
+  if (streamed && field.length > 0) {
+    console.log(
+      `contest ${contestId}: streaming live ${cType === 0 ? "scout swap" : "puzzle solve"} race to ${field.length} entrant(s) for up to ${raceSeconds}s`,
+    );
+  }
+
+  const baseResults = await finalScores(cType, contestId, field, raceCtx);
   // Authoritative scoring picks up trait + training + syndicate-war
   // multipliers so the on-chain payout reflects the same boosts viewers
   // saw on the live race. Combined multiplier capped at 3.5x.
@@ -279,12 +351,13 @@ export async function runContestById(contestId: number, broadcast: (message: unk
           baselines,
         );
 
-  // Visible "agents at work" race: the field is locked and scored, so now play
-  // the real result back progressively (cells filling, tx tape growing, scores
-  // climbing) instead of one instant jump. This is the moment judges watch the
-  // agents actually do the work. CONTEST_REVEAL_SECONDS=0 disables it.
-  const revealMs = Number(process.env.CONTEST_REVEAL_SECONDS ?? "16") * 1000;
-  if (revealMs > 0 && results.length > 0) {
+  // Visible "agents at work" replay, ONLY for the non-streamed (Analyst) path.
+  // Scout and Solver already streamed the real work live in the race above, so
+  // replaying it would double the activity; they skip straight to the final
+  // frame. Analyst can still play its deterministic result back progressively.
+  // Default off (CONTEST_REVEAL_SECONDS=0); the streamed race is the real show.
+  const revealMs = Number(process.env.CONTEST_REVEAL_SECONDS ?? "0") * 1000;
+  if (!streamed && revealMs > 0 && results.length > 0) {
     const STEPS = 8;
     for (let s = 1; s < STEPS; s++) {
       broadcast({
