@@ -68,16 +68,19 @@ export async function loadWin(sourceRaw: string, id: string, op: string): Promis
         discordUsername?: string | null;
         discordAvatar?: string | null;
         telegramUsername?: string | null;
+        telegramAvatar?: string | null;
       };
       if (p.xHandle) {
         handle = `@${p.xHandle}`;
         avatarUrl = `https://unavatar.io/x/${p.xHandle}`;
       } else if (p.discordUsername) {
         handle = p.discordUsername;
-        avatarUrl = p.discordAvatar ?? null;
+        avatarUrl = p.discordAvatar ?? p.telegramAvatar ?? null;
       } else if (p.telegramUsername) {
         handle = `@${p.telegramUsername}`;
-        avatarUrl = `https://unavatar.io/telegram/${p.telegramUsername}`;
+        // Prefer the pfp we captured through the Bot API (a data URL) over the
+        // unavatar.io scrape, which is blank for most Telegram users.
+        avatarUrl = p.telegramAvatar ?? `https://unavatar.io/telegram/${p.telegramUsername}`;
       }
     }
   } catch {

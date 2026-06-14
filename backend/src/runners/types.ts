@@ -27,6 +27,41 @@ export interface PuzzleCard {
   toolsAllowed: "none" | "calc" | "calc+web";
 }
 
+/// One row on the live "economy tape": a single real agent action, normalized
+/// across every runner so the tape and the output scoreboard read every kind
+/// the same way. Each runner derives these from its own per-action arrays
+/// (scout swaps, x402 payments, Arcana trades, funding drips). amount6 is USDC
+/// in 6-decimals as a string so it survives the JSON hop; txHash + chain make
+/// it a clickable on-chain proof.
+export type TapeVerb =
+  | "SWAP"
+  | "PAY"
+  | "TRADE"
+  | "FUND"
+  | "BRIDGE"
+  | "STREAM"
+  | "SETTLE"
+  | "REBATE";
+
+export interface TapeEvent {
+  agentId: number;
+  verb: TapeVerb;
+  /// USDC 6-decimals as a string. "" / "0" when the amount is not yet known
+  /// (e.g. a bridge mid-flight); the tape still renders the row and the link.
+  amount6: string;
+  /// Human token label, e.g. "USDC", "USDC->EURC".
+  token: string;
+  /// On-chain settlement tx. "" when the action has no tx yet.
+  txHash: string;
+  /// Settlement chain, drives the explorer link. "arc" | "base" | "matic" | ...
+  chain: string;
+  /// Short provenance label, e.g. "Circle Swap Kit", "Exa web search",
+  /// "Arcana YES #12".
+  label: string;
+  /// Epoch ms, for stable ordering across cumulative frames.
+  ts: number;
+}
+
 export type AgentProgress =
   | {
       kind: "solver";

@@ -1715,9 +1715,12 @@ app.get("/agents/identities", async (c) => {
     x_avatar: string | null;
     discord_username: string | null;
     discord_avatar: string | null;
+    telegram_username: string | null;
+    telegram_avatar: string | null;
   }>(
     `select a.id, a.display_mode, a.nickname, a.skin,
-            o.x_handle, o.x_avatar, o.discord_username, o.discord_avatar
+            o.x_handle, o.x_avatar, o.discord_username, o.discord_avatar,
+            o.telegram_username, o.telegram_avatar
        from agents a
        left join operators o on lower(o.address) = lower(a.owner)
       where a.id = any($1::bigint[])`,
@@ -1734,9 +1737,24 @@ app.get("/agents/identities", async (c) => {
       const avatar = r.x_avatar ?? `https://unavatar.io/x/${r.x_handle}`;
       identities[r.id] = { kind: "x", name: `@${r.x_handle}`, avatar };
     } else if (mode === "discord" && r.discord_username) {
-      identities[r.id] = { kind: "discord", name: r.discord_username, avatar: r.discord_avatar ?? null };
+      // Discord avatar can be absent (default-avatar accounts). Fall back to the
+      // operator's Telegram pfp before giving up, so the row still shows a face.
+      identities[r.id] = {
+        kind: "discord",
+        name: r.discord_username,
+        avatar: r.discord_avatar ?? r.telegram_avatar ?? null,
+      };
     } else if (mode === "custom" && r.skin) {
       identities[r.id] = { kind: "custom", name: r.nickname ?? null, avatar: r.skin };
+    } else if (r.telegram_avatar) {
+      // No X / Discord / custom skin, but the operator linked Telegram and we
+      // captured the pfp through the Bot API. Use it so Telegram-only operators
+      // show their picture on every live surface instead of the robot.
+      identities[r.id] = {
+        kind: "telegram",
+        name: r.telegram_username ? `@${r.telegram_username}` : null,
+        avatar: r.telegram_avatar,
+      };
     } else {
       identities[r.id] = { kind: "default", name: null, avatar: null };
     }

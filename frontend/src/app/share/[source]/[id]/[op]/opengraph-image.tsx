@@ -25,6 +25,11 @@ const HAIRLINE = "rgba(26,22,18,0.12)";
 
 async function avatarDataUrl(url: string | null): Promise<string | null> {
   if (!url) return null;
+  // Already an inlined image (our stored Telegram pfp). Use it directly, only
+  // guarding the size so a huge data URL can't choke the renderer.
+  if (url.startsWith("data:image/")) {
+    return url.length > 800_000 ? null : url;
+  }
   try {
     // Bounded so a slow avatar host never stalls the card past the crawler's
     // patience; we fall back to the placeholder marker instead.
@@ -55,7 +60,25 @@ export default async function ShareImage({
   const label = win.kindLabel.toUpperCase();
   const verb = placeVerb(win.rank).toUpperCase();
   const amount = formatUsdc6(win.amount6);
-  const who = win.handle ?? win.short;
+  // satori only ships a Latin font. Any glyph outside it (an emoji in an X
+  // display name, a CJK character) makes next/og try to fetch a "dynamic
+  // font" at render time, and that fetch failing throws DURING streaming,
+  // after our try/catch has already returned, so the whole card 500s with
+  // no fallback. Strip the handle to printable ASCII so the card always
+  // renders. Fall back to the short address if nothing survives.
+  const whoRaw = win.handle ?? win.short;
+  const who =
+    whoRaw
+      // The masked wallet uses a real ellipsis (…); render it as ASCII dots so
+      // a handle-less winner's address ("0xA045…03c5") doesn't itself trip the
+      // dynamic-font fetch.
+      .replace(/…/g, "...")
+      .replace(/[^\x20-\x7E]/g, "")
+      .trim() || win.short.replace(/…/g, "...");
+  // The avatar placeholder shows the operator's initial (a Latin letter) so
+  // we never render the ■ glyph, which is NOT in satori's font and was the
+  // exact cause of the dynamic-font 500.
+  const initial = (who.replace(/^@/, "")[0] ?? "A").toUpperCase();
 
   return new ImageResponse(
     (
@@ -123,7 +146,7 @@ export default async function ShareImage({
                   fontWeight: 800,
                 }}
               >
-                ■
+                {initial}
               </div>
             )}
             <div style={{ fontSize: 28, color: INK, fontWeight: 700, maxWidth: 280, textAlign: "center" }}>{who}</div>
