@@ -79,10 +79,6 @@ export interface RuntimeParams extends TierCapabilities {
   fewShotCount: number;
   /// Tiebreaker dice nudge. LUCK level * 0.01.
   luckBonus: number;
-  /// Tier used for the research gate + budget pool. Defaults to the agent's
-  /// real tier, but solver capability traits raise it (an effective tier) so
-  /// the equipped agent can unlock research early and draw a bigger pool.
-  researchTier?: number;
 }
 
 /// Read the agent's stats and fold them into runtime params on top of the

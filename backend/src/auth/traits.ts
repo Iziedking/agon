@@ -48,11 +48,11 @@ export const TRAITS: Trait[] = [
   { id: "tape_reader",      name: "Tape Reader",       rarity: "rare",      body: "reads the tape, up to 10% more analyst score. scaled by tier." },
 
   // Epics (6) - heavy specialisation.
-  { id: "puzzle_savant",    name: "Puzzle Savant",     rarity: "epic",      body: "solver capability: unlocks better tools, research, and a big reasoning budget on puzzles. scaled by tier." },
+  { id: "puzzle_savant",    name: "Puzzle Savant",     rarity: "epic",      body: "solver capability: a big tier-scaled reasoning budget on hard puzzle solves." },
   { id: "arc_initiate",     name: "Arc Initiate",      rarity: "epic",      body: "edge across every kind, plus a small volume bump. scaled by tier." },
   { id: "deep_state",       name: "Deep State",        rarity: "epic",      body: "reads onchain state most miss, up to 15% more analyst score, calibrated. scaled by tier." },
   { id: "quant_oracle",     name: "Quant Oracle",      rarity: "epic",      body: "model ensemble, up to 18% more analyst score. scaled by tier." },
-  { id: "solver_circuit",   name: "Solver Circuit",    rarity: "epic",      body: "solver capability: unlocks better tools, research, and more reasoning budget on puzzles. scaled by tier." },
+  { id: "solver_circuit",   name: "Solver Circuit",    rarity: "epic",      body: "solver capability: a tier-scaled reasoning budget and an extra attempt on puzzle solves." },
   { id: "volume_titan",     name: "Volume Titan",      rarity: "epic",      body: "whale-class trades, 30% bigger per swap and 10% more of them. scaled by tier." },
 
   // Legendaries (4) - the trophies.
@@ -128,36 +128,38 @@ export function rollMystery(
 
 export const COOLDOWN_MS = 24 * 60 * 60 * 1000; // legacy reference; daily UTC reset is the active rule
 
-/// Traits carry real, tier-scaled power now, so the global daily mystery pool is
-/// deliberately tiny and varies day to day: most days 0, 1, or 2 boxes, with the
-/// occasional bonus day at the hard max of 3. The whole network competes for
-/// those few, first-come first-served, so a trait is a genuine find. The size is
-/// deterministic per claim day (every instance agrees, and it stays fixed across
-/// the day). Set MYSTERY_DAILY_POOL to pin a fixed pool for testing or a special
-/// event; it is still clamped to the hard max.
-export const DAILY_POOL_HARD_MAX = 3;
+/// The whole network gets 100 claim spots a day, first come first served. A
+/// claim is a ROLL, not a guaranteed trait. Configurable via env.
+export const DAILY_POOL_MAX: number = (() => {
+  const raw = Number(process.env.MYSTERY_DAILY_POOL);
+  if (!Number.isFinite(raw) || raw <= 0) return 100;
+  return Math.floor(raw);
+})();
 
-/// FNV-1a over the day key, normalized to [0, 1). Cheap and stable.
-function hashDayKey(key: string): number {
-  let h = 2166136261 >>> 0;
-  for (let i = 0; i < key.length; i++) {
-    h ^= key.charCodeAt(i);
-    h = Math.imul(h, 16777619) >>> 0;
-  }
-  return (h >>> 0) / 0xffffffff;
+/// The day index (claim day, shifted -1h to the 01:00 UTC boundary). Stable
+/// integer used for the every-14-days bonus cadence.
+function claimDayNumber(now: Date): number {
+  return Math.floor((now.getTime() - 60 * 60 * 1000) / (24 * 60 * 60 * 1000));
 }
 
-/// How many mystery boxes the whole network can claim on the given day.
-export function dailyPoolFor(now: Date = new Date()): number {
-  const override = Number(process.env.MYSTERY_DAILY_POOL);
-  if (Number.isFinite(override) && override >= 0) {
-    return Math.min(DAILY_POOL_HARD_MAX, Math.floor(override));
-  }
-  const r = hashDayKey(claimDayKey(now));
-  if (r < 0.25) return 0; // ~25% of days: dry, nothing drops
-  if (r < 0.6) return 1; //  ~35%: a single box
-  if (r < 0.85) return 2; // ~25%: two
-  return 3; //              ~15%: bonus day, the max
+/// Bonus days carry far more winnable traits and appear once every 14 days,
+/// deterministic so every instance agrees. MYSTERY_BONUS_OFFSET shifts which
+/// day in the cycle is the bonus (testing / events).
+export function isBonusDay(now: Date = new Date()): boolean {
+  const offset = Number(process.env.MYSTERY_BONUS_OFFSET);
+  const off = Number.isFinite(offset) ? ((Math.floor(offset) % 14) + 14) % 14 : 0;
+  return ((claimDayNumber(now) % 14) + 14) % 14 === off;
+}
+
+/// How many actual traits can be WON network-wide on the given day. Winning is
+/// the scarce part: out of 100 rolls, at most this many yield a trait (the rest
+/// rug). Normal days cap at 3, bonus days at 7. Env-overridable.
+export function dailyTraitWinCap(now: Date = new Date()): number {
+  const bonus = isBonusDay(now);
+  const normal = Number(process.env.MYSTERY_WIN_CAP);
+  const bonusCap = Number(process.env.MYSTERY_WIN_CAP_BONUS);
+  if (bonus) return Number.isFinite(bonusCap) && bonusCap > 0 ? Math.floor(bonusCap) : 7;
+  return Number.isFinite(normal) && normal > 0 ? Math.floor(normal) : 3;
 }
 
 /// Epoch milliseconds for the next mystery reset. The contract rolls over

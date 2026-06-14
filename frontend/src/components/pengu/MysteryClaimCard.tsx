@@ -89,19 +89,30 @@ export function MysteryClaimCard({
   }
 
   const operatorReady = !!cd && cd.ready;
-  const poolDrained = !!pool && pool.remaining <= 0;
+  const spotsGone = !!pool && pool.remaining <= 0;
+  const traitCap = pool?.traitCap ?? null;
+  const traitsLeft = pool?.traitsLeft ?? null;
+  const bonusDay = pool?.bonusDay ?? false;
+  // Traits are the scarce resource; claim spots are plentiful. Once today's
+  // traits are all won, a roll can only rug, so we stop it rather than waste the
+  // operator's one daily attempt.
+  const traitsGone = traitsLeft != null && traitsLeft <= 0;
   const nextReset = pool?.resetsAt ?? cd?.nextAvailable ?? 0;
-  const canRoll = !!activeAgentId && operatorReady && !poolDrained;
+  const canRoll = !!activeAgentId && operatorReady && !spotsGone && !traitsGone;
 
-  const claimedPct = pool ? Math.min(100, Math.round((pool.claimed / Math.max(1, pool.max)) * 100)) : 0;
+  // The bar tracks trait scarcity (won vs cap) when the backend reports it, else
+  // falls back to claim-spot usage for older backends.
+  const pct = pool
+    ? traitCap != null
+      ? Math.min(100, Math.round(((pool.won ?? 0) / Math.max(1, traitCap)) * 100))
+      : Math.min(100, Math.round((pool.claimed / Math.max(1, pool.max)) * 100))
+    : 0;
 
-  // A dry day (max 0) is intentional, not a drained pool, so it reads its own way.
-  const dryDay = !!pool && pool.max === 0;
   let buttonLabel = "CLAIM MYSTERY";
   if (busy) buttonLabel = "ROLLING…";
   else if (!activeAgentId) buttonLabel = "NO ACTIVE AGENT";
-  else if (dryDay) buttonLabel = "NO BOXES TODAY";
-  else if (poolDrained) buttonLabel = "POOL DRAINED";
+  else if (traitsGone) buttonLabel = "NO TRAITS LEFT";
+  else if (spotsGone) buttonLabel = "POOL FULL";
   else if (!operatorReady) buttonLabel = "CLAIMED TODAY";
 
   return (
@@ -122,10 +133,10 @@ export function MysteryClaimCard({
               CLAIM A TRAIT
             </h3>
             <p className="mt-2 max-w-[56ch] font-mono text-[13px] leading-[1.55] text-ink-2">
-              traits are scarce. a tiny global pool opens at 01:00 UTC, first come first served, and the whole
-              network races for it. most days it is one or two boxes, some days none, a bonus day holds three. one
-              claim per operator per day; some boxes come up empty. anything you win sticks to your active agent and
-              unlocks a real, tier-scaled ability on its next runs.
+              100 claim spots open at 01:00 UTC, first come first served. but traits are the scarce part: only a few
+              actually drop each day, with a bonus day every two weeks that holds far more. one claim per operator per
+              day, and most boxes come up empty. anything you win sticks to your active agent and unlocks a real,
+              tier-scaled ability on its next runs.
             </p>
           </div>
         </div>
@@ -150,20 +161,27 @@ export function MysteryClaimCard({
       {pool ? (
         <div className="mt-5">
           <div className="flex items-baseline justify-between">
-            <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">TODAY'S POOL</span>
+            <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">
+              TRAITS TODAY{bonusDay ? " · BONUS DAY" : ""}
+            </span>
             <span className="font-mono text-[12px] tabular-nums text-ink">
-              {dryDay ? "NONE TODAY" : `${pool.remaining} / ${pool.max} LEFT`}
+              {traitCap != null ? `${traitsLeft} / ${traitCap} LEFT` : `${pool.remaining} / ${pool.max} SPOTS`}
             </span>
           </div>
           <div className="mt-2 h-2 w-full border border-[color:var(--hairline)] bg-canvas-2">
             <div
               className="h-full transition-[width] duration-500"
               style={{
-                width: `${claimedPct}%`,
-                backgroundColor: poolDrained ? "var(--err)" : "var(--accent)",
+                width: `${pct}%`,
+                backgroundColor: traitsGone || spotsGone ? "var(--err)" : bonusDay ? "var(--ok)" : "var(--accent)",
               }}
             />
           </div>
+          {traitCap != null ? (
+            <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
+              {pool.remaining} / {pool.max} CLAIM SPOTS
+            </div>
+          ) : null}
         </div>
       ) : null}
 

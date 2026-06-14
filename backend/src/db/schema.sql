@@ -417,6 +417,29 @@ create table if not exists mystery_pool_daily (
   day      date primary key,
   claimed  bigint not null default 0
 );
+-- `claimed` counts ROLLS (100/day). `won` counts traits actually awarded, which
+-- is the scarce cap (3/day, 7 on a bonus day). Most rolls rug.
+alter table mystery_pool_daily add column if not exists won bigint not null default 0;
+
+-- Pool of LLM-generated, source-grounded, grader-verified puzzles. A background
+-- job tops this up; contests draw from it (skipping recently-used) and fall back
+-- to the deterministic templates when it's thin. `content_hash` dedupes so a
+-- question never enters twice. `source` carries the doc provenance for display.
+create table if not exists generated_puzzles (
+  id           bigserial primary key,
+  content_hash text not null unique,
+  kind         text not null,
+  prompt       text not null,
+  expected     text not null,
+  presentation jsonb not null,
+  difficulty   int not null default 2,
+  source       text,
+  created_at   timestamptz not null default now(),
+  last_used_at timestamptz,
+  use_count    bigint not null default 0
+);
+create index if not exists generated_puzzles_pick
+  on generated_puzzles (difficulty, last_used_at nulls first, id);
 
 -- Per-agent skill training. Six stats (POWER, PRECISION, SPEED, ENDURANCE,
 -- LUCK, FOCUS) each 0..20. Each level adds 1% to the relevant scoring

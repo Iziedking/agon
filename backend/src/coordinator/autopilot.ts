@@ -10,6 +10,7 @@ import { startArcanaClaimerLoop } from "../lib/arcanaClaimer.js";
 import { pinArcanaMarketsForContest } from "../lib/arcanaPins.js";
 import { startTickScheduler } from "./predictionTicks.js";
 import { startSyndicateWarSettler } from "./syndicateWar.js";
+import { startPuzzlePoolTopUp } from "../runners/puzzles/generator.js";
 import { setTierGate } from "../lib/tierGate.js";
 
 /// Self-driving contest loop. With a funded COORDINATOR_PRIVATE_KEY in place, the
@@ -296,6 +297,15 @@ export async function startBackgroundServices(
   void startTickScheduler(broadcast).catch((err) =>
     console.error(
       "tick scheduler crashed:",
+      err instanceof Error ? err.message : err,
+    ),
+  );
+  // Keep the verified, source-grounded quiz pool stocked off the contest hot
+  // path, so solver rounds draw fresh, sourced questions instead of repeating
+  // the static bank. No-op when the LLM is unconfigured.
+  void startPuzzlePoolTopUp().catch((err) =>
+    console.error(
+      "puzzle pool top-up crashed:",
       err instanceof Error ? err.message : err,
     ),
   );

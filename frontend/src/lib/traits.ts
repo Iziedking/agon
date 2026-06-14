@@ -30,14 +30,21 @@ export interface CooldownStatus {
   totalClaims: number;
 }
 
-/// Global daily mystery pool status. `max` is the total slots per UTC day,
-/// `claimed` is how many have been used, `remaining` is the live count for the
-/// claim UI, and `resetsAt` is the epoch ms of the next midnight UTC.
+/// Global daily mystery pool status. `max`/`claimed`/`remaining` are the claim
+/// SPOTS (100/day, first come first served). The scarce part is the trait WINS:
+/// `traitCap` is how many traits can drop today (3, or 7 on a `bonusDay`),
+/// `won` how many already have, `traitsLeft` the difference. `resetsAt` is the
+/// next 01:00 UTC. won/traitCap/traitsLeft/bonusDay are optional for older
+/// backends that don't send them yet.
 export interface PoolStatus {
   max: number;
   claimed: number;
   remaining: number;
   resetsAt: number;
+  won?: number;
+  traitCap?: number;
+  traitsLeft?: number;
+  bonusDay?: boolean;
 }
 
 export interface ClaimResult {

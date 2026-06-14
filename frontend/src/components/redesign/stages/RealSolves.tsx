@@ -152,6 +152,7 @@ function PuzzleCard({
               agentId={aid}
               name={agentName(aid)}
               skin={agentSkin(aid)}
+              live={newest}
             />
           );
         })}
@@ -165,11 +166,18 @@ function AnswerRow({
   agentId,
   name,
   skin,
+  live,
 }: {
   row: LlmRun | null;
   agentId: number;
   name: string;
   skin: string | null;
+  /// True only for the current live frontier puzzle (the top card while the
+  /// race runs). An agent with no answer there is genuinely still working, so it
+  /// reads "solving…". On any older or settled card a missing answer means the
+  /// agent has not reached that puzzle, which reads a calm dash, never a
+  /// perpetual "solving…".
+  live: boolean;
 }) {
   const variant = robotVariantForId(agentId);
   return (
@@ -185,8 +193,12 @@ function AnswerRow({
       <span className="min-w-0 flex-1 truncate font-mono text-[11px] uppercase tracking-[0.12em] text-ink">
         {name}
       </span>
-      {row ? <Verdict row={row} /> : (
+      {row ? (
+        <Verdict row={row} />
+      ) : live ? (
         <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">solving…</span>
+      ) : (
+        <span className="font-mono text-[11px] text-ink-3" title="did not reach this puzzle">—</span>
       )}
     </div>
   );

@@ -1,6 +1,7 @@
 import { seededRng, pick } from "../rng.js";
 import { QUIZ_BANK, type QuizQuestion } from "./quizBank.js";
 import { researchPuzzle } from "./research.js";
+import { drawQuizzesFromPool } from "./generator.js";
 
 /// Puzzle templates for the Solver contest. Generated deterministically from
 /// a (contestId, roundIdx) seed so every agent in a round faces the same
@@ -70,6 +71,9 @@ export interface Puzzle {
   /// Standardized presentation for the live stage. Built by each family
   /// generator so the audience reads one consistent card across all puzzles.
   presentation: PuzzlePresentation;
+  /// Provenance for LLM-generated, source-grounded puzzles (e.g. "Arc docs:
+  /// gas and fees"). Undefined for the deterministic template families.
+  source?: string;
 }
 
 /// Build N puzzles for one round. Seed is (contestId * 1009 + roundIdx) so
@@ -102,6 +106,28 @@ export function generatePuzzles(seed: number, count: number, difficulty: Difficu
     out.push(pickPuzzle(r, difficulty, includeResearch, usedQuizIndices, usedResearch));
   }
   return out;
+}
+
+/// Async generation that prefers the verified, source-grounded quiz POOL for the
+/// quiz slots, falling back to the static bank when the pool is thin. The
+/// computable families (arithmetic, quant, decode, routing, pattern) stay
+/// deterministic and code-verified. Same mix, order, and seeding as
+/// generatePuzzles; only quiz items are swapped for fresh, sourced pool
+/// questions, so a round rarely repeats a quiz. This is what the runner calls.
+export async function generatePuzzlesAsync(
+  seed: number,
+  count: number,
+  difficulty: Difficulty = 2,
+): Promise<Puzzle[]> {
+  const base = generatePuzzles(seed, count, difficulty);
+  const quizSlots: number[] = [];
+  for (let i = 0; i < base.length; i++) if (base[i]!.kind === "quiz") quizSlots.push(i);
+  if (quizSlots.length === 0) return base;
+  const fresh = await drawQuizzesFromPool(difficulty, quizSlots.length).catch(() => [] as Puzzle[]);
+  for (let j = 0; j < fresh.length && j < quizSlots.length; j++) {
+    base[quizSlots[j]!] = fresh[j]!;
+  }
+  return base;
 }
 
 /// One puzzle for the round, weighted by difficulty band:

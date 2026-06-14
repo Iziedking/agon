@@ -3,7 +3,7 @@ import { seededRng, pick } from "./rng.js";
 import { solverScore } from "../scoring/index.js";
 import { effectiveStrength, solverTraitAbilities, type StrengthBreakdown } from "../scoring/strength.js";
 import { getLoadout } from "../auth/loadouts.js";
-import { generatePuzzles, difficultyForTier, type Puzzle, type PuzzleKind } from "./puzzles/index.js";
+import { generatePuzzlesAsync, difficultyForTier, type Puzzle, type PuzzleKind } from "./puzzles/index.js";
 import { judge } from "./judge.js";
 import {
   callModel,
@@ -26,29 +26,18 @@ import { extractSearchTerm } from "./puzzles/research.js";
 function researchEndpointFor(
   kind: PuzzleKind,
 ): { url: string; label: string } | null {
-  const url = (() => {
-    switch (kind) {
-      case "research":
-        // Research questions are answered from live web search (Exa) now,
-        // not the Predexon market-count feed. Falls back to the quiz endpoint
-        // since both point at Exa.
-        return process.env.NANOPAY_RESEARCH_ENDPOINT ?? process.env.NANOPAY_QUIZ_ENDPOINT;
-      case "quiz":
-        return process.env.NANOPAY_QUIZ_ENDPOINT;
-      case "classify":
-        return process.env.NANOPAY_CLASSIFY_ENDPOINT;
-      case "routing":
-        return process.env.NANOPAY_ROUTING_ENDPOINT;
-      default:
-        return undefined;
-    }
-  })();
+  // Pay for a live web-search lookup ONLY on the "research" kind, which is a
+  // genuine current-data question the model cannot answer from training alone.
+  // Every other family (quiz, classify, routing, arithmetic, quant, decode,
+  // pattern, wordcount) is self-contained: the agent reasons it out with no
+  // x402 spend. This is the reason-first rule — pay only when the question goes
+  // beyond the model's own knowledge, never on math or trivia.
+  if (kind !== "research") return null;
+  // Research questions are answered from live web search (Exa). Falls back to the
+  // quiz endpoint since both point at Exa.
+  const url = process.env.NANOPAY_RESEARCH_ENDPOINT ?? process.env.NANOPAY_QUIZ_ENDPOINT;
   if (!url) return null;
-  const labelEnv =
-    kind === "research"
-      ? process.env.NANOPAY_RESEARCH_LABEL ?? process.env.NANOPAY_QUIZ_LABEL
-      : process.env[`NANOPAY_${kind.toUpperCase()}_LABEL`];
-  const label = labelEnv ?? "Exa web search";
+  const label = process.env.NANOPAY_RESEARCH_LABEL ?? process.env.NANOPAY_QUIZ_LABEL ?? "Exa web search";
   return { url, label };
 }
 
@@ -248,7 +237,7 @@ export class SolverRunner implements Runner {
 
     // Single-set path (contests, and any caller without a live ctx): one fixed
     // puzzle set scored once. puzzleCount is the wider default now.
-    const puzzles = generatePuzzles(contestId, this.puzzleCount, difficulty);
+    const puzzles = await generatePuzzlesAsync(contestId, this.puzzleCount, difficulty);
     const puzzleKinds = puzzles.map((p) => p.kind);
     const puzzleCards = toCards(puzzles);
     return Promise.all(
@@ -309,7 +298,7 @@ export class SolverRunner implements Runner {
     while (Date.now() < hardStop && allKinds.length < SOLVER_MAX_PUZZLES) {
       const n = Math.min(SOLVER_ROUND_PUZZLES, SOLVER_MAX_PUZZLES - allKinds.length);
       // Distinct seed per round so kinds and items differ each round.
-      const batch = generatePuzzles(contestId * 1009 + round, n, difficulty);
+      const batch = await generatePuzzlesAsync(contestId * 1009 + round, n, difficulty);
       const offset = allKinds.length;
       for (const e of entries) {
         if (Date.now() >= hardStop) break;
@@ -353,14 +342,16 @@ async function resolveSolverParams(
   if (!real) return null;
   const equipped = await getLoadout(source, contestId, agentId).catch(() => [] as string[]);
   const ability = solverTraitAbilities(equipped, tier);
-  const base = await resolveRuntimeParams(agentId, ability.effectiveTier).catch(() => null);
+  // Resolve at the agent's REAL tier. Solver traits never move the tier the
+  // model, tools, or the x402 research gate use (research is strictly tier 3/4).
+  // They only widen the reasoning budget and retries below.
+  const base = await resolveRuntimeParams(agentId, tier).catch(() => null);
   if (!base) return null;
   if (!base.llmEnabled) return base;
   return {
     ...base,
     maxTokens: Math.min(4000, Math.round(base.maxTokens * ability.tokenMult)),
     retries: base.retries + ability.extraRetries,
-    researchTier: ability.effectiveTier,
   };
 }
 
@@ -588,12 +579,11 @@ async function runLlmPath(
   let elapsedMs = 0;
   let costUsd = 0;
 
-  // Resolve the nanopayment pool once per agent, using the research tier (the
-  // agent's real tier, or higher when a solver capability trait unlocked early
-  // research + a bigger pool). When NANOPAY is off, CLI is absent, or the pool
-  // failed to provision, this stays null and the research-spend block no-ops.
-  const researchTier = params.researchTier ?? entry.tier;
-  const tierPool: TierPool | null = config.nanopay.enabled ? getTierPool(researchTier) : null;
+  // Resolve the tier's nanopayment pool once per agent. Research spend is gated
+  // strictly by the agent's real tier (3/4 only); no trait can unlock it early.
+  // When NANOPAY is off, CLI is absent, or the pool failed to provision, this
+  // stays null and the research-spend block becomes a no-op.
+  const tierPool: TierPool | null = config.nanopay.enabled ? getTierPool(entry.tier) : null;
 
   for (let i = 0; i < puzzles.length; i++) {
     const puzzle = puzzles[i]!;
@@ -614,7 +604,7 @@ async function runLlmPath(
       puzzleIdx: idxOffset + i,
       contestId,
       agentId: entry.agentId,
-      tier: researchTier,
+      tier: entry.tier,
     });
     if (research) {
       puzzleSpent6 = research.usdcAmount6;
