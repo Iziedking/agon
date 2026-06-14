@@ -95,9 +95,12 @@ export function MysteryClaimCard({
 
   const claimedPct = pool ? Math.min(100, Math.round((pool.claimed / Math.max(1, pool.max)) * 100)) : 0;
 
+  // A dry day (max 0) is intentional, not a drained pool, so it reads its own way.
+  const dryDay = !!pool && pool.max === 0;
   let buttonLabel = "CLAIM MYSTERY";
   if (busy) buttonLabel = "ROLLING…";
   else if (!activeAgentId) buttonLabel = "NO ACTIVE AGENT";
+  else if (dryDay) buttonLabel = "NO BOXES TODAY";
   else if (poolDrained) buttonLabel = "POOL DRAINED";
   else if (!operatorReady) buttonLabel = "CLAIMED TODAY";
 
@@ -119,9 +122,10 @@ export function MysteryClaimCard({
               CLAIM A TRAIT
             </h3>
             <p className="mt-2 max-w-[56ch] font-mono text-[13px] leading-[1.55] text-ink-2">
-              a global pool of mystery boxes opens once a day at 01:00 UTC, first come first served. each operator
-              claims one box per day. rarities run common, rare, epic, legendary; some come up empty. anything you
-              win sticks to your active agent and boosts its score in future contests.
+              traits are scarce. a tiny global pool opens at 01:00 UTC, first come first served, and the whole
+              network races for it. most days it is one or two boxes, some days none, a bonus day holds three. one
+              claim per operator per day; some boxes come up empty. anything you win sticks to your active agent and
+              unlocks a real, tier-scaled ability on its next runs.
             </p>
           </div>
         </div>
@@ -148,7 +152,7 @@ export function MysteryClaimCard({
           <div className="flex items-baseline justify-between">
             <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">TODAY'S POOL</span>
             <span className="font-mono text-[12px] tabular-nums text-ink">
-              {pool.remaining} / {pool.max} LEFT
+              {dryDay ? "NONE TODAY" : `${pool.remaining} / ${pool.max} LEFT`}
             </span>
           </div>
           <div className="mt-2 h-2 w-full border border-[color:var(--hairline)] bg-canvas-2">

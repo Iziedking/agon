@@ -128,13 +128,37 @@ export function rollMystery(
 
 export const COOLDOWN_MS = 24 * 60 * 60 * 1000; // legacy reference; daily UTC reset is the active rule
 
-/// Total mystery boxes available globally per UTC day. First-come, first-served.
-/// Configurable via env.
-export const DAILY_POOL_MAX: number = (() => {
-  const raw = Number(process.env.MYSTERY_DAILY_POOL);
-  if (!Number.isFinite(raw) || raw <= 0) return 100;
-  return Math.floor(raw);
-})();
+/// Traits carry real, tier-scaled power now, so the global daily mystery pool is
+/// deliberately tiny and varies day to day: most days 0, 1, or 2 boxes, with the
+/// occasional bonus day at the hard max of 3. The whole network competes for
+/// those few, first-come first-served, so a trait is a genuine find. The size is
+/// deterministic per claim day (every instance agrees, and it stays fixed across
+/// the day). Set MYSTERY_DAILY_POOL to pin a fixed pool for testing or a special
+/// event; it is still clamped to the hard max.
+export const DAILY_POOL_HARD_MAX = 3;
+
+/// FNV-1a over the day key, normalized to [0, 1). Cheap and stable.
+function hashDayKey(key: string): number {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < key.length; i++) {
+    h ^= key.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return (h >>> 0) / 0xffffffff;
+}
+
+/// How many mystery boxes the whole network can claim on the given day.
+export function dailyPoolFor(now: Date = new Date()): number {
+  const override = Number(process.env.MYSTERY_DAILY_POOL);
+  if (Number.isFinite(override) && override >= 0) {
+    return Math.min(DAILY_POOL_HARD_MAX, Math.floor(override));
+  }
+  const r = hashDayKey(claimDayKey(now));
+  if (r < 0.25) return 0; // ~25% of days: dry, nothing drops
+  if (r < 0.6) return 1; //  ~35%: a single box
+  if (r < 0.85) return 2; // ~25%: two
+  return 3; //              ~15%: bonus day, the max
+}
 
 /// Epoch milliseconds for the next mystery reset. The contract rolls over
 /// at 01:00 UTC (one hour after UTC midnight). First-come-first-served:

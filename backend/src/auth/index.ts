@@ -19,7 +19,7 @@ import { merkleProof, payoutLeaf } from "../coordinator/merkle.js";
 import { redis } from "../redis.js";
 import { issueToken, requireAuth, SESSION_COOKIE } from "./jwt.js";
 import {
-  DAILY_POOL_MAX,
+  dailyPoolFor,
   nextResetMs,
   rollMystery,
   RUG_CHANCE,
@@ -1544,9 +1544,10 @@ app.get("/mystery/pool", async (c) => {
     "select claimed::text from mystery_pool_daily where day = (((now() at time zone 'utc') - interval '1 hour'))::date",
   );
   const claimed = Number(rows[0]?.claimed ?? 0);
-  const remaining = Math.max(0, DAILY_POOL_MAX - claimed);
+  const max = dailyPoolFor();
+  const remaining = Math.max(0, max - claimed);
   return c.json({
-    max: DAILY_POOL_MAX,
+    max,
     claimed,
     remaining,
     resetsAt: nextResetMs(),
@@ -2172,11 +2173,11 @@ app.post("/mystery/claim", requireAuth, async (c) => {
     return c.json({ error: "this agent has collected every trait" }, 409);
   }
 
-  // Reserve a slot in today's global pool atomically. "Today" is the
-  // claim day in UTC+1, so the boundary lands at 23:00 UTC instead of
-  // 00:00 UTC. First-come-first-served: when the row reaches
-  // DAILY_POOL_MAX, the next claim sees a false drain rollback and the
-  // pool stays at MAX until the next reset.
+  // Reserve a slot in today's global pool atomically. "Today" is the claim day
+  // shifted -1h, so the boundary lands at 01:00 UTC. First-come-first-served:
+  // when the row reaches dailyPoolFor() (0, 1, 2, or a bonus-day 3), the next
+  // claim sees a false drain rollback and the pool stays full until the next
+  // reset. On a dry day (pool 0) the very first claim rolls back to exhausted.
   const poolRes = await query<{ claimed: number }>(
     `insert into mystery_pool_daily (day, claimed)
        values ((((now() at time zone 'utc') - interval '1 hour'))::date, 1)
@@ -2184,7 +2185,7 @@ app.post("/mystery/claim", requireAuth, async (c) => {
        returning claimed`,
   );
   const newClaimed = Number(poolRes.rows[0]?.claimed ?? 0);
-  if (newClaimed > DAILY_POOL_MAX) {
+  if (newClaimed > dailyPoolFor()) {
     await query(
       "update mystery_pool_daily set claimed = claimed - 1 where day = (((now() at time zone 'utc') - interval '1 hour'))::date",
     );
