@@ -3217,11 +3217,20 @@ app.get("/operators/:address", async (c) => {
     "select id, scout_tier, analyst_tier, solver_tier, reputation, nickname, display_mode, (skin is not null) as has_skin from agents where owner = $1 order by id",
     [address],
   );
-  const stats = await query<{ entered: string; wins: string; earned: string }>(
+  // Split by contests vs challenges so the dashboard can show the breakdown;
+  // the totals (sum of the two) match the leaderboard, which counts both.
+  const stats = await query<{
+    c_entered: string; h_entered: string;
+    c_wins: string; h_wins: string;
+    c_earned: string; h_earned: string;
+  }>(
     `select
-       (select count(distinct contest_id) from entries where operator = $1) as entered,
-       (select count(distinct contest_id) from payouts where operator = $1) as wins,
-       (select coalesce(sum(amount), 0) from payouts where operator = $1)   as earned`,
+       (select count(distinct contest_id) from entries where operator = $1)            as c_entered,
+       (select count(distinct challenge_id) from challenge_entries where operator = $1) as h_entered,
+       (select count(distinct contest_id) from payouts where operator = $1)            as c_wins,
+       (select count(distinct challenge_id) from challenge_payouts where operator = $1) as h_wins,
+       (select coalesce(sum(amount), 0) from payouts where operator = $1)              as c_earned,
+       (select coalesce(sum(amount), 0) from challenge_payouts where operator = $1)     as h_earned`,
     [address],
   );
   const contests = await query<{ contest_id: string; contest_type: number | null; status: string | null; won: string | null; claimed: boolean }>(
@@ -3236,7 +3245,9 @@ app.get("/operators/:address", async (c) => {
     [address],
   );
 
-  const s = stats.rows[0] ?? { entered: "0", wins: "0", earned: "0" };
+  const s = stats.rows[0] ?? { c_entered: "0", h_entered: "0", c_wins: "0", h_wins: "0", c_earned: "0", h_earned: "0" };
+  const cEarned = BigInt(s.c_earned ?? "0");
+  const hEarned = BigInt(s.h_earned ?? "0");
   // Total reputation is the sum across the operator's agents (raw, scaled 1e6).
   const reputation = agents.rows.reduce((sum, a) => sum + BigInt(a.reputation ?? "0"), 0n).toString();
   return c.json({
@@ -3252,7 +3263,13 @@ app.get("/operators/:address", async (c) => {
     syndicateId: op.rows[0]?.current_syndicate_id ?? null,
     cycles: Number(op.rows[0]?.cycles ?? "0"),
     reputation,
-    stats: { entered: Number(s.entered), wins: Number(s.wins), earned: s.earned ?? "0" },
+    stats: {
+      entered: Number(s.c_entered) + Number(s.h_entered),
+      wins: Number(s.c_wins) + Number(s.h_wins),
+      earned: (cEarned + hEarned).toString(),
+      contests: { entered: Number(s.c_entered), wins: Number(s.c_wins), earned: s.c_earned ?? "0" },
+      challenges: { entered: Number(s.h_entered), wins: Number(s.h_wins), earned: s.h_earned ?? "0" },
+    },
     agents: agents.rows.map((r) => ({
       id: Number(r.id),
       scoutTier: r.scout_tier,

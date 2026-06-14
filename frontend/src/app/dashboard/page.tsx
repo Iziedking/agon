@@ -133,6 +133,8 @@ export default function DashboardPage() {
   const winRate = safeProfile.stats.entered > 0
     ? Math.round((safeProfile.stats.wins / safeProfile.stats.entered) * 100)
     : 0;
+  // Compact USDC for the stat captions: "93.67" without the trailing " USDC".
+  const usdcShort = (amount6: string | undefined) => formatUsdcString(amount6 ?? "0").replace(" USDC", "");
 
   function pickAgent(id: number) {
     if (!address) return;
@@ -168,9 +170,22 @@ export default function DashboardPage() {
       {/* Stats row */}
       <section className="mx-auto max-w-[1600px] px-6 py-10">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatBlock label="EARNED" value={formatUsdcString(safeProfile.stats.earned)} accent />
-          <StatBlock label="ENTERED" value={String(safeProfile.stats.entered)} />
-          <StatBlock label="WIN RATE" value={`${winRate}%`} caption={`${safeProfile.stats.wins} wins of ${safeProfile.stats.entered}`} />
+          <StatBlock
+            label="EARNED"
+            value={formatUsdcString(safeProfile.stats.earned)}
+            accent
+            caption={`${usdcShort(safeProfile.stats.contests?.earned)} contest · ${usdcShort(safeProfile.stats.challenges?.earned)} challenge`}
+          />
+          <StatBlock
+            label="ENTERED"
+            value={String(safeProfile.stats.entered)}
+            caption={`${safeProfile.stats.contests?.entered ?? 0} contest · ${safeProfile.stats.challenges?.entered ?? 0} challenge`}
+          />
+          <StatBlock
+            label="WIN RATE"
+            value={`${winRate}%`}
+            caption={`${safeProfile.stats.wins} wins · ${safeProfile.stats.contests?.wins ?? 0}C / ${safeProfile.stats.challenges?.wins ?? 0}H`}
+          />
           <StatBlock label="REPUTATION" value={String(formatReputation(safeProfile.reputation))} caption={`${safeProfile.cycles} cycles`} />
         </div>
       </section>

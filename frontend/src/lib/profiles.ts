@@ -61,7 +61,15 @@ export interface OperatorProfile {
   syndicateId: string | null;
   cycles: number;
   reputation: string; // raw, scaled 1e6, as a string
-  stats: { entered: number; wins: number; earned: string };
+  /// Totals (contests + challenges, matching the leaderboard) plus the
+  /// per-source breakdown so the dashboard can show how the total splits.
+  stats: {
+    entered: number;
+    wins: number;
+    earned: string;
+    contests?: { entered: number; wins: number; earned: string };
+    challenges?: { entered: number; wins: number; earned: string };
+  };
   agents: OperatorAgent[];
   contests: OperatorContest[];
 }
