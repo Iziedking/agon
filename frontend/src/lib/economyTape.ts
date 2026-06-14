@@ -8,6 +8,7 @@
 /// use those verbatim and skip the derivation.
 
 import type { StandingsEntry, TapeEvent, TapeVerb } from "@/lib/live";
+import { EXPLORER as ARC_EXPLORER } from "@/lib/arc";
 
 /// One colour per verb, drawn from the syndicate palette. The leading square in
 /// each tape row uses it; numerals and copy stay ink (pink is reserved).
@@ -35,7 +36,7 @@ export const VERB_LABEL: Record<TapeVerb, string> = {
 };
 
 const EXPLORER: Record<string, string> = {
-  arc: "https://arcscan.net/tx/",
+  arc: `${ARC_EXPLORER}/tx/`,
   base: "https://basescan.org/tx/",
   "base-sepolia": "https://sepolia.basescan.org/tx/",
   matic: "https://polygonscan.com/tx/",
@@ -78,10 +79,12 @@ export function deriveTapeEvents(entries: StandingsEntry[]): TapeEvent[] {
     const p = e.progress;
     if (!p) continue;
 
-    // Forward path: backend already normalized the rows.
+    // New-verb rows the backend attached directly (FUND / BRIDGE / STREAM /
+    // SETTLE), which have no legacy array to derive from. Additive: the
+    // SWAP / PAY / TRADE rows still derive from the per-kind arrays below, and
+    // the accumulation hook de-dupes by tx hash so nothing double-counts.
     if (p.events && p.events.length > 0) {
       for (const ev of p.events) rows.push({ ...ev, agentId: ev.agentId || e.agentId });
-      continue;
     }
 
     if (p.kind === "scout") {
@@ -172,7 +175,10 @@ export interface EconomyTotals {
   txCount: number;
 }
 
-const MOVED_VERBS = new Set<TapeVerb>(["SWAP", "TRADE", "SETTLE", "BRIDGE", "REBATE", "FUND"]);
+// "Moved" is value agents pushed through real economic activity. Funding drips
+// (FUND) are platform capital provisioning, not agent output, so they show on
+// the tape and count as on-chain tx but stay out of the moved total.
+const MOVED_VERBS = new Set<TapeVerb>(["SWAP", "TRADE", "SETTLE", "BRIDGE", "REBATE"]);
 const PAID_VERBS = new Set<TapeVerb>(["PAY", "STREAM"]);
 
 /// Aggregate the running totals for the output scoreboard.

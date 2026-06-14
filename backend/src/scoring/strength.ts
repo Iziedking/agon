@@ -37,6 +37,65 @@ export const STAT_WEIGHTS: Record<ContestType, Record<StatName, number>> = {
 /// trait-loaded loadout can never out-multiply tier.
 export const TRAIT_STACK_CAP = 1.40;
 
+/// How strongly traits express at each tier. A trait's effect (both the score
+/// multiplier and the concrete scout abilities below) is scaled by this, so the
+/// SAME trait does more on a higher-tier agent. This is what makes "tier 4 with
+/// the right three traits" the strongest loadout in the arena: low tiers get a
+/// fraction of the trait's effect, tier 4 gets it amplified.
+export const TIER_TRAIT_SCALE = [0.4, 0.6, 0.8, 1.0, 1.3] as const;
+
+export function tierTraitScale(tier: number): number {
+  const t = Math.max(0, Math.min(4, Math.floor(tier)));
+  return TIER_TRAIT_SCALE[t]!;
+}
+
+/// Concrete scout (volume) abilities a trait unlocks, separate from the abstract
+/// score multiplier. `size` raises the per-swap USDC size (whale behaviour);
+/// `count` raises the number of round-trips (speed behaviour). Both are
+/// fractional bonuses, tier-scaled at apply time. Traits absent here grant no
+/// scout ability. This is the "trait -> specific utility" mapping: equipping
+/// Whale Spotter on a volume run literally makes the agent trade bigger.
+export interface ScoutAbility {
+  size?: number;
+  count?: number;
+}
+
+export const SCOUT_TRAIT_ABILITY: Record<string, ScoutAbility> = {
+  whale_spotter: { size: 0.35 },
+  volume_titan: { size: 0.3, count: 0.1 },
+  liquidity_hunter: { size: 0.2, count: 0.05 },
+  speed_demon: { count: 0.2 },
+  mempool_diver: { count: 0.15 },
+  gas_arb: { count: 0.12 },
+  gas_whisperer: { count: 0.08 },
+  arc_initiate: { count: 0.06 },
+  arc_sovereign: { size: 0.15, count: 0.15 },
+  chain_breaker: { size: 0.12, count: 0.12 },
+  circle_protocol: { size: 0.1, count: 0.1 },
+};
+
+/// Aggregate the equipped loadout into a per-swap size multiplier and a swap
+/// count multiplier for the scout, tier-scaled. The raw bonus is capped before
+/// scaling so three size traits can't run the trade away, and the wallet
+/// balance clamps it again at execution.
+export function scoutTraitAbilities(
+  equipped: ReadonlyArray<string>,
+  tier: number,
+): { sizeMult: number; countMult: number } {
+  const scale = tierTraitScale(tier);
+  let size = 0;
+  let count = 0;
+  for (const id of equipped) {
+    const ab = SCOUT_TRAIT_ABILITY[id.toLowerCase()];
+    if (!ab) continue;
+    size += ab.size ?? 0;
+    count += ab.count ?? 0;
+  }
+  size = Math.min(0.5, size) * scale;
+  count = Math.min(0.5, count) * scale;
+  return { sizeMult: 1 + size, countMult: 1 + count };
+}
+
 /// Per-trait multiplier when the contest type matches the trait's
 /// domain. Traits not listed here are pure flavor (no scoring impact)
 /// or trigger active routing handled elsewhere (e.g. Lucky Charm's
@@ -125,7 +184,11 @@ export function trainingMultiplier(
 export function traitMultiplier(
   equipped: ReadonlyArray<string>,
   contest: ContestType,
+  tier = 4,
 ): { multiplier: number; routing: TraitEffect["routing"] | null } {
+  // Tier scales how much of each trait's edge expresses, so the same trait is
+  // worth more on a tier-4 agent than a tier-0 one.
+  const scale = tierTraitScale(tier);
   let mul = 1.0;
   let routing: TraitEffect["routing"] | null = null;
   for (const traitId of equipped) {
@@ -133,7 +196,7 @@ export function traitMultiplier(
     if (!fx) continue;
     const applies = fx.domain === "any" || fx.domain === contest;
     if (!applies) continue;
-    mul *= fx.multiplier;
+    mul *= 1 + (fx.multiplier - 1) * scale;
     if (fx.routing && !routing) routing = fx.routing;
   }
   return { multiplier: Math.min(TRAIT_STACK_CAP, mul), routing };
@@ -159,7 +222,7 @@ export function effectiveStrength(
 ): StrengthBreakdown {
   const base = tierBase(tier);
   const train = trainingMultiplier(stats, contest, tier);
-  const { multiplier: trait, routing } = traitMultiplier(equipped, contest);
+  const { multiplier: trait, routing } = traitMultiplier(equipped, contest, tier);
   return {
     tier,
     tierBase: base,

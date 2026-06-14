@@ -30,36 +30,36 @@ export interface Trait {
 /// been awarded in production.
 export const TRAITS: Trait[] = [
   // Commons (7) - easy wins, light buffs, get a few quickly.
-  { id: "lucky_charm",      name: "Lucky Charm",       rarity: "common",    body: "small luck nudge across every contest type." },
-  { id: "speed_demon",      name: "Speed Demon",       rarity: "common",    body: "moves first on volume runs." },
-  { id: "hot_hand",         name: "Hot Hand",          rarity: "common",    body: "streak bonus after a win." },
-  { id: "quick_draw",       name: "Quick Draw",        rarity: "common",    body: "shaves elapsed time on solver answers." },
-  { id: "dice_roller",      name: "Dice Roller",       rarity: "common",    body: "small randomness bias across any contest." },
-  { id: "mempool_diver",    name: "Mempool Diver",     rarity: "common",    body: "tighter scout op cadence." },
-  { id: "crystal_ball",     name: "Crystal Ball",      rarity: "common",    body: "soft prior on analyst calls." },
+  { id: "lucky_charm",      name: "Lucky Charm",       rarity: "common",    body: "small luck nudge across every kind. scaled by tier." },
+  { id: "speed_demon",      name: "Speed Demon",       rarity: "common",    body: "more swaps per volume run, up to 20% more trades. scaled by tier." },
+  { id: "hot_hand",         name: "Hot Hand",          rarity: "common",    body: "solver line. rides a streak on puzzle rounds (puzzle stays pure skill)." },
+  { id: "quick_draw",       name: "Quick Draw",        rarity: "common",    body: "solver line. faster answers on puzzle rounds (puzzle stays pure skill)." },
+  { id: "dice_roller",      name: "Dice Roller",       rarity: "common",    body: "small randomness bias across any kind. scaled by tier." },
+  { id: "mempool_diver",    name: "Mempool Diver",     rarity: "common",    body: "15% more swaps on volume runs. scaled by tier." },
+  { id: "crystal_ball",     name: "Crystal Ball",      rarity: "common",    body: "soft prior on analyst calls, small score edge. scaled by tier." },
 
   // Rares (7) - mid-grade, domain-specific edges.
-  { id: "pattern_reader",   name: "Pattern Reader",    rarity: "rare",      body: "sharper on prediction markets." },
-  { id: "whale_spotter",    name: "Whale Spotter",     rarity: "rare",      body: "edge in liquidity contests." },
-  { id: "gas_whisperer",    name: "Gas Whisperer",     rarity: "rare",      body: "tighter execution on scout runs." },
-  { id: "liquidity_hunter", name: "Liquidity Hunter",  rarity: "rare",      body: "finds the deeper pool faster." },
-  { id: "precision_engine", name: "Precision Engine",  rarity: "rare",      body: "lower analyst variance per call." },
-  { id: "gas_arb",          name: "Gas Arb",           rarity: "rare",      body: "free volume during cheap blocks." },
-  { id: "tape_reader",      name: "Tape Reader",       rarity: "rare",      body: "reads the order tape, edges analyst." },
+  { id: "pattern_reader",   name: "Pattern Reader",    rarity: "rare",      body: "sharper prediction calls, up to 10% more analyst score. scaled by tier." },
+  { id: "whale_spotter",    name: "Whale Spotter",     rarity: "rare",      body: "bigger trades, up to 35% larger per swap on volume runs. scaled by tier." },
+  { id: "gas_whisperer",    name: "Gas Whisperer",     rarity: "rare",      body: "tighter execution, a few more swaps on volume runs. scaled by tier." },
+  { id: "liquidity_hunter", name: "Liquidity Hunter",  rarity: "rare",      body: "deeper pools, 20% bigger fills on volume runs. scaled by tier." },
+  { id: "precision_engine", name: "Precision Engine",  rarity: "rare",      body: "lower variance, up to 12% more analyst score. scaled by tier." },
+  { id: "gas_arb",          name: "Gas Arb",           rarity: "rare",      body: "12% more swaps on volume runs. scaled by tier." },
+  { id: "tape_reader",      name: "Tape Reader",       rarity: "rare",      body: "reads the tape, up to 10% more analyst score. scaled by tier." },
 
   // Epics (6) - heavy specialisation.
-  { id: "puzzle_savant",    name: "Puzzle Savant",     rarity: "epic",      body: "crushes complex solves." },
-  { id: "arc_initiate",     name: "Arc Initiate",      rarity: "epic",      body: "first ones through the gate carry weight." },
-  { id: "deep_state",       name: "Deep State",        rarity: "epic",      body: "reads onchain state most agents miss." },
-  { id: "quant_oracle",     name: "Quant Oracle",      rarity: "epic",      body: "model ensemble for analyst calls." },
-  { id: "solver_circuit",   name: "Solver Circuit",    rarity: "epic",      body: "scaffolded reasoning on every solve." },
-  { id: "volume_titan",     name: "Volume Titan",      rarity: "epic",      body: "uncapped per-op size on scout runs." },
+  { id: "puzzle_savant",    name: "Puzzle Savant",     rarity: "epic",      body: "solver line. crushes complex puzzle solves (puzzle stays pure skill)." },
+  { id: "arc_initiate",     name: "Arc Initiate",      rarity: "epic",      body: "edge across every kind, plus a small volume bump. scaled by tier." },
+  { id: "deep_state",       name: "Deep State",        rarity: "epic",      body: "reads onchain state most miss, up to 15% more analyst score, calibrated. scaled by tier." },
+  { id: "quant_oracle",     name: "Quant Oracle",      rarity: "epic",      body: "model ensemble, up to 18% more analyst score. scaled by tier." },
+  { id: "solver_circuit",   name: "Solver Circuit",    rarity: "epic",      body: "solver line. scaffolded reasoning on puzzle rounds (puzzle stays pure skill)." },
+  { id: "volume_titan",     name: "Volume Titan",      rarity: "epic",      body: "whale-class trades, 30% bigger per swap and 10% more of them. scaled by tier." },
 
   // Legendaries (4) - the trophies.
-  { id: "chain_breaker",    name: "Chain Breaker",     rarity: "legendary", body: "rare boost across every contest family." },
-  { id: "oracle_eye",       name: "Oracle's Eye",      rarity: "legendary", body: "edge on the noisiest kinds." },
-  { id: "arc_sovereign",    name: "Arc Sovereign",     rarity: "legendary", body: "treats Arc as its home turf." },
-  { id: "circle_protocol",  name: "Circle Protocol",   rarity: "legendary", body: "calibrated scoring across the board." },
+  { id: "chain_breaker",    name: "Chain Breaker",     rarity: "legendary", body: "boost across every family, with bigger and more frequent trades on volume. scaled by tier." },
+  { id: "oracle_eye",       name: "Oracle's Eye",      rarity: "legendary", body: "up to 20% more analyst score on the noisiest markets. scaled by tier." },
+  { id: "arc_sovereign",    name: "Arc Sovereign",     rarity: "legendary", body: "Arc home turf. strongest cross-kind edge, plus bigger and more frequent trades. scaled by tier." },
+  { id: "circle_protocol",  name: "Circle Protocol",   rarity: "legendary", body: "calibrated scoring across the board, plus a volume bump. scaled by tier." },
 ];
 
 /// Rarity weights for the mystery picker. Skewed toward commons so a winning

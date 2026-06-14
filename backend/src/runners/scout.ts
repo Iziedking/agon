@@ -7,10 +7,10 @@ import { config } from "../config/index.js";
 import { query } from "../db/pool.js";
 import { swapEnabled, executeSwap } from "../chain/appKitSwap.js";
 import { scoutScore } from "../scoring/index.js";
-import type { AgentResult, ContestEntryInput, Runner } from "./types.js";
+import type { AgentResult, ContestEntryInput, Runner, TapeEvent } from "./types.js";
 import { callModel, llmConfigured, recordLlmRun, readExistingRuns, DailyKillError } from "./llm/client.js";
 import { resolveRuntimeParams, loadAgentStats, type RuntimeParams } from "./llm/tierConfig.js";
-import { effectiveStrength } from "../scoring/strength.js";
+import { effectiveStrength, scoutTraitAbilities } from "../scoring/strength.js";
 import { getLoadout } from "../auth/loadouts.js";
 import { applyRouting } from "./solver.js";
 import {
@@ -460,6 +460,13 @@ export interface ScoutRunCtx {
 /// race also stops at deadlineMs (resolveDeadline - 60s), whichever is sooner.
 const RACE_MAX_SECONDS = Number(process.env.SCOUT_RACE_SECONDS ?? "90");
 const RACE_INTER_ROUND_MS = Number(process.env.SCOUT_RACE_DELAY_MS ?? "400");
+// B6 streaming payments. A tier-3+ scout keeps a live price-feed subscription
+// running while it trades: a real x402 micro-payment every few legs, surfaced
+// as a STREAM row on the economy tape. Both gates below keep it from eating the
+// swap race or the tier budget (paidAgentResearch enforces the budget too).
+// SCOUT_STREAM_TICKS=0 disables it.
+const STREAM_TICKS_MAX = Number(process.env.SCOUT_STREAM_TICKS ?? "2");
+const STREAM_EVERY_LEGS = Number(process.env.SCOUT_STREAM_EVERY_LEGS ?? "5");
 const raceSleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 interface SwapAbility {
@@ -477,6 +484,7 @@ async function prepareSwapAbility(
   agentId: number,
   tier: number,
   targetRoundTrips: number,
+  sizeBoost = 1,
 ): Promise<SwapAbility | null> {
   if (!config.scout.masterMnemonic) return null;
   const account = mnemonicToAccount(config.scout.masterMnemonic, { addressIndex: agentId });
@@ -499,7 +507,10 @@ async function prepareSwapAbility(
   // every leg's gas; no need to scale the reserve by the full round count.
   const gasReserveUsdc = Number(process.env.SCOUT_GAS_RESERVE_USDC ?? "0.10");
   const spendableUsdc = Math.max(0, balanceUsdc - gasReserveUsdc * 3);
-  const perSwapUsdc = Math.min(fundingCapUsdc(tier), spendableUsdc);
+  // Whale-type traits raise the per-swap size above the tier funding cap; the
+  // wallet balance still clamps it, so a bigger trade needs the wallet to back
+  // it. This is the on-chain expression of "Whale Spotter unlocks bigger trades".
+  const perSwapUsdc = Math.min(fundingCapUsdc(tier) * sizeBoost, spendableUsdc);
   return { privateKey, perSwapUsdc, targetLegs };
 }
 
@@ -533,6 +544,9 @@ interface ScoutPlan {
   strategy: ScoutStrategy;
   strength: ReturnType<typeof effectiveStrength>;
   opBoost: number;
+  /// Per-swap size multiplier from whale-type traits (tier-scaled). Bigger
+  /// trades, not just more of them.
+  sizeBoost: number;
   /// Trait-boosted target round-trips, clamped to the tier op cap.
   target: number;
 }
@@ -578,9 +592,14 @@ export class ScoutRunner implements Runner {
       const stats = await loadAgentStats(e.agentId).catch(() => ({}));
       const equipped = await getLoadout(source, contestId, e.agentId).catch(() => [] as string[]);
       const strength = effectiveStrength(e.tier, stats, equipped, "scout");
-      const opBoost = strength.training * strength.traits;
+      // Traits unlock concrete, tier-scaled scout abilities: speed traits turn
+      // training into MORE swaps (countMult), whale traits make each swap BIGGER
+      // (sizeBoost). The right three for a volume round genuinely change what the
+      // agent does on-chain, and tier 4 gets the strongest version of each.
+      const { sizeMult, countMult } = scoutTraitAbilities(equipped, e.tier);
+      const opBoost = strength.training * countMult;
       const target = Math.max(1, Math.min(Math.round(strategy.opsCount * opBoost), limit.maxOps));
-      plans.push({ entry: e, account, strategy, strength, opBoost, target });
+      plans.push({ entry: e, account, strategy, strength, opBoost, sizeBoost: sizeMult, target });
     }
 
     const execMap =
@@ -666,6 +685,10 @@ export class ScoutRunner implements Runner {
       txHashes: Hash[];
       txVolumes6: string[];
       legs: number;
+      tier: number;
+      /// New-verb tape rows (STREAM subscription ticks) for this agent.
+      events: TapeEvent[];
+      streamTicks: number;
     }
     const lanes: Lane[] = [];
     for (const p of plans) {
@@ -680,7 +703,7 @@ export class ScoutRunner implements Runner {
         maxOps,
         Math.max(1, Math.round(Math.max(p.strategy.opsCount, config.scout.swapsPerRun) * p.opBoost)),
       );
-      const ability = await prepareSwapAbility(p.entry.agentId, p.entry.tier, raceTarget).catch(() => null);
+      const ability = await prepareSwapAbility(p.entry.agentId, p.entry.tier, raceTarget, p.sizeBoost).catch(() => null);
       lanes.push({
         agentId: p.entry.agentId,
         operator: p.entry.operator,
@@ -690,6 +713,9 @@ export class ScoutRunner implements Runner {
         txHashes: [],
         txVolumes6: [],
         legs: 0,
+        tier: p.entry.tier,
+        events: [],
+        streamTicks: 0,
       });
     }
 
@@ -712,6 +738,7 @@ export class ScoutRunner implements Runner {
             opsCount: l.legs,
             recent: l.txHashes.slice(-6).reverse().map((h) => h as string),
             recentVolumes: l.txVolumes6.slice(-6).reverse(),
+            events: l.events.length > 0 ? l.events : undefined,
           },
         }));
       ctx.broadcast({ type: msgType, [idKey]: eventId, entries: ranked });
@@ -744,6 +771,45 @@ export class ScoutRunner implements Runner {
         }
         await recordSwaps(lane.agentId, legs.length).catch(() => {});
         emit();
+
+        // Streaming payment: a tier-3+ scout subscribes to a live price feed
+        // while it trades, paying a real x402 micro-payment every few legs. The
+        // tier + budget gates live inside paidAgentResearch (returns null when
+        // the tier is too low or the pool is drained), and the leg / tick caps
+        // keep it from slowing the swap race. Each settled tick is a STREAM row.
+        if (
+          STREAM_TICKS_MAX > 0 &&
+          config.nanopay.scoutPriceEndpoint &&
+          lane.streamTicks < STREAM_TICKS_MAX &&
+          lane.legs % STREAM_EVERY_LEGS === 0
+        ) {
+          const sub = await paidAgentResearch({
+            agentId: lane.agentId,
+            contestId: ctx.source === "challenge" ? undefined : eventId,
+            challengeId: ctx.source === "challenge" ? eventId : undefined,
+            puzzleIdx: 100 + lane.streamTicks,
+            tier: lane.tier,
+            endpoint: buildPriceUrl(config.nanopay.scoutPriceEndpoint, ["ETH", "USDC"]),
+            label: "live price feed",
+            chain: config.nanopay.scoutPriceChain,
+            summarize: summarizePrices,
+          }).catch(() => null);
+          if (sub?.txHash) {
+            lane.events.push({
+              agentId: lane.agentId,
+              verb: "STREAM",
+              amount6: sub.usdcAmount6.toString(),
+              token: "USDC",
+              txHash: sub.txHash,
+              chain: config.nanopay.scoutPriceChain ?? "base",
+              label: "live price feed",
+              ts: Date.now(),
+            });
+            lane.streamTicks++;
+            emit();
+          }
+        }
+
         if (RACE_INTER_ROUND_MS > 0) await raceSleep(RACE_INTER_ROUND_MS);
       }
     }
