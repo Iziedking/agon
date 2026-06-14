@@ -108,22 +108,34 @@ export function generatePuzzles(seed: number, count: number, difficulty: Difficu
   return out;
 }
 
-/// Async generation that prefers the verified, source-grounded quiz POOL for the
-/// quiz slots, falling back to the static bank when the pool is thin. The
+/// Fraction of a round's quiz slots that get a fresh, LLM-generated question
+/// from the pool. The curated hardcoded bank is the backbone (cheap, instant);
+/// only this slice is swapped for variety, so rounds never feel identical
+/// without paying to generate every question. 0 = pure bank. Default ~1/3.
+const FRESH_RATIO = (() => {
+  const raw = Number(process.env.PUZZLE_FRESH_RATIO);
+  if (!Number.isFinite(raw) || raw < 0) return 0.34;
+  return Math.min(1, raw);
+})();
+
+/// Async generation. The hardcoded bank carries most of the round; a small
+/// fraction of the quiz slots are swapped for fresh, source-grounded,
+/// grader-verified pool questions so the same questions don't always show. The
 /// computable families (arithmetic, quant, decode, routing, pattern) stay
 /// deterministic and code-verified. Same mix, order, and seeding as
-/// generatePuzzles; only quiz items are swapped for fresh, sourced pool
-/// questions, so a round rarely repeats a quiz. This is what the runner calls.
+/// generatePuzzles. This is what the runner calls.
 export async function generatePuzzlesAsync(
   seed: number,
   count: number,
   difficulty: Difficulty = 2,
 ): Promise<Puzzle[]> {
   const base = generatePuzzles(seed, count, difficulty);
+  if (FRESH_RATIO <= 0) return base;
   const quizSlots: number[] = [];
   for (let i = 0; i < base.length; i++) if (base[i]!.kind === "quiz") quizSlots.push(i);
-  if (quizSlots.length === 0) return base;
-  const fresh = await drawQuizzesFromPool(difficulty, quizSlots.length).catch(() => [] as Puzzle[]);
+  const freshCount = Math.round(quizSlots.length * FRESH_RATIO);
+  if (freshCount <= 0) return base;
+  const fresh = await drawQuizzesFromPool(difficulty, freshCount).catch(() => [] as Puzzle[]);
   for (let j = 0; j < fresh.length && j < quizSlots.length; j++) {
     base[quizSlots[j]!] = fresh[j]!;
   }

@@ -21,6 +21,29 @@ function genModel(): string {
   return process.env.PUZZLE_GEN_MODEL ?? config.llm.model;
 }
 
+/// Generation never writes contest audit rows, so it sits outside the solver's
+/// llm_runs-based daily kill. To keep total LLM cost bounded and predictable, it
+/// holds its OWN tiny daily budget (default $0.25). Combined with the pool-full
+/// gate, lifetime generation cost is a few cents: the pool fills once and then
+/// idles. Set PUZZLE_GEN_DAILY_USD=0 to remove the cap (the pool gate still
+/// bounds it). In-memory and reset per UTC day.
+const GEN_DAILY_USD = Number(process.env.PUZZLE_GEN_DAILY_USD ?? "0.25");
+let genDay = "";
+let genSpent = 0;
+
+function genBudgetLeft(): boolean {
+  const today = new Date().toISOString().slice(0, 10);
+  if (today !== genDay) {
+    genDay = today;
+    genSpent = 0;
+  }
+  return GEN_DAILY_USD <= 0 || genSpent < GEN_DAILY_USD;
+}
+
+function noteGenSpend(usd: number): void {
+  genSpent += usd;
+}
+
 /// FNV-1a hex hash of normalized question text, for dedupe.
 function contentHash(question: string): string {
   const s = question.trim().toLowerCase().replace(/\s+/g, " ");
@@ -84,6 +107,7 @@ async function generateQuiz(fact: CorpusFact, difficulty: 1 | 2 | 3): Promise<Ge
       maxTokens: 400,
       temperature: 0.9,
     });
+    noteGenSpend(out.costUsd);
     const parsed = parseJsonObject(out.text);
     return validGenQuiz(parsed) ? parsed : null;
   } catch {
@@ -110,6 +134,7 @@ async function gradeQuiz(q: GenQuiz): Promise<number | null> {
       maxTokens: 8,
       temperature: 0,
     });
+    noteGenSpend(out.costUsd);
     const m = out.text.toUpperCase().match(/[A-D]/);
     if (!m) return null;
     return LETTERS.indexOf(m[0] as (typeof LETTERS)[number]);
@@ -126,6 +151,8 @@ export async function topUpQuizPool(difficulty: 1 | 2 | 3, perFact = 1): Promise
   const facts = corpusForDifficulty(difficulty);
   let added = 0;
   for (const fact of facts) {
+    // Stop the moment the tiny generation budget is spent for the day.
+    if (!genBudgetLeft()) break;
     for (let n = 0; n < perFact; n++) {
       const gen = await generateQuiz(fact, difficulty);
       if (!gen) continue;
@@ -221,10 +248,11 @@ export async function drawQuizzesFromPool(difficulty: 1 | 2 | 3, n: number): Pro
   }
 }
 
-/// Per-difficulty target pool size. Once a band has this many verified quizzes,
-/// the top-up idles and contests just reuse them least-recently-used. Raise it
-/// to grow the rotation. Generation only runs when the LLM is configured.
-const POOL_TARGET = Number(process.env.PUZZLE_POOL_TARGET ?? "24");
+/// Per-difficulty target pool size. The bank carries most quiz slots; the pool
+/// only sprinkles in fresh ones, so it can stay small. Once a band has this
+/// many verified quizzes the top-up idles and contests reuse them
+/// least-recently-used. Raise it to widen the rotation. LLM required.
+const POOL_TARGET = Number(process.env.PUZZLE_POOL_TARGET ?? "16");
 const TOPUP_EVERY_MS = Number(process.env.PUZZLE_POOL_TOPUP_SECONDS ?? "900") * 1000;
 
 /// Background loop that keeps the verified quiz pool stocked across the three
