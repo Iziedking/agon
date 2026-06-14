@@ -78,9 +78,18 @@ export const CONTEST_STATUS = ["Pending", "Open", "Scoring", "Settled", "Cancell
 
 const ZERO = "0x0000000000000000000000000000000000000000";
 
+// On-chain metric names map to readable labels. "brier" is the Brier score
+// (forecast accuracy) and reads as jargon, so it shows as "accuracy".
+const METRIC_DISPLAY: Record<string, string> = {
+  VOLUME: "VOLUME",
+  PNL: "PNL",
+  BRIER: "ACCURACY",
+  PUZZLE: "PUZZLE",
+  ACTIVITY: "ACTIVITY",
+};
 const METRIC_LABELS: Record<string, string> = {};
 for (const m of ["VOLUME", "PNL", "BRIER", "PUZZLE", "ACTIVITY"]) {
-  METRIC_LABELS[keccak256(toBytes(m))] = m;
+  METRIC_LABELS[keccak256(toBytes(m))] = METRIC_DISPLAY[m] ?? m;
 }
 
 export function metricLabel(hash: string): string {

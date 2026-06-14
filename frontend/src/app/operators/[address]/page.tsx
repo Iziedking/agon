@@ -229,14 +229,12 @@ export default function OperatorPage() {
                 isMe={isMe}
                 handle={profile !== "loading" ? profile?.telegramUsername ?? null : null}
                 telegramId={profile !== "loading" ? profile?.telegramId ?? null : null}
-                avatarUrl={
-                  profile !== "loading"
-                    ? (profile?.telegramAvatar
-                        ?? (profile?.telegramUsername
-                          ? `https://unavatar.io/telegram/${profile.telegramUsername}`
-                          : null))
-                    : null
-                }
+                // Telegram avatars can't be resolved from a username (unavatar
+                // returns a blank circle), so we only use the photo captured at
+                // link time. TelegramRow backfills it via the Bot API when it's
+                // missing, and shows a clean initial otherwise.
+                avatarUrl={profile !== "loading" ? profile?.telegramAvatar ?? null : null}
+                onRefreshed={async () => setProfile(await fetchOperator(address))}
                 onUnbind={async () => {
                   await fetch(`${AUTH_URL}/auth/telegram/unbind`, { method: "POST", credentials: "include" });
                   setProfile(await fetchOperator(address));
@@ -806,17 +804,31 @@ function TelegramRow({
   handle,
   telegramId,
   avatarUrl,
+  onRefreshed,
   onUnbind,
 }: {
   isMe: boolean;
   handle: string | null;
   telegramId: string | null;
   avatarUrl: string | null;
+  onRefreshed: () => Promise<void>;
   onUnbind: () => Promise<void>;
 }) {
   const [botUsername, setBotUsername] = useState<string | null>(null);
   const [configured, setConfigured] = useState<boolean | null>(null);
   const widgetMount = useRef<HTMLDivElement>(null);
+  const refreshTried = useRef(false);
+
+  // Backfill the avatar once for an own profile that's linked but has no photo
+  // (e.g. linked before we captured photos). The Bot API can usually fetch it.
+  useEffect(() => {
+    if (!isMe || !handle || avatarUrl || refreshTried.current) return;
+    refreshTried.current = true;
+    void fetch(`${AUTH_URL}/auth/telegram/refresh-avatar`, { method: "POST", credentials: "include" })
+      .then((r) => r.json())
+      .then((d: { hasAvatar?: boolean }) => { if (d?.hasAvatar) void onRefreshed(); })
+      .catch(() => {});
+  }, [isMe, handle, avatarUrl, onRefreshed]);
 
   useEffect(() => {
     let live = true;
@@ -876,6 +888,14 @@ function TelegramRow({
             decoding="async"
             className="h-9 w-9 flex-none rounded-full bg-canvas-3 object-cover"
           />
+        ) : handle ? (
+          // No captured photo: a clean Telegram-blue initial, not a blank circle.
+          <span
+            aria-hidden
+            className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-[#229ED9] font-mono text-[13px] font-medium text-white"
+          >
+            {handle.slice(0, 1).toUpperCase()}
+          </span>
         ) : null}
         <div className="min-w-0">
           <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">TELEGRAM</div>

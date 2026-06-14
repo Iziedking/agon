@@ -7,6 +7,11 @@ import { formatUsdc6, loadWin, placeVerb } from "./winData";
 /// URL (satori never has to fetch a remote image mid-render, which would risk
 /// failing the whole card).
 
+// nodejs (we use Buffer for the avatar) + always render on-demand so the card
+// is never statically pre-generated with placeholder params (which left the
+// unfurl with no image).
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 export const alt = "I won on ArcRun";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";

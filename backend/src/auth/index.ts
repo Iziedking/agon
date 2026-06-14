@@ -3478,6 +3478,26 @@ app.post("/auth/telegram/unbind", requireAuth, async (c) => {
   return c.json({ ok: true });
 });
 
+// Backfill the Telegram avatar for an already-linked operator via the Bot API.
+// Recovers a pfp for users who linked before we captured photos (or whose
+// photo wasn't fetchable then) without forcing a re-link. No-op when Telegram
+// isn't linked or the photo still isn't fetchable (privacy / no photo set).
+app.post("/auth/telegram/refresh-avatar", requireAuth, async (c) => {
+  if (!telegramConfigured()) return c.json({ ok: false, hasAvatar: false });
+  const address = c.get("address");
+  const { rows } = await query<{ telegram_id: string | null }>(
+    "select telegram_id from operators where address = $1",
+    [address],
+  );
+  const tgId = rows[0]?.telegram_id;
+  if (!tgId) return c.json({ ok: false, hasAvatar: false });
+  const avatar = await fetchTelegramAvatarDataUrl(tgId, config.auth.telegram.botToken!);
+  if (avatar) {
+    await query("update operators set telegram_avatar = $2 where address = $1", [address, avatar]);
+  }
+  return c.json({ ok: true, hasAvatar: !!avatar });
+});
+
 // ----- Discord OAuth2 -----
 //
 // Mirrors the X flow with Discord's authorize/token/users endpoints. Confidential

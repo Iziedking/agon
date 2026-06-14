@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { ModalClose } from "@/components/redesign";
 
 /// The win-share card. Pops the instant the operator's wallet appears in a
@@ -39,6 +40,7 @@ function tweetText(
 }
 
 export function WinShareModal({ source, id, winners, youAddress, onClose }: WinShareModalProps) {
+  const [cardError, setCardError] = useState(false);
   const me = youAddress.toLowerCase();
   const my = winners.find((w) => w.operator.toLowerCase() === me);
   if (!my) return null;
@@ -124,13 +126,30 @@ export function WinShareModal({ source, id, winners, youAddress, onClose }: WinS
           ) : null}
 
           {/* The branded win card with the operator's pfp. This is exactly what
-              the X link unfurls to; we show it here and offer a download so the
-              image is always available, even if X is slow to fetch the card. */}
+              the X link unfurls to; we show a tidy preview and offer a download
+              so the image is always in hand. Kept small (max 340px) so it
+              doesn't dominate the modal, and an error state replaces the broken
+              image icon if the card route is briefly unavailable. */}
           <div className="mt-6">
             <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">YOUR CARD</div>
-            <div className="mt-2 overflow-hidden border border-[color:var(--hairline-strong)] bg-canvas-2">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={cardUrl} alt="your ArcRun win card" className="block w-full" loading="lazy" />
+            <div
+              className="relative mt-2 w-full max-w-[340px] overflow-hidden border border-[color:var(--hairline-strong)] bg-canvas-2"
+              style={{ aspectRatio: "1200 / 630" }}
+            >
+              {cardError ? (
+                <div className="flex h-full w-full items-center justify-center px-3 text-center font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
+                  card preview unavailable · use download
+                </div>
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={cardUrl}
+                  alt="your ArcRun win card"
+                  onError={() => setCardError(true)}
+                  className="block h-full w-full object-cover"
+                  loading="lazy"
+                />
+              )}
             </div>
             <a
               href={cardUrl}
