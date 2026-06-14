@@ -1,7 +1,7 @@
 import type { AgentResult, ContestEntryInput, Runner } from "./types.js";
 import { seededRng, pick } from "./rng.js";
 import { solverScore } from "../scoring/index.js";
-import { effectiveStrength, type StrengthBreakdown } from "../scoring/strength.js";
+import { effectiveStrength, solverTraitAbilities, type StrengthBreakdown } from "../scoring/strength.js";
 import { getLoadout } from "../auth/loadouts.js";
 import { generatePuzzles, difficultyForTier, type Puzzle, type PuzzleKind } from "./puzzles/index.js";
 import { judge } from "./judge.js";
@@ -253,7 +253,7 @@ export class SolverRunner implements Runner {
     const puzzleCards = toCards(puzzles);
     return Promise.all(
       entries.map(async (e) => {
-        const params = real ? await resolveRuntimeParams(e.agentId, e.tier).catch(() => null) : null;
+        const params = await resolveSolverParams(e.agentId, e.tier, source, contestId, real);
         const solve = params
           ? await runWithCapabilities(contestId, e, puzzles, params)
           : guessOnlySolve(puzzles, e.tier, contestId * 1000 + e.agentId);
@@ -277,7 +277,7 @@ export class SolverRunner implements Runner {
   ): Promise<AgentResult[]> {
     const params = new Map<number, RuntimeParams | null>();
     for (const e of entries) {
-      params.set(e.agentId, real ? await resolveRuntimeParams(e.agentId, e.tier).catch(() => null) : null);
+      params.set(e.agentId, await resolveSolverParams(e.agentId, e.tier, source, contestId, real));
     }
 
     const allKinds: string[] = [];
@@ -334,6 +334,34 @@ export class SolverRunner implements Runner {
       entries.map((e) => buildSolverResult(contestId, e, acc.get(e.agentId)!, allKinds, allCards, source)),
     );
   }
+}
+
+/// Resolve the per-agent runtime params, applying solver capability traits.
+/// Equipped solver traits raise the EFFECTIVE tier the params resolve from, so
+/// the agent gets a better tool set (calculator, internet), research unlock, a
+/// bigger research pool, and a larger reasoning budget. Puzzle scoring stays
+/// pure skill: none of this multiplies the score, it only makes the agent
+/// genuinely more capable, so it earns its correct answers. Returns null when
+/// the run is guess-only (no LLM).
+async function resolveSolverParams(
+  agentId: number,
+  tier: number,
+  source: "contest" | "challenge",
+  contestId: number,
+  real: boolean,
+): Promise<RuntimeParams | null> {
+  if (!real) return null;
+  const equipped = await getLoadout(source, contestId, agentId).catch(() => [] as string[]);
+  const ability = solverTraitAbilities(equipped, tier);
+  const base = await resolveRuntimeParams(agentId, ability.effectiveTier).catch(() => null);
+  if (!base) return null;
+  if (!base.llmEnabled) return base;
+  return {
+    ...base,
+    maxTokens: Math.min(4000, Math.round(base.maxTokens * ability.tokenMult)),
+    retries: base.retries + ability.extraRetries,
+    researchTier: ability.effectiveTier,
+  };
 }
 
 /// Runs the per-agent solve honoring the tier's capability gates. Tier 0/1
@@ -560,10 +588,12 @@ async function runLlmPath(
   let elapsedMs = 0;
   let costUsd = 0;
 
-  // Resolve the tier's nanopayment pool once per agent. When NANOPAY is off,
-  // CLI is absent, or the pool failed to provision, this stays null and the
-  // research-spend block becomes a no-op.
-  const tierPool: TierPool | null = config.nanopay.enabled ? getTierPool(entry.tier) : null;
+  // Resolve the nanopayment pool once per agent, using the research tier (the
+  // agent's real tier, or higher when a solver capability trait unlocked early
+  // research + a bigger pool). When NANOPAY is off, CLI is absent, or the pool
+  // failed to provision, this stays null and the research-spend block no-ops.
+  const researchTier = params.researchTier ?? entry.tier;
+  const tierPool: TierPool | null = config.nanopay.enabled ? getTierPool(researchTier) : null;
 
   for (let i = 0; i < puzzles.length; i++) {
     const puzzle = puzzles[i]!;
@@ -584,7 +614,7 @@ async function runLlmPath(
       puzzleIdx: idxOffset + i,
       contestId,
       agentId: entry.agentId,
-      tier: entry.tier,
+      tier: researchTier,
     });
     if (research) {
       puzzleSpent6 = research.usdcAmount6;

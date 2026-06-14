@@ -96,6 +96,51 @@ export function scoutTraitAbilities(
   return { sizeMult: 1 + size, countMult: 1 + count };
 }
 
+/// Concrete solver (puzzle) abilities a trait unlocks. Puzzle scoring stays
+/// PURE SKILL: these never multiply the score. Instead they upgrade the agent's
+/// real capability so it genuinely solves better. `tierBump` raises the tier
+/// the runner resolves model/tools/research from (a calculator, the internet,
+/// research unlock); `tokens` raises the reasoning budget; `retries` grants more
+/// attempts on a failed call. The better-equipped agent earns its correct
+/// answers, so this stays consistent with "the best solver wins".
+export interface SolverAbility {
+  tierBump?: number;
+  tokens?: number;
+  retries?: number;
+}
+
+export const SOLVER_TRAIT_ABILITY: Record<string, SolverAbility> = {
+  puzzle_savant: { tierBump: 1, tokens: 0.5 },
+  solver_circuit: { tierBump: 1, tokens: 0.4 },
+  quick_draw: { tokens: 0.15, retries: 1 },
+  hot_hand: { tokens: 0.15, retries: 1 },
+};
+
+/// Resolve the equipped loadout into a solver capability bump. The tier bump
+/// only helps agents that already run the LLM (tier 2+), so a trait can never
+/// vault a tier-0/1 agent into the model; it caps at tier 4. The token bonus is
+/// tier-scaled, so tier 4 (already capped on the tier bump) gets the strongest
+/// reasoning-budget boost, keeping "tier 4 has the best boost" true.
+export function solverTraitAbilities(
+  equipped: ReadonlyArray<string>,
+  tier: number,
+): { effectiveTier: number; tokenMult: number; extraRetries: number } {
+  const scale = tierTraitScale(tier);
+  let bump = 0;
+  let tokens = 0;
+  let retries = 0;
+  for (const id of equipped) {
+    const ab = SOLVER_TRAIT_ABILITY[id.toLowerCase()];
+    if (!ab) continue;
+    bump = Math.max(bump, ab.tierBump ?? 0);
+    tokens += ab.tokens ?? 0;
+    retries += ab.retries ?? 0;
+  }
+  const effectiveTier = tier >= 2 ? Math.min(4, tier + bump) : tier;
+  tokens = Math.min(0.8, tokens) * scale;
+  return { effectiveTier, tokenMult: 1 + tokens, extraRetries: Math.min(2, retries) };
+}
+
 /// Per-trait multiplier when the contest type matches the trait's
 /// domain. Traits not listed here are pure flavor (no scoring impact)
 /// or trigger active routing handled elsewhere (e.g. Lucky Charm's

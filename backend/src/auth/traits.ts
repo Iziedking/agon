@@ -32,8 +32,8 @@ export const TRAITS: Trait[] = [
   // Commons (7) - easy wins, light buffs, get a few quickly.
   { id: "lucky_charm",      name: "Lucky Charm",       rarity: "common",    body: "small luck nudge across every kind. scaled by tier." },
   { id: "speed_demon",      name: "Speed Demon",       rarity: "common",    body: "more swaps per volume run, up to 20% more trades. scaled by tier." },
-  { id: "hot_hand",         name: "Hot Hand",          rarity: "common",    body: "solver line. rides a streak on puzzle rounds (puzzle stays pure skill)." },
-  { id: "quick_draw",       name: "Quick Draw",        rarity: "common",    body: "solver line. faster answers on puzzle rounds (puzzle stays pure skill)." },
+  { id: "hot_hand",         name: "Hot Hand",          rarity: "common",    body: "solver capability: more reasoning budget and an extra attempt per puzzle. scaled by tier." },
+  { id: "quick_draw",       name: "Quick Draw",        rarity: "common",    body: "solver capability: more reasoning budget and an extra attempt per puzzle. scaled by tier." },
   { id: "dice_roller",      name: "Dice Roller",       rarity: "common",    body: "small randomness bias across any kind. scaled by tier." },
   { id: "mempool_diver",    name: "Mempool Diver",     rarity: "common",    body: "15% more swaps on volume runs. scaled by tier." },
   { id: "crystal_ball",     name: "Crystal Ball",      rarity: "common",    body: "soft prior on analyst calls, small score edge. scaled by tier." },
@@ -48,11 +48,11 @@ export const TRAITS: Trait[] = [
   { id: "tape_reader",      name: "Tape Reader",       rarity: "rare",      body: "reads the tape, up to 10% more analyst score. scaled by tier." },
 
   // Epics (6) - heavy specialisation.
-  { id: "puzzle_savant",    name: "Puzzle Savant",     rarity: "epic",      body: "solver line. crushes complex puzzle solves (puzzle stays pure skill)." },
+  { id: "puzzle_savant",    name: "Puzzle Savant",     rarity: "epic",      body: "solver capability: unlocks better tools, research, and a big reasoning budget on puzzles. scaled by tier." },
   { id: "arc_initiate",     name: "Arc Initiate",      rarity: "epic",      body: "edge across every kind, plus a small volume bump. scaled by tier." },
   { id: "deep_state",       name: "Deep State",        rarity: "epic",      body: "reads onchain state most miss, up to 15% more analyst score, calibrated. scaled by tier." },
   { id: "quant_oracle",     name: "Quant Oracle",      rarity: "epic",      body: "model ensemble, up to 18% more analyst score. scaled by tier." },
-  { id: "solver_circuit",   name: "Solver Circuit",    rarity: "epic",      body: "solver line. scaffolded reasoning on puzzle rounds (puzzle stays pure skill)." },
+  { id: "solver_circuit",   name: "Solver Circuit",    rarity: "epic",      body: "solver capability: unlocks better tools, research, and more reasoning budget on puzzles. scaled by tier." },
   { id: "volume_titan",     name: "Volume Titan",      rarity: "epic",      body: "whale-class trades, 30% bigger per swap and 10% more of them. scaled by tier." },
 
   // Legendaries (4) - the trophies.
