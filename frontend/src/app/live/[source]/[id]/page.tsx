@@ -443,7 +443,7 @@ function Standings({ entries, stakedCount }: { entries: StandingsEntry[]; staked
                   </div>
                   <span
                     className={`font-mono text-[11px] ${e.rank === 1 ? "text-accent" : "text-ink-2"}`}
-                    title="win probability"
+                    title="share of the field's output so far"
                   >
                     {formatProb(p)}
                   </span>

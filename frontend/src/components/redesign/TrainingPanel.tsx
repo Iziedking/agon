@@ -19,9 +19,11 @@ import {
   type TrainingState,
 } from "@/lib/training";
 
-/// Workshop training panel. Shows six stat bars (level out of 20), the active
-/// training queue with countdown, and the start / cancel / finish-early
-/// controls. Mounts on the operator's own workshop only.
+/// Workshop training panel. Shows six stat bars (five permanent levels each),
+/// the active training queue with countdown, and the start / cancel /
+/// finish-early controls. Each level is a permanent boost weighted by the
+/// contest type. Mounts on the operator's own workshop only. Responsive: the
+/// row stacks on mobile and lays out in three columns on desktop.
 
 function fmtCountdown(target: number): string {
   const left = Math.max(0, Math.floor((target - Date.now()) / 1000));
@@ -170,11 +172,21 @@ export function TrainingPanel({ agentId }: { agentId: number }) {
           return (
             <div
               key={s}
-              className="grid grid-cols-[8rem_1fr_auto] items-center gap-4 border-b border-[color:var(--hairline)] py-3 last:border-0"
+              className="flex flex-col gap-3 border-b border-[color:var(--hairline)] py-3 last:border-0 sm:grid sm:grid-cols-[11rem_1fr_auto] sm:items-center sm:gap-4"
             >
               <div className="min-w-0">
-                <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">{s}</div>
-                <div className="mt-0.5 font-mono text-[10px] text-ink-3">{statDescription(s)}</div>
+                {/* Stat name with a compact N/5 level so the word LEVEL isn't
+                    repeated down every row (tidier on mobile). */}
+                <div className="flex items-baseline gap-2">
+                  <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">{s}</span>
+                  <span className="font-mono text-[10px] tabular-nums text-ink-3">
+                    {level}/{MAX_STAT_LEVEL}
+                  </span>
+                  {maxed ? (
+                    <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-accent">MAX</span>
+                  ) : null}
+                </div>
+                <div className="mt-0.5 font-mono text-[10px] leading-snug text-ink-3">{statDescription(s)}</div>
               </div>
 
               <div>
@@ -189,17 +201,14 @@ export function TrainingPanel({ agentId }: { agentId: number }) {
                     />
                   ) : null}
                 </div>
-                <div className="mt-1 flex items-center justify-between font-mono text-[10px] text-ink-3">
-                  <span>LEVEL {level} / {MAX_STAT_LEVEL}</span>
-                  {isActive ? (
-                    <span className="text-accent">
-                      → {active.toLevel} · {isActiveComplete ? "READY" : fmtCountdown(activeCompletesAt)}
-                    </span>
-                  ) : null}
-                </div>
+                {isActive ? (
+                  <div className="mt-1 text-right font-mono text-[10px] text-accent">
+                    → L{active.toLevel} · {isActiveComplete ? "READY" : fmtCountdown(activeCompletesAt)}
+                  </div>
+                ) : null}
               </div>
 
-              <div className="flex flex-none items-center gap-2">
+              <div className="flex flex-none flex-wrap items-center gap-2">
                 {isActive ? (
                   isActiveComplete ? (
                     <button
@@ -267,9 +276,10 @@ export function TrainingPanel({ agentId }: { agentId: number }) {
       </div>
 
       {error ? <p className="mt-3 font-mono text-[11px] text-[color:var(--err)]">{error}</p> : null}
-      <p className="mt-3 font-mono text-[10px] text-ink-3">
-        each level adds 1% to scoring. one training slot per agent. cancel refunds 50% cycles; finish-now charges 2× the
-        un-served time. + FAST adds {speedupParams.cyclesPerStep}¢ per step and shaves {Math.round(speedupParams.secondsPerStep / 60)}m.
+      <p className="mt-3 font-mono text-[10px] leading-relaxed text-ink-3">
+        every level is a permanent boost, weighted by the contest. one training slot per agent. cancel refunds 50%
+        cycles; finish-now charges 2× the un-served time. FAST trades {speedupParams.cyclesPerStep} cycles per step for
+        −{Math.round(speedupParams.secondsPerStep / 60)}m off the wait.
       </p>
     </BracketedCell>
   );

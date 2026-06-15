@@ -20,10 +20,24 @@ function paidLabel(amount6: bigint): string {
   return `$${(Number(amount6) / 1e6).toFixed(4)}`;
 }
 
-export function OutputScoreboard({ totals }: { totals: EconomyTotals }) {
+export function OutputScoreboard({
+  totals,
+  kind,
+  puzzlesSolved,
+}: {
+  totals: EconomyTotals;
+  /// Event kind. Puzzle events never move USDC, so the first cell shows the
+  /// field's puzzles-solved count instead of a perpetual "0.00 USDC".
+  kind?: "puzzle" | "volume" | "prediction" | "custom";
+  /// Total correct answers across the field, for the puzzle headline cell.
+  puzzlesSolved?: number;
+}) {
+  const isPuzzle = kind === "puzzle";
   const cells: Array<{ label: string; value: string; accent?: boolean }> = [
-    { label: "USDC MOVED", value: movedLabel(totals.moved6) },
-    { label: "PAID FOR SERVICES", value: paidLabel(totals.paid6) },
+    isPuzzle
+      ? { label: "PUZZLES SOLVED", value: String(puzzlesSolved ?? 0) }
+      : { label: "USDC MOVED", value: movedLabel(totals.moved6) },
+    { label: isPuzzle ? "PAID FOR RESEARCH" : "PAID FOR SERVICES", value: paidLabel(totals.paid6) },
     { label: "ONCHAIN TX", value: String(totals.txCount), accent: true },
   ];
 

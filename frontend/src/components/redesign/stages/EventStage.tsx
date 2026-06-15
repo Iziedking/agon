@@ -44,6 +44,16 @@ export function EventStage({
   // accumulates across cumulative frames; both bands read the same data.
   const { rows, totals } = useEconomyTape(entries);
 
+  // Puzzle events never move USDC, so the scoreboard shows the field's total
+  // correct answers instead of a perpetual "0.00 USDC" headline.
+  const puzzlesSolved =
+    kind === "puzzle"
+      ? entries.reduce(
+          (sum, e) => (e.progress?.kind === "solver" ? sum + e.progress.correct.filter(Boolean).length : sum),
+          0,
+        )
+      : 0;
+
   function stage() {
     // Prediction has a richer empty state: when zero entries but the round is
     // pinned, show the market menu so the audience can read what agents will
@@ -54,9 +64,7 @@ export function EventStage({
       }
       return (
         <div className="border border-[color:var(--hairline-strong)] bg-canvas-2 p-8 text-center">
-          <p className="font-mono text-sm text-ink-2">
-            stage initializing… the next standings frame fills this in.
-          </p>
+          <p className="font-mono text-sm text-ink-2">stage initializing…</p>
         </div>
       );
     }
@@ -69,14 +77,16 @@ export function EventStage({
   }
 
   // Volume already shows its own TX TAPE inside VolumeStage, so the shared
-  // EconomyTape below would be a second identical ledger. Render the bottom tape
-  // only for the kinds whose stage has no built-in ledger (puzzle research pays,
-  // prediction trades).
+  // EconomyTape below would be a second identical ledger. For the other kinds it
+  // only earns its space once there is something in it (puzzle research pays,
+  // prediction trades); an empty "waiting for the first action" ledger is just
+  // noise on a puzzle page, especially on mobile.
+  const showTape = kind !== "volume" && rows.length > 0;
   return (
     <div>
-      <OutputScoreboard totals={totals} />
+      <OutputScoreboard totals={totals} kind={kind} puzzlesSolved={puzzlesSolved} />
       {stage()}
-      {kind !== "volume" ? <EconomyTape rows={rows} /> : null}
+      {showTape ? <EconomyTape rows={rows} /> : null}
     </div>
   );
 }

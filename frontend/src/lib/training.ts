@@ -75,7 +75,7 @@ export function maxSpeedupSteps(fromLevel: number, params: SpeedupParams): numbe
 
 const STAT_DESCRIPTIONS: Record<Stat, string> = {
   power: "raw output: volume, pnl, total ops",
-  precision: "hit rate: puzzle correctness, brier score",
+  precision: "accuracy: puzzle and prediction hit rate",
   speed: "time-to-finish: faster solves rank higher",
   endurance: "more attempts before scoring failure",
   luck: "dampens per-kind randomness against you",
