@@ -26,3 +26,4 @@ export { ChainTicker } from "./ChainTicker";
 export { ModalClose } from "./ModalClose";
 export { ArcanaMark } from "./ArcanaMark";
 export { WorkshopScene } from "./WorkshopScene";
+export { RangeSlider } from "./RangeSlider";

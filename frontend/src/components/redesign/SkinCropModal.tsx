@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ModalClose } from "@/components/redesign";
+import { ModalClose, RangeSlider } from "@/components/redesign";
 
 /// Square crop step for a custom agent skin. Dependency-free: pan by dragging,
 /// zoom with the slider, and the visible square is rendered to a 256x256 PNG
@@ -131,17 +131,16 @@ export function SkinCropModal({
             )}
           </div>
 
-          <div className="mt-4 flex items-center gap-3">
-            <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">ZOOM</span>
-            <input
-              type="range"
+          <div className="mt-4">
+            <RangeSlider
+              label="ZOOM"
+              ariaLabel="Zoom"
               min={1}
               max={3}
               step={0.01}
               value={zoom}
-              onChange={(e) => setZoom(Number(e.target.value))}
-              className="h-1 flex-1 accent-[color:var(--accent)]"
-              aria-label="Zoom"
+              onChange={setZoom}
+              format={(v) => `${v.toFixed(2)}x`}
             />
           </div>
 
