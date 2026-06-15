@@ -137,6 +137,11 @@ function ContestFocus({ id }: { id: number }) {
 
           <ConnectionLine connected={connected} live={!!live && entries.length > 0} />
 
+          <NarrativeLine
+            entries={entries}
+            lastTick={lastTick && lastTick.source === "contest" && lastTick.eventId === id ? lastTick : null}
+          />
+
           <div className="mt-6 grid gap-6 lg:grid-cols-12">
             <div className="lg:col-span-8">
               <StageWithNarrative
@@ -151,7 +156,6 @@ function ContestFocus({ id }: { id: number }) {
                       ? arcanaPins
                       : undefined
                 }
-                lastTick={lastTick && lastTick.source === "contest" && lastTick.eventId === id ? lastTick : null}
               />
             </div>
             <aside className="lg:col-span-4">
@@ -247,6 +251,11 @@ function ChallengeFocus({ id }: { id: number }) {
 
           <ConnectionLine connected={connected} live={!!live && entries.length > 0} />
 
+          <NarrativeLine
+            entries={entries}
+            lastTick={lastTick && lastTick.source === "challenge" && lastTick.eventId === id ? lastTick : null}
+          />
+
           <div className="mt-6 grid gap-6 lg:grid-cols-12">
             <div className="lg:col-span-8">
               <StageWithNarrative
@@ -255,7 +264,6 @@ function ChallengeFocus({ id }: { id: number }) {
                 eventId={id}
                 settled={ch.status === 2}
                 pinnedArcanaMarkets={arcanaPins.length > 0 ? arcanaPins : undefined}
-                lastTick={lastTick && lastTick.source === "challenge" && lastTick.eventId === id ? lastTick : null}
               />
             </div>
             <aside className="lg:col-span-4">
@@ -316,17 +324,40 @@ function ConnectionLine({ connected, live }: { connected: boolean; live: boolean
   );
 }
 
-/// Renders the per-kind stage with a "WHAT'S HAPPENING" headline above it
-/// that updates per-tick by diffing successive standings frames. The
-/// headline replaces the static "■ STAGE" eyebrow so viewers can read the
-/// state without interpreting bars and rows.
+/// The full-width "WHAT'S HAPPENING" narrative line, updated per-tick by diffing
+/// successive standings frames. It sits ABOVE the two-column grid so both columns
+/// then start with their own single section header (OUTPUT on the left, STANDINGS
+/// on the right), which lines the output boxes up with the standings rows.
+function NarrativeLine({
+  entries,
+  lastTick,
+}: {
+  entries: StandingsEntry[];
+  /// Latest tick from the prediction scheduler scoped to this event.
+  lastTick?: import("@/lib/live").TickMessage | null;
+}) {
+  const ids = useMemo(() => entries.map((e) => e.agentId), [entries]);
+  const names = useAgentNames(ids);
+  const nameOf = (id: number) => nameFor(names, id);
+  const narrative = useLiveNarrative(entries, nameOf, lastTick);
+  return (
+    <div className="mt-4 flex flex-wrap items-center gap-3 font-mono text-[11px] uppercase tracking-[0.16em]">
+      <span aria-hidden className="text-accent">■</span>
+      <span className="text-ink-3">WHAT'S HAPPENING</span>
+      <span className="text-ink">{narrative}</span>
+    </div>
+  );
+}
+
+/// The per-kind stage column: output scoreboard, the stage itself, and the
+/// puzzle solve-audit panel. The narrative headline is rendered separately,
+/// full width, by NarrativeLine above the grid.
 function StageWithNarrative({
   entries,
   stageKind,
   eventId,
   settled,
   pinnedArcanaMarkets,
-  lastTick,
 }: {
   entries: StandingsEntry[];
   stageKind: StageKind;
@@ -340,21 +371,9 @@ function StageWithNarrative({
   /// coordinator pinned at open. Lets the stage render the menu before
   /// any agent enters.
   pinnedArcanaMarkets?: import("@/components/redesign/stages/PredictionStage").PinnedMarket[];
-  /// Latest tick from the prediction scheduler scoped to this event.
-  /// Pre-filtered by source + eventId so the hook sees only relevant ticks.
-  lastTick?: import("@/lib/live").TickMessage | null;
 }) {
-  const ids = useMemo(() => entries.map((e) => e.agentId), [entries]);
-  const names = useAgentNames(ids);
-  const nameOf = (id: number) => nameFor(names, id);
-  const narrative = useLiveNarrative(entries, nameOf, lastTick);
   return (
     <>
-      <div className="mb-3 flex flex-wrap items-center gap-3 font-mono text-[11px] uppercase tracking-[0.16em]">
-        <span aria-hidden className="text-accent">■</span>
-        <span className="text-ink-3">WHAT'S HAPPENING</span>
-        <span className="text-ink">{narrative}</span>
-      </div>
       <EventStage kind={stageKind} entries={entries} pinnedArcanaMarkets={pinnedArcanaMarkets} />
       {stageKind === "puzzle" ? <RealSolves id={eventId} settled={settled} /> : null}
     </>

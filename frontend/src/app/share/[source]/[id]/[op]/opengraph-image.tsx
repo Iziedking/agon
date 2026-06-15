@@ -23,25 +23,42 @@ const INK_3 = "#847C70";
 const ACCENT = "#FF3D8A";
 const HAIRLINE = "rgba(26,22,18,0.12)";
 
+/// satori (the card renderer) decodes PNG and JPEG ONLY. A WEBP or AVIF avatar
+/// throws DURING the PNG stream, after the route's try/catch has returned, so it
+/// 500s the whole card with no fallback. Discord serves WEBP avatars by default
+/// and unavatar.io can too, which is exactly the win-card 500 in the field. So
+/// trust the bytes, not the content-type header: sniff the magic number and only
+/// pass real PNG/JPEG through. Anything else returns null and the card draws the
+/// operator's initial instead.
+function decodableMime(buf: Buffer): "image/png" | "image/jpeg" | null {
+  if (buf.length < 4) return null;
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return "image/png";
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "image/jpeg";
+  return null; // WEBP (RIFF), AVIF, GIF, SVG, etc: not safe for the renderer
+}
+
 async function avatarDataUrl(url: string | null): Promise<string | null> {
   if (!url) return null;
-  // Already an inlined image (our stored Telegram pfp). Use it directly, only
-  // guarding the size so a huge data URL can't choke the renderer.
-  if (url.startsWith("data:image/")) {
-    return url.length > 800_000 ? null : url;
-  }
   try {
-    // Bounded so a slow avatar host never stalls the card past the crawler's
-    // patience; we fall back to the placeholder marker instead.
-    const r = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(2500) });
-    if (!r.ok) return null;
-    const ct = r.headers.get("content-type") ?? "image/png";
-    if (!ct.startsWith("image/")) return null;
-    const buf = Buffer.from(await r.arrayBuffer());
-    // A very large pfp can choke the image renderer; fall back to the
-    // placeholder marker rather than risk failing the whole card.
-    if (buf.byteLength > 600_000) return null;
-    return `data:${ct};base64,${buf.toString("base64")}`;
+    let buf: Buffer;
+    if (url.startsWith("data:image/")) {
+      // Our stored Telegram pfp. Decode it so we can sniff the real format
+      // instead of trusting the declared mime (which may lie).
+      const comma = url.indexOf(",");
+      if (comma < 0 || !/;base64/i.test(url.slice(0, comma))) return null;
+      buf = Buffer.from(url.slice(comma + 1), "base64");
+    } else {
+      // Bounded so a slow avatar host never stalls the card past the crawler's
+      // patience; we fall back to the placeholder marker instead.
+      const r = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(2500) });
+      if (!r.ok) return null;
+      buf = Buffer.from(await r.arrayBuffer());
+    }
+    // A very large pfp can choke the renderer; fall back to the placeholder.
+    if (buf.byteLength === 0 || buf.byteLength > 600_000) return null;
+    const mime = decodableMime(buf);
+    if (!mime) return null;
+    return `data:${mime};base64,${buf.toString("base64")}`;
   } catch {
     return null;
   }

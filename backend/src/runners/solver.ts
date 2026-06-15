@@ -300,8 +300,13 @@ export class SolverRunner implements Runner {
       // Distinct seed per round so kinds and items differ each round.
       const batch = await generatePuzzlesAsync(contestId * 1009 + round, n, difficulty);
       const offset = allKinds.length;
+      // Process EVERY entry for a started round (no mid-round break). The while
+      // condition already gates on hardStop before each round; breaking inside
+      // this loop gave the agents processed last fewer puzzles than the rest, so
+      // their `total` was smaller and the old ratio score wrongly favoured them.
+      // A started round costs at most one extra batch of wall-clock, which fits
+      // inside the resolver budget.
       for (const e of entries) {
-        if (Date.now() >= hardStop) break;
         const p = params.get(e.agentId) ?? null;
         const out = p
           ? p.llmEnabled

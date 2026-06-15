@@ -68,11 +68,15 @@ export function EventStage({
     return <CustomStage entries={entries} />;
   }
 
+  // Volume already shows its own TX TAPE inside VolumeStage, so the shared
+  // EconomyTape below would be a second identical ledger. Render the bottom tape
+  // only for the kinds whose stage has no built-in ledger (puzzle research pays,
+  // prediction trades).
   return (
     <div>
       <OutputScoreboard totals={totals} />
       {stage()}
-      <EconomyTape rows={rows} />
+      {kind !== "volume" ? <EconomyTape rows={rows} /> : null}
     </div>
   );
 }
