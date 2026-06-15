@@ -85,7 +85,7 @@ export interface TraitDef {
 }
 
 /// Speed legendary magnitudes across the three events (tier-scaled at apply).
-const SPEED_COUNT = 0.6; // volume: swaps
+const SPEED_PACE = 0.6; // volume: how FAST swaps fire (burst), not how many are allowed
 const SPEED_CAPABILITY = 0.5; // puzzle: reasoning
 const SPEED_SCORE = 0.3; // prediction: score
 const SPEED_TRADES = 0.5; // prediction: trades
@@ -126,33 +126,56 @@ export const TRAIT_DEF: Record<string, TraitDef> = {
 // Caps so a stack can't run away. Whale legendary needs a high size cap.
 const SIZE_CAP = 3.0;
 const COUNT_CAP = 2.0;
+const SPEED_PACE_CAP = 1.0; // max pace bonus from a trait loadout (Velocity)
 const SCORE_CAP = 0.6; // max +60% prediction score from a trait loadout
+
+/// How strongly the SPEED training stat expresses as scout pace. A maxed SPEED
+/// stat (level 5, curve 1.5) adds 1.5 x this to the pace factor.
+const SPEED_STAT_SCALE = 0.5;
 
 function clampTier(tier: number): number {
   return Math.max(0, Math.min(4, Math.floor(tier)));
 }
 
-/// Volume: per-swap size multiplier and swap-count multiplier from the equipped
-/// loadout. Whale Spotter's per-tier size curve applies as-is; everything else
-/// is tier-scaled. Speed adds swap count. The wallet balance clamps the real
-/// size again at execution.
+/// Volume: the THREE independent scout levers from the equipped loadout.
+///   sizeMult  - per-swap USDC size (Whale Spotter per-tier curve as-is, plus
+///               liquidity/volume size traits, tier-scaled).
+///   capMult   - how many swaps are ALLOWED this round. Count traits (Volume
+///               Titan, the count commons, generic count) raise the flat 85
+///               default toward the 120 ceiling the runner clamps to.
+///   speedMult - how FAST swaps fire (burst). Velocity only; separate from the
+///               cap so "more swaps allowed" and "swaps faster" are distinct
+///               trait roles. The wallet balance clamps real size at execution.
 export function scoutTraitAbilities(
   equipped: ReadonlyArray<string>,
   tier: number,
-): { sizeMult: number; countMult: number } {
+): { sizeMult: number; capMult: number; speedMult: number } {
   const scale = tierTraitScale(tier);
   const t = clampTier(tier);
   let size = 0;
   let count = 0;
+  let pace = 0;
   for (const id of equipped) {
     const d = TRAIT_DEF[id.toLowerCase()];
     if (!d) continue;
     if (Array.isArray(d.size)) size += d.size[t]!; // whale: per-tier, as-is
     else if (typeof d.size === "number") size += d.size * scale;
     if (d.count) count += d.count * scale;
-    if (d.speed) count += SPEED_COUNT * scale;
+    if (d.speed) pace += SPEED_PACE * scale; // Velocity: pace, NOT cap
   }
-  return { sizeMult: 1 + Math.min(SIZE_CAP, size), countMult: 1 + Math.min(COUNT_CAP, count) };
+  return {
+    sizeMult: 1 + Math.min(SIZE_CAP, size),
+    capMult: 1 + Math.min(COUNT_CAP, count),
+    speedMult: 1 + Math.min(SPEED_PACE_CAP, pace),
+  };
+}
+
+/// The SPEED training stat expressed as a scout pace factor (level 0..5 -> the
+/// permanent training curve, gentled by SPEED_STAT_SCALE). Folds into the live
+/// race burst so a well-trained-for-speed agent fires swaps faster.
+export function scoutSpeedStatFactor(stats: Partial<Record<StatName, number>>): number {
+  const lvl = Math.max(0, Math.min(MAX_TRAIN_LEVEL, Math.floor(stats?.SPEED ?? 0)));
+  return 1 + TRAIN_LEVEL_BONUS[lvl]! * SPEED_STAT_SCALE;
 }
 
 /// Puzzle: reasoning-budget multiplier and extra retries. Pure-skill safe; never

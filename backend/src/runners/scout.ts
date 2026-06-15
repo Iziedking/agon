@@ -10,7 +10,7 @@ import { scoutScore } from "../scoring/index.js";
 import type { AgentResult, ContestEntryInput, Runner, TapeEvent } from "./types.js";
 import { callModel, llmConfigured, recordLlmRun, readExistingRuns, DailyKillError } from "./llm/client.js";
 import { resolveRuntimeParams, loadAgentStats, type RuntimeParams } from "./llm/tierConfig.js";
-import { effectiveStrength, scoutTraitAbilities } from "../scoring/strength.js";
+import { effectiveStrength, scoutTraitAbilities, scoutSpeedStatFactor } from "../scoring/strength.js";
 import { getLoadout } from "../auth/loadouts.js";
 import { applyRouting } from "./solver.js";
 import {
@@ -458,8 +458,29 @@ export interface ScoutRunCtx {
 /// Hard ceiling on how long the live race blocks the resolver, so a single
 /// challenge can't eat the sweeper's per-event timeout (default 150s). The
 /// race also stops at deadlineMs (resolveDeadline - 60s), whichever is sooner.
-const RACE_MAX_SECONDS = Number(process.env.SCOUT_RACE_SECONDS ?? "90");
+const RACE_MAX_SECONDS = Number(process.env.SCOUT_RACE_SECONDS ?? "120");
+// Trait-aware window: when the field carries swap traits (a high cap or high
+// pace), the race is allowed to run longer so those agents can actually spend
+// their advantage, up to RACE_CEIL_SECONDS and never past the resolve deadline.
+const RACE_CEIL_SECONDS = Number(process.env.SCOUT_RACE_CEIL_SECONDS ?? "180");
+const RACE_TRAIT_BONUS_SECONDS = Number(process.env.SCOUT_RACE_TRAIT_BONUS ?? "45"); // per unit of demand over 1x
 const RACE_INTER_ROUND_MS = Number(process.env.SCOUT_RACE_DELAY_MS ?? "400");
+// Flat per-round swap cap (legs). Every tier starts at the default; count traits
+// (Volume Titan, the count commons, Arc Sovereign) raise it toward the ceiling,
+// so a lower tier with the right trait keeps swapping past the default. Tier's
+// edge is bigger swaps and faster pace, NOT a higher cap. Clamped at execution
+// by the shared 1024/day budget.
+const ROUND_SWAP_CAP_DEFAULT = Number(process.env.SCOUT_ROUND_CAP ?? "85");
+const ROUND_SWAP_CAP_MAX = Number(process.env.SCOUT_ROUND_CAP_MAX ?? "120");
+// Floor on a lane's inter-round idle (ms). Pace = base delay / speedFactor, so a
+// faster agent idles less and packs more round-trips into the window, but never
+// below this floor so the RPC isn't hammered.
+const RACE_MIN_DELAY_MS = Number(process.env.SCOUT_RACE_MIN_DELAY_MS ?? "60");
+// Cap on concurrent on-chain calls across all lanes. Every agent still runs its
+// own loop for the whole window; this only bounds how many swaps are in flight at
+// once so a large field can't flood the RPC. Lanes queue at the semaphore and all
+// still make progress.
+const RACE_MAX_CONCURRENCY = Number(process.env.SCOUT_RACE_MAX_CONCURRENCY ?? "16");
 // B6 streaming payments. A tier-3+ scout keeps a live price-feed subscription
 // running while it trades: a real x402 micro-payment every few legs, surfaced
 // as a STREAM row on the economy tape. Both gates below keep it from eating the
@@ -470,7 +491,40 @@ const STREAM_EVERY_LEGS = Number(process.env.SCOUT_STREAM_EVERY_LEGS ?? "5");
 // A lane retires only after this many consecutive failed attempts, so one bad
 // route or RPC blip doesn't end an agent after a single swap.
 const RACE_MAX_STRIKES = Number(process.env.SCOUT_RACE_MAX_STRIKES ?? "3");
+
+// Natural swap speed by tier (index 0..4). A higher tier doesn't just swap
+// BIGGER, it swaps MORE inside the window. This is the "tier 4 wins by default"
+// lever: a bare tier 4 naturally moves more volume than a bare tier 3, so traits
+// and training tilt the odds for a lower tier without handing it the win.
+const TIER_SPEED = [1.0, 1.2, 1.5, 1.9, 2.4] as const;
+function tierSpeedFactor(tier: number): number {
+  return TIER_SPEED[Math.max(0, Math.min(4, Math.floor(tier)))]!;
+}
 const raceSleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/// Minimal counting semaphore: bounds how many lanes hold an on-chain slot at
+/// once. acquire() resolves immediately if a slot is free, else queues FIFO;
+/// release() hands the slot to the next waiter. Keeps the parallel race from
+/// opening one RPC connection per entrant when the field is large.
+class Semaphore {
+  private slots: number;
+  private readonly waiters: Array<() => void> = [];
+  constructor(n: number) {
+    this.slots = Math.max(1, n);
+  }
+  async acquire(): Promise<void> {
+    if (this.slots > 0) {
+      this.slots--;
+      return;
+    }
+    await new Promise<void>((resolve) => this.waiters.push(resolve));
+  }
+  release(): void {
+    const next = this.waiters.shift();
+    if (next) next();
+    else this.slots++;
+  }
+}
 
 interface SwapAbility {
   privateKey: `0x${string}`;
@@ -567,11 +621,14 @@ interface ScoutPlan {
   account: Account;
   strategy: ScoutStrategy;
   strength: ReturnType<typeof effectiveStrength>;
-  opBoost: number;
+  /// How fast this agent fires swaps (burst pace): tier natural speed x SPEED
+  /// training x Velocity. Drives how much of its cap it reaches in the window.
+  speedFactor: number;
   /// Per-swap size multiplier from whale-type traits (tier-scaled). Bigger
   /// trades, not just more of them.
   sizeBoost: number;
-  /// Trait-boosted target round-trips, clamped to the tier op cap.
+  /// Per-round swap cap (legs): flat default raised toward the ceiling by count
+  /// traits, clamped to the tier op cap and the 1024/day budget.
   target: number;
 }
 
@@ -616,14 +673,26 @@ export class ScoutRunner implements Runner {
       const stats = await loadAgentStats(e.agentId).catch(() => ({}));
       const equipped = await getLoadout(source, contestId, e.agentId).catch(() => [] as string[]);
       const strength = effectiveStrength(e.tier, stats, equipped, "scout");
-      // Traits unlock concrete, tier-scaled scout abilities: speed traits turn
-      // training into MORE swaps (countMult), whale traits make each swap BIGGER
-      // (sizeBoost). The right three for a volume round genuinely change what the
-      // agent does on-chain, and tier 4 gets the strongest version of each.
-      const { sizeMult, countMult } = scoutTraitAbilities(equipped, e.tier);
-      const opBoost = strength.training * countMult;
-      const target = Math.max(1, Math.min(Math.round(strategy.opsCount * opBoost), limit.maxOps));
-      plans.push({ entry: e, account, strategy, strength, opBoost, sizeBoost: sizeMult, target });
+      // Traits split into three concrete, tier-scaled scout levers: count traits
+      // raise the swap CAP, Velocity raises PACE (speedMult), whale traits raise
+      // per-swap SIZE (sizeMult). The right three for a volume round genuinely
+      // change what the agent does on-chain, and a higher tier expresses each
+      // more strongly.
+      const { sizeMult, capMult, speedMult } = scoutTraitAbilities(equipped, e.tier);
+      // Three independent levers, none of them tier-gated the same way:
+      //  - CAP (target): flat ROUND_SWAP_CAP_DEFAULT for every tier, raised by
+      //    count traits toward ROUND_SWAP_CAP_MAX. A lower tier with the count
+      //    trait keeps swapping past the default. Clamped to the tier op cap and
+      //    (at execution) the 1024/day budget.
+      //  - SPEED (speedFactor): tier natural pace x SPEED training x Velocity.
+      //    Decides how fast it fires, so how much of the cap it reaches in time.
+      //  - SIZE (sizeBoost): bigger per-swap USDC, the tier's default edge.
+      const perRoundCap = Math.min(
+        limit.maxOps,
+        Math.max(ROUND_SWAP_CAP_DEFAULT, Math.min(ROUND_SWAP_CAP_MAX, Math.round(ROUND_SWAP_CAP_DEFAULT * capMult))),
+      );
+      const speedFactor = tierSpeedFactor(e.tier) * scoutSpeedStatFactor(stats) * speedMult;
+      plans.push({ entry: e, account, strategy, strength, speedFactor, sizeBoost: sizeMult, target: perRoundCap });
     }
 
     const execMap =
@@ -655,8 +724,9 @@ export class ScoutRunner implements Runner {
           hot: p.account.address,
           strategy: p.strategy.rationale,
           baseOps: p.strategy.opsCount,
-          boostedOps: p.target,
-          opBoost: Number(p.opBoost.toFixed(3)),
+          roundCap: p.target,
+          speedFactor: Number(p.speedFactor.toFixed(3)),
+          sizeBoost: Number(p.sizeBoost.toFixed(3)),
           strength: {
             effective: Number(p.strength.effective.toFixed(2)),
             tierBase: p.strength.tierBase,
@@ -719,21 +789,20 @@ export class ScoutRunner implements Runner {
       strikes: number;
       /// EURC stranded by a failed reverse leg, swapped back first next time.
       heldAlt: number;
+      /// Pace: how fast this lane fires swaps relative to the field. Scales the
+      /// inter-round idle, so a faster lane packs more round-trips into the window.
+      speedFactor: number;
     }
     const lanes: Lane[] = [];
     for (const p of plans) {
-      // The live race is time-bounded (stops at deadline / RACE_MAX_SECONDS),
-      // so aim high: keep swapping for the whole window up to the tier op cap
-      // and the 1024/day budget. Traits/training raise the ceiling (more
-      // round-trips = more volume); time is the real limiter. The burst path
-      // keeps the conservative `p.target` so a contest settlement doesn't
-      // block on hundreds of sequential swaps.
-      const maxOps = tierLimit(p.entry.tier).maxOps;
-      const raceTarget = Math.min(
-        maxOps,
-        Math.max(1, Math.round(Math.max(p.strategy.opsCount, config.scout.swapsPerRun) * p.opBoost)),
-      );
-      const ability = await prepareSwapAbility(p.entry.agentId, p.entry.tier, raceTarget, p.sizeBoost).catch(() => null);
+      // p.target is the per-round swap cap (legs). prepareSwapAbility takes
+      // round-trips and doubles, so halve it; the daily budget clamps it again.
+      const ability = await prepareSwapAbility(
+        p.entry.agentId,
+        p.entry.tier,
+        Math.ceil(p.target / 2),
+        p.sizeBoost,
+      ).catch(() => null);
       lanes.push({
         agentId: p.entry.agentId,
         operator: p.entry.operator,
@@ -748,10 +817,23 @@ export class ScoutRunner implements Runner {
         streamTicks: 0,
         strikes: 0,
         heldAlt: 0,
+        speedFactor: p.speedFactor,
       });
     }
 
-    const hardStop = Math.min(ctx.deadlineMs ?? Number.MAX_SAFE_INTEGER, Date.now() + RACE_MAX_SECONDS * 1000);
+    // Trait-aware window: a field carrying swap traits (a raised cap or a high
+    // pace) earns more wall-clock so those agents can spend the advantage, up to
+    // RACE_CEIL_SECONDS and never past the resolve deadline. A bare field runs
+    // the base RACE_MAX_SECONDS.
+    const demand = plans.reduce(
+      (m, p) => Math.max(m, p.speedFactor, p.target / ROUND_SWAP_CAP_DEFAULT),
+      1,
+    );
+    const windowSeconds = Math.min(
+      RACE_CEIL_SECONDS,
+      Math.round(RACE_MAX_SECONDS + Math.max(0, demand - 1) * RACE_TRAIT_BONUS_SECONDS),
+    );
+    const hardStop = Math.min(ctx.deadlineMs ?? Number.MAX_SAFE_INTEGER, Date.now() + windowSeconds * 1000);
     const msgType = ctx.source === "challenge" ? "challenge_standings" : "contest_standings";
     const idKey = ctx.source === "challenge" ? "challengeId" : "contestId";
 
@@ -778,34 +860,51 @@ export class ScoutRunner implements Runner {
 
     emit(); // initial frame so the stage shows the field before the first swap
 
-    let active = true;
-    while (active && Date.now() < hardStop) {
-      active = false;
-      for (const lane of lanes) {
-        if (Date.now() >= hardStop) break;
+    // Parallel lanes: every agent runs its own swap loop concurrently on its own
+    // hot wallet (independent nonce), so the field swaps all at once and a slow
+    // lane never starves a fast one. PACE scales the inter-round idle, so a higher
+    // tier / SPEED-trained / Velocity lane idles less and packs more round-trips
+    // into the window; the per-round CAP (targetLegs) stops the grinders; SIZE
+    // sets the USDC per swap. Each landed leg broadcasts a frame so the tape fills.
+    // A semaphore bounds how many on-chain calls run at once so a large field
+    // can't flood the RPC; lanes queue at it but all keep making progress.
+    const sem = new Semaphore(RACE_MAX_CONCURRENCY);
+    const runLane = async (lane: Lane): Promise<void> => {
+      if (!lane.ability) return;
+      // Faster pace -> shorter idle between this lane's round-trips, floored so it
+      // never hammers the RPC. Tier 4 / SPEED / Velocity sit near the floor.
+      const laneDelay = Math.max(
+        RACE_MIN_DELAY_MS,
+        Math.round(RACE_INTER_ROUND_MS / Math.max(1, lane.speedFactor)),
+      );
+      const pushLegs = (legs: Array<{ txHash: Hash; vol6: bigint }>) => {
+        for (const leg of legs) {
+          lane.txHashes.push(leg.txHash);
+          lane.txVolumes6.push(leg.vol6.toString());
+          lane.volume6 += leg.vol6;
+          lane.legs++;
+        }
+      };
+      const strike = () => {
+        lane.strikes++;
+        if (lane.strikes >= RACE_MAX_STRIKES) lane.ability = null;
+      };
+
+      while (Date.now() < hardStop && lane.ability && lane.legs < lane.ability.targetLegs) {
         const ab = lane.ability;
-        if (!ab || lane.legs >= ab.targetLegs) continue;
-        active = true;
-
-        const pushLegs = (legs: Array<{ txHash: Hash; vol6: bigint }>) => {
-          for (const leg of legs) {
-            lane.txHashes.push(leg.txHash);
-            lane.txVolumes6.push(leg.vol6.toString());
-            lane.volume6 += leg.vol6;
-            lane.legs++;
-          }
-        };
-        const strike = () => {
-          lane.strikes++;
-          if (lane.strikes >= RACE_MAX_STRIKES) lane.ability = null;
-        };
-
         // Recover a stranded reverse first: the wallet holds EURC from a prior
         // failed reverse, so swap it back to USDC before the next forward, or the
-        // agent stalls (no USDC to trade with). This is what keeps the swaps
-        // flowing instead of dying after one.
+        // agent stalls (no USDC to trade with). This keeps the swaps flowing.
         if (lane.heldAlt > 0) {
-          const rec = await swapAltBack(ab.privateKey, lane.heldAlt).catch(() => null);
+          await sem.acquire();
+          let rec: { txHash: Hash; vol6: bigint } | null;
+          try {
+            rec = await swapAltBack(ab.privateKey, lane.heldAlt);
+          } catch {
+            rec = null;
+          } finally {
+            sem.release();
+          }
           if (rec) {
             pushLegs([rec]);
             lane.heldAlt = 0;
@@ -815,18 +914,25 @@ export class ScoutRunner implements Runner {
           } else {
             strike();
           }
-          if (RACE_INTER_ROUND_MS > 0) await raceSleep(RACE_INTER_ROUND_MS);
+          await raceSleep(laneDelay);
           continue;
         }
 
-        const { legs, heldAlt } = await oneRoundTrip(ab.privateKey, ab.perSwapUsdc).catch(
-          () => ({ legs: [] as Array<{ txHash: Hash; vol6: bigint }>, heldAlt: 0 }),
-        );
+        await sem.acquire();
+        let rt: RoundTrip;
+        try {
+          rt = await oneRoundTrip(ab.privateKey, ab.perSwapUsdc);
+        } catch {
+          rt = { legs: [], heldAlt: 0 };
+        } finally {
+          sem.release();
+        }
+        const { legs, heldAlt } = rt;
         if (legs.length === 0) {
-          // Nothing landed: take a strike and retire only after several, so the
-          // loop keeps the other lanes going and gives this one more tries.
+          // Nothing landed: take a strike and retire only after several, so a
+          // transient RPC blip or one bad route doesn't end the agent.
           strike();
-          if (RACE_INTER_ROUND_MS > 0) await raceSleep(RACE_INTER_ROUND_MS);
+          await raceSleep(laneDelay);
           continue;
         }
         lane.strikes = 0;
@@ -873,9 +979,10 @@ export class ScoutRunner implements Runner {
           }
         }
 
-        if (RACE_INTER_ROUND_MS > 0) await raceSleep(RACE_INTER_ROUND_MS);
+        await raceSleep(laneDelay);
       }
-    }
+    };
+    await Promise.all(lanes.map((lane) => runLane(lane).catch(() => {})));
 
     const map = new Map<number, ScoutExecution>();
     let total = 0n;

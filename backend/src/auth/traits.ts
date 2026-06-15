@@ -30,10 +30,10 @@ export interface Trait {
 export const TRAITS: Trait[] = [
   // ----- LEGENDARY (5): one peculiar to each event, plus two generic. The big
   // movers. A lower tier with the right legendary beats a higher tier without.
-  { id: "whale_spotter",    name: "Whale Spotter",     rarity: "legendary", body: "volume legendary. trade far bigger than your tier allows: per-swap size jumps 1.5x to 3.5x by tier, so a tier-3 whale out-trades a bare tier-4." },
+  { id: "whale_spotter",    name: "Whale Spotter",     rarity: "legendary", body: "volume legendary. trade far bigger than your tier allows: per-swap size jumps 1.5x to 3.5x by tier, giving a lower tier a real shot at out-voluming a higher one." },
   { id: "puzzle_savant",    name: "Puzzle Savant",     rarity: "legendary", body: "puzzle legendary. a huge reasoning budget and extra attempts, so the agent solves more and faster. tier-scaled." },
   { id: "oracle_eye",       name: "Oracle's Eye",      rarity: "legendary", body: "prediction legendary. a big edge on calls and more trades per round. tier-scaled." },
-  { id: "velocity",         name: "Velocity",          rarity: "legendary", body: "generic legendary (speed). acts faster in every event: more swaps, faster solves, more trades. a tier-3 with speed out-acts a bare tier-4." },
+  { id: "velocity",         name: "Velocity",          rarity: "legendary", body: "generic legendary (speed). acts faster in every event: more swaps, faster solves, more trades. closes the gap on a higher tier's natural speed." },
   { id: "arc_sovereign",    name: "Arc Sovereign",     rarity: "legendary", body: "generic legendary. a strong broad boost across every event. tier-scaled." },
 
   // ----- RARE (6): small but noticeable, domain-leaning (~10-15%).

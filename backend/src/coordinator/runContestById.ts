@@ -316,8 +316,12 @@ export async function runContestById(contestId: number, broadcast: (message: unk
   // it again internally) so scoring + the two settlement txs land inside the
   // sweeper's per-event timeout. postScoreRoot is valid because we are already
   // past endTime here. Analyst burst-scores (its trades streamed during open).
+  // Scout uses the full trait-aware window (up to ~180s); the runner stops the
+  // race earlier for a bare field and caps itself internally. Solver caps its own
+  // solve window well under this. Scoring + the two settle txs then fit inside the
+  // 240s sweeper budget.
   const streamed = cType === 0 || cType === 2;
-  const raceSeconds = Number(process.env.CONTEST_RACE_SECONDS ?? "95");
+  const raceSeconds = Number(process.env.CONTEST_RACE_SECONDS ?? "180");
   const raceCtx = streamed
     ? { broadcast, deadlineMs: Date.now() + raceSeconds * 1000, source: "contest" as const, endsAtMs }
     : undefined;

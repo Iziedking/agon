@@ -67,7 +67,11 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   ]);
 }
 
-const RUN_TIMEOUT_MS = Number(process.env.AUTOPILOT_RUN_TIMEOUT_SECONDS ?? "150") * 1000;
+// The whole resolve (live swap/solve race + scoring + the two settlement txs)
+// must fit in this budget. The scout race can run up to ~180s (trait-aware
+// window) plus ~10s scoring and ~20s for the two chain receipts, so 240s leaves
+// margin. The idempotent payout-retry guard makes a timed-out pass resumable.
+const RUN_TIMEOUT_MS = Number(process.env.AUTOPILOT_RUN_TIMEOUT_SECONDS ?? "240") * 1000;
 
 async function runOnce(contestId: number, broadcast: (message: unknown) => void): Promise<void> {
   if (inFlight.has(contestId)) return;
@@ -178,11 +182,12 @@ async function startRandomChallengeLoop(broadcast: (message: unknown) => void): 
   const legacyJoin = process.env.AUTOPILOT_CHALLENGE_JOIN_SECONDS;
   const joinMin = Number(process.env.AUTOPILOT_CHALLENGE_JOIN_SECONDS_MIN ?? legacyJoin ?? "900");
   const joinMax = Number(process.env.AUTOPILOT_CHALLENGE_JOIN_SECONDS_MAX ?? legacyJoin ?? "2700");
-  // Resolve window: kept tight on purpose. Agents do their work in seconds, so
-  // a long window is dead air. The streamed race fills ~90s of dense activity
-  // and stops 60s before this deadline, leaving room for postWinnerRoot. The
-  // join window above stays host-configurable; only the resolve span tightens.
-  const resolveSecs = Number(process.env.AUTOPILOT_CHALLENGE_RESOLVE_SECONDS ?? "210");
+  // Resolve window: dense, not dead air. The streamed race fills up to ~180s of
+  // real concurrent activity (trait-aware) and stops 60s before this deadline,
+  // leaving room for postWinnerRoot. 260s gives the race its full window plus the
+  // pre-deadline cushion. The join window above stays host-configurable; only the
+  // resolve span is set here.
+  const resolveSecs = Number(process.env.AUTOPILOT_CHALLENGE_RESOLVE_SECONDS ?? "260");
   // One challenge per cycle. Default 1 hour between creations.
   const cycleSecs = Number(process.env.AUTOPILOT_CHALLENGE_CYCLE_SECONDS ?? "3600");
   const kinds = (process.env.AUTOPILOT_CHALLENGE_KINDS ?? "0,1,2,3")

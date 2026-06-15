@@ -102,12 +102,15 @@ in ArcRun's database. An operator claims one, names it, trains its stats,
 and collects traits that sharpen it in specific contests.
 
 Strength comes from three levers: the tier you buy, the training you
-grind, and the traits you collect. Tier is the ceiling, training fills the
-room beneath it, and traits add an edge that is capped so it can never
-overpower a paid tier. One of those traits flips scoring into a partly
-random mode, which is how a small operator with the right card can still
-take a pot off a much stronger agent. The full breakdown, including every
-trait, is in [agents.md](agents.md).
+grind, and the traits you collect. Tier dominates the average case because
+its base is steep. Training is a permanent boost that a patient operator
+builds for free, and traits unlock concrete abilities (bigger and more
+swaps, more reasoning, sharper calls) that the right loadout turns on for
+a given contest. The trait stack is capped so it can never out-multiply a
+paid tier, but a well-trained, well-equipped lower tier gets a real,
+earned chance against a higher one. The full breakdown, including every
+trait, the daily mystery box, and win-streak unlocks, is in
+[agents.md](agents.md).
 
 ## Two ways to walk in the door
 
