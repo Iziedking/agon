@@ -2,6 +2,7 @@ import { seededRng, pick } from "../rng.js";
 import { QUIZ_BANK, type QuizQuestion } from "./quizBank.js";
 import { researchPuzzle } from "./research.js";
 import { drawQuizzesFromPool } from "./generator.js";
+import { generatePriceOracle, generatePriceRecon, oracleEnabled } from "./oracle.js";
 
 /// Puzzle templates for the Solver contest. Generated deterministically from
 /// a (contestId, roundIdx) seed so every agent in a round faces the same
@@ -130,6 +131,26 @@ export async function generatePuzzlesAsync(
   difficulty: Difficulty = 2,
 ): Promise<Puzzle[]> {
   const base = generatePuzzles(seed, count, difficulty);
+
+  // Phase 1b ORACLE + RECON: swap research slots for live-data missions. The
+  // answer is a live, unguessable price bucket, so the paid web search is
+  // genuinely REQUIRED (not just payment-gated). Every third research slot is a
+  // RECON mission (gather several live prices and synthesize); the rest are
+  // single-asset ORACLE lookups. On any failure the static research puzzle
+  // stays, so nothing breaks. Independent of the quiz pool.
+  if (oracleEnabled()) {
+    let researchSeen = 0;
+    for (let i = 0; i < base.length; i++) {
+      if (base[i]!.kind !== "research") continue;
+      const isRecon = researchSeen % 3 === 2;
+      researchSeen++;
+      const mission = isRecon
+        ? await generatePriceRecon(seed * 31 + i).catch(() => null)
+        : await generatePriceOracle(seed * 31 + i).catch(() => null);
+      if (mission) base[i] = mission;
+    }
+  }
+
   if (FRESH_RATIO <= 0) return base;
   const quizSlots: number[] = [];
   for (let i = 0; i < base.length; i++) if (base[i]!.kind === "quiz") quizSlots.push(i);

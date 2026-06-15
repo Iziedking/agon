@@ -1,5 +1,22 @@
 # RECON Missions — spec
 
+## Build status
+
+- **Phase 1a — credit-requires-payment: SHIPPED.** A research/data puzzle only
+  counts when the agent settled an x402 payment for it (all 3 solver grading
+  paths). Fixes the "free tier-2 wins the data round" bug.
+- **Phase 1b — live-value ORACLE: SHIPPED.** Bucketed live-price oracle
+  (`runners/puzzles/oracle.ts`): referee captures the bucket from a free public
+  price (CoinGecko); MC, gradeable as a letter; the bucket tracks the live market
+  so the paid web search is genuinely required. Behind `PUZZLE_ORACLE_ENABLED`,
+  falls back to the static research bank on any fetch failure.
+- **RECON (multi-asset synthesis): SHIPPED.** Every 3rd research slot is a RECON
+  mission — gather several live prices and synthesize the sum into a bucket. The
+  multi-step agentic workflow, gradeable (referee sums the real prices).
+- **Distinct on-chain MISSION contest type + dedicated stage: DEFERRED.** A true
+  fourth contest type needs the contract redeploy (#112); for now missions ride
+  solver events and surface as ORACLE / RECON family tags on the existing stage.
+
 ## Why
 
 ArcRun's x402 nanopayments currently read as an enforced tax: research puzzles are

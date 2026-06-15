@@ -19,6 +19,17 @@ import { paidAgentResearch, summarizeNews } from "../nanopayments/research.js";
 import { config } from "../config/index.js";
 import { extractSearchTerm } from "./puzzles/research.js";
 
+/// Mission rule: a "data" puzzle (the research family today; oracle/RECON
+/// missions later) only earns credit when the agent actually SETTLED an x402
+/// payment for it. The data is the whole point — winning a data question without
+/// buying the data does not count. This is what turns x402 from a tax into real
+/// utility: the data puzzles are won only by the agents that paid for the data,
+/// so a free, no-spend agent can never ace a round that contains them. Pairs with
+/// reason-first (research-kind always triggers a paid call; other kinds never do).
+function missionRequiresPayment(kind: PuzzleKind): boolean {
+  return kind === "research";
+}
+
 /// Maps a puzzle kind to its preferred x402 research endpoint. Returning null
 /// means the runner skips the research-spend step for that puzzle. The
 /// research family points at NANOPAY_PREDICTION_ENDPOINT (Predexon by
@@ -494,8 +505,10 @@ async function runGuessPath(
   for (let i = 0; i < puzzles.length; i++) {
     const puzzle = puzzles[i]!;
     const { guess, ok } = sampleGuess(puzzle, r, params.luckBonus);
-    if (ok) correct++;
-    perPuzzle.push(ok);
+    // Guess paths never pay for data, so data puzzles never earn credit here.
+    const credited = ok && !missionRequiresPayment(puzzle.kind);
+    if (credited) correct++;
+    perPuzzle.push(credited);
     const ms = 800 + Math.round(400 * r());
     perPuzzleMs.push(ms);
     elapsedMs += ms;
@@ -513,7 +526,7 @@ async function runGuessPath(
       expected: puzzle.expected,
       // Guess path: the response IS the answer (no reasoning).
       answer: guess,
-      verdict: ok ? "correct" : "wrong",
+      verdict: credited ? "correct" : "wrong",
       latencyMs: ms,
       inputTokens: 0,
       outputTokens: 0,
@@ -679,6 +692,13 @@ async function runLlmPath(
           break;
         }
       }
+    }
+
+    // Credit-requires-payment: a data puzzle answered correctly but WITHOUT a
+    // settled x402 payment earns no credit. Only an agent that bought the data
+    // wins the data questions.
+    if (verdict === "correct" && missionRequiresPayment(puzzle.kind) && puzzleSpent6 <= 0n) {
+      verdict = "wrong";
     }
 
     if (verdict === "correct") correct++;
@@ -853,8 +873,9 @@ function guessOnlySolve(puzzles: Puzzle[], tier: number, seed: number): SolveOut
   let elapsedMs = 0;
   const perPuzzle: boolean[] = [];
   const perPuzzleMs: number[] = [];
-  for (const _ of puzzles) {
-    const ok = r() < acc;
+  for (const puzzle of puzzles) {
+    // Guess-only paths never pay for data, so data puzzles never earn credit.
+    const ok = r() < acc && !missionRequiresPayment(puzzle.kind);
     if (ok) correct++;
     perPuzzle.push(ok);
     const thisMs = Math.round(msPer * (0.7 + 0.6 * r()));
