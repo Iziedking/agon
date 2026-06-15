@@ -50,6 +50,21 @@ alter table operators add column if not exists circle_wallet_id text;
 create unique index if not exists operators_email_idx on operators(email) where email is not null;
 create unique index if not exists operators_circle_wallet_idx on operators(circle_wallet_id) where circle_wallet_id is not null;
 
+-- Per-user Circle dev-controlled wallets on SOURCE chains, used for cross-chain
+-- TOP UP: the user funds `address` on `chain` (an App Kit chain name like
+-- "Base_Sepolia"), then the backend bridges it to their Arc wallet. One row per
+-- (operator, chain); provisioned on demand and reused, so a user only ever has
+-- one deposit wallet per chain. The operator's main Arc wallet stays in
+-- operators.circle_wallet_id and is not duplicated here.
+create table if not exists circle_chain_wallets (
+  operator   text not null,
+  chain      text not null,
+  wallet_id  text not null,
+  address    text not null,
+  created_at timestamptz not null default now(),
+  primary key (operator, chain)
+);
+
 -- Per-call audit trail for LLM runner calls. Lets the demo prove that an
 -- agent's answer came from a real model call and not a synthetic ticker:
 -- show the puzzle text, the agent's response, the verdict, and the tokens

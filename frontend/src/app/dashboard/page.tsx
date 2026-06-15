@@ -21,6 +21,7 @@ import { CreateChallengeModal } from "@/components/pengu/CreateChallengeModal";
 import { HostCampaignButton } from "@/components/pengu/HostCampaignButton";
 import { LoginCTA } from "@/components/pengu/LoginCTA";
 import { MysteryClaimCard } from "@/components/pengu/MysteryClaimCard";
+import { FundsPanel } from "@/components/redesign/FundsPanel";
 import { RefundsWaiting } from "@/components/pengu/RefundsWaiting";
 import { SyndicatePoolCard } from "@/components/pengu/SyndicatePoolCard";
 import { PrizesPending } from "@/components/pengu/PrizesPending";
@@ -160,7 +161,7 @@ export default function DashboardPage() {
           right={
             <>
               <TagButton variant="ghost" href={`/operators/${address}`} size="sm">PUBLIC PROFILE</TagButton>
-              <TagButton variant="ghost" href="/bridge" size="sm">WITHDRAW</TagButton>
+              <TagButton variant="ghost" href="#funds" size="sm">TOP UP / WITHDRAW</TagButton>
               <TagButton href="/contests" size="sm">ENTER A CONTEST</TagButton>
             </>
           }
@@ -332,6 +333,11 @@ export default function DashboardPage() {
         </section>
       ) : null}
 
+      {/* FUNDS: top up / withdraw, in the dashboard (no standalone page) */}
+      <section id="funds" className="mx-auto max-w-[1600px] px-6 pb-10 scroll-mt-24">
+        <FundsPanel />
+      </section>
+
       {/* ACTIVITY: full width */}
       <section className="mx-auto max-w-[1600px] px-6 pb-10">
         <div className="mb-3 flex items-center justify-between">
@@ -369,7 +375,7 @@ export default function DashboardPage() {
             label="HOST A CAMPAIGN"
             className="inline-flex items-center gap-2 border border-ink bg-canvas px-4 py-2.5 font-mono text-[13px] uppercase tracking-[0.12em] text-ink hover:bg-canvas-3"
           />
-          <TagButton variant="ghost" href="/bridge">WITHDRAW</TagButton>
+          <TagButton variant="ghost" href="#funds">TOP UP / WITHDRAW</TagButton>
           <TagButton variant="ghost" href={`/operators/${address}`}>MY PROFILE</TagButton>
         </div>
       </section>

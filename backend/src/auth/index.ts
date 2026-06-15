@@ -45,6 +45,9 @@ import {
   seedTestnetUsdc,
   executeContractCall,
   getTxState,
+  createWalletOnChain,
+  walletUsdcBalance,
+  dcwBlockchainFor,
 } from "../chain/circleDev.js";
 import {
   listCredentialsForEmail,
@@ -720,6 +723,10 @@ app.post("/wallet/bridge", requireAuth, async (c) => {
     const { circleBridge } = await import("../chain/circleBridge.js");
     const result = await circleBridge({
       sourceChain: "Arc_Testnet",
+      // The operator's login identity IS their Arc Circle wallet address, so the
+      // adapter signs the burn from the right per-user wallet. (Previously omitted,
+      // which left the adapter with no bound wallet on a multi-user server.)
+      fromAddress: operator as `0x${string}`,
       destChain: body.destChain,
       amount: body.amount,
       recipientAddress: body.recipientAddress,
@@ -745,6 +752,139 @@ app.post("/wallet/bridge", requireAuth, async (c) => {
       message,
       source: "auth",
     });
+    return c.json({ error: message }, 502);
+  }
+});
+
+/// Get or create the user's dev-controlled deposit wallet on a source chain,
+/// cached in circle_chain_wallets so a user only ever has one per chain.
+async function getOrCreateChainWallet(
+  operator: string,
+  appKitChain: string,
+): Promise<{ walletId: string; address: `0x${string}` } | null> {
+  const dcw = dcwBlockchainFor(appKitChain);
+  if (!dcw) return null;
+  const { rows } = await query<{ wallet_id: string; address: string }>(
+    "select wallet_id, address from circle_chain_wallets where operator = $1 and chain = $2",
+    [operator, appKitChain],
+  );
+  if (rows[0]) return { walletId: rows[0].wallet_id, address: rows[0].address as `0x${string}` };
+  const created = await createWalletOnChain(`${operator}:${appKitChain}`, dcw);
+  await query(
+    `insert into circle_chain_wallets (operator, chain, wallet_id, address)
+       values ($1, $2, $3, $4)
+       on conflict (operator, chain) do nothing`,
+    [operator, appKitChain, created.walletId, created.address],
+  );
+  return created;
+}
+
+/// TOP UP (cross-chain) for email/custodial users: hand back a dev-controlled
+/// deposit address on the source chain. The user funds it from their own wallet
+/// or an exchange; the frontend then polls /status and auto-fires /bridge.
+app.post("/wallet/topup/deposit-address", requireAuth, async (c) => {
+  if (!circleDevConfigured()) {
+    return c.json({ error: "Circle Dev-Controlled wallets are not configured on this server" }, 503);
+  }
+  const operator = c.get("address");
+  const { rows } = await query<{ circle_wallet_id: string | null }>(
+    "select circle_wallet_id from operators where address = $1",
+    [operator],
+  );
+  if (!rows[0]?.circle_wallet_id) {
+    return c.json(
+      { error: "this session is not a Circle-managed wallet; web3 wallet users top up through the connected wallet." },
+      400,
+    );
+  }
+  let sourceChain = "";
+  try {
+    const b = (await c.req.json()) as { sourceChain?: unknown };
+    if (typeof b.sourceChain !== "string" || !b.sourceChain) throw new Error("sourceChain required (e.g. Base_Sepolia)");
+    sourceChain = b.sourceChain;
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 400);
+  }
+  if (sourceChain === "Arc_Testnet") {
+    return c.json({ error: "Arc is your home chain; receive USDC directly to your wallet address instead." }, 400);
+  }
+  try {
+    const w = await getOrCreateChainWallet(operator, sourceChain);
+    if (!w) return c.json({ error: `unsupported source chain: ${sourceChain}` }, 400);
+    return c.json({ chain: sourceChain, address: w.address });
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : String(err) }, 502);
+  }
+});
+
+/// Poll the source-chain deposit wallet's USDC balance so the frontend knows
+/// when the user's funds have landed and it can fire the bridge.
+app.get("/wallet/topup/status", requireAuth, async (c) => {
+  if (!circleDevConfigured()) {
+    return c.json({ error: "Circle Dev-Controlled wallets are not configured on this server" }, 503);
+  }
+  const operator = c.get("address");
+  const sourceChain = c.req.query("sourceChain") ?? "";
+  if (!sourceChain) return c.json({ error: "sourceChain required" }, 400);
+  const { rows } = await query<{ wallet_id: string; address: string }>(
+    "select wallet_id, address from circle_chain_wallets where operator = $1 and chain = $2",
+    [operator, sourceChain],
+  );
+  if (!rows[0]) return c.json({ usdc: "0", address: null });
+  try {
+    const bal = await walletUsdcBalance(rows[0].wallet_id);
+    return c.json({ usdc: bal.toString(), address: rows[0].address });
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : String(err) }, 502);
+  }
+});
+
+/// Bridge the deposited USDC from the source chain to the user's Arc wallet
+/// (recipient = the operator's own Arc address). Forwarder mints on Arc.
+app.post("/wallet/topup/bridge", requireAuth, async (c) => {
+  if (!circleDevConfigured()) {
+    return c.json({ error: "Circle Dev-Controlled wallets are not configured on this server" }, 503);
+  }
+  const operator = c.get("address");
+  let sourceChain = "";
+  let amount = "";
+  try {
+    const b = (await c.req.json()) as { sourceChain?: unknown; amount?: unknown };
+    if (typeof b.sourceChain !== "string" || !b.sourceChain) throw new Error("sourceChain required");
+    if (typeof b.amount !== "string" || !/^\d+(\.\d+)?$/.test(b.amount) || Number(b.amount) <= 0) {
+      throw new Error("amount must be a positive decimal string");
+    }
+    sourceChain = b.sourceChain;
+    amount = b.amount;
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 400);
+  }
+  const { rows } = await query<{ wallet_id: string; address: string }>(
+    "select wallet_id, address from circle_chain_wallets where operator = $1 and chain = $2",
+    [operator, sourceChain],
+  );
+  if (!rows[0]) {
+    return c.json({ error: "no deposit wallet for this chain; request a deposit address first." }, 400);
+  }
+  try {
+    const { circleBridge } = await import("../chain/circleBridge.js");
+    const result = await circleBridge({
+      sourceChain,
+      fromAddress: rows[0].address as `0x${string}`,
+      destChain: "Arc_Testnet",
+      amount,
+      recipientAddress: operator as `0x${string}`,
+    });
+    void logEvent({
+      kind: "wallet_topup",
+      address: operator,
+      context: { sourceChain, amount, state: result.state },
+      source: "auth",
+    });
+    return c.json(result);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    void logEvent({ kind: "wallet_topup_failed", level: "error", address: operator, message, source: "auth" });
     return c.json({ error: message }, 502);
   }
 });

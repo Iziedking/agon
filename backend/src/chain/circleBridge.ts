@@ -24,6 +24,11 @@ export interface CircleBridgeParams {
   /// responsibility of the caller (typically /wallet/bridge after looking up
   /// the user's session).
   sourceChain: string;
+  /// The user's Circle wallet ADDRESS on the source chain. The Circle Wallets
+  /// adapter resolves which dev-controlled wallet signs from this address
+  /// (addressContext: "developer-controlled"), so this MUST be the per-user
+  /// wallet on `sourceChain`. Without it the adapter has no wallet to sign with.
+  fromAddress: `0x${string}`;
   /// App Kit chain name for the DESTINATION chain.
   destChain: string;
   /// USDC amount as a decimal string (e.g. "1.50"). The SDK formats this
@@ -61,7 +66,12 @@ export async function circleBridge(params: CircleBridgeParams): Promise<CircleBr
   const kit = new AppKit();
 
   const result = await kit.bridge({
-    from: { adapter: adapter as never, chain: params.sourceChain as never },
+    // `address` binds the adapter to the user's dev-controlled wallet on the
+    // source chain; the Circle Wallets adapter signs from exactly this wallet.
+    // The public app-kit `from` type omits `address` (it's a Circle-Wallets
+    // adapter extension), so cast the whole object — same escape hatch the
+    // chain-string casts already use.
+    from: { adapter, chain: params.sourceChain, address: params.fromAddress } as never,
     to: {
       // Without a destination adapter the SDK uses the recipient address +
       // forwarder, which is exactly what we want for the email-user

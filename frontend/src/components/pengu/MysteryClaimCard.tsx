@@ -119,8 +119,8 @@ export function MysteryClaimCard({
               OPEN A MYSTERY BOX
             </h3>
             <p className="mt-2 max-w-[56ch] font-mono text-[13px] leading-[1.55] text-ink-2">
-              one free box a day. most come up empty, some drop a trait, and the rare legendary is the one that turns a
-              fight. whatever you pull sticks to your active agent and powers it up. open it, see what you get.
+              one free box a day. open it and see if luck drops an agent trait on you. the rare legendary is the one
+              that turns a fight. whatever you pull sticks to your active agent and powers it up. pull the lever.
             </p>
           </div>
         </div>

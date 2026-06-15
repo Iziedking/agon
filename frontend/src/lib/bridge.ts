@@ -157,6 +157,58 @@ export const BRIDGE_STEPS = [
 
 export type BridgeStepName = (typeof BRIDGE_STEPS)[number]["name"];
 
+/// --- Email (Circle custodial) cross-chain TOP UP client ---------------------
+/// These call the backend, which provisions a per-user deposit wallet on the
+/// source chain, watches its USDC balance, then bridges to the user's Arc
+/// wallet. The page shows the deposit address, polls status, and auto-fires the
+/// bridge once funds land.
+
+const FUNDS_AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL ?? "http://localhost:8082";
+
+export interface TopUpDepositAddress {
+  chain: string;
+  address: `0x${string}`;
+}
+
+export async function fetchTopUpDepositAddress(sourceChain: string): Promise<TopUpDepositAddress> {
+  const res = await fetch(`${FUNDS_AUTH_URL}/wallet/topup/deposit-address`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ sourceChain }),
+  });
+  const data = (await res.json().catch(() => ({}))) as { chain?: string; address?: string; error?: string };
+  if (!res.ok || !data.address) throw new Error(data.error ?? `could not get a deposit address (${res.status})`);
+  return { chain: data.chain ?? sourceChain, address: data.address as `0x${string}` };
+}
+
+export async function fetchTopUpStatus(sourceChain: string): Promise<{ usdc: number; address: string | null }> {
+  const res = await fetch(
+    `${FUNDS_AUTH_URL}/wallet/topup/status?sourceChain=${encodeURIComponent(sourceChain)}`,
+    { credentials: "include", cache: "no-store" },
+  );
+  const data = (await res.json().catch(() => ({}))) as { usdc?: string; address?: string | null; error?: string };
+  if (!res.ok) throw new Error(data.error ?? `status check failed (${res.status})`);
+  return { usdc: Number(data.usdc ?? "0"), address: data.address ?? null };
+}
+
+export interface TopUpBridgeResult {
+  state: string;
+  steps: Array<{ name: string; state: string; txHash?: string; explorerUrl?: string }>;
+}
+
+export async function postTopUpBridge(sourceChain: string, amount: string): Promise<TopUpBridgeResult> {
+  const res = await fetch(`${FUNDS_AUTH_URL}/wallet/topup/bridge`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ sourceChain, amount }),
+  });
+  const data = (await res.json().catch(() => ({}))) as TopUpBridgeResult & { error?: string };
+  if (!res.ok) throw new Error(data.error ?? `bridge failed (${res.status})`);
+  return { state: data.state ?? "unknown", steps: data.steps ?? [] };
+}
+
 export interface BridgeStepProgress {
   name: BridgeStepName;
   /// `forwarded` means the step is handled by Circle's forwarder service

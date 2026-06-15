@@ -81,6 +81,63 @@ export async function seedTestnetUsdc(address: `0x${string}`): Promise<{ request
   }
 }
 
+/// App Kit chain name -> Circle DCW blockchain code (testnet). Verified against
+/// @circle-fin/developer-controlled-wallets configuration types. Used for
+/// cross-chain TOP UP: we provision a per-user wallet on the source chain, the
+/// user funds it, then we bridge to their Arc wallet.
+const APPKIT_TO_DCW: Record<string, string> = {
+  Arc_Testnet: "ARC-TESTNET",
+  Ethereum_Sepolia: "ETH-SEPOLIA",
+  Base_Sepolia: "BASE-SEPOLIA",
+  Arbitrum_Sepolia: "ARB-SEPOLIA",
+  Optimism_Sepolia: "OP-SEPOLIA",
+  Polygon_Amoy_Testnet: "MATIC-AMOY",
+  Avalanche_Fuji: "AVAX-FUJI",
+  Unichain_Sepolia: "UNI-SEPOLIA",
+};
+
+/// Map an App Kit chain name to its Circle DCW blockchain code, or null when the
+/// chain isn't one we provision deposit wallets on.
+export function dcwBlockchainFor(appKitChain: string): string | null {
+  return APPKIT_TO_DCW[appKitChain] ?? null;
+}
+
+/// Provision a dev-controlled wallet for the user on a specific blockchain. The
+/// caller caches the (operator, chain) -> wallet mapping, so this only runs once
+/// per user per source chain. `refId` is the operator:chain key for searchability
+/// in the Circle console.
+export async function createWalletOnChain(
+  refId: string,
+  dcwBlockchain: string,
+): Promise<{ walletId: string; address: `0x${string}` }> {
+  const walletSetId = config.circle.walletSetId;
+  if (!walletSetId) throw new Error("CIRCLE_WALLET_SET_ID is not set. Run scripts/circle-bootstrap.ts first.");
+  const client = getClient();
+  const res = await client.createWallets({
+    blockchains: [dcwBlockchain] as unknown as ["ARC-TESTNET"],
+    count: 1,
+    walletSetId,
+    metadata: [{ refId }],
+  });
+  const wallet = res.data?.wallets?.[0];
+  if (!wallet?.id || !wallet.address) throw new Error("Circle createWallets returned no wallet");
+  return { walletId: wallet.id, address: wallet.address.toLowerCase() as `0x${string}` };
+}
+
+/// USDC balance (human units) for a dev-controlled wallet, summed across any
+/// USDC token entries. Drives the top-up deposit poll: once this clears the
+/// requested amount we fire the bridge to Arc.
+export async function walletUsdcBalance(walletId: string): Promise<number> {
+  const client = getClient();
+  const res = await client.getWalletTokenBalance({ id: walletId });
+  const balances = (res.data?.tokenBalances ?? []) as Array<{ amount?: string; token?: { symbol?: string } }>;
+  let total = 0;
+  for (const b of balances) {
+    if ((b.token?.symbol ?? "").toUpperCase().includes("USDC")) total += Number(b.amount ?? "0");
+  }
+  return total;
+}
+
 export type ExecuteParams = {
   walletId: string;
   contractAddress: `0x${string}`;
