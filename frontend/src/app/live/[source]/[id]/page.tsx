@@ -9,6 +9,7 @@ import { EventHero, EventStage, normalizeStageKind, RealSolves, type StageKind }
 import { PrizeSplitNote } from "@/components/redesign/PrizeSplitNote";
 import { useContestSocket } from "@/hooks/useContestSocket";
 import { fetchArcanaPins, type PinnedMarket } from "@/lib/arcanaPins";
+import { fetchResults, entriesFromResults } from "@/lib/results";
 import { nameFor, useAgentNames } from "@/hooks/useAgentNames";
 import { useLiveNarrative, progressSummary } from "@/hooks/useLiveNarrative";
 import { useAgentSkins, skinFor } from "@/hooks/useAgentNames";
@@ -94,7 +95,18 @@ function ContestFocus({ id }: { id: number }) {
   useEffect(() => {
     if (standings && standings.contestId === id) setLive(standings);
   }, [standings, id]);
-  const entries: StandingsEntry[] = live?.entries ?? [];
+  // Results snapshot. Live frames win; this fallback shows the field and final
+  // ranks when there is no live frame (a refresh of a settled or already-run
+  // event), instead of "stage initializing". Refetched on the 15s status poll.
+  const [snap, setSnap] = useState<StandingsEntry[]>([]);
+  useEffect(() => {
+    let stopped = false;
+    const load = () => fetchResults("contests", id).then((r) => { if (!stopped) setSnap(entriesFromResults(r)); });
+    void load();
+    const t = setInterval(load, 15000);
+    return () => { stopped = true; clearInterval(t); };
+  }, [id]);
+  const entries: StandingsEntry[] = live && live.entries.length > 0 ? live.entries : snap;
   const kindLabel = c ? (CONTEST_TYPE[c.contestType] ?? "CONTEST").toUpperCase() : "—";
   const stageKind = normalizeStageKind(live?.contestType ?? kindLabel);
   const status = c ? statusForContest(c.status) : { tone: "ink" as const, label: "LOADING" };
@@ -192,7 +204,17 @@ function ChallengeFocus({ id }: { id: number }) {
   useEffect(() => {
     if (challengeStandings && challengeStandings.challengeId === id) setLive(challengeStandings);
   }, [challengeStandings, id]);
-  const entries: StandingsEntry[] = live?.entries ?? [];
+  // Results snapshot fallback (see ContestFocus): a refresh of a settled or
+  // already-run challenge shows the field and final ranks, not "initializing".
+  const [snap, setSnap] = useState<StandingsEntry[]>([]);
+  useEffect(() => {
+    let stopped = false;
+    const load = () => fetchResults("challenges", id).then((r) => { if (!stopped) setSnap(entriesFromResults(r)); });
+    void load();
+    const t = setInterval(load, 15000);
+    return () => { stopped = true; clearInterval(t); };
+  }, [id]);
+  const entries: StandingsEntry[] = live && live.entries.length > 0 ? live.entries : snap;
   const kindLabel = ch ? (CHALLENGE_KIND[ch.kind] ?? "CHALLENGE").toUpperCase() : "—";
   const stageKind = normalizeStageKind(kindLabel);
   const status = ch ? statusForChallenge(ch.status) : { tone: "ink" as const, label: "LOADING" };

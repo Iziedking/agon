@@ -2,6 +2,8 @@
 /// (backed by the indexer tables). The field of entrants while it fills, the
 /// ranked payouts once it settles. Runs in the browser, where AUTH_URL resolves.
 
+import type { StandingsEntry } from "./live";
+
 const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL ?? "http://localhost:8082";
 
 export interface ResultEntrant {
@@ -21,6 +23,29 @@ export interface ArenaResults {
 }
 
 const EMPTY: ArenaResults = { entrants: [], winners: [] };
+
+/// Build a standings snapshot from a results board, so a page that loads or
+/// refreshes WITHOUT a live websocket frame (a settled event, a cold load mid
+/// event) shows the field and the final ranks instead of "stage initializing".
+/// Winners come first by rank with their payout as the score; remaining
+/// entrants follow with a zero score. Live frames, when they arrive, take over.
+export function entriesFromResults(r: ArenaResults): StandingsEntry[] {
+  const agentByOp = new Map(r.entrants.map((e) => [e.operator.toLowerCase(), e.agentId] as const));
+  const winners: StandingsEntry[] = r.winners
+    .slice()
+    .sort((a, b) => a.rank - b.rank)
+    .map((w) => ({
+      rank: w.rank,
+      agentId: agentByOp.get(w.operator.toLowerCase()) ?? 0,
+      operator: w.operator,
+      score: Math.round(Number(w.amount) / 1e6),
+    }));
+  const winnerOps = new Set(r.winners.map((w) => w.operator.toLowerCase()));
+  const rest: StandingsEntry[] = r.entrants
+    .filter((e) => !winnerOps.has(e.operator.toLowerCase()))
+    .map((e, i) => ({ rank: winners.length + i + 1, agentId: e.agentId, operator: e.operator, score: 0 }));
+  return [...winners, ...rest];
+}
 
 /// kind is "contests" or "challenges"; the endpoint shapes match.
 export async function fetchResults(kind: "contests" | "challenges", id: number): Promise<ArenaResults> {

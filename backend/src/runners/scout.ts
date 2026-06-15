@@ -467,6 +467,9 @@ const RACE_INTER_ROUND_MS = Number(process.env.SCOUT_RACE_DELAY_MS ?? "400");
 // SCOUT_STREAM_TICKS=0 disables it.
 const STREAM_TICKS_MAX = Number(process.env.SCOUT_STREAM_TICKS ?? "2");
 const STREAM_EVERY_LEGS = Number(process.env.SCOUT_STREAM_EVERY_LEGS ?? "5");
+// A lane retires only after this many consecutive failed attempts, so one bad
+// route or RPC blip doesn't end an agent after a single swap.
+const RACE_MAX_STRIKES = Number(process.env.SCOUT_RACE_MAX_STRIKES ?? "3");
 const raceSleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 interface SwapAbility {
@@ -514,28 +517,49 @@ async function prepareSwapAbility(
   return { privateKey, perSwapUsdc, targetLegs };
 }
 
-/// One USDC -> EURC -> USDC round-trip. Returns the legs that actually landed
-/// (0, 1, or 2) with each leg's USDC-equivalent volume. Recirculates the
-/// principal so the next round-trip can run from the same wallet.
-async function oneRoundTrip(
-  privateKey: `0x${string}`,
-  perSwapUsdc: number,
-): Promise<Array<{ txHash: Hash; vol6: bigint }>> {
-  const legs: Array<{ txHash: Hash; vol6: bigint }> = [];
+interface RoundTrip {
+  legs: Array<{ txHash: Hash; vol6: bigint }>;
+  /// EURC left in the wallet when the forward leg landed but the reverse leg
+  /// did not. The race loop swaps this back first next time so the principal
+  /// returns to USDC and the agent can keep trading instead of stalling.
+  heldAlt: number;
+}
+
+/// One USDC -> EURC -> USDC round-trip. Returns the legs that landed plus any
+/// EURC stranded by a failed reverse, so the caller can recover it.
+async function oneRoundTrip(privateKey: `0x${string}`, perSwapUsdc: number): Promise<RoundTrip> {
+  const legs: RoundTrip["legs"] = [];
   const usdc = config.scout.swapTokenIn;
   const alt = config.scout.swapTokenOut;
   const fwd = await executeSwap({ privateKey, tokenIn: usdc, tokenOut: alt, amountIn: perSwapUsdc.toFixed(6) });
-  if (!fwd) return legs;
+  if (!fwd) return { legs, heldAlt: 0 };
   if (fwd.txHash) legs.push({ txHash: fwd.txHash as Hash, vol6: BigInt(Math.round(perSwapUsdc * 1e6)) });
   const altOut = Number(fwd.amountOut);
   if (Number.isFinite(altOut) && altOut > 0) {
-    const rev = await executeSwap({ privateKey, tokenIn: alt, tokenOut: usdc, amountIn: altOut.toFixed(6) });
-    if (rev?.txHash) {
-      const back = Number(rev.amountOut) > 0 ? Number(rev.amountOut) : perSwapUsdc;
-      legs.push({ txHash: rev.txHash as Hash, vol6: BigInt(Math.round(back * 1e6)) });
+    const rec = await swapAltBack(privateKey, altOut);
+    if (rec) {
+      legs.push(rec);
+      return { legs, heldAlt: 0 };
     }
+    // Forward landed, reverse failed: the wallet now holds altOut EURC.
+    return { legs, heldAlt: altOut };
   }
-  return legs;
+  return { legs, heldAlt: 0 };
+}
+
+/// Swap a given amount of EURC back to USDC. Used both as the reverse leg of a
+/// round-trip and as the recovery swap when a prior reverse failed. Returns the
+/// landed leg or null.
+async function swapAltBack(
+  privateKey: `0x${string}`,
+  altAmount: number,
+): Promise<{ txHash: Hash; vol6: bigint } | null> {
+  const usdc = config.scout.swapTokenIn;
+  const alt = config.scout.swapTokenOut;
+  const rev = await executeSwap({ privateKey, tokenIn: alt, tokenOut: usdc, amountIn: altAmount.toFixed(6) });
+  if (!rev?.txHash) return null;
+  const back = Number(rev.amountOut) > 0 ? Number(rev.amountOut) : altAmount;
+  return { txHash: rev.txHash as Hash, vol6: BigInt(Math.round(back * 1e6)) };
 }
 
 interface ScoutPlan {
@@ -689,6 +713,12 @@ export class ScoutRunner implements Runner {
       /// New-verb tape rows (STREAM subscription ticks) for this agent.
       events: TapeEvent[];
       streamTicks: number;
+      /// Consecutive failed attempts. The lane retires only after a few, so a
+      /// transient RPC blip or one bad route doesn't end the agent after a
+      /// single swap.
+      strikes: number;
+      /// EURC stranded by a failed reverse leg, swapped back first next time.
+      heldAlt: number;
     }
     const lanes: Lane[] = [];
     for (const p of plans) {
@@ -716,6 +746,8 @@ export class ScoutRunner implements Runner {
         tier: p.entry.tier,
         events: [],
         streamTicks: 0,
+        strikes: 0,
+        heldAlt: 0,
       });
     }
 
@@ -754,21 +786,52 @@ export class ScoutRunner implements Runner {
         const ab = lane.ability;
         if (!ab || lane.legs >= ab.targetLegs) continue;
         active = true;
-        const legs = await oneRoundTrip(ab.privateKey, ab.perSwapUsdc).catch(
-          () => [] as Array<{ txHash: Hash; vol6: bigint }>,
-        );
-        if (legs.length === 0) {
-          // Route unavailable for this agent right now: retire its lane so the
-          // loop doesn't spin on it, and let the others keep swapping.
-          lane.ability = null;
+
+        const pushLegs = (legs: Array<{ txHash: Hash; vol6: bigint }>) => {
+          for (const leg of legs) {
+            lane.txHashes.push(leg.txHash);
+            lane.txVolumes6.push(leg.vol6.toString());
+            lane.volume6 += leg.vol6;
+            lane.legs++;
+          }
+        };
+        const strike = () => {
+          lane.strikes++;
+          if (lane.strikes >= RACE_MAX_STRIKES) lane.ability = null;
+        };
+
+        // Recover a stranded reverse first: the wallet holds EURC from a prior
+        // failed reverse, so swap it back to USDC before the next forward, or the
+        // agent stalls (no USDC to trade with). This is what keeps the swaps
+        // flowing instead of dying after one.
+        if (lane.heldAlt > 0) {
+          const rec = await swapAltBack(ab.privateKey, lane.heldAlt).catch(() => null);
+          if (rec) {
+            pushLegs([rec]);
+            lane.heldAlt = 0;
+            lane.strikes = 0;
+            await recordSwaps(lane.agentId, 1).catch(() => {});
+            emit();
+          } else {
+            strike();
+          }
+          if (RACE_INTER_ROUND_MS > 0) await raceSleep(RACE_INTER_ROUND_MS);
           continue;
         }
-        for (const leg of legs) {
-          lane.txHashes.push(leg.txHash);
-          lane.txVolumes6.push(leg.vol6.toString());
-          lane.volume6 += leg.vol6;
-          lane.legs++;
+
+        const { legs, heldAlt } = await oneRoundTrip(ab.privateKey, ab.perSwapUsdc).catch(
+          () => ({ legs: [] as Array<{ txHash: Hash; vol6: bigint }>, heldAlt: 0 }),
+        );
+        if (legs.length === 0) {
+          // Nothing landed: take a strike and retire only after several, so the
+          // loop keeps the other lanes going and gives this one more tries.
+          strike();
+          if (RACE_INTER_ROUND_MS > 0) await raceSleep(RACE_INTER_ROUND_MS);
+          continue;
         }
+        lane.strikes = 0;
+        lane.heldAlt = heldAlt;
+        pushLegs(legs);
         await recordSwaps(lane.agentId, legs.length).catch(() => {});
         emit();
 
