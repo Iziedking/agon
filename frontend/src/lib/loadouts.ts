@@ -38,7 +38,7 @@ export function clashInLoadout(candidate: string, current: string[]): string | n
 export interface TraitDef {
   id: string;
   name: string;
-  rarity: "common" | "rare" | "epic" | "legendary";
+  rarity: "common" | "rare" | "legendary";
   body: string;
 }
 

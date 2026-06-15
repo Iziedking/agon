@@ -8,7 +8,7 @@
 
 const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL ?? "http://localhost:8082";
 
-export type Rarity = "common" | "rare" | "epic" | "legendary";
+export type Rarity = "common" | "rare" | "legendary";
 
 export interface Trait {
   id: string;
@@ -30,33 +30,28 @@ export interface CooldownStatus {
   totalClaims: number;
 }
 
-/// Global daily mystery pool status. `max`/`claimed`/`remaining` are the claim
-/// SPOTS (100/day, first come first served). The scarce part is the trait WINS:
-/// `traitCap` is how many traits can drop today (3, or 7 on a `bonusDay`),
-/// `won` how many already have, `traitsLeft` the difference. `resetsAt` is the
-/// next 01:00 UTC. won/traitCap/traitsLeft/bonusDay are optional for older
-/// backends that don't send them yet.
+/// Global daily mystery pool status. 100 claim spots a day, first come first
+/// served; `remaining` is how many are left, `resetsAt` the next 01:00 UTC. The
+/// per-box odds are intentionally NOT surfaced; the box is meant to be a fun
+/// gamble, not a spreadsheet.
 export interface PoolStatus {
   max: number;
   claimed: number;
   remaining: number;
   resetsAt: number;
-  won?: number;
-  traitCap?: number;
-  traitsLeft?: number;
-  bonusDay?: boolean;
 }
 
 export interface ClaimResult {
   trait: Trait | null;
   rugged: boolean;
+  /// Rarity of the trait won ("common" | "rare" | "legendary"), or "rugged".
+  rarity?: Rarity | "rugged";
   agentId: number;
 }
 
 export const RARITY_COLOR: Record<Rarity, { text: string; bg: string; border: string }> = {
   common: { text: "#5F7A99", bg: "rgba(95, 122, 153, 0.10)", border: "rgba(95, 122, 153, 0.30)" },
   rare: { text: "#2563EB", bg: "rgba(37, 99, 235, 0.10)", border: "rgba(37, 99, 235, 0.30)" },
-  epic: { text: "#7C3AED", bg: "rgba(124, 58, 237, 0.10)", border: "rgba(124, 58, 237, 0.30)" },
   legendary: { text: "#D97706", bg: "rgba(217, 119, 6, 0.12)", border: "rgba(217, 119, 6, 0.40)" },
 };
 

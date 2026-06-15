@@ -19,7 +19,6 @@ import {
 const RARITY_COLOR: Record<TraitDef["rarity"], string> = {
   common: "var(--ink-3)",
   rare: "#3a82c9",
-  epic: "#8b5cf6",
   legendary: "var(--accent)",
 };
 

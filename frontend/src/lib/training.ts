@@ -1,15 +1,15 @@
-/// Client API for agent training. Mirrors the backend coordinator/training.ts
-/// module: six stats, levels 0..20, Cycles cost (N+1)*50, time gate set by
-/// the server's TRAINING_BASE_SECONDS_PER_LEVEL env (default 60min/level prod,
-/// 30s/level in dev). Optional speedup ladder at queue
-/// time: each +50 cycles shaves 15 min off the wait.
+/// Client API for agent training. Mirrors backend coordinator/training.ts: six
+/// stats, FIVE permanent levels each, Cycles cost (N+1)*50. A level is a
+/// permanent boost; higher levels take much longer to train (level 1 quick, then
+/// 24h, 72h, 5 days, 7 days). Cycles buy back wall-clock. The backend's
+/// secondsTotal is authoritative; the previews here just mirror the ladder.
 
 const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL ?? "http://localhost:8082";
 
 export type Stat = "power" | "precision" | "speed" | "endurance" | "luck" | "focus";
 
 export const STATS: Stat[] = ["power", "precision", "speed", "endurance", "luck", "focus"];
-export const MAX_STAT_LEVEL = 20;
+export const MAX_STAT_LEVEL = 5;
 
 export interface SpeedupParams {
   cyclesPerStep: number;
@@ -41,14 +41,26 @@ export function cyclesCost(fromLevel: number, speedupSteps = 0, cyclesPerStep = 
   return (fromLevel + 1) * 50 + Math.max(0, speedupSteps) * cyclesPerStep;
 }
 
-/// Base seconds at a level given the server's base. Speedup shaves
-/// `steps × secondsPerStep` off, floored at minSeconds.
-export function secondsCost(
-  fromLevel: number,
-  speedupSteps: number,
-  params: SpeedupParams,
-): number {
-  const base = (fromLevel + 1) * params.baseSecondsPerLevel;
+const HOUR = 3600;
+
+/// Base seconds to reach a target LEVEL (1..5), mirroring the backend ladder:
+/// level 1 quick (server base), then 24h, 72h, 5 days, 7 days.
+function levelBaseSeconds(targetLevel: number, params: SpeedupParams): number {
+  const t = Math.max(1, Math.min(MAX_STAT_LEVEL, targetLevel));
+  const ladder: Record<number, number> = {
+    1: params.baseSecondsPerLevel,
+    2: 24 * HOUR,
+    3: 72 * HOUR,
+    4: 120 * HOUR,
+    5: 168 * HOUR,
+  };
+  return ladder[t] ?? 168 * HOUR;
+}
+
+/// Base seconds for level N → N+1. Speedup shaves `steps × secondsPerStep` off,
+/// floored at minSeconds.
+export function secondsCost(fromLevel: number, speedupSteps: number, params: SpeedupParams): number {
+  const base = levelBaseSeconds(fromLevel + 1, params);
   const cut = Math.max(0, speedupSteps) * params.secondsPerStep;
   return Math.max(params.minSeconds, base - cut);
 }
@@ -56,7 +68,7 @@ export function secondsCost(
 /// How many speedup steps still reduce wall-clock at this level. Useful for
 /// clamping a slider so the UI can't show "+10 more cycles for nothing".
 export function maxSpeedupSteps(fromLevel: number, params: SpeedupParams): number {
-  const base = (fromLevel + 1) * params.baseSecondsPerLevel;
+  const base = levelBaseSeconds(fromLevel + 1, params);
   const span = Math.max(0, base - params.minSeconds);
   return Math.floor(span / params.secondsPerStep);
 }
