@@ -4,17 +4,16 @@
 /// has its own copy for chip labels; this one is the source of truth for what
 /// can be awarded.
 
-export type Rarity = "common" | "rare" | "epic" | "legendary";
+export type Rarity = "common" | "rare" | "legendary";
 
-/// Score-bonus multiplier per rarity. Combined as 1 + sum(traits.multiplier),
-/// capped at MAX_AGENT_MULTIPLIER. A maxed agent with every trait in the pool
-/// caps out near +100%; a single common is +3%. The coordinator reads these
-/// from `agent_traits` and applies them after final scoring.
+/// Coarse score-bonus per rarity, kept as a reference for owned-trait summaries.
+/// The real, tier-scaled, per-event effects now live per EQUIPPED loadout in
+/// scoring/strength.ts (whale per-tier size, Speed across all events, etc.).
+/// common is a tiny nudge, rare small, legendary large.
 export const RARITY_MULTIPLIER: Record<Rarity, number> = {
-  common: 0.03,
-  rare: 0.06,
-  epic: 0.12,
-  legendary: 0.25,
+  common: 0.02,
+  rare: 0.12,
+  legendary: 0.35,
 };
 export const MAX_AGENT_MULTIPLIER = 2.0;
 
@@ -29,101 +28,92 @@ export interface Trait {
 /// Renaming an id orphans existing awards, so don't rename ids once a trait has
 /// been awarded in production.
 export const TRAITS: Trait[] = [
-  // Commons (7) - easy wins, light buffs, get a few quickly.
-  { id: "lucky_charm",      name: "Lucky Charm",       rarity: "common",    body: "small luck nudge across every kind. scaled by tier." },
-  { id: "speed_demon",      name: "Speed Demon",       rarity: "common",    body: "more swaps per volume run, up to 20% more trades. scaled by tier." },
-  { id: "hot_hand",         name: "Hot Hand",          rarity: "common",    body: "solver capability: more reasoning budget and an extra attempt per puzzle. scaled by tier." },
-  { id: "quick_draw",       name: "Quick Draw",        rarity: "common",    body: "solver capability: more reasoning budget and an extra attempt per puzzle. scaled by tier." },
-  { id: "dice_roller",      name: "Dice Roller",       rarity: "common",    body: "small randomness bias across any kind. scaled by tier." },
-  { id: "mempool_diver",    name: "Mempool Diver",     rarity: "common",    body: "15% more swaps on volume runs. scaled by tier." },
-  { id: "crystal_ball",     name: "Crystal Ball",      rarity: "common",    body: "soft prior on analyst calls, small score edge. scaled by tier." },
+  // ----- LEGENDARY (5): one peculiar to each event, plus two generic. The big
+  // movers. A lower tier with the right legendary beats a higher tier without.
+  { id: "whale_spotter",    name: "Whale Spotter",     rarity: "legendary", body: "volume legendary. trade far bigger than your tier allows: per-swap size jumps 1.5x to 3.5x by tier, so a tier-3 whale out-trades a bare tier-4." },
+  { id: "puzzle_savant",    name: "Puzzle Savant",     rarity: "legendary", body: "puzzle legendary. a huge reasoning budget and extra attempts, so the agent solves more and faster. tier-scaled." },
+  { id: "oracle_eye",       name: "Oracle's Eye",      rarity: "legendary", body: "prediction legendary. a big edge on calls and more trades per round. tier-scaled." },
+  { id: "velocity",         name: "Velocity",          rarity: "legendary", body: "generic legendary (speed). acts faster in every event: more swaps, faster solves, more trades. a tier-3 with speed out-acts a bare tier-4." },
+  { id: "arc_sovereign",    name: "Arc Sovereign",     rarity: "legendary", body: "generic legendary. a strong broad boost across every event. tier-scaled." },
 
-  // Rares (7) - mid-grade, domain-specific edges.
-  { id: "pattern_reader",   name: "Pattern Reader",    rarity: "rare",      body: "sharper prediction calls, up to 10% more analyst score. scaled by tier." },
-  { id: "whale_spotter",    name: "Whale Spotter",     rarity: "rare",      body: "bigger trades, up to 35% larger per swap on volume runs. scaled by tier." },
-  { id: "gas_whisperer",    name: "Gas Whisperer",     rarity: "rare",      body: "tighter execution, a few more swaps on volume runs. scaled by tier." },
-  { id: "liquidity_hunter", name: "Liquidity Hunter",  rarity: "rare",      body: "deeper pools, 20% bigger fills on volume runs. scaled by tier." },
-  { id: "precision_engine", name: "Precision Engine",  rarity: "rare",      body: "lower variance, up to 12% more analyst score. scaled by tier." },
-  { id: "gas_arb",          name: "Gas Arb",           rarity: "rare",      body: "12% more swaps on volume runs. scaled by tier." },
-  { id: "tape_reader",      name: "Tape Reader",       rarity: "rare",      body: "reads the tape, up to 10% more analyst score. scaled by tier." },
+  // ----- RARE (6): small but noticeable, domain-leaning (~10-15%).
+  { id: "liquidity_hunter", name: "Liquidity Hunter",  rarity: "rare",      body: "volume rare. deeper pools, about 15% bigger fills per swap. tier-scaled." },
+  { id: "volume_titan",     name: "Volume Titan",      rarity: "rare",      body: "volume rare. bigger and more frequent swaps, about 12%. tier-scaled." },
+  { id: "quant_oracle",     name: "Quant Oracle",      rarity: "rare",      body: "prediction rare. a model ensemble, about 12% more score. tier-scaled." },
+  { id: "tape_reader",      name: "Tape Reader",       rarity: "rare",      body: "prediction rare. reads the order tape, about 10% more score. tier-scaled." },
+  { id: "solver_circuit",   name: "Solver Circuit",    rarity: "rare",      body: "puzzle rare. a bigger reasoning budget and an extra attempt. tier-scaled." },
+  { id: "chain_breaker",    name: "Chain Breaker",     rarity: "rare",      body: "generic rare. a small boost across every event, about 10%. tier-scaled." },
 
-  // Epics (6) - heavy specialisation.
-  { id: "puzzle_savant",    name: "Puzzle Savant",     rarity: "epic",      body: "solver capability: a big tier-scaled reasoning budget on hard puzzle solves." },
-  { id: "arc_initiate",     name: "Arc Initiate",      rarity: "epic",      body: "edge across every kind, plus a small volume bump. scaled by tier." },
-  { id: "deep_state",       name: "Deep State",        rarity: "epic",      body: "reads onchain state most miss, up to 15% more analyst score, calibrated. scaled by tier." },
-  { id: "quant_oracle",     name: "Quant Oracle",      rarity: "epic",      body: "model ensemble, up to 18% more analyst score. scaled by tier." },
-  { id: "solver_circuit",   name: "Solver Circuit",    rarity: "epic",      body: "solver capability: a tier-scaled reasoning budget and an extra attempt on puzzle solves." },
-  { id: "volume_titan",     name: "Volume Titan",      rarity: "epic",      body: "whale-class trades, 30% bigger per swap and 10% more of them. scaled by tier." },
-
-  // Legendaries (4) - the trophies.
-  { id: "chain_breaker",    name: "Chain Breaker",     rarity: "legendary", body: "boost across every family, with bigger and more frequent trades on volume. scaled by tier." },
-  { id: "oracle_eye",       name: "Oracle's Eye",      rarity: "legendary", body: "up to 20% more analyst score on the noisiest markets. scaled by tier." },
-  { id: "arc_sovereign",    name: "Arc Sovereign",     rarity: "legendary", body: "Arc home turf. strongest cross-kind edge, plus bigger and more frequent trades. scaled by tier." },
-  { id: "circle_protocol",  name: "Circle Protocol",   rarity: "legendary", body: "calibrated scoring across the board, plus a volume bump. scaled by tier." },
+  // ----- COMMON (14): a very tiny 1-2% nudge in their domain. mostly for the set.
+  { id: "lucky_charm",      name: "Lucky Charm",       rarity: "common",    body: "common. a tiny luck nudge across every event." },
+  { id: "dice_roller",      name: "Dice Roller",       rarity: "common",    body: "common. a tiny randomness bias across every event." },
+  { id: "arc_initiate",     name: "Arc Initiate",      rarity: "common",    body: "common. a tiny all-round edge on Arc." },
+  { id: "circle_protocol",  name: "Circle Protocol",   rarity: "common",    body: "common. a tiny calibrated edge across every event." },
+  { id: "gas_whisperer",    name: "Gas Whisperer",     rarity: "common",    body: "common. a tiny execution edge across events." },
+  { id: "speed_demon",      name: "Speed Demon",       rarity: "common",    body: "common. a few more swaps on volume runs, tiny." },
+  { id: "mempool_diver",    name: "Mempool Diver",     rarity: "common",    body: "common. a few more swaps on volume runs, tiny." },
+  { id: "gas_arb",          name: "Gas Arb",           rarity: "common",    body: "common. a few more swaps on volume runs, tiny." },
+  { id: "quick_draw",       name: "Quick Draw",        rarity: "common",    body: "common. a touch more reasoning on puzzle solves." },
+  { id: "hot_hand",         name: "Hot Hand",          rarity: "common",    body: "common. a touch more reasoning on puzzle solves." },
+  { id: "pattern_reader",   name: "Pattern Reader",    rarity: "common",    body: "common. a tiny edge on prediction calls." },
+  { id: "precision_engine", name: "Precision Engine",  rarity: "common",    body: "common. a tiny variance cut on prediction calls." },
+  { id: "crystal_ball",     name: "Crystal Ball",      rarity: "common",    body: "common. a soft prior on prediction calls, tiny." },
+  { id: "deep_state",       name: "Deep State",        rarity: "common",    body: "common. reads a little onchain state, tiny prediction edge." },
 ];
 
-/// Rarity weights for the mystery picker. Skewed toward commons so a winning
-/// roll is usually a light buff, and the trophies stay scarce. Placements are
-/// the better path to epics and legendaries (see RANK_WEIGHTS in
-/// coordinator/traits.ts): a contest win carries far higher odds of a rare
-/// drop than the mystery box does.
-const RARITY_WEIGHT: Record<Rarity, number> = {
-  common: 56,
-  rare: 26,
-  epic: 13,
-  legendary: 5,
+export type MysteryRarity = "common" | "rare" | "legendary";
+
+function envProb(name: string, fallback: number): number {
+  const v = Number(process.env[name]);
+  return Number.isFinite(v) && v >= 0 && v <= 1 ? v : fallback;
+}
+
+/// Fixed mystery-box odds (env-overridable). Open a box: 65% rugged, 20% common,
+/// 10% rare, 5% legendary. Across the 100 daily claim spots that is roughly 35
+/// traits network-wide, with the legendary the scarce prize that makes a lower
+/// tier dangerous. This replaces the old adaptive rug + rarity-weighted picker.
+export const MYSTERY_ODDS = {
+  rug: envProb("MYSTERY_P_RUG", 0.65),
+  common: envProb("MYSTERY_P_COMMON", 0.2),
+  rare: envProb("MYSTERY_P_RARE", 0.1),
+  legendary: envProb("MYSTERY_P_LEGENDARY", 0.05),
 };
 
-/// Base rug chance: how often a roll returns nothing. Traits are meant to be
-/// scarce, so even a fresh operator loses close to half their rolls. The
-/// active value scales up with how many traits the operator already owns, so
-/// completing the set is a grind rather than a handout. Read via
-/// `rugChanceFor(ownedCount)`; the export here is the "typical" number a UI
-/// can show. Override with MYSTERY_RUG_CHANCE (0..1).
-export const RUG_CHANCE: number = (() => {
-  const raw = Number(process.env.MYSTERY_RUG_CHANCE);
-  if (!Number.isFinite(raw) || raw < 0 || raw > 1) return 0.45;
-  return raw;
-})();
+/// Display value: how often a roll returns nothing.
+export const RUG_CHANCE = MYSTERY_ODDS.rug;
 
-/// Adaptive rug chance by how many traits the operator already owns. A
-/// fresh roll loses ~45% of the time; by the time they hold most of the
-/// catalogue, rolls lose ~85% of the time. The multipliers stack on the
-/// base, and the result is capped so a roll always keeps some chance.
-export function rugChanceFor(ownedCount: number): number {
-  const base = RUG_CHANCE;
-  let factor = 1.0;
-  if (ownedCount >= 4) factor = 1.25;
-  if (ownedCount >= 8) factor = 1.55;
-  if (ownedCount >= 16) factor = 1.9;
-  return Math.min(0.9, base * factor);
+/// Roll a rarity, or "rugged", by the fixed odds.
+export function rollRarity(r: number = Math.random()): "rugged" | MysteryRarity {
+  if (r < MYSTERY_ODDS.rug) return "rugged";
+  if (r < MYSTERY_ODDS.rug + MYSTERY_ODDS.common) return "common";
+  if (r < MYSTERY_ODDS.rug + MYSTERY_ODDS.common + MYSTERY_ODDS.rare) return "rare";
+  return "legendary";
 }
 
-/// Pick one trait at random, weighted by rarity. Returns null if the list is
-/// empty (e.g., the agent already owns every trait).
-export function pickWeighted(pool: Trait[]): Trait | null {
-  if (pool.length === 0) return null;
-  const total = pool.reduce((sum, t) => sum + RARITY_WEIGHT[t.rarity], 0);
-  let r = Math.random() * total;
-  for (const t of pool) {
-    r -= RARITY_WEIGHT[t.rarity];
-    if (r <= 0) return t;
-  }
-  return pool[pool.length - 1] ?? null;
-}
-
-/// One mystery roll. First flips for the rugged outcome (returns
-/// {rugged:true, trait:null}) at the adaptive rate from `rugChanceFor`.
-/// If not rugged, picks a trait from the supplied pool weighted by rarity.
-/// Caller is expected to have already filtered the pool to traits the
-/// agent doesn't own, and to pass the operator's total owned count so the
-/// adaptive rug calc has the right input.
+/// One mystery roll. Roll a rarity, then hand out a random trait of that rarity
+/// the operator does not already own. If they own every trait of the rolled
+/// rarity, degrade to the next rarity down so a win still lands. Only a true rug
+/// (or owning literally everything) returns a null trait.
 export function rollMystery(
-  pool: Trait[],
-  ownedCount: number = 0,
-): { rugged: boolean; trait: Trait | null } {
-  if (Math.random() < rugChanceFor(ownedCount)) return { rugged: true, trait: null };
-  return { rugged: false, trait: pickWeighted(pool) };
+  owned: ReadonlySet<string>,
+): { rarity: "rugged" | MysteryRarity; trait: Trait | null } {
+  const rolled = rollRarity();
+  if (rolled === "rugged") return { rarity: "rugged", trait: null };
+  const ladder: MysteryRarity[] =
+    rolled === "legendary" ? ["legendary", "rare", "common"] : rolled === "rare" ? ["rare", "common"] : ["common"];
+  for (const tier of ladder) {
+    const pool = TRAITS.filter((t) => t.rarity === tier && !owned.has(t.id));
+    if (pool.length > 0) {
+      return { rarity: tier, trait: pool[Math.floor(Math.random() * pool.length)]! };
+    }
+  }
+  return { rarity: "rugged", trait: null };
+}
+
+/// Pick a random unowned trait of an exact rarity (for win-streak unlocks).
+export function pickRandomOfRarity(rarity: MysteryRarity, owned: ReadonlySet<string>): Trait | null {
+  const pool = TRAITS.filter((t) => t.rarity === rarity && !owned.has(t.id));
+  return pool.length > 0 ? pool[Math.floor(Math.random() * pool.length)]! : null;
 }
 
 export const COOLDOWN_MS = 24 * 60 * 60 * 1000; // legacy reference; daily UTC reset is the active rule
@@ -135,32 +125,6 @@ export const DAILY_POOL_MAX: number = (() => {
   if (!Number.isFinite(raw) || raw <= 0) return 100;
   return Math.floor(raw);
 })();
-
-/// The day index (claim day, shifted -1h to the 01:00 UTC boundary). Stable
-/// integer used for the every-14-days bonus cadence.
-function claimDayNumber(now: Date): number {
-  return Math.floor((now.getTime() - 60 * 60 * 1000) / (24 * 60 * 60 * 1000));
-}
-
-/// Bonus days carry far more winnable traits and appear once every 14 days,
-/// deterministic so every instance agrees. MYSTERY_BONUS_OFFSET shifts which
-/// day in the cycle is the bonus (testing / events).
-export function isBonusDay(now: Date = new Date()): boolean {
-  const offset = Number(process.env.MYSTERY_BONUS_OFFSET);
-  const off = Number.isFinite(offset) ? ((Math.floor(offset) % 14) + 14) % 14 : 0;
-  return ((claimDayNumber(now) % 14) + 14) % 14 === off;
-}
-
-/// How many actual traits can be WON network-wide on the given day. Winning is
-/// the scarce part: out of 100 rolls, at most this many yield a trait (the rest
-/// rug). Normal days cap at 3, bonus days at 7. Env-overridable.
-export function dailyTraitWinCap(now: Date = new Date()): number {
-  const bonus = isBonusDay(now);
-  const normal = Number(process.env.MYSTERY_WIN_CAP);
-  const bonusCap = Number(process.env.MYSTERY_WIN_CAP_BONUS);
-  if (bonus) return Number.isFinite(bonusCap) && bonusCap > 0 ? Math.floor(bonusCap) : 7;
-  return Number.isFinite(normal) && normal > 0 ? Math.floor(normal) : 3;
-}
 
 /// Epoch milliseconds for the next mystery reset. The contract rolls over
 /// at 01:00 UTC (one hour after UTC midnight). First-come-first-served:

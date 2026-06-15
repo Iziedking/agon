@@ -49,74 +49,114 @@ export function tierTraitScale(tier: number): number {
   return TIER_TRAIT_SCALE[t]!;
 }
 
-/// Concrete scout (volume) abilities a trait unlocks, separate from the abstract
-/// score multiplier. `size` raises the per-swap USDC size (whale behaviour);
-/// `count` raises the number of round-trips (speed behaviour). Both are
-/// fractional bonuses, tier-scaled at apply time. Traits absent here grant no
-/// scout ability. This is the "trait -> specific utility" mapping: equipping
-/// Whale Spotter on a volume run literally makes the agent trade bigger.
-export interface ScoutAbility {
-  size?: number;
+/// ------------------------------------------------------------------------
+/// Trait effect engine (v2). One source of truth: each trait id maps to a
+/// rarity, the event DOMAIN it belongs to, and concrete effect knobs. The
+/// aggregators below turn an EQUIPPED loadout into per-event abilities, all
+/// tier-scaled by tierTraitScale so a higher tier expresses the same trait more
+/// strongly. A trait does something only when its domain matches the event (or
+/// it is generic), which is what makes choosing the right three per event the
+/// whole game. Magnitudes by rarity: common ~1-2%, rare ~10-15%, legendary big.
+/// Training (the stat multiplier above) is the PERMANENT boost; traits are the
+/// TEMPORARY equipped boost. Their product is the agent's edge.
+/// ------------------------------------------------------------------------
+
+export type TraitDomain = "volume" | "puzzle" | "prediction" | "generic";
+
+export interface TraitDef {
+  rarity: "common" | "rare" | "legendary";
+  domain: TraitDomain;
+  /// Volume per-swap SIZE bonus. A number is tier-scaled; a 5-length array is a
+  /// per-tier curve used as-is (the legendary Whale Spotter), already encoding
+  /// the tier scaling.
+  size?: number | readonly [number, number, number, number, number];
+  /// Volume swap COUNT bonus (more round-trips).
   count?: number;
+  /// Prediction / generic SCORE multiplier bonus.
+  score?: number;
+  /// Prediction extra-TRADES fraction (more positions per round).
+  trades?: number;
+  /// Puzzle reasoning-budget bonus (pure-skill safe, never touches x402).
+  capability?: number;
+  /// Puzzle extra attempt(s).
+  retries?: number;
+  /// Generic SPEED: acts in every event at once. The legendary all-rounder.
+  speed?: boolean;
 }
 
-export const SCOUT_TRAIT_ABILITY: Record<string, ScoutAbility> = {
-  whale_spotter: { size: 0.35 },
-  volume_titan: { size: 0.3, count: 0.1 },
-  liquidity_hunter: { size: 0.2, count: 0.05 },
-  speed_demon: { count: 0.2 },
-  mempool_diver: { count: 0.15 },
-  gas_arb: { count: 0.12 },
-  gas_whisperer: { count: 0.08 },
-  arc_initiate: { count: 0.06 },
-  arc_sovereign: { size: 0.15, count: 0.15 },
-  chain_breaker: { size: 0.12, count: 0.12 },
-  circle_protocol: { size: 0.1, count: 0.1 },
+/// Speed legendary magnitudes across the three events (tier-scaled at apply).
+const SPEED_COUNT = 0.6; // volume: swaps
+const SPEED_CAPABILITY = 0.5; // puzzle: reasoning
+const SPEED_SCORE = 0.3; // prediction: score
+const SPEED_TRADES = 0.5; // prediction: trades
+
+export const TRAIT_DEF: Record<string, TraitDef> = {
+  // ----- Legendary: one per event plus two generic. The big movers.
+  whale_spotter: { rarity: "legendary", domain: "volume", size: [0.5, 1.0, 1.3, 2.0, 2.5] },
+  puzzle_savant: { rarity: "legendary", domain: "puzzle", capability: 0.6, retries: 1 },
+  oracle_eye: { rarity: "legendary", domain: "prediction", score: 0.3, trades: 0.5 },
+  velocity: { rarity: "legendary", domain: "generic", speed: true },
+  arc_sovereign: { rarity: "legendary", domain: "generic", score: 0.2, count: 0.2, capability: 0.3 },
+
+  // ----- Rare: small but noticeable in their domain (~10-15%).
+  liquidity_hunter: { rarity: "rare", domain: "volume", size: 0.15 },
+  volume_titan: { rarity: "rare", domain: "volume", size: 0.1, count: 0.1 },
+  quant_oracle: { rarity: "rare", domain: "prediction", score: 0.12 },
+  tape_reader: { rarity: "rare", domain: "prediction", score: 0.1 },
+  solver_circuit: { rarity: "rare", domain: "puzzle", capability: 0.3, retries: 1 },
+  chain_breaker: { rarity: "rare", domain: "generic", score: 0.1, count: 0.1, capability: 0.15 },
+
+  // ----- Common: a very tiny 1-2% nudge in their domain.
+  lucky_charm: { rarity: "common", domain: "generic", score: 0.015, count: 0.015, capability: 0.03 },
+  dice_roller: { rarity: "common", domain: "generic", score: 0.015, count: 0.015, capability: 0.03 },
+  arc_initiate: { rarity: "common", domain: "generic", score: 0.015, count: 0.015, capability: 0.03 },
+  circle_protocol: { rarity: "common", domain: "generic", score: 0.015, count: 0.015, capability: 0.03 },
+  gas_whisperer: { rarity: "common", domain: "generic", count: 0.02, capability: 0.03 },
+  speed_demon: { rarity: "common", domain: "volume", count: 0.02 },
+  mempool_diver: { rarity: "common", domain: "volume", count: 0.02 },
+  gas_arb: { rarity: "common", domain: "volume", count: 0.02 },
+  quick_draw: { rarity: "common", domain: "puzzle", capability: 0.05 },
+  hot_hand: { rarity: "common", domain: "puzzle", capability: 0.05 },
+  pattern_reader: { rarity: "common", domain: "prediction", score: 0.015 },
+  precision_engine: { rarity: "common", domain: "prediction", score: 0.015 },
+  crystal_ball: { rarity: "common", domain: "prediction", score: 0.015 },
+  deep_state: { rarity: "common", domain: "prediction", score: 0.015 },
 };
 
-/// Aggregate the equipped loadout into a per-swap size multiplier and a swap
-/// count multiplier for the scout, tier-scaled. The raw bonus is capped before
-/// scaling so three size traits can't run the trade away, and the wallet
-/// balance clamps it again at execution.
+// Caps so a stack can't run away. Whale legendary needs a high size cap.
+const SIZE_CAP = 3.0;
+const COUNT_CAP = 2.0;
+const SCORE_CAP = 0.6; // max +60% prediction score from a trait loadout
+
+function clampTier(tier: number): number {
+  return Math.max(0, Math.min(4, Math.floor(tier)));
+}
+
+/// Volume: per-swap size multiplier and swap-count multiplier from the equipped
+/// loadout. Whale Spotter's per-tier size curve applies as-is; everything else
+/// is tier-scaled. Speed adds swap count. The wallet balance clamps the real
+/// size again at execution.
 export function scoutTraitAbilities(
   equipped: ReadonlyArray<string>,
   tier: number,
 ): { sizeMult: number; countMult: number } {
   const scale = tierTraitScale(tier);
+  const t = clampTier(tier);
   let size = 0;
   let count = 0;
   for (const id of equipped) {
-    const ab = SCOUT_TRAIT_ABILITY[id.toLowerCase()];
-    if (!ab) continue;
-    size += ab.size ?? 0;
-    count += ab.count ?? 0;
+    const d = TRAIT_DEF[id.toLowerCase()];
+    if (!d) continue;
+    if (Array.isArray(d.size)) size += d.size[t]!; // whale: per-tier, as-is
+    else if (typeof d.size === "number") size += d.size * scale;
+    if (d.count) count += d.count * scale;
+    if (d.speed) count += SPEED_COUNT * scale;
   }
-  size = Math.min(0.5, size) * scale;
-  count = Math.min(0.5, count) * scale;
-  return { sizeMult: 1 + size, countMult: 1 + count };
+  return { sizeMult: 1 + Math.min(SIZE_CAP, size), countMult: 1 + Math.min(COUNT_CAP, count) };
 }
 
-/// Concrete solver (puzzle) abilities a trait unlocks. Puzzle scoring stays
-/// PURE SKILL: these never multiply the score, and they NEVER touch the x402
-/// research gate (that is strictly tier 3/4, no trait can move it). They only
-/// give the agent more room to reason: `tokens` raises the reasoning budget and
-/// `retries` grants more attempts on a failed call. The better-equipped agent
-/// earns its correct answers itself.
-export interface SolverAbility {
-  tokens?: number;
-  retries?: number;
-}
-
-export const SOLVER_TRAIT_ABILITY: Record<string, SolverAbility> = {
-  puzzle_savant: { tokens: 0.5 },
-  solver_circuit: { tokens: 0.4, retries: 1 },
-  quick_draw: { tokens: 0.15, retries: 1 },
-  hot_hand: { tokens: 0.15, retries: 1 },
-};
-
-/// Resolve the equipped loadout into a solver reasoning bump. Tier-scaled, so
-/// tier 4 gets the strongest reasoning-budget boost ("tier 4 has the best
-/// boost"). No tier bump and no research unlock: x402 spend stays tier 3/4 only.
+/// Puzzle: reasoning-budget multiplier and extra retries. Pure-skill safe; never
+/// touches the x402 research gate. Speed adds reasoning budget.
 export function solverTraitAbilities(
   equipped: ReadonlyArray<string>,
   tier: number,
@@ -125,67 +165,43 @@ export function solverTraitAbilities(
   let tokens = 0;
   let retries = 0;
   for (const id of equipped) {
-    const ab = SOLVER_TRAIT_ABILITY[id.toLowerCase()];
-    if (!ab) continue;
-    tokens += ab.tokens ?? 0;
-    retries += ab.retries ?? 0;
+    const d = TRAIT_DEF[id.toLowerCase()];
+    if (!d) continue;
+    if (d.capability) tokens += d.capability * scale;
+    if (d.retries) retries += d.retries;
+    if (d.speed) tokens += SPEED_CAPABILITY * scale;
   }
-  tokens = Math.min(0.8, tokens) * scale;
-  return { tokenMult: 1 + tokens, extraRetries: Math.min(2, retries) };
+  return { tokenMult: 1 + Math.min(1.0, tokens), extraRetries: Math.min(2, retries) };
 }
 
-/// Per-trait multiplier when the contest type matches the trait's
-/// domain. Traits not listed here are pure flavor (no scoring impact)
-/// or trigger active routing handled elsewhere (e.g. Lucky Charm's
-/// stochastic component). See agentTier.md for the full catalogue.
-export interface TraitEffect {
-  /// Contest type this trait skews. Mismatched contests get no boost.
-  domain: ContestType | "any";
-  /// Multiplier applied to the agent's score when the trait is equipped
-  /// and the contest matches.
-  multiplier: number;
-  /// Whether this trait additionally swaps the scoring algorithm. Only
-  /// one routing trait per loadout takes effect; subsequent routing
-  /// traits act as multipliers only. See the runner for the actual
-  /// algorithm swap.
-  routing?: "stochastic" | "momentum" | "calibrated";
+/// Prediction (analyst): the score multiplier from prediction-domain and generic
+/// traits, plus Speed. Volume/puzzle traits contribute nothing, so a whale
+/// equipped on a prediction round is dead weight.
+export function predictionTraitMultiplier(equipped: ReadonlyArray<string>, tier: number): number {
+  const scale = tierTraitScale(tier);
+  let score = 0;
+  for (const id of equipped) {
+    const d = TRAIT_DEF[id.toLowerCase()];
+    if (!d) continue;
+    if ((d.domain === "prediction" || d.domain === "generic") && d.score) score += d.score * scale;
+    if (d.speed) score += SPEED_SCORE * scale;
+  }
+  return 1 + Math.min(SCORE_CAP, score);
 }
 
-export const TRAIT_EFFECTS: Record<string, TraitEffect> = {
-  // Commons - small flat boosts
-  lucky_charm:      { domain: "any",     multiplier: 1.05, routing: "stochastic" },
-  speed_demon:      { domain: "scout",   multiplier: 1.05 },
-  hot_hand:         { domain: "solver",  multiplier: 1.05, routing: "momentum" },
-  quick_draw:       { domain: "solver",  multiplier: 1.04 },
-  dice_roller:      { domain: "any",     multiplier: 1.03 },
-  mempool_diver:    { domain: "scout",   multiplier: 1.05 },
-  crystal_ball:     { domain: "analyst", multiplier: 1.04 },
-
-  // Rares - mid-grade specialised edges
-  pattern_reader:   { domain: "analyst", multiplier: 1.10 },
-  whale_spotter:    { domain: "scout",   multiplier: 1.20 },
-  gas_whisperer:    { domain: "any",     multiplier: 1.05 },
-  liquidity_hunter: { domain: "scout",   multiplier: 1.12 },
-  precision_engine: { domain: "analyst", multiplier: 1.12 },
-  gas_arb:          { domain: "scout",   multiplier: 1.10 },
-  tape_reader:      { domain: "analyst", multiplier: 1.10 },
-
-  // Epics - heavy specialisation
-  puzzle_savant:    { domain: "solver",  multiplier: 1.18 },
-  arc_initiate:     { domain: "any",     multiplier: 1.10 },
-  deep_state:       { domain: "analyst", multiplier: 1.15, routing: "calibrated" },
-  quant_oracle:     { domain: "analyst", multiplier: 1.18 },
-  solver_circuit:   { domain: "solver",  multiplier: 1.18 },
-  volume_titan:     { domain: "scout",   multiplier: 1.20 },
-
-  // Legendaries - the trophies (universal or top-tier)
-  chain_breaker:    { domain: "any",     multiplier: 1.18 },
-  oracle_eye:       { domain: "analyst", multiplier: 1.20 },
-  arc_sovereign:    { domain: "any",     multiplier: 1.22 },
-  circle_protocol:  { domain: "any",     multiplier: 1.20, routing: "calibrated" },
-  // Legacy id kept so any rows persisted under the old key still resolve.
-  oracles_eye:      { domain: "analyst", multiplier: 1.15 },
-};
+/// Prediction: extra-trades fraction (more positions per round) from Oracle's
+/// Eye, generic traits, and Speed. Runner reads it to raise the trade count.
+export function predictionTradeBonus(equipped: ReadonlyArray<string>, tier: number): number {
+  const scale = tierTraitScale(tier);
+  let trades = 0;
+  for (const id of equipped) {
+    const d = TRAIT_DEF[id.toLowerCase()];
+    if (!d) continue;
+    if (d.trades) trades += d.trades * scale;
+    if (d.speed) trades += SPEED_TRADES * scale;
+  }
+  return Math.min(1.0, trades);
+}
 
 export function tierBase(tier: number): number {
   const t = Math.max(0, Math.min(4, Math.floor(tier)));
@@ -216,29 +232,21 @@ export function trainingMultiplier(
   return 1 + ratio * tierTrainingCap(tier);
 }
 
-/// Trait stack multiplier and any active routing for `equipped` against
-/// `contest`. The first equipped routing trait wins; the rest become
-/// multipliers only. Total multiplier is capped at TRAIT_STACK_CAP.
+/// The trait SCORE multiplier folded into effectiveStrength. Only prediction
+/// (analyst) uses a score multiplier; scout and solver express traits as
+/// concrete abilities (bigger/more swaps, reasoning budget), not a score factor,
+/// so they return 1.0 here. Routing is retired in v2 (kept null for the runner's
+/// applyRouting, which then just applies the deterministic multiplier).
 export function traitMultiplier(
   equipped: ReadonlyArray<string>,
   contest: ContestType,
   tier = 4,
-): { multiplier: number; routing: TraitEffect["routing"] | null } {
-  // Tier scales how much of each trait's edge expresses, so the same trait is
-  // worth more on a tier-4 agent than a tier-0 one.
-  const scale = tierTraitScale(tier);
-  let mul = 1.0;
-  let routing: TraitEffect["routing"] | null = null;
-  for (const traitId of equipped) {
-    const fx = TRAIT_EFFECTS[traitId.toLowerCase()];
-    if (!fx) continue;
-    const applies = fx.domain === "any" || fx.domain === contest;
-    if (!applies) continue;
-    mul *= 1 + (fx.multiplier - 1) * scale;
-    if (fx.routing && !routing) routing = fx.routing;
-  }
-  return { multiplier: Math.min(TRAIT_STACK_CAP, mul), routing };
+): { multiplier: number; routing: TraitRouting } {
+  const multiplier = contest === "analyst" ? predictionTraitMultiplier(equipped, tier) : 1;
+  return { multiplier, routing: null };
 }
+
+export type TraitRouting = "stochastic" | "momentum" | "calibrated" | null;
 
 export interface StrengthBreakdown {
   tier: number;
@@ -246,7 +254,7 @@ export interface StrengthBreakdown {
   training: number;
   traits: number;
   effective: number;
-  routing: TraitEffect["routing"] | null;
+  routing: TraitRouting;
 }
 
 /// One-shot computation for the workshop breakdown panel and for the

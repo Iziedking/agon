@@ -13,7 +13,7 @@ import { fundHotWallets, sweepHotWallets } from "./contestOps.js";
 import { applyReputation, creditPoints, postValidatorFeedback, qualifiedField } from "./reputation.js";
 import { merkleRoot, payoutLeaf } from "./merkle.js";
 import { computeDistribution, normalizeScoringMode } from "./payouts.js";
-import { applyTraitMultipliers, awardPlacementTraits, fetchAgentMultipliers } from "./traits.js";
+import { applyTraitMultipliers, awardPlacementTraits, awardWinStreaks, fetchAgentMultipliers } from "./traits.js";
 import { notify } from "../notifications/index.js";
 import { getTierGate, tierAllowed } from "../lib/tierGate.js";
 import {
@@ -479,6 +479,11 @@ export async function runContestById(contestId: number, broadcast: (message: unk
   await postValidatorFeedback("contest", contestId, cType, results);
   await awardPlacementTraits("contest", contestId, results).catch((err) =>
     console.error(`contest ${contestId}: placement trait awards failed:`, err instanceof Error ? err.message : err),
+  );
+  // Consecutive-win streaks: the #1 finisher climbs, everyone else resets. 5 in
+  // a row unlocks a rare trait, 10 a legendary. The skill path to traits.
+  await awardWinStreaks(contestId, results).catch((err) =>
+    console.error(`contest ${contestId}: win-streak update failed:`, err instanceof Error ? err.message : err),
   );
 
   // Scout-only: pull any leftover USDC out of each agent's hot wallet

@@ -1,35 +1,82 @@
-import { MAX_AGENT_MULTIPLIER, RARITY_MULTIPLIER, TRAITS, traitById, type Rarity, type Trait } from "../auth/traits.js";
+import { TRAITS, pickRandomOfRarity, type MysteryRarity, type Rarity, type Trait } from "../auth/traits.js";
 import { query } from "../db/pool.js";
+import { notify } from "../notifications/index.js";
 import type { AgentResult } from "../runners/types.js";
 
-/// Trait → score wiring for the coordinator. Mystery-awarded traits stop being
-/// purely cosmetic here: their rarity bonuses are summed and clamped, and the
-/// result multiplies each agent's runner score before randomness, payouts, and
-/// the broadcast frames. So a maxed agent visibly climbs the live race.
+/// Trait → score wiring for the coordinator.
+///
+/// Trait EFFECTS now come from the EQUIPPED loadout inside each runner, tier and
+/// rarity scaled: scout turns them into bigger / more swaps, solver into
+/// reasoning capability, analyst into a score multiplier and more trades. So the
+/// coordinator no longer applies a flat owned-trait multiplier here.
 
-/// Build a map of agentId -> score multiplier from the agent_traits table.
-/// Agents not in the input list (or with no traits) get 1.0 (no change).
+/// Kept as a 1.0 no-op so the coordinator's applyTraitMultipliers pipeline is
+/// unchanged. The real, loadout-based trait effect lives in the runners.
 export async function fetchAgentMultipliers(agentIds: number[]): Promise<Map<number, number>> {
   const out = new Map<number, number>();
-  if (agentIds.length === 0) return out;
   for (const id of agentIds) out.set(id, 1);
-
-  const { rows } = await query<{ agent_id: string; trait_id: string }>(
-    "select agent_id::text, trait_id from agent_traits where agent_id = any($1::bigint[])",
-    [agentIds],
-  );
-
-  const bonusByAgent = new Map<number, number>();
-  for (const r of rows) {
-    const trait = traitById(r.trait_id);
-    if (!trait) continue;
-    const agentId = Number(r.agent_id);
-    bonusByAgent.set(agentId, (bonusByAgent.get(agentId) ?? 0) + RARITY_MULTIPLIER[trait.rarity]);
-  }
-  for (const [agentId, bonus] of bonusByAgent) {
-    out.set(agentId, Math.min(MAX_AGENT_MULTIPLIER, 1 + bonus));
-  }
   return out;
+}
+
+/// Award one unowned trait of `rarity` to an agent (the win-streak path). Skips
+/// silently if the agent already owns every trait of that rarity.
+async function awardStreakTrait(
+  agentId: number,
+  operator: string,
+  rarity: MysteryRarity,
+  contestId: number,
+  streak: number,
+): Promise<void> {
+  const ownedRows = await query<{ trait_id: string }>(
+    "select trait_id from agent_traits where agent_id = $1",
+    [agentId],
+  );
+  const owned = new Set(ownedRows.rows.map((r) => r.trait_id));
+  const trait = pickRandomOfRarity(rarity, owned);
+  if (!trait) return;
+  await query(
+    "insert into agent_traits (agent_id, trait_id, source, source_ref) values ($1, $2, 'streak', $3) on conflict (agent_id, trait_id) do nothing",
+    [agentId, trait.id, String(contestId)],
+  );
+  console.log(`win streak ${streak}: agent ${agentId} earned ${rarity} trait ${trait.id}`);
+  void notify(operator, {
+    kind: "mystery_win",
+    title: `${streak}-win streak: ${rarity} trait unlocked`,
+    body: `${trait.name} (${rarity}). equip it before your next entry.`,
+    href: "/workshop",
+    context: { traitId: trait.id, rarity, agentId, streak },
+  });
+}
+
+/// Update consecutive-win streaks after a contest settles. The #1 finisher's
+/// streak bumps; every other entrant's resets to 0. A streak of 5 unlocks a
+/// rare trait, 10 a legendary (then the streak resets so the next legendary is
+/// another genuine 10-win climb). Best-effort; failures log but do not unwind.
+export async function awardWinStreaks(contestId: number, ranked: AgentResult[]): Promise<void> {
+  if (ranked.length === 0) return;
+  const sorted = [...ranked].sort((a, b) => b.score - a.score);
+  const winner = sorted[0]!;
+  try {
+    const row = await query<{ streak: number }>(
+      `insert into win_streaks (operator, streak) values ($1, 1)
+         on conflict (operator) do update set streak = win_streaks.streak + 1, updated_at = now()
+         returning streak`,
+      [winner.operator.toLowerCase()],
+    );
+    const streak = Number(row.rows[0]?.streak ?? 1);
+    const others = sorted.slice(1).map((r) => r.operator.toLowerCase());
+    if (others.length > 0) {
+      await query("update win_streaks set streak = 0, updated_at = now() where operator = any($1::text[])", [others]);
+    }
+    if (streak >= 10) {
+      await awardStreakTrait(winner.agentId, winner.operator, "legendary", contestId, streak);
+      await query("update win_streaks set streak = 0, updated_at = now() where operator = $1", [winner.operator.toLowerCase()]);
+    } else if (streak === 5) {
+      await awardStreakTrait(winner.agentId, winner.operator, "rare", contestId, streak);
+    }
+  } catch (err) {
+    console.error(`win-streak update for contest ${contestId} failed:`, err instanceof Error ? err.message : err);
+  }
 }
 
 /// Apply per-agent trait multipliers to a scoring result set, returning a new
@@ -52,11 +99,11 @@ export function applyTraitMultipliers(
 // odds of pulling something rare.
 
 const RANK_WEIGHTS: Record<number, Record<Rarity, number>> = {
-  1: { common: 25, rare: 35, epic: 28, legendary: 12 },
-  2: { common: 45, rare: 32, epic: 17, legendary: 6 },
-  3: { common: 55, rare: 28, epic: 13, legendary: 4 },
+  1: { common: 50, rare: 38, legendary: 12 },
+  2: { common: 65, rare: 29, legendary: 6 },
+  3: { common: 72, rare: 24, legendary: 4 },
 };
-const FALLBACK_WEIGHTS: Record<Rarity, number> = { common: 60, rare: 25, epic: 12, legendary: 3 };
+const FALLBACK_WEIGHTS: Record<Rarity, number> = { common: 72, rare: 25, legendary: 3 };
 
 function pickForRank(rank: number, pool: Trait[]): Trait | null {
   if (pool.length === 0) return null;

@@ -20,8 +20,7 @@ import { redis } from "../redis.js";
 import { issueToken, requireAuth, SESSION_COOKIE } from "./jwt.js";
 import {
   DAILY_POOL_MAX,
-  dailyTraitWinCap,
-  isBonusDay,
+  MYSTERY_ODDS,
   nextResetMs,
   rollMystery,
   RUG_CHANCE,
@@ -1542,24 +1541,19 @@ app.get("/traits/pool", (c) => c.json({ traits: TRAITS, rugChance: RUG_CHANCE })
 app.get("/mystery/pool", async (c) => {
   // Same UTC+1 day key as the claim writer above. The pool slot lives at
   // (((now at UTC) + 1 hour))::date so the read and the write agree.
-  const { rows } = await query<{ claimed: string | null; won: string | null }>(
-    "select claimed::text, won::text from mystery_pool_daily where day = (((now() at time zone 'utc') - interval '1 hour'))::date",
+  const { rows } = await query<{ claimed: string | null }>(
+    "select claimed::text from mystery_pool_daily where day = (((now() at time zone 'utc') - interval '1 hour'))::date",
   );
   const claimed = Number(rows[0]?.claimed ?? 0);
   const remaining = Math.max(0, DAILY_POOL_MAX - claimed);
-  // The scarce part: traits actually winnable today vs already won. The UI
-  // leads with this, since claim spots are plentiful but trait wins are not.
-  const won = Number(rows[0]?.won ?? 0);
-  const traitCap = dailyTraitWinCap();
+  // 100 claim spots a day. Each open rolls the fixed odds below; most rug, and
+  // a legendary is the scarce prize. The UI shows the odds so the gamble reads.
   return c.json({
     max: DAILY_POOL_MAX,
     claimed,
     remaining,
-    won,
-    traitCap,
-    traitsLeft: Math.max(0, traitCap - won),
-    bonusDay: isBonusDay(),
     resetsAt: nextResetMs(),
+    odds: MYSTERY_ODDS,
   });
 });
 
@@ -2209,41 +2203,13 @@ app.post("/mystery/claim", requireAuth, async (c) => {
     [operator],
   );
 
-  // Count how many distinct traits this operator already owns across all
-  // their agents so the adaptive rug chance has the right input. The
-  // first few rolls feel rewarding; once they've collected most of the
-  // catalogue, rugs get more common so completing the set is earned.
-  const ownedCountRow = await query<{ n: string }>(
-    `select count(distinct at.trait_id)::text as n
-       from agent_traits at
-       join agents a on a.id = at.agent_id
-      where a.owner = $1`,
-    [operator],
-  );
-  const totalOwned = Number(ownedCountRow.rows[0]?.n ?? "0");
-
-  const result = rollMystery(available, totalOwned);
-  if (result.rugged || !result.trait) {
-    void logEvent({ kind: "mystery_claim", address: operator, context: { agentId, rugged: true, totalOwned }, source: "auth" });
-    return c.json({ rugged: true, trait: null, agentId });
-  }
-
-  // The roll wants to hand out a trait, but WINS are the scarce resource: only
-  // a few traits drop network-wide per day (3, or 7 on a bonus day) out of the
-  // 100 claim spots. Atomically reserve a win slot; if the day's traits are
-  // gone, this roll rugs even though it would otherwise have won. The pool row
-  // already exists from the claim-spot reservation above, so a bare UPDATE is
-  // the atomic counter.
-  const winRes = await query<{ won: number }>(
-    "update mystery_pool_daily set won = won + 1 where day = (((now() at time zone 'utc') - interval '1 hour'))::date returning won",
-  );
-  const newWon = Number(winRes.rows[0]?.won ?? 0);
-  if (newWon > dailyTraitWinCap()) {
-    await query(
-      "update mystery_pool_daily set won = won - 1 where day = (((now() at time zone 'utc') - interval '1 hour'))::date",
-    );
-    void logEvent({ kind: "mystery_claim", address: operator, context: { agentId, rugged: true, traitsGone: true, totalOwned }, source: "auth" });
-    return c.json({ rugged: true, trait: null, agentId });
+  // Roll the box: 65% rug, else common / rare / legendary by the fixed odds.
+  // The trait handed out is a random one of the rolled rarity the agent does
+  // not already own (degrading a rarity down if it owns them all).
+  const result = rollMystery(owned);
+  if (result.rarity === "rugged" || !result.trait) {
+    void logEvent({ kind: "mystery_claim", address: operator, context: { agentId, rugged: true }, source: "auth" });
+    return c.json({ rugged: true, trait: null, rarity: "rugged", agentId });
   }
 
   const trait: Trait = result.trait;
@@ -2260,7 +2226,7 @@ app.post("/mystery/claim", requireAuth, async (c) => {
     context: { traitId: trait.id, rarity: trait.rarity, agentId },
   });
 
-  return c.json({ rugged: false, trait, agentId });
+  return c.json({ rugged: false, trait, rarity: result.trait.rarity, agentId });
 });
 
 // ----- Notifications -----

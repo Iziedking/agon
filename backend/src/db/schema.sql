@@ -441,6 +441,16 @@ create table if not exists generated_puzzles (
 create index if not exists generated_puzzles_pick
   on generated_puzzles (difficulty, last_used_at nulls first, id);
 
+-- Consecutive contest wins per operator. Winning (placing #1) a contest bumps
+-- the streak; any other finish resets it. 5 in a row unlocks a rare trait, 10
+-- in a row a legendary (then the streak resets). The skill-based path to traits,
+-- alongside the daily mystery box.
+create table if not exists win_streaks (
+  operator   text primary key,
+  streak     int not null default 0,
+  updated_at timestamptz not null default now()
+);
+
 -- Per-agent skill training. Six stats (POWER, PRECISION, SPEED, ENDURANCE,
 -- LUCK, FOCUS) each 0..20. Each level adds 1% to the relevant scoring
 -- component in the coordinator pipeline. Funded by Cycles, time-gated.
