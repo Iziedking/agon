@@ -282,6 +282,42 @@ export function applySyndicateMultipliers<T extends { operator: `0x${string}`; s
   });
 }
 
+/// Per-member Cycle drop by syndicate war rank. The top four syndicates of the
+/// week share the reward, descending, so winning the war funds your members'
+/// training. Env-overridable.
+const CYCLE_DROP_BY_RANK: Record<number, number> = {
+  1: Number(process.env.SYNDICATE_CYCLE_DROP_RANK1 ?? "400"),
+  2: Number(process.env.SYNDICATE_CYCLE_DROP_RANK2 ?? "250"),
+  3: Number(process.env.SYNDICATE_CYCLE_DROP_RANK3 ?? "150"),
+  4: Number(process.env.SYNDICATE_CYCLE_DROP_RANK4 ?? "75"),
+};
+
+/// Award Cycles to every member of the top-4 syndicates for a settled week, more
+/// for a higher rank. Idempotent per week via syndicate_cycle_drops. Cycles fund
+/// training, so this closes the loop: win the war, train your agents faster.
+export async function dropSyndicateCycles(weekId: string): Promise<void> {
+  const claim = await query(
+    "insert into syndicate_cycle_drops (week_id) values ($1) on conflict (week_id) do nothing",
+    [weekId],
+  );
+  if ((claim.rowCount ?? 0) === 0) return; // already dropped this week
+  const { rows } = await query<{ syndicate_id: string; rank: number }>(
+    "select syndicate_id::text as syndicate_id, rank from syndicate_war_results where week_id = $1 and rank <= 4 order by rank",
+    [weekId],
+  );
+  for (const r of rows) {
+    const per = CYCLE_DROP_BY_RANK[r.rank];
+    if (!per || per <= 0) continue;
+    const upd = await query(
+      "update operators set cycles = cycles + $2 where current_syndicate_id = $1",
+      [Number(r.syndicate_id), per],
+    );
+    console.log(
+      `syndicate cycle drop ${weekId}: rank ${r.rank} syndicate ${r.syndicate_id} +${per} cycles to ${upd.rowCount ?? 0} member(s)`,
+    );
+  }
+}
+
 /// Background loop: settle the prior ISO-week every hour. Cheap query,
 /// idempotent insert. Runs forever; the autopilot spawns it. The hourly
 /// cadence is generous (the standings only matter to scoring once per
@@ -300,6 +336,8 @@ export async function startSyndicateWarSettler(): Promise<void> {
       // Split the reward pool for the same closed window (no-op when unfunded
       // or already split). Members claim their slice from the dashboard.
       await computeSyndicatePool({ weekId: priorWeek, windowStart, windowEnd });
+      // Weekly Cycle drop to the top-4 syndicates' members (funds training).
+      await dropSyndicateCycles(priorWeek);
     } catch (err) {
       console.error(
         "syndicate war settler failed:",

@@ -213,23 +213,30 @@ export function tierTrainingCap(tier: number): number {
   return TIER_TRAINING_CAP[t]!;
 }
 
-/// Training multiplier from the agent's six stat levels, weighted by
-/// what matters for `contest`. Result is in [1.0, 1.0 + tierTrainingCap].
+/// Permanent per-level training bonus. Index = stat level (0..5). Training is
+/// the agent's PERMANENT edge; traits are the temporary equipped one. A stat at
+/// level 5 contributes a 1.5 bonus, weighted by how much it matters for the
+/// event, so with every relevant stat maxed the training multiplier tops out
+/// near 2.5x. There is NO tier cap: a well-trained low tier is meant to threaten
+/// a higher untrained one, which is what makes the grind worth it.
+export const TRAIN_LEVEL_BONUS = [0, 0.2, 0.4, 0.7, 1.0, 1.5] as const;
+export const MAX_TRAIN_LEVEL = 5;
+
+/// Training multiplier from the agent's stat levels (each 0..5), weighted by
+/// what matters for `contest`. Levels above 5 (legacy data) clamp to 5.
 export function trainingMultiplier(
   stats: Partial<Record<StatName, number>>,
   contest: ContestType,
   tier: number,
 ): number {
+  void tier; // training is no longer tier-capped; it is a flat permanent boost
   const w = STAT_WEIGHTS[contest];
-  let relevant = 0;
-  let max = 0;
+  let bonus = 0;
   for (const name of STAT_NAMES) {
-    const weight = w[name];
-    relevant += (stats[name] ?? 0) * weight;
-    max += 20 * weight;
+    const lvl = Math.max(0, Math.min(MAX_TRAIN_LEVEL, Math.floor(stats[name] ?? 0)));
+    bonus += TRAIN_LEVEL_BONUS[lvl]! * w[name];
   }
-  const ratio = max > 0 ? relevant / max : 0;
-  return 1 + ratio * tierTrainingCap(tier);
+  return 1 + bonus;
 }
 
 /// The trait SCORE multiplier folded into effectiveStrength. Only prediction

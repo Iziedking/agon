@@ -3,30 +3,49 @@ import { query } from "../db/pool.js";
 import { notify } from "../notifications/index.js";
 import type { AgentResult } from "../runners/types.js";
 
-/// Agent training: six stats, each 0..20, each level adds 1% to the relevant
-/// scoring component. Multipliers from training stack with trait multipliers
-/// from `coordinator/traits.ts`. The combined cap (tier + traits + training)
-/// is enforced in the coordinator scoring pass via MAX_COMBINED_MULTIPLIER.
+/// Agent training: six stats, each 0..5. A level is a PERMANENT boost to the
+/// abilities that stat governs, via the curve in scoring/strength.ts
+/// (TRAIN_LEVEL_BONUS). Training is the permanent edge; traits are the temporary
+/// equipped one. Higher levels take much longer to train, and Cycles buy back
+/// wall-clock.
 
 export type Stat = "power" | "precision" | "speed" | "endurance" | "luck" | "focus";
 
 export const STATS: Stat[] = ["power", "precision", "speed", "endurance", "luck", "focus"];
-export const MAX_STAT_LEVEL = 20;
+/// Five permanent levels per stat (down from twenty). The effect curve lives in
+/// scoring/strength.ts.
+export const MAX_STAT_LEVEL = 5;
 
-/// Cost ladder: level N → N+1 costs (N+1) × 50 Cycles. Hardcoded curve.
-/// Add `speedupSteps` to charge extra at queue time for shaving wall-clock.
+/// Cost ladder: level N → N+1 costs (N+1) × 50 Cycles. Add `speedupSteps` to
+/// charge extra at queue time for shaving wall-clock.
 export function cyclesCost(fromLevel: number, speedupSteps = 0): bigint {
   const base = (fromLevel + 1) * 50;
   const extra = Math.max(0, speedupSteps) * config.training.speedupCyclesPerStep;
   return BigInt(base + extra);
 }
 
-/// Time ladder: level N → N+1 takes (N+1) × baseSecondsPerLevel real seconds,
-/// minus `speedupSteps × speedupSecondsPerStep`, floored at MIN_SECONDS so a
-/// fully sped-up training still has a visible wait. Pulled from env so test
-/// environments can shrink the whole thing.
+const HOUR = 3600;
+
+/// Real seconds to reach a target LEVEL (1..5). Level 1 keeps the present quick
+/// time; then it climbs hard: 24h, 72h, 5 days, 7 days. The whole ladder scales
+/// by TRAINING_TIME_SCALE so test environments can shrink it.
+function levelSeconds(targetLevel: number): number {
+  const t = Math.max(1, Math.min(MAX_STAT_LEVEL, targetLevel));
+  const ladder: Record<number, number> = {
+    1: config.training.baseSecondsPerLevel,
+    2: 24 * HOUR,
+    3: 72 * HOUR,
+    4: 120 * HOUR, // 5 days
+    5: 168 * HOUR, // 7 days
+  };
+  const base = ladder[t] ?? 168 * HOUR;
+  return Math.max(config.training.minSeconds, Math.round(base * config.training.timeScale));
+}
+
+/// Time ladder for level N → N+1, minus `speedupSteps × speedupSecondsPerStep`,
+/// floored at MIN_SECONDS so a fully sped-up training still has a visible wait.
 export function secondsCost(fromLevel: number, speedupSteps = 0): number {
-  const base = (fromLevel + 1) * config.training.baseSecondsPerLevel;
+  const base = levelSeconds(fromLevel + 1);
   const cut = Math.max(0, speedupSteps) * config.training.speedupSecondsPerStep;
   return Math.max(config.training.minSeconds, base - cut);
 }
@@ -35,7 +54,7 @@ export function secondsCost(fromLevel: number, speedupSteps = 0): number {
 /// Anything beyond this just bottoms out at MIN_SECONDS while still charging
 /// cycles, so the endpoint clamps the request at this value.
 export function maxSpeedupSteps(fromLevel: number): number {
-  const base = (fromLevel + 1) * config.training.baseSecondsPerLevel;
+  const base = levelSeconds(fromLevel + 1);
   const span = Math.max(0, base - config.training.minSeconds);
   return Math.floor(span / config.training.speedupSecondsPerStep);
 }

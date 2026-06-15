@@ -451,6 +451,13 @@ create table if not exists win_streaks (
   updated_at timestamptz not null default now()
 );
 
+-- Weekly Cycle drop to the top syndicates (funds training). One row per settled
+-- ISO week guards against re-dropping when the hourly settler re-runs.
+create table if not exists syndicate_cycle_drops (
+  week_id    text primary key,
+  dropped_at timestamptz not null default now()
+);
+
 -- Per-agent skill training. Six stats (POWER, PRECISION, SPEED, ENDURANCE,
 -- LUCK, FOCUS) each 0..20. Each level adds 1% to the relevant scoring
 -- component in the coordinator pipeline. Funded by Cycles, time-gated.

@@ -101,6 +101,10 @@ const envSchema = z.object({
   // Hard floor so a fully sped-up training still takes 60 seconds (visible
   // wait, audit row gets a sensible duration).
   TRAINING_MIN_SECONDS: z.coerce.number().int().positive().default(60),
+  // Scales the whole per-level time ladder (level 1 present, 2 = 24h, 3 = 72h,
+  // 4 = 5d, 5 = 7d). 1 = production. Set small (e.g. 0.002) to shrink waits in
+  // test environments.
+  TRAINING_TIME_SCALE: z.coerce.number().positive().default(1),
 
   // Coordinator service
   COORDINATOR_PRIVATE_KEY: z.string().optional(),
@@ -405,6 +409,7 @@ export const config = {
     speedupCyclesPerStep: env.TRAINING_SPEEDUP_CYCLES_PER_STEP,
     speedupSecondsPerStep: env.TRAINING_SPEEDUP_SECONDS_PER_STEP,
     minSeconds: env.TRAINING_MIN_SECONDS,
+    timeScale: env.TRAINING_TIME_SCALE,
   },
   coordinator: {
     privateKey: normalizePrivateKey(env.COORDINATOR_PRIVATE_KEY),
