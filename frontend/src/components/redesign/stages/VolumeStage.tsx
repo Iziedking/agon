@@ -81,7 +81,7 @@ export function VolumeStage({ entries }: { entries: StandingsEntry[] }) {
           <span className="ml-2 text-ink-3">· {tape.length} TX</span>
         </div>
         <BracketedCell pad="sm">
-          <div className="max-h-[420px] overflow-y-auto pr-1">
+          <div className="scroll-brand max-h-[420px] overflow-y-auto pr-1">
             {tape.length === 0 ? (
               <p className="px-2 py-5 font-mono text-sm text-ink-2">
                 queued. scout ops fire when the contest settles; tx hashes land here in real time.

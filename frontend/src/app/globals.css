@@ -470,3 +470,29 @@ footer {
   margin: 18px 0;
   text-align: left;
 }
+
+/* Branded scrollbar for live-feed panels. Replaces the default OS scrollbar
+   with a thin, sharp ink-track + pink-thumb bar that matches the arena look.
+   Apply `scroll-brand` to any internal overflow container. */
+.scroll-brand {
+  scrollbar-width: thin;                          /* Firefox */
+  scrollbar-color: var(--accent) transparent;     /* thumb / track (Firefox) */
+}
+.scroll-brand::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.scroll-brand::-webkit-scrollbar-track {
+  background: transparent;
+  border-left: 1px solid var(--hairline-strong);
+}
+.scroll-brand::-webkit-scrollbar-thumb {
+  background: var(--accent);
+  border: 2px solid var(--canvas);                /* inset so the pink reads as a crisp bar */
+}
+.scroll-brand::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-press);
+}
+.scroll-brand::-webkit-scrollbar-corner {
+  background: transparent;
+}

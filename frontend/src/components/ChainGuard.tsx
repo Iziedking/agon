@@ -7,12 +7,11 @@ import { arcTestnet } from "@/lib/arc";
 
 /// Routes where the user legitimately needs the wallet on a non-Arc chain.
 /// The Funds top-up signs the burn step on whatever source chain the user picks,
-/// so force-switching them back to Arc breaks the flow. The Funds module lives in
-/// the dashboard now, so /dashboard is exempt too. Dashboard balance reads use an
-/// explicit chainId, so they still show Arc correctly while the wallet sits on a
-/// source chain; ChainGuard resumes pinning Arc on every other route. (Email /
-/// custodial users have no injected wallet, so the guard never touches them.)
-const NON_ARC_ROUTES = ["/bridge", "/dashboard"];
+/// so force-switching them back to Arc breaks the flow. Funds live on the
+/// dedicated /wallet page, so it's exempt; ChainGuard resumes pinning Arc on
+/// every other route. (Email / custodial users have no injected wallet, so the
+/// guard never touches them.)
+const NON_ARC_ROUTES = ["/bridge", "/wallet"];
 
 /// Strict Arc-testnet enforcement. Mounted in the root layout so the moment a
 /// connected wallet is on any chain other than Arc testnet, we prompt a switch

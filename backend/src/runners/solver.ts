@@ -158,6 +158,23 @@ function mergeOutcome(acc: SolveOutcome, b: SolveOutcome): void {
   acc.spentTx!.push(...pad(b.spentTx, ""));
 }
 
+/// Equal puzzles for everybody: pad an agent's outcome up to the full posted
+/// set so every agent is scored over the SAME denominator. Any puzzle the agent
+/// did not answer (a slow round, a timeout) counts as WRONG, never as "fewer
+/// questions faced". Correct count is recomputed from perPuzzle so the score is
+/// strictly "most correct" (speed only breaks ties, in solverScore).
+function padOutcome(acc: SolveOutcome, posted: number): void {
+  while (acc.perPuzzle.length < posted) {
+    acc.perPuzzle.push(false);
+    acc.perPuzzleMs.push(0);
+    acc.spent!.push("0");
+    acc.spentLabels!.push("");
+    acc.spentTx!.push("");
+  }
+  acc.correct = acc.perPuzzle.filter(Boolean).length;
+  acc.total = Math.max(posted, acc.perPuzzle.length);
+}
+
 /// Build the per-agent AgentResult from an accumulated solve. Shared by the
 /// single-set and streamed paths. `source` selects the loadout namespace so
 /// traits equipped for a challenge actually count (the bug the scout runner
@@ -246,6 +263,8 @@ export class SolverRunner implements Runner {
         const solve = params
           ? await runWithCapabilities(contestId, e, puzzles, params)
           : guessOnlySolve(puzzles, e.tier, contestId * 1000 + e.agentId);
+        // Same fixed set for everyone; pad so the denominator can't drift.
+        padOutcome(solve, puzzles.length);
         return buildSolverResult(contestId, e, solve, puzzleKinds, puzzleCards, source);
       }),
     );
@@ -324,6 +343,8 @@ export class SolverRunner implements Runner {
       if (SOLVER_ROUND_DELAY_MS > 0) await solverSleep(SOLVER_ROUND_DELAY_MS);
     }
 
+    // Everyone is judged over the full posted set; un-answered puzzles are wrong.
+    for (const e of entries) padOutcome(acc.get(e.agentId)!, allKinds.length);
     return Promise.all(
       entries.map((e) => buildSolverResult(contestId, e, acc.get(e.agentId)!, allKinds, allCards, source)),
     );

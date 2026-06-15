@@ -33,10 +33,10 @@ const USDC_ON_ARC = "0x3600000000000000000000000000000000000000" as const;
 
 type Tab = "topup" | "withdraw";
 
-export function FundsPanel() {
+export function FundsPanel({ initialTab = "topup" }: { initialTab?: Tab } = {}) {
   const { me } = useAuth();
   const isCircle = me?.walletKind === "circle";
-  const [tab, setTab] = useState<Tab>("topup");
+  const [tab, setTab] = useState<Tab>(initialTab);
 
   return (
     <div>

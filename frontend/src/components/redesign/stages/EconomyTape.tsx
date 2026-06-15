@@ -77,7 +77,7 @@ export function EconomyTape({ rows }: { rows: TapeEvent[] }) {
         <span className="ml-2 text-ink-3">· {rows.length} ACTIONS</span>
       </div>
       <BracketedCell pad="sm">
-        <div className="max-h-[360px] overflow-y-auto pr-1">
+        <div className="scroll-brand max-h-[360px] overflow-y-auto pr-1">
           {shown.length === 0 ? (
             <p className="px-2 py-5 font-mono text-sm text-ink-2">
               waiting for the first action. swaps, payments, and trades land here in real time.

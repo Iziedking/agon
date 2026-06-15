@@ -311,7 +311,7 @@ function ResponsePopover({ answer, response }: { answer: string; response: strin
         <div
           ref={panelRef}
           role="dialog"
-          className="fixed z-50 max-h-[360px] overflow-auto border border-ink bg-canvas-2 p-3 font-mono text-[11px] leading-[1.45] text-ink shadow-[0_8px_30px_rgba(26,22,18,0.18)]"
+          className="scroll-brand fixed z-50 max-h-[360px] overflow-auto border border-ink bg-canvas-2 p-3 font-mono text-[11px] leading-[1.45] text-ink shadow-[0_8px_30px_rgba(26,22,18,0.18)]"
           style={{ top: pos.top, left: pos.left, width: pos.width }}
         >
           <div className="mb-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-ink-3">AGENT REASONING</div>
