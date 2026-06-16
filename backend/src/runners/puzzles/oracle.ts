@@ -132,6 +132,10 @@ export async function generatePriceOracle(seed: number): Promise<Puzzle | null> 
     expected: LETTERS[answerIdx]!,
     presentation: ORACLE_PRESENTATION,
     source: `live price · ${asset.symbol}`,
+    // The answer is a live, unguessable price bucket: payment for the data is
+    // genuinely required, so credit-requires-payment applies here (unlike the
+    // static research trivia, which a correct answer alone should win).
+    requiresData: true,
   };
 }
 
@@ -182,5 +186,7 @@ export async function generatePriceRecon(seed: number): Promise<Puzzle | null> {
     expected: LETTERS[answerIdx]!,
     presentation: RECON_PRESENTATION,
     source: "live prices · BTC+ETH+SOL",
+    // Live multi-asset sum: unknowable without paying for the data.
+    requiresData: true,
   };
 }

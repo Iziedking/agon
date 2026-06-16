@@ -9,6 +9,10 @@ import { deriveHotWallet } from "../runners/scout.js";
 /// Reusable contest operations (open and fund), shared by the CLI scripts and
 /// the autopilot. Pure functions, no top-level side effects.
 
+// Bound hot-wallet funding/sweep receipt waits so a stuck tx can't hang a
+// settlement run forever (mirrors the const in runContestById).
+const SETTLE_RECEIPT_TIMEOUT_MS = Number(process.env.SETTLE_RECEIPT_TIMEOUT_SECONDS ?? "90") * 1000;
+
 const erc20 = parseAbi([
   "function approve(address spender, uint256 amount) returns (bool)",
   "function transfer(address to, uint256 amount) returns (bool)",
@@ -71,7 +75,7 @@ export async function openContest(opts: OpenOpts): Promise<number> {
 
   async function send(params: Parameters<typeof wallet.writeContract>[0]) {
     const hash = await wallet.writeContract(params as never);
-    await publicClient.waitForTransactionReceipt({ hash });
+    await publicClient.waitForTransactionReceipt({ hash, timeout: SETTLE_RECEIPT_TIMEOUT_MS });
     return hash;
   }
 
@@ -191,7 +195,7 @@ export async function fundHotWallets(
       functionName: "transfer",
       args: [w.address, fund - bal],
     });
-    await publicClient.waitForTransactionReceipt({ hash });
+    await publicClient.waitForTransactionReceipt({ hash, timeout: SETTLE_RECEIPT_TIMEOUT_MS });
   }
 }
 
@@ -232,7 +236,7 @@ export async function sweepHotWallets(agentIds: number[]): Promise<void> {
         functionName: "transfer",
         args: [dest, amount],
       });
-      await publicClient.waitForTransactionReceipt({ hash });
+      await publicClient.waitForTransactionReceipt({ hash, timeout: SETTLE_RECEIPT_TIMEOUT_MS });
       swept += 1;
       total += amount;
     } catch (err) {

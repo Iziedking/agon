@@ -33,6 +33,10 @@ import {
 /// posts the winner root, and persists payouts for claim proofs. Underfilled or
 /// stale challenges are cancelled so entrants can refund. Coordinator-role only.
 
+// Bound settlement receipt waits so a stuck tx can't hang the run forever (see
+// the same const in runContestById).
+const SETTLE_RECEIPT_TIMEOUT_MS = Number(process.env.SETTLE_RECEIPT_TIMEOUT_SECONDS ?? "90") * 1000;
+
 const arenaAbi = parseAbi([
   "function getChallenge(uint256 id) view returns ((address creator,uint8 kind,uint8 status,bool isPrivate,uint16 platformFeeBps,uint128 stake,uint64 maxEntrants,uint64 joinDeadline,uint64 resolveDeadline,bytes32 winnerRoot))",
   "function entrantCount(uint256 id) view returns (uint64)",
@@ -133,7 +137,7 @@ async function ensureCoordinatorAgent(): Promise<number> {
     account: wallet.account!,
     chain: arcTestnet,
   });
-  await publicClient.waitForTransactionReceipt({ hash });
+  await publicClient.waitForTransactionReceipt({ hash, timeout: SETTLE_RECEIPT_TIMEOUT_MS });
   const after = (await publicClient.readContract({
     address: registry,
     abi: registryAbi,
@@ -169,7 +173,7 @@ async function ensureArenaAllowance(stake: bigint): Promise<void> {
     account: wallet.account!,
     chain: arcTestnet,
   });
-  await publicClient.waitForTransactionReceipt({ hash });
+  await publicClient.waitForTransactionReceipt({ hash, timeout: SETTLE_RECEIPT_TIMEOUT_MS });
 }
 
 async function fetchField(challengeId: number, cType: number): Promise<ContestEntryInput[]> {
@@ -284,7 +288,7 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
   const wallet = coordinatorWallet();
   async function send(params: Parameters<typeof wallet.writeContract>[0]) {
     const hash = await wallet.writeContract(params as never);
-    await publicClient.waitForTransactionReceipt({ hash });
+    await publicClient.waitForTransactionReceipt({ hash, timeout: SETTLE_RECEIPT_TIMEOUT_MS });
     return hash;
   }
   async function cancel(reason: string) {

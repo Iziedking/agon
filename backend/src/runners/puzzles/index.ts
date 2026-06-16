@@ -75,6 +75,13 @@ export interface Puzzle {
   /// Provenance for LLM-generated, source-grounded puzzles (e.g. "Arc docs:
   /// gas and fees"). Undefined for the deterministic template families.
   source?: string;
+  /// True only for puzzles whose answer is genuinely UNKNOWABLE without paying
+  /// for live data (the ORACLE / RECON missions, whose answer is a live price
+  /// bucket). The credit-requires-payment rule keys off THIS, not the kind, so
+  /// it never marks a correct answer to static blockchain trivia (which is also
+  /// kind "research") as wrong just because the agent didn't pay. Undefined =
+  /// answerable from knowledge, so a correct answer always counts.
+  requiresData?: boolean;
 }
 
 /// Build N puzzles for one round. Seed is (contestId * 1009 + roundIdx) so

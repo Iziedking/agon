@@ -812,3 +812,20 @@ create table if not exists scout_swap_budget (
   used        int not null default 0,
   primary key (agent_id, day)
 );
+
+-- Admin ops queue. The admin console (auth API process) enqueues a command;
+-- the coordinator process drains it and executes through its own single-flight
+-- guard, so manual settle/resolve/cancel run in the SAME place as the autopilot
+-- sweeper (one nonce owner, real WS broadcast) instead of racing it from the API
+-- process. Status flows pending -> running -> done | error.
+create table if not exists admin_commands (
+  id           bigserial primary key,
+  kind         text not null,            -- 'settle_contest' | 'resolve_challenge' | 'cancel_contest' | 'cancel_challenge'
+  target_id    bigint not null,
+  status       text not null default 'pending',  -- 'pending' | 'running' | 'done' | 'error'
+  result       text,
+  requested_by text,
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now()
+);
+create index if not exists admin_commands_pending_idx on admin_commands (status, id) where status = 'pending';

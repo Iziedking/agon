@@ -12,6 +12,7 @@ import { startTickScheduler } from "./predictionTicks.js";
 import { startSyndicateWarSettler } from "./syndicateWar.js";
 import { startPuzzlePoolTopUp } from "../runners/puzzles/generator.js";
 import { setTierGate } from "../lib/tierGate.js";
+import { startAdminCommandWorker } from "./adminCommands.js";
 
 /// Self-driving contest loop. With a funded COORDINATOR_PRIVATE_KEY in place, the
 /// coordinator opens a contest, streams its standings over the window, funds Scout
@@ -76,11 +77,33 @@ const RUN_TIMEOUT_MS = Number(process.env.AUTOPILOT_RUN_TIMEOUT_SECONDS ?? "240"
 async function runOnce(contestId: number, broadcast: (message: unknown) => void): Promise<void> {
   if (inFlight.has(contestId)) return;
   inFlight.add(contestId);
+  // Clear the guard only when the REAL work settles, NOT when the watchdog
+  // fires. A run that exceeds RUN_TIMEOUT_MS keeps going in the background and
+  // KEEPS the in-flight flag, so the sweeper never starts an overlapping run
+  // that would fight it for the coordinator nonce — the bug that silently
+  // wedged settlement (two concurrent runContestById grabbing the same pending
+  // nonce, both txs replacing/reverting, contest stuck OPEN). The bounded
+  // on-chain receipt waits guarantee the work eventually settles or fails, so
+  // the guard always clears and the next sweep retries cleanly.
+  const work = runContestById(contestId, broadcast).finally(() => inFlight.delete(contestId));
+  work.catch(() => {}); // background promise; handle eventual rejection so it can't crash the loop
+  await withTimeout(work, RUN_TIMEOUT_MS, `contest ${contestId}`).catch((err) => {
+    console.error(`autopilot: contest ${contestId} watchdog: ${err instanceof Error ? err.message : err}`);
+  });
+}
+
+/// Settle a contest to completion through the shared in-flight guard (no
+/// watchdog truncation): the admin command worker awaits the full run and
+/// reports the outcome. Throws if the contest is already being worked, so a
+/// manual trigger never races the sweeper.
+export async function settleContestToCompletion(
+  contestId: number,
+  broadcast: (message: unknown) => void,
+): Promise<void> {
+  if (inFlight.has(contestId)) throw new Error("contest already being settled");
+  inFlight.add(contestId);
   try {
-    // Bounded so a hung settlement rejects and clears the in-flight flag,
-    // letting the next sweep retry (e.g. once the coordinator wallet is topped
-    // up) instead of staying flagged forever.
-    await withTimeout(runContestById(contestId, broadcast), RUN_TIMEOUT_MS, `contest ${contestId}`);
+    await runContestById(contestId, broadcast);
   } finally {
     inFlight.delete(contestId);
   }
@@ -121,8 +144,26 @@ const challengeInFlight = new Set<number>();
 async function resolveChallengeOnce(id: number, broadcast: (message: unknown) => void): Promise<void> {
   if (challengeInFlight.has(id)) return;
   challengeInFlight.add(id);
+  // Same single-flight discipline as runOnce: hold the guard until the real
+  // work settles so a slow resolve isn't retried concurrently against the same
+  // coordinator nonce.
+  const work = resolveChallengeById(id, broadcast).finally(() => challengeInFlight.delete(id));
+  work.catch(() => {});
+  await withTimeout(work, RUN_TIMEOUT_MS, `challenge ${id}`).catch((err) => {
+    console.error(`autopilot: challenge ${id} watchdog: ${err instanceof Error ? err.message : err}`);
+  });
+}
+
+/// Resolve a challenge to completion through the shared guard (no watchdog
+/// truncation), for the admin command worker. Throws if already in flight.
+export async function resolveChallengeToCompletion(
+  id: number,
+  broadcast: (message: unknown) => void,
+): Promise<void> {
+  if (challengeInFlight.has(id)) throw new Error("challenge already being resolved");
+  challengeInFlight.add(id);
   try {
-    await withTimeout(resolveChallengeById(id, broadcast), RUN_TIMEOUT_MS, `challenge ${id}`);
+    await resolveChallengeById(id, broadcast);
   } finally {
     challengeInFlight.delete(id);
   }
@@ -320,6 +361,15 @@ export async function startBackgroundServices(
   void startSyndicateWarSettler().catch((err) =>
     console.error(
       "syndicate war settler crashed:",
+      err instanceof Error ? err.message : err,
+    ),
+  );
+  // Drain the admin ops queue (manual force-settle / resolve / cancel issued
+  // from the admin console). Runs here so it shares the coordinator's nonce
+  // owner, WS broadcast, and single-flight guard.
+  void startAdminCommandWorker(broadcast).catch((err) =>
+    console.error(
+      "admin command worker crashed:",
       err instanceof Error ? err.message : err,
     ),
   );

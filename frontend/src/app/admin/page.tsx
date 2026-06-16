@@ -123,6 +123,10 @@ export default function AdminPage() {
             <WithdrawCard token={token} treasuryUsdc={data.treasury?.usdc ?? data.coordinator?.usdc ?? "0.00"} onDone={() => void load(token)} />
             <CancelCard token={token} onDone={() => void load(token)} />
           </div>
+          <div className="grid gap-6 lg:grid-cols-2">
+            <ForceSettleCard token={token} />
+            <CommandsLog token={token} />
+          </div>
         </div>
       ) : !error ? (
         <p className="font-mono text-sm text-ink-2">loading…</p>
@@ -297,6 +301,119 @@ function WithdrawCard({ token, treasuryUsdc, onDone }: { token: string; treasury
           <p className="mt-2 font-mono text-[10px] text-[color:var(--err)]">{result.text}</p>
         )
       ) : null}
+    </BracketedCell>
+  );
+}
+
+/// Force a stuck event through settlement. The console enqueues a command; the
+/// coordinator process drains it and runs the real settle/resolve there. Use it
+/// when a window closed but the event never settled (it stays OPEN).
+function ForceSettleCard({ token }: { token: string }) {
+  const [source, setSource] = useState<"contest" | "challenge">("contest");
+  const [id, setId] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
+
+  async function submit() {
+    setBusy(true);
+    setResult(null);
+    try {
+      const kind = source === "contest" ? "settle_contest" : "resolve_challenge";
+      const res = await fetch(`${AUTH_URL}/admin/commands`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-admin-token": token },
+        body: JSON.stringify({ kind, targetId: Number(id) }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((data as { error?: string }).error ?? `http ${res.status}`);
+      setResult({ ok: true, text: `queued #${(data as { id?: string }).id ?? "?"}` });
+      setId("");
+    } catch (e) {
+      setResult({ ok: false, text: e instanceof Error ? e.message : "failed" });
+    }
+    setBusy(false);
+  }
+
+  return (
+    <BracketedCell pad="sm">
+      <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">FORCE SETTLE A STUCK EVENT</div>
+      <div className="mt-1 font-mono text-[10px] text-ink-3">runs in the coordinator · use when a closed event never settled</div>
+      <div className="mt-3 flex gap-2">
+        <select value={source} onChange={(e) => setSource(e.target.value as "contest" | "challenge")}
+          className="border border-[color:var(--hairline-strong)] bg-canvas px-3 py-2 font-mono text-sm text-ink outline-none focus:border-ink">
+          <option value="contest">CONTEST</option>
+          <option value="challenge">CHALLENGE</option>
+        </select>
+        <input value={id} onChange={(e) => setId(e.target.value)} placeholder="id" inputMode="numeric"
+          className="w-24 border border-[color:var(--hairline-strong)] bg-canvas px-3 py-2 font-mono text-sm text-ink outline-none focus:border-ink" />
+        <button onClick={submit} disabled={busy || !id}
+          className="bg-accent px-4 py-2 font-mono text-[12px] uppercase tracking-[0.12em] text-accent-ink hover:bg-accent-press disabled:opacity-50">
+          {busy ? "QUEUEING…" : "RUN →"}
+        </button>
+      </div>
+      {result ? (
+        <p className={`mt-2 font-mono text-[10px] ${result.ok ? "text-[color:var(--ok)]" : "text-[color:var(--err)]"}`}>{result.text}</p>
+      ) : null}
+    </BracketedCell>
+  );
+}
+
+interface AdminCommand {
+  id: string;
+  kind: string;
+  targetId: string;
+  status: string;
+  result: string | null;
+  updatedAt: string;
+}
+
+/// Live view of the admin command queue: what's pending, running, done, or
+/// errored. Polls every few seconds so you can watch a force-settle progress.
+function CommandsLog({ token }: { token: string }) {
+  const [rows, setRows] = useState<AdminCommand[]>([]);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch(`${AUTH_URL}/admin/commands`, { headers: { "x-admin-token": token } });
+      if (!res.ok) return;
+      const data = (await res.json()) as { commands: AdminCommand[] };
+      setRows(data.commands ?? []);
+    } catch {
+      /* transient; next poll retries */
+    }
+  }, [token]);
+
+  useEffect(() => {
+    void load();
+    const t = setInterval(() => void load(), 4000);
+    return () => clearInterval(t);
+  }, [load]);
+
+  const tone = (s: string) =>
+    s === "done" ? "var(--ok)" : s === "error" ? "var(--err)" : s === "running" ? "var(--warn)" : "var(--ink-3)";
+
+  return (
+    <BracketedCell pad="sm">
+      <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">COMMAND QUEUE</div>
+      {rows.length === 0 ? (
+        <p className="font-mono text-[11px] text-ink-3">no commands yet</p>
+      ) : (
+        <div className="flex max-h-[260px] flex-col overflow-y-auto">
+          {rows.map((r) => (
+            <div key={r.id} className="border-b border-[color:var(--hairline)] py-2 last:border-0">
+              <div className="flex items-center justify-between gap-3">
+                <span className="font-mono text-[11px] uppercase tracking-[0.08em] text-ink">
+                  {r.kind.replace(/_/g, " ")} #{r.targetId}
+                </span>
+                <span className="font-mono text-[10px] uppercase tracking-[0.12em]" style={{ color: tone(r.status) }}>
+                  {r.status}
+                </span>
+              </div>
+              {r.result ? <div className="mt-0.5 font-mono text-[10px] text-ink-3 break-words">{r.result}</div> : null}
+            </div>
+          ))}
+        </div>
+      )}
     </BracketedCell>
   );
 }

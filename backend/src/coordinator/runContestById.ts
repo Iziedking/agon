@@ -35,6 +35,13 @@ import {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// Cap how long we wait for a settlement tx receipt. Without this, a tx that
+// never mines (a stuck coordinator nonce) hangs the run forever, which under
+// the single-flight guard means the contest never retries. Bounded, the run
+// fails, the guard clears, and the next sweep retries cleanly (the persisted-
+// payout guard keeps the retry on the same merkle root).
+const SETTLE_RECEIPT_TIMEOUT_MS = Number(process.env.SETTLE_RECEIPT_TIMEOUT_SECONDS ?? "90") * 1000;
+
 const engineAbi = parseAbi([
   "function getContest(uint256 contestId) view returns ((uint8 contestType,uint8 status,uint16 winnerCutBps,uint16 topN,uint16 platformFeeBps,address sponsor,address protocolTarget,bytes32 metric,uint64 startTime,uint64 endTime,uint256 prizePool,bytes32 finalRoot))",
   "function postScoreRoot(uint256 contestId,bytes32 root)",
@@ -271,7 +278,7 @@ export async function runContestById(contestId: number, broadcast: (message: unk
       const wallet = coordinatorWallet();
       const send = async (params: Parameters<typeof wallet.writeContract>[0]) => {
         const hash = await wallet.writeContract(params as never);
-        await publicClient.waitForTransactionReceipt({ hash });
+        await publicClient.waitForTransactionReceipt({ hash, timeout: SETTLE_RECEIPT_TIMEOUT_MS });
         return hash;
       };
       const root = merkleRoot(payouts.map((p) => payoutLeaf(p.operator, p.amount)));
@@ -446,7 +453,7 @@ export async function runContestById(contestId: number, broadcast: (message: unk
   const wallet = coordinatorWallet();
   async function send(params: Parameters<typeof wallet.writeContract>[0]) {
     const hash = await wallet.writeContract(params as never);
-    await publicClient.waitForTransactionReceipt({ hash });
+    await publicClient.waitForTransactionReceipt({ hash, timeout: SETTLE_RECEIPT_TIMEOUT_MS });
     return hash;
   }
 

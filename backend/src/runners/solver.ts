@@ -19,15 +19,21 @@ import { paidAgentResearch, summarizeNews } from "../nanopayments/research.js";
 import { config } from "../config/index.js";
 import { extractSearchTerm } from "./puzzles/research.js";
 
-/// Mission rule: a "data" puzzle (the research family today; oracle/RECON
-/// missions later) only earns credit when the agent actually SETTLED an x402
-/// payment for it. The data is the whole point — winning a data question without
-/// buying the data does not count. This is what turns x402 from a tax into real
-/// utility: the data puzzles are won only by the agents that paid for the data,
-/// so a free, no-spend agent can never ace a round that contains them. Pairs with
-/// reason-first (research-kind always triggers a paid call; other kinds never do).
-function missionRequiresPayment(kind: PuzzleKind): boolean {
-  return kind === "research";
+/// Mission rule: a LIVE-DATA puzzle (the ORACLE / RECON missions, whose answer
+/// is a live, unguessable price bucket) only earns credit when the agent
+/// actually SETTLED an x402 payment for it. The data is the whole point —
+/// winning a data question without buying the data does not count. This is what
+/// turns x402 from a tax into real utility: the data missions are won only by
+/// the agents that paid for the data.
+///
+/// It keys off `puzzle.requiresData`, NOT the puzzle kind. Static blockchain
+/// trivia is also kind "research" (it can trigger an optional paid web search
+/// for context), but its answer is knowable from training — so a correct answer
+/// to trivia ALWAYS counts, paid or not. Gating trivia behind payment was the
+/// bug where a tier-2 agent's correct "B" was marked wrong for not paying (and
+/// research spend is tier 3/4 only, so it could never have paid).
+function missionRequiresPayment(puzzle: Puzzle): boolean {
+  return puzzle.requiresData === true;
 }
 
 /// Maps a puzzle kind to its preferred x402 research endpoint. Returning null
@@ -505,8 +511,9 @@ async function runGuessPath(
   for (let i = 0; i < puzzles.length; i++) {
     const puzzle = puzzles[i]!;
     const { guess, ok } = sampleGuess(puzzle, r, params.luckBonus);
-    // Guess paths never pay for data, so data puzzles never earn credit here.
-    const credited = ok && !missionRequiresPayment(puzzle.kind);
+    // Guess paths never pay for data, so LIVE-DATA missions never earn credit
+    // here. Static trivia is fine: a lucky correct guess counts.
+    const credited = ok && !missionRequiresPayment(puzzle);
     if (credited) correct++;
     perPuzzle.push(credited);
     const ms = 800 + Math.round(400 * r());
@@ -694,11 +701,26 @@ async function runLlmPath(
       }
     }
 
-    // Credit-requires-payment: a data puzzle answered correctly but WITHOUT a
-    // settled x402 payment earns no credit. Only an agent that bought the data
-    // wins the data questions.
-    if (verdict === "correct" && missionRequiresPayment(puzzle.kind) && puzzleSpent6 <= 0n) {
+    // Credit-requires-payment: a LIVE-DATA mission answered correctly but
+    // WITHOUT a settled x402 payment earns no credit. Only an agent that bought
+    // the data wins the data missions. Static trivia (requiresData unset) is
+    // never gated, so a correct answer always counts.
+    if (verdict === "correct" && missionRequiresPayment(puzzle) && puzzleSpent6 <= 0n) {
       verdict = "wrong";
+    }
+
+    // No committed answer after retries (the model errored or never produced a
+    // parseable answer, but the daily budget is NOT exhausted): fall back to a
+    // guess so the agent always ATTEMPTS instead of a blank "pass" that reads
+    // like the product broke. Honest — the model couldn't reason it, so it
+    // guessed — and a multiple-choice guess still has a fair chance. Daily-kill
+    // (verdict "skipped") deliberately stops and is left as a pass.
+    if (verdict === "error") {
+      const g = sampleGuess(puzzle, seededRng(contestId * 7919 + entry.agentId * 31 + idxOffset + i), params.luckBonus);
+      extracted = g.guess;
+      // A live-data mission still needs payment to earn credit, so a blind guess
+      // can't win it; trivia and computable puzzles credit a correct guess.
+      verdict = g.ok && !(missionRequiresPayment(puzzle) && puzzleSpent6 <= 0n) ? "correct" : "wrong";
     }
 
     if (verdict === "correct") correct++;
@@ -874,8 +896,9 @@ function guessOnlySolve(puzzles: Puzzle[], tier: number, seed: number): SolveOut
   const perPuzzle: boolean[] = [];
   const perPuzzleMs: number[] = [];
   for (const puzzle of puzzles) {
-    // Guess-only paths never pay for data, so data puzzles never earn credit.
-    const ok = r() < acc && !missionRequiresPayment(puzzle.kind);
+    // Guess-only paths never pay for data, so LIVE-DATA missions never earn
+    // credit. Static trivia and computable puzzles credit a correct guess.
+    const ok = r() < acc && !missionRequiresPayment(puzzle);
     if (ok) correct++;
     perPuzzle.push(ok);
     const thisMs = Math.round(msPer * (0.7 + 0.6 * r()));

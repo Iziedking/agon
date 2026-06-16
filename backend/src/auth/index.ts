@@ -1239,6 +1239,70 @@ app.post("/admin/:source/:id/cancel", async (c) => {
   }
 });
 
+// ----- Admin ops queue -----
+//
+// The admin console enqueues a command here; the COORDINATOR process drains the
+// admin_commands table and executes it there, so a manual force-settle/resolve
+// runs with the coordinator's nonce owner, WS broadcast, and single-flight guard
+// instead of racing the sweeper from this API process. Use this to unstick a
+// contest whose window closed but never settled.
+const ADMIN_COMMAND_KINDS = new Set([
+  "settle_contest",
+  "resolve_challenge",
+  "cancel_contest",
+  "cancel_challenge",
+]);
+
+app.post("/admin/commands", async (c) => {
+  if (!config.adminToken) return c.json({ error: "admin disabled (set ADMIN_TOKEN)" }, 503);
+  if (!adminAuthed(c)) return c.json({ error: "unauthorized" }, 401);
+  const body = (await c.req.json().catch(() => ({}))) as { kind?: string; targetId?: number | string };
+  const kind = String(body.kind ?? "");
+  const targetId = Number(body.targetId);
+  if (!ADMIN_COMMAND_KINDS.has(kind)) return c.json({ error: "bad kind" }, 400);
+  if (!Number.isFinite(targetId) || targetId < 0) return c.json({ error: "bad targetId" }, 400);
+  const { rows } = await query<{ id: string }>(
+    "insert into admin_commands (kind, target_id, requested_by) values ($1, $2, $3) returning id::text as id",
+    [kind, targetId, "admin-console"],
+  );
+  await logEvent({
+    level: "warn",
+    kind: "admin_command",
+    message: `queued ${kind} #${targetId}`,
+    source: "auth",
+    context: { kind, targetId },
+  });
+  return c.json({ ok: true, id: rows[0]?.id });
+});
+
+app.get("/admin/commands", async (c) => {
+  if (!config.adminToken) return c.json({ error: "admin disabled (set ADMIN_TOKEN)" }, 503);
+  if (!adminAuthed(c)) return c.json({ error: "unauthorized" }, 401);
+  const { rows } = await query<{
+    id: string;
+    kind: string;
+    target_id: string;
+    status: string;
+    result: string | null;
+    created_at: string;
+    updated_at: string;
+  }>(
+    `select id::text as id, kind, target_id::text as target_id, status, result, created_at, updated_at
+       from admin_commands order by id desc limit 25`,
+  );
+  return c.json({
+    commands: rows.map((r) => ({
+      id: r.id,
+      kind: r.kind,
+      targetId: r.target_id,
+      status: r.status,
+      result: r.result,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    })),
+  });
+});
+
 // ----- Weekly syndicate reward pool -----
 //
 // The coordinator splits a config-funded pool across syndicate members each
