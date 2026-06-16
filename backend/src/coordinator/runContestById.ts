@@ -329,7 +329,7 @@ export async function runContestById(contestId: number, broadcast: (message: unk
   // solve window well under this. Scoring + the two settle txs then fit inside the
   // 240s sweeper budget.
   const streamed = cType === 0 || cType === 2;
-  const raceSeconds = Number(process.env.CONTEST_RACE_SECONDS ?? "180");
+  const raceSeconds = Number(process.env.CONTEST_RACE_SECONDS ?? "420");
   const raceCtx = streamed
     ? { broadcast, deadlineMs: Date.now() + raceSeconds * 1000, source: "contest" as const, endsAtMs }
     : undefined;

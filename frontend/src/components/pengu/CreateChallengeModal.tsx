@@ -237,7 +237,7 @@ export function CreateChallengeModal({ open, onClose }: { open: boolean; onClose
                       <div>
                         <div className={labelCls}>JOIN WINDOW (MIN)</div>
                         <input className={`mt-1.5 ${inputCls}`} value={joinMin} onChange={(e) => setJoinMin(e.target.value)} inputMode="numeric" />
-                        <div className="mt-1 font-mono text-[10px] text-ink-3">how long others can stake in. it resolves on its own once full.</div>
+                        <div className="mt-1 font-mono text-[10px] text-ink-3">how long others can stake in.</div>
                       </div>
                     </div>
 

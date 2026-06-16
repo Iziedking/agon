@@ -72,7 +72,7 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
 // must fit in this budget. The scout race can run up to ~180s (trait-aware
 // window) plus ~10s scoring and ~20s for the two chain receipts, so 240s leaves
 // margin. The idempotent payout-retry guard makes a timed-out pass resumable.
-const RUN_TIMEOUT_MS = Number(process.env.AUTOPILOT_RUN_TIMEOUT_SECONDS ?? "240") * 1000;
+const RUN_TIMEOUT_MS = Number(process.env.AUTOPILOT_RUN_TIMEOUT_SECONDS ?? "600") * 1000;
 
 async function runOnce(contestId: number, broadcast: (message: unknown) => void): Promise<void> {
   if (inFlight.has(contestId)) return;
@@ -228,7 +228,9 @@ async function startRandomChallengeLoop(broadcast: (message: unknown) => void): 
   // leaving room for postWinnerRoot. 260s gives the race its full window plus the
   // pre-deadline cushion. The join window above stays host-configurable; only the
   // resolve span is set here.
-  const resolveSecs = Number(process.env.AUTOPILOT_CHALLENGE_RESOLVE_SECONDS ?? "260");
+  // Long enough that the real-swap race (up to ~7 min) plus scoring + the
+  // winner-root tx all fit before the resolve deadline forces a refund cancel.
+  const resolveSecs = Number(process.env.AUTOPILOT_CHALLENGE_RESOLVE_SECONDS ?? "600");
   // One challenge per cycle. Default 1 hour between creations.
   const cycleSecs = Number(process.env.AUTOPILOT_CHALLENGE_CYCLE_SECONDS ?? "3600");
   const kinds = (process.env.AUTOPILOT_CHALLENGE_KINDS ?? "0,1,2,3")

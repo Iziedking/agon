@@ -459,11 +459,15 @@ export interface ScoutRunCtx {
 /// Hard ceiling on how long the live race blocks the resolver, so a single
 /// challenge can't eat the sweeper's per-event timeout (default 150s). The
 /// race also stops at deadlineMs (resolveDeadline - 60s), whichever is sooner.
-const RACE_MAX_SECONDS = Number(process.env.SCOUT_RACE_SECONDS ?? "120");
+// Real DEX swaps take ~30-60s each via Swap Kit, so the window has to be long
+// enough for every agent to stack several real swaps (a one-swap "race" is not a
+// race). Defaults raised for that; both are env-tunable, and the window is still
+// clamped to 60s before the resolve deadline so settlement always fits.
+const RACE_MAX_SECONDS = Number(process.env.SCOUT_RACE_SECONDS ?? "210");
 // Trait-aware window: when the field carries swap traits (a high cap or high
 // pace), the race is allowed to run longer so those agents can actually spend
 // their advantage, up to RACE_CEIL_SECONDS and never past the resolve deadline.
-const RACE_CEIL_SECONDS = Number(process.env.SCOUT_RACE_CEIL_SECONDS ?? "180");
+const RACE_CEIL_SECONDS = Number(process.env.SCOUT_RACE_CEIL_SECONDS ?? "420");
 const RACE_TRAIT_BONUS_SECONDS = Number(process.env.SCOUT_RACE_TRAIT_BONUS ?? "45"); // per unit of demand over 1x
 const RACE_INTER_ROUND_MS = Number(process.env.SCOUT_RACE_DELAY_MS ?? "400");
 // Flat per-round swap cap (legs). Every tier starts at the default; count traits
@@ -592,6 +596,27 @@ async function prepareSwapAbility(
   // it. This is the on-chain expression of "Whale Spotter unlocks bigger trades".
   const perSwapUsdc = Math.min(fundingCapUsdc(tier) * sizeBoost, spendableUsdc);
   return { privateKey, perSwapUsdc, targetLegs };
+}
+
+/// One real DEX swap: a single forward USDC -> EURC leg (one swap tx on Arc, one
+/// row on the tape). Returns the landed leg plus the EURC it produced, so the
+/// lane holds that EURC and its NEXT op swaps it back (EURC -> USDC). Alternating
+/// single swaps — instead of an all-or-nothing round-trip — means each op is one
+/// clean real swap with its own hash, so the field shows roughly twice as many
+/// real swaps in the same window and a stranded reverse never wastes a turn.
+async function oneForwardSwap(
+  privateKey: `0x${string}`,
+  perSwapUsdc: number,
+): Promise<{ leg: { txHash: Hash; vol6: bigint }; heldAlt: number } | null> {
+  const usdc = config.scout.swapTokenIn;
+  const alt = config.scout.swapTokenOut;
+  const fwd = await executeSwap({ privateKey, tokenIn: usdc, tokenOut: alt, amountIn: perSwapUsdc.toFixed(6) });
+  if (!fwd?.txHash) return null;
+  const altOut = Number(fwd.amountOut);
+  return {
+    leg: { txHash: fwd.txHash as Hash, vol6: BigInt(Math.round(perSwapUsdc * 1e6)) },
+    heldAlt: Number.isFinite(altOut) && altOut > 0 ? altOut : 0,
+  };
 }
 
 interface RoundTrip {
@@ -1007,17 +1032,23 @@ export class ScoutRunner implements Runner {
           continue;
         }
 
+        // One real forward swap (USDC -> EURC). The heldAlt branch above swaps it
+        // back on the next turn, so the lane alternates single REAL swaps — each
+        // op is one swap tx with its own hash that arcscan shows as a real DEX
+        // swap. A single swap (not an all-or-nothing round-trip) means a stranded
+        // reverse never wastes a whole turn, so the field lands more real swaps in
+        // the window. Slower than a transfer by design; the longer window gives
+        // every agent time to stack several.
         await sem.acquire();
-        let rt: RoundTrip;
+        let swapped: Awaited<ReturnType<typeof oneForwardSwap>>;
         try {
-          rt = await oneRoundTrip(ab.privateKey, ab.perSwapUsdc);
+          swapped = await oneForwardSwap(ab.privateKey, ab.perSwapUsdc);
         } catch {
-          rt = { legs: [], heldAlt: 0 };
+          swapped = null;
         } finally {
           sem.release();
         }
-        const { legs, heldAlt } = rt;
-        if (legs.length === 0) {
+        if (!swapped) {
           // Nothing landed: take a strike and retire only after several, so a
           // transient RPC blip or one bad route doesn't end the agent.
           strike();
@@ -1025,9 +1056,9 @@ export class ScoutRunner implements Runner {
           continue;
         }
         lane.strikes = 0;
-        lane.heldAlt = heldAlt;
-        pushLegs(legs);
-        await recordSwaps(lane.agentId, legs.length).catch(() => {});
+        lane.heldAlt = swapped.heldAlt;
+        pushLegs([swapped.leg]);
+        await recordSwaps(lane.agentId, 1).catch(() => {});
         emit();
 
         // Streaming payment: a tier-3+ scout subscribes to a live price feed
