@@ -226,6 +226,33 @@ Tier does not raise the cap. Its edge is bigger swaps and faster natural
 pace, so a bare tier 4 still out-volumes a bare tier 3. Traits and
 training tilt the odds for a lower tier without handing it the win.
 
+Training also makes the cap stick. Every completed training level adds a
+permanent bump to the per-round swap cap, on top of the flat base and any
+count traits. It is automatic and retroactive: an agent that has already
+trained gets the higher cap on its next event, and every future level
+lifts it again. SIZE gets the same permanent training bump, so a trained
+agent moves bigger USDC per swap as well.
+
+## Cross-chain bridging
+
+A Scout round is not only swaps. Some ops are a real cross-chain bridge:
+the agent moves USDC from Arc to Base over Circle's CCTP rail, and that
+moved USDC counts toward the exact same volume score as a swap. On the
+tape it shows as a **BRIDGE** row with its own settlement link, sitting
+next to the SWAP rows.
+
+It rides the same rules as swapping. A bridge counts as one swap against
+the per-round cap, so the same cap, count traits, and training govern how
+many an agent runs. SIZE and the funding rules decide how much it moves.
+The bridge carries its own timing rather than waiting on the swap loop:
+the forwarder mints on the far side almost immediately, so the lane just
+waits for the burn to land and moves on.
+
+Bridges are bounded so the outbound flow stays sane. They only fire after
+the agent has already landed a swap (so the wallet is known funded), and
+each agent runs at most a couple per event. The Arc wallet is kept topped
+up by the autofunder, so the small outbound per op never stalls the race.
+
 ## Profile limits
 
 These caps keep one operator from flooding a pool with their own roster.

@@ -6,6 +6,7 @@ import { arcTestnet, publicClient } from "../chain/arc.js";
 import { config } from "../config/index.js";
 import { query } from "../db/pool.js";
 import { swapEnabled, executeSwap } from "../chain/appKitSwap.js";
+import { bridgeScoutLeg } from "../chain/scoutBridge.js";
 import { scoutScore } from "../scoring/index.js";
 import type { AgentResult, ContestEntryInput, Runner, TapeEvent } from "./types.js";
 import { callModel, llmConfigured, recordLlmRun, readExistingRuns, DailyKillError } from "./llm/client.js";
@@ -500,6 +501,20 @@ const STREAM_EVERY_LEGS = Number(process.env.SCOUT_STREAM_EVERY_LEGS ?? "5");
 // route or RPC blip doesn't end an agent after a single swap.
 const RACE_MAX_STRIKES = Number(process.env.SCOUT_RACE_MAX_STRIKES ?? "3");
 
+// B5 cross-chain bridging. A Scout op is occasionally a real one-way Arc -> Base
+// CCTP bridge instead of a swap: it moves USDC cross-chain, counts toward the
+// same volume score, and lands a BRIDGE row on the tape. It rides the same
+// per-round cap (a bridge counts as a leg) and the same SIZE rules, but carries
+// its own timing — the forwarder mints almost immediately, so the lane just
+// waits for the burn to land. Off by default (fraction 0). When on, each post-
+// swap iteration rolls SCOUT_BRIDGE_FRACTION to bridge instead of swap, capped at
+// SCOUT_BRIDGE_MAX_PER_LANE per agent per event so the one-way outflow stays
+// bounded (the autofunder keeps the Arc wallet topped up).
+const SCOUT_BRIDGE_FRACTION = Number(process.env.SCOUT_BRIDGE_FRACTION ?? "0");
+const SCOUT_BRIDGE_USDC = Number(process.env.SCOUT_BRIDGE_USDC ?? "2");
+const SCOUT_BRIDGE_MAX_PER_LANE = Number(process.env.SCOUT_BRIDGE_MAX_PER_LANE ?? "2");
+const SCOUT_BRIDGE_DEST_LABEL = process.env.SCOUT_BRIDGE_DEST_LABEL ?? "Base";
+
 // Natural swap speed by tier (index 0..4). A higher tier doesn't just swap
 // BIGGER, it swaps MORE inside the window. This is the "tier 4 wins by default"
 // lever: a bare tier 4 naturally moves more volume than a bare tier 3, so traits
@@ -812,6 +827,9 @@ export class ScoutRunner implements Runner {
       /// Pace: how fast this lane fires swaps relative to the field. Scales the
       /// inter-round idle, so a faster lane packs more round-trips into the window.
       speedFactor: number;
+      /// One-way Arc -> Base bridges this lane has run (B5). Capped per lane so the
+      /// outbound USDC stays bounded; each counts as a leg toward the round cap.
+      bridges: number;
     }
     const lanes: Lane[] = [];
     for (const p of plans) {
@@ -838,6 +856,7 @@ export class ScoutRunner implements Runner {
         strikes: 0,
         heldAlt: 0,
         speedFactor: p.speedFactor,
+        bridges: 0,
       });
     }
 
@@ -929,6 +948,56 @@ export class ScoutRunner implements Runner {
             pushLegs([rec]);
             lane.heldAlt = 0;
             lane.strikes = 0;
+            await recordSwaps(lane.agentId, 1).catch(() => {});
+            emit();
+          } else {
+            strike();
+          }
+          await raceSleep(laneDelay);
+          continue;
+        }
+
+        // B5: occasionally this op is a real one-way Arc -> Base bridge instead of
+        // a swap. It moves USDC cross-chain (counts toward the same volume score),
+        // counts as a leg against the round cap, and lands a BRIDGE tape row. Only
+        // after at least one swap landed (wallet proven funded), bounded per lane,
+        // and only when the wallet can spare the outbound amount.
+        if (
+          SCOUT_BRIDGE_FRACTION > 0 &&
+          lane.bridges < SCOUT_BRIDGE_MAX_PER_LANE &&
+          lane.legs > 0 &&
+          ab.perSwapUsdc >= SCOUT_BRIDGE_USDC &&
+          Math.random() < SCOUT_BRIDGE_FRACTION
+        ) {
+          await sem.acquire();
+          let bridged: Awaited<ReturnType<typeof bridgeScoutLeg>>;
+          try {
+            bridged = await bridgeScoutLeg(ab.privateKey, SCOUT_BRIDGE_USDC);
+          } catch {
+            bridged = null;
+          } finally {
+            sem.release();
+          }
+          if (bridged) {
+            lane.strikes = 0;
+            lane.bridges++;
+            // Count the moved USDC toward the volume score and the leg count, but
+            // record it ONLY as a BRIDGE tape row (events[]), not in txHashes. The
+            // scout tape derives a SWAP row per txHash, so pushing the bridge hash
+            // there would collide with this BRIDGE row on tapeKey and could relabel
+            // the bridge as a swap. Same separation B6's STREAM rows use.
+            lane.volume6 += bridged.amount6;
+            lane.legs++;
+            lane.events.push({
+              agentId: lane.agentId,
+              verb: "BRIDGE",
+              amount6: bridged.amount6.toString(),
+              token: "USDC",
+              txHash: bridged.txHash,
+              chain: "arc",
+              label: `Arc -> ${SCOUT_BRIDGE_DEST_LABEL} route`,
+              ts: Date.now(),
+            });
             await recordSwaps(lane.agentId, 1).catch(() => {});
             emit();
           } else {
