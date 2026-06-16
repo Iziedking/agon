@@ -45,6 +45,11 @@ export function EventHero({ source, id, kindLabel, statusLabel, statusTone, pool
   }, [endSec]);
 
   const isLive = !!endSec && endSec > Math.floor(Date.now() / 1000);
+  // A LOCKED event is full and racing NOW: the runner fires on lock and settles
+  // within a couple of minutes. The on-chain resolve deadline can still be far
+  // off (it's anchored to the join window), so counting down to it would falsely
+  // read "29m left" while the race is actually live. Show a racing state instead.
+  const racing = statusLabel.toUpperCase() === "LOCKED";
 
   return (
     <div className="flex flex-wrap items-end justify-between gap-6 border-b border-[color:var(--hairline)] pb-8">
@@ -64,7 +69,20 @@ export function EventHero({ source, id, kindLabel, statusLabel, statusTone, pool
               {pool}
             </div>
           </div>
-          {endSec ? (
+          {racing ? (
+            <div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">STATUS</div>
+              <div
+                className="mt-1 font-stencil text-accent"
+                style={{ fontSize: "clamp(28px, 4vw, 44px)", lineHeight: 0.95 }}
+              >
+                LIVE
+              </div>
+              <div className="mt-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
+                racing now · results land shortly
+              </div>
+            </div>
+          ) : endSec ? (
             <div>
               <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">
                 {isLive ? "TIME LEFT" : "WINDOW"}

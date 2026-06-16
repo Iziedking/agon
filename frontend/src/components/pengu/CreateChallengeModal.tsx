@@ -22,6 +22,13 @@ const KIND_INFO: Record<string, string> = {
 };
 const CUSTOM_KIND_INDEX = 3;
 
+/// System resolve window for standard (arcrun-type) challenges, in seconds. The
+/// creator never picks this: the coordinator races the moment the field is full
+/// and settles within a couple of minutes, so this is only a safety backstop
+/// (the latest the result must post by). Custom challenges go through admin
+/// review, which handles any special resolve span.
+const SYSTEM_RESOLVE_SECONDS = 10 * 60;
+
 /// Create-challenge modal. Flat ink-on-canvas
 /// surface, stencil heading, tag-style kind picker, mono inputs with hairline
 /// borders, flat pink tag CTA. No rounded pills, no bubble heading, no shadow.
@@ -39,11 +46,6 @@ export function CreateChallengeModal({ open, onClose }: { open: boolean; onClose
   const [stake, setStake] = useState("1");
   const [maxEntrants, setMaxEntrants] = useState("4");
   const [joinMin, setJoinMin] = useState("10");
-  // Default resolve window bumped from 10 to 30 minutes. The coordinator
-  // sweep + preview + scoring + chain receipt can spend a couple of minutes;
-  // a 10-minute window left too little headroom and was cancelling
-  // already-scored challenges past their deadline.
-  const [resolveMin, setResolveMin] = useState("30");
   const [isPrivate, setIsPrivate] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -78,10 +80,12 @@ export function CreateChallengeModal({ open, onClose }: { open: boolean; onClose
       const max = BigInt(Math.max(2, Math.floor(Number(maxEntrants))));
       const now = Math.floor(Date.now() / 1000);
       const joinSecs = Math.max(1, Math.floor(Number(joinMin))) * 60;
-      // Floor of 10 minutes on the resolve window so the coordinator has
-      // enough room to lock, preview, score, and post the winner root before
-      // the deadline forces a refund cancel.
-      const resolveSecs = Math.max(10, Math.floor(Number(resolveMin))) * 60;
+      // Standard (arcrun-type) events use the SYSTEM resolve window, not a
+      // creator choice: the coordinator races on lock and settles within a
+      // couple of minutes, so this is just a backstop deadline. A custom event
+      // (kind CUSTOM) doesn't create on-chain here at all — it goes through the
+      // admin-review request above, where any special resolve span is handled.
+      const resolveSecs = SYSTEM_RESOLVE_SECONDS;
       const joinDeadline = BigInt(now + joinSecs);
       const resolveDeadline = BigInt(now + joinSecs + resolveSecs);
 
@@ -233,11 +237,7 @@ export function CreateChallengeModal({ open, onClose }: { open: boolean; onClose
                       <div>
                         <div className={labelCls}>JOIN WINDOW (MIN)</div>
                         <input className={`mt-1.5 ${inputCls}`} value={joinMin} onChange={(e) => setJoinMin(e.target.value)} inputMode="numeric" />
-                      </div>
-                      <div>
-                        <div className={labelCls}>RESOLVE WINDOW (MIN)</div>
-                        <input className={`mt-1.5 ${inputCls}`} value={resolveMin} onChange={(e) => setResolveMin(e.target.value)} inputMode="numeric" />
-                        <div className="mt-1 font-mono text-[10px] text-ink-3">min 10. shorter windows risk a cancel.</div>
+                        <div className="mt-1 font-mono text-[10px] text-ink-3">how long others can stake in. it resolves on its own once full.</div>
                       </div>
                     </div>
 
