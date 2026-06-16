@@ -378,6 +378,10 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
     );
 
     let payouts: { operator: `0x${string}`; amount: bigint }[];
+    // Set on the FRESH scoring pass; drives the post-settlement rewards that now
+    // run AFTER postWinnerRoot (so a slow/failing reward can't delay settlement
+    // past the resolve deadline). Null on the retry path (rewards already ran).
+    let scoredResults: AgentResult[] | null = null;
 
     if (existing.rows.length > 0) {
       // Retry path. Skip field fetch, scoring, preview, and trait award; they
@@ -434,7 +438,10 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
         // countdown ticks. Swapping stops 60s before the resolve deadline.
         // Trait/training boost already became MORE swaps inside the runner,
         // so the volume the agents actually moved is the score.
-        const deadlineMs = Number(ch.resolveDeadline) * 1000 - 60_000;
+        // End the race 120s before the resolve deadline so scoring + the
+        // postWinnerRoot tx have room even if the last swap overruns. (Was 60s,
+        // too tight once a slow real swap could overrun the cutoff.)
+        const deadlineMs = Number(ch.resolveDeadline) * 1000 - 120_000;
         console.log(
           `challenge ${challengeId}: streaming live scout swap race to ${field.length} entrant(s), ending 60s before resolve deadline`,
         );
@@ -449,7 +456,10 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
         // before the resolve deadline. Trait/training boost applies through
         // the runner; the field is locked so every entrant faces the same
         // growing set.
-        const deadlineMs = Number(ch.resolveDeadline) * 1000 - 60_000;
+        // End the race 120s before the resolve deadline so scoring + the
+        // postWinnerRoot tx have room even if the last swap overruns. (Was 60s,
+        // too tight once a slow real swap could overrun the cutoff.)
+        const deadlineMs = Number(ch.resolveDeadline) * 1000 - 120_000;
         console.log(
           `challenge ${challengeId}: streaming live puzzle solve to ${field.length} entrant(s), ending 60s before resolve deadline`,
         );
@@ -573,42 +583,14 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
         );
       }
 
-      // Award placement traits before the chain call so a postWinnerRoot
-      // failure doesn't cost the field its earned traits. agent_traits is keyed
-      // on (agent_id, trait_id) so reruns would conflict-skip anyway; calling
-      // here before the retry branch ensures the trait pull happens once with
-      // the fresh results we have in scope.
-      await awardPlacementTraits("challenge", challengeId, results).catch((err) =>
-        console.error(`challenge ${challengeId}: placement trait awards failed:`, err instanceof Error ? err.message : err),
-      );
-
-      // Credit Cycles to challenge participants via PointsLedger so
-      // challenge wins count on the leaderboard alongside contests.
-      // cType uses the same family mapping as the runner so the
-      // on-chain event is tagged correctly.
-      await creditPoints(challengeId, cType, results);
-
-      // ERC-8004 portable reputation. Validator wallet posts one
-      // giveFeedback per scored agent to the on-chain ReputationRegistry,
-      // so other Arc apps can read a player's standing without trusting
-      // ArcRun. Opt-in via VALIDATOR_PRIVATE_KEY; falls through cleanly
-      // when unset. In-game challenge rep (the AgentRegistry delta)
-      // isn't applied here: ChallengeArena doesn't hold the
-      // CONTEST_ENGINE_ROLE on AgentRegistry. Queued for the next
-      // contract version with a contract-level cap audit.
-      await postValidatorFeedback("challenge", challengeId, cType, results);
-
-      // Scout-style VOLUME challenges run real on-chain ops from each
-      // entrant's hot wallet, so we sweep any leftover float back to
-      // the coordinator after the run. Other kinds skip the sweep
-      // because they never funded the hot wallets in the first place.
-      if (cType === 0 && results.length > 0 && config.scout.masterMnemonic && config.coordinator.privateKey) {
-        await sweepHotWallets(results.map((r) => r.agentId)).catch((err) =>
-          console.error(
-            `challenge ${challengeId}: sweep failed: ${err instanceof Error ? err.message : err}`,
-          ),
-        );
-      }
+      // Settlement (postWinnerRoot, below) runs FIRST, before any reward. The
+      // rewards — placement traits, Cycles, the ERC-8004 giveFeedback txs, and
+      // the hot-wallet sweep — used to run here, ahead of postWinnerRoot, and a
+      // slow or failing one (e.g. an out-of-gas validator wallet hanging on
+      // giveFeedback) pushed the winner-root tx past the resolve deadline, so it
+      // reverted and the whole challenge cancelled. Stash the results and do the
+      // rewards AFTER the root is posted instead.
+      scoredResults = results;
     }
 
     const root = merkleRoot(payouts.map((p) => payoutLeaf(p.operator, p.amount)));
@@ -631,6 +613,27 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
       challengeId,
       winners: payouts.map((p, i) => ({ rank: i + 1, operator: p.operator, amount: p.amount.toString() })),
     });
+
+    // Post-settlement rewards, AFTER the winner root is posted so none of them
+    // can delay or block settlement (the bug that cancelled volume challenges:
+    // an out-of-gas validator giveFeedback ran before postWinnerRoot and ate the
+    // resolve window). Only on the fresh scoring pass; each is best-effort.
+    if (scoredResults) {
+      await awardPlacementTraits("challenge", challengeId, scoredResults).catch((err) =>
+        console.error(`challenge ${challengeId}: placement trait awards failed:`, err instanceof Error ? err.message : err),
+      );
+      await creditPoints(challengeId, cType, scoredResults).catch((err) =>
+        console.error(`challenge ${challengeId}: creditPoints failed:`, err instanceof Error ? err.message : err),
+      );
+      await postValidatorFeedback("challenge", challengeId, cType, scoredResults).catch((err) =>
+        console.error(`challenge ${challengeId}: validator feedback failed:`, err instanceof Error ? err.message : err),
+      );
+      if (cType === 0 && config.scout.masterMnemonic && config.coordinator.privateKey) {
+        await sweepHotWallets(scoredResults.map((r) => r.agentId)).catch((err) =>
+          console.error(`challenge ${challengeId}: sweep failed: ${err instanceof Error ? err.message : err}`),
+        );
+      }
+    }
     for (let i = 0; i < payouts.length; i++) {
       const p = payouts[i]!;
       void notify(p.operator, {
