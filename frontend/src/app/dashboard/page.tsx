@@ -342,19 +342,7 @@ export default function DashboardPage() {
             WATCH LIVE →
           </a>
         </div>
-        <BracketedCell pad="sm">
-          {safeProfile.contests.length === 0 ? (
-            <p className="px-2 py-5 font-mono text-sm text-ink-2">
-              no contests entered yet. <a href="/contests" className="text-ink hover:text-accent">browse and enter one →</a>
-            </p>
-          ) : (
-            <ActivityLedger>
-              {safeProfile.contests.slice(0, 20).map((c) => (
-                <ContestActivityRow key={c.contestId} c={c} />
-              ))}
-            </ActivityLedger>
-          )}
-        </BracketedCell>
+        <ActivitySection contests={safeProfile.contests} />
       </section>
 
       {/* QUICK ACTIONS */}
@@ -386,6 +374,82 @@ function Shell({ children }: { children: React.ReactNode }) {
       {children}
       <Footer />
     </div>
+  );
+}
+
+const ACTIVITY_PAGE_SIZE = 12;
+
+/// The full-width ACTIVITY ledger, paginated. Newest entries come first from the
+/// API, so page 1 is the most recent. The pager only appears once there's more
+/// than one page; switching pages resets the scroll position to the top of the
+/// list so a long ledger doesn't leave the user mid-scroll.
+function ActivitySection({ contests }: { contests: OperatorContest[] }) {
+  const [page, setPage] = useState(0);
+  const totalPages = Math.max(1, Math.ceil(contests.length / ACTIVITY_PAGE_SIZE));
+  // Clamp if the list shrank under us (e.g. a refund cleared a row).
+  const safePage = Math.min(page, totalPages - 1);
+  const start = safePage * ACTIVITY_PAGE_SIZE;
+  const rows = contests.slice(start, start + ACTIVITY_PAGE_SIZE);
+
+  if (contests.length === 0) {
+    return (
+      <BracketedCell pad="sm">
+        <p className="px-2 py-5 font-mono text-sm text-ink-2">
+          no contests entered yet. <a href="/contests" className="text-ink hover:text-accent">browse and enter one →</a>
+        </p>
+      </BracketedCell>
+    );
+  }
+
+  return (
+    <>
+      <BracketedCell pad="sm">
+        <ActivityLedger>
+          {rows.map((c) => (
+            <ContestActivityRow key={c.contestId} c={c} />
+          ))}
+        </ActivityLedger>
+      </BracketedCell>
+      {totalPages > 1 ? (
+        <div className="mt-3 flex items-center justify-between">
+          <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3">
+            {start + 1}–{start + rows.length} of {contests.length}
+          </span>
+          <div className="flex items-center gap-2">
+            <PagerButton disabled={safePage === 0} onClick={() => setPage(safePage - 1)}>
+              ← PREV
+            </PagerButton>
+            <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 tabular-nums">
+              {safePage + 1} / {totalPages}
+            </span>
+            <PagerButton disabled={safePage >= totalPages - 1} onClick={() => setPage(safePage + 1)}>
+              NEXT →
+            </PagerButton>
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+function PagerButton({
+  disabled,
+  onClick,
+  children,
+}: {
+  disabled: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className="border border-ink/30 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-ink transition-colors hover:border-ink hover:bg-canvas-3 disabled:cursor-not-allowed disabled:border-ink/12 disabled:text-ink-3 disabled:hover:bg-transparent"
+    >
+      {children}
+    </button>
   );
 }
 
