@@ -496,3 +496,16 @@ footer {
 .scroll-brand::-webkit-scrollbar-corner {
   background: transparent;
 }
+
+/* Mobile: never let a single stray-wide element (a long unbroken string, an
+   un-clipped flex/grid row) make the document wider than the viewport, which
+   makes mobile browsers zoom the whole page out to "PC mode". Internal
+   overflow-x-auto scrollers still scroll. Desktop is untouched so the sticky
+   side panels and wide layouts keep working. */
+@media (max-width: 1024px) {
+  html,
+  body {
+    overflow-x: hidden;
+    max-width: 100%;
+  }
+}
