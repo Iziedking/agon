@@ -1668,6 +1668,27 @@ app.get("/challenges/:id/results", async (c) => {
   });
 });
 
+/// Final standings snapshot for replay. The coordinator saves the last live
+/// standings frame (full per-agent progress) when an event settles; the live
+/// page reads it so a settled event reconstructs its whole result — volumes,
+/// ops, tx hashes, solver cells, research spend — for anyone who didn't watch
+/// it live. Returns `{ entries: null }` until an event has settled.
+async function serveStandingsSnapshot(source: "contest" | "challenge", id: number) {
+  if (!Number.isFinite(id)) return { entries: null };
+  const { rows } = await query<{ entries: unknown }>(
+    "select entries from event_standings where source = $1 and event_id = $2",
+    [source, id],
+  );
+  return { entries: rows[0]?.entries ?? null };
+}
+
+app.get("/contests/:id/standings", async (c) =>
+  c.json(await serveStandingsSnapshot("contest", Number(c.req.param("id")))),
+);
+app.get("/challenges/:id/standings", async (c) =>
+  c.json(await serveStandingsSnapshot("challenge", Number(c.req.param("id")))),
+);
+
 // ----- Traits and mystery claims -----
 
 // The pool of awardable traits, public read so the UI can render chip labels

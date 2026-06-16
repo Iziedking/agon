@@ -47,6 +47,26 @@ export function entriesFromResults(r: ArenaResults): StandingsEntry[] {
   return [...winners, ...rest];
 }
 
+/// The full final standings snapshot the coordinator persisted at settlement:
+/// the same {rank, agentId, operator, score, progress}[] it broadcast live. This
+/// is what lets a settled event reconstruct its WHOLE result (volumes, ops, tx
+/// hashes, solver cells, research spend) on refresh, not just the winner ranks.
+/// Returns null until the event has settled (then `entriesFromResults` is the
+/// thinner fallback).
+export async function fetchStandingsSnapshot(
+  kind: "contests" | "challenges",
+  id: number,
+): Promise<StandingsEntry[] | null> {
+  try {
+    const res = await fetch(`${AUTH_URL}/${kind}/${id}/standings`, { cache: "no-store" });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { entries?: StandingsEntry[] | null };
+    return Array.isArray(data.entries) && data.entries.length > 0 ? data.entries : null;
+  } catch {
+    return null;
+  }
+}
+
 /// kind is "contests" or "challenges"; the endpoint shapes match.
 export async function fetchResults(kind: "contests" | "challenges", id: number): Promise<ArenaResults> {
   try {

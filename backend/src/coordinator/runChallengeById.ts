@@ -16,6 +16,7 @@ import { creditPoints, postValidatorFeedback } from "./reputation.js";
 import { applyTraitMultipliers, awardPlacementTraits, fetchAgentMultipliers } from "./traits.js";
 import { notify } from "../notifications/index.js";
 import { getTierGate, tierAllowed } from "../lib/tierGate.js";
+import { saveStandingsSnapshot } from "./standingsSnapshot.js";
 import {
   applySyndicateMultipliers,
   fetchSyndicateMultipliers,
@@ -499,7 +500,11 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
       // Final standings frame with the authoritative progress so the live
       // stage gets the real per-agent state (Scout tx hashes especially)
       // before the settled banner clears it.
-      broadcast({ type: "challenge_standings", challengeId, entries: standings(results) });
+      const finalStandings = standings(results);
+      broadcast({ type: "challenge_standings", challengeId, entries: finalStandings });
+      // Persist for replay: a refresh of the settled challenge reconstructs the
+      // full result for anyone who didn't watch it live.
+      void saveStandingsSnapshot("challenge", challengeId, finalStandings);
 
       const pot = ch.stake * BigInt(entrants);
       const fee = (pot * BigInt(ch.platformFeeBps)) / 10_000n;

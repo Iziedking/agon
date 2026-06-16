@@ -16,6 +16,7 @@ import { computeDistribution, normalizeScoringMode } from "./payouts.js";
 import { applyTraitMultipliers, awardPlacementTraits, awardWinStreaks, fetchAgentMultipliers } from "./traits.js";
 import { notify } from "../notifications/index.js";
 import { getTierGate, tierAllowed } from "../lib/tierGate.js";
+import { saveStandingsSnapshot } from "./standingsSnapshot.js";
 import {
   applyTrainingMultipliers,
   clampCombinedMultiplier,
@@ -378,7 +379,11 @@ export async function runContestById(contestId: number, broadcast: (message: unk
   // tx hashes land on the live stage just before the settled banner takes
   // over. Analyst/Solver progress is deterministic per agent, so this frame
   // just confirms what viewers already saw.
-  broadcast({ type: "standings", contestId, endsAt: endsAtMs, entries: standings(results) });
+  const finalStandings = standings(results);
+  broadcast({ type: "standings", contestId, endsAt: endsAtMs, entries: finalStandings });
+  // Persist the final frame so a refresh of the settled event replays the full
+  // result (volumes, tx, solver cells) for anyone who didn't watch it live.
+  void saveStandingsSnapshot("contest", contestId, finalStandings);
 
   const platformFee = (c.prizePool * BigInt(c.platformFeeBps)) / 10_000n;
   const claimable = c.prizePool - platformFee;

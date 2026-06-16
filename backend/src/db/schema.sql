@@ -377,6 +377,19 @@ create table if not exists payouts (
 );
 create index if not exists payouts_lookup_idx on payouts(contest_id, operator);
 
+-- Final standings snapshot for replay. When an event settles, the coordinator
+-- saves the last standings frame (the same {rank, agentId, operator, score,
+-- progress}[] it broadcasts live) here, so visiting/refreshing a settled event
+-- reconstructs the FULL result — volumes, ops, tx hashes, solver cells, research
+-- spend — for someone who never watched it live. source is 'contest'|'challenge'.
+create table if not exists event_standings (
+  source      text not null,
+  event_id    bigint not null,
+  entries     jsonb not null,
+  settled_at  timestamptz not null default now(),
+  primary key (source, event_id)
+);
+
 -- Peer-challenge entrants, from ChallengeArena's ChallengeJoined. Mirrors
 -- `entries` so the coordinator can assemble and score a challenge's field.
 create table if not exists challenge_entries (

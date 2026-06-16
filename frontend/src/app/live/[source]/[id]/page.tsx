@@ -9,7 +9,7 @@ import { EventHero, EventStage, normalizeStageKind, RealSolves, type StageKind }
 import { PrizeSplitNote } from "@/components/redesign/PrizeSplitNote";
 import { useContestSocket } from "@/hooks/useContestSocket";
 import { fetchArcanaPins, type PinnedMarket } from "@/lib/arcanaPins";
-import { fetchResults, entriesFromResults } from "@/lib/results";
+import { fetchResults, entriesFromResults, fetchStandingsSnapshot } from "@/lib/results";
 import { nameFor, useAgentNames } from "@/hooks/useAgentNames";
 import { useLiveNarrative, progressSummary } from "@/hooks/useLiveNarrative";
 import { useAgentSkins, skinFor } from "@/hooks/useAgentNames";
@@ -101,7 +101,15 @@ function ContestFocus({ id }: { id: number }) {
   const [snap, setSnap] = useState<StandingsEntry[]>([]);
   useEffect(() => {
     let stopped = false;
-    const load = () => fetchResults("contests", id).then((r) => { if (!stopped) setSnap(entriesFromResults(r)); });
+    // Prefer the FULL settled snapshot (rich per-agent progress) so a refresh of
+    // a finished event replays its whole result. Fall back to the thin
+    // winners/entrants board only when no snapshot exists yet (mid-event cold load).
+    const load = async () => {
+      const rich = await fetchStandingsSnapshot("contests", id);
+      if (rich) { if (!stopped) setSnap(rich); return; }
+      const r = await fetchResults("contests", id);
+      if (!stopped) setSnap(entriesFromResults(r));
+    };
     void load();
     const t = setInterval(load, 15000);
     return () => { stopped = true; clearInterval(t); };
@@ -213,7 +221,12 @@ function ChallengeFocus({ id }: { id: number }) {
   const [snap, setSnap] = useState<StandingsEntry[]>([]);
   useEffect(() => {
     let stopped = false;
-    const load = () => fetchResults("challenges", id).then((r) => { if (!stopped) setSnap(entriesFromResults(r)); });
+    const load = async () => {
+      const rich = await fetchStandingsSnapshot("challenges", id);
+      if (rich) { if (!stopped) setSnap(rich); return; }
+      const r = await fetchResults("challenges", id);
+      if (!stopped) setSnap(entriesFromResults(r));
+    };
     void load();
     const t = setInterval(load, 15000);
     return () => { stopped = true; clearInterval(t); };
