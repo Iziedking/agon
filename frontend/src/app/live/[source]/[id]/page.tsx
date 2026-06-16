@@ -143,34 +143,40 @@ function ContestFocus({ id }: { id: number }) {
           />
           <PrizeSplitNote source="contest" id={id} />
 
-          <ConnectionLine connected={connected} live={!!live && entries.length > 0} />
+          {c.status === 4 ? (
+            <CancelledNote />
+          ) : (
+            <>
+              <ConnectionLine connected={connected} live={!!live && entries.length > 0} />
 
-          <NarrativeLine
-            entries={entries}
-            lastTick={lastTick && lastTick.source === "contest" && lastTick.eventId === id ? lastTick : null}
-          />
-
-          <div className="mt-6 grid gap-6 lg:grid-cols-12">
-            <div className="lg:col-span-8">
-              <StageWithNarrative
+              <NarrativeLine
                 entries={entries}
-                stageKind={stageKind}
-                eventId={id}
-                settled={c.status === 3}
-                pinnedArcanaMarkets={
-                  pinnedArcana?.contestId === id
-                    ? pinnedArcana.markets
-                    : arcanaPins.length > 0
-                      ? arcanaPins
-                      : undefined
-                }
+                lastTick={lastTick && lastTick.source === "contest" && lastTick.eventId === id ? lastTick : null}
               />
-            </div>
-            <aside className="lg:col-span-4">
-              <Standings entries={entries} stakedCount={c.entrants} />
-              <Actions href={`/contests/${id}`} status={status.label} />
-            </aside>
-          </div>
+
+              <div className="mt-6 grid gap-6 lg:grid-cols-12">
+                <div className="lg:col-span-8">
+                  <StageWithNarrative
+                    entries={entries}
+                    stageKind={stageKind}
+                    eventId={id}
+                    settled={c.status === 3}
+                    pinnedArcanaMarkets={
+                      pinnedArcana?.contestId === id
+                        ? pinnedArcana.markets
+                        : arcanaPins.length > 0
+                          ? arcanaPins
+                          : undefined
+                    }
+                  />
+                </div>
+                <aside className="lg:col-span-4">
+                  <Standings entries={entries} stakedCount={c.entrants} />
+                  <Actions href={`/contests/${id}`} status={status.label} />
+                </aside>
+              </div>
+            </>
+          )}
         </>
       )}
     </Shell>
@@ -262,31 +268,57 @@ function ChallengeFocus({ id }: { id: number }) {
           />
           <PrizeSplitNote source="challenge" id={id} />
 
-          <ConnectionLine connected={connected} live={!!live && entries.length > 0} />
+          {ch.status === 3 ? (
+            <CancelledNote />
+          ) : (
+            <>
+              <ConnectionLine connected={connected} live={!!live && entries.length > 0} />
 
-          <NarrativeLine
-            entries={entries}
-            lastTick={lastTick && lastTick.source === "challenge" && lastTick.eventId === id ? lastTick : null}
-          />
-
-          <div className="mt-6 grid gap-6 lg:grid-cols-12">
-            <div className="lg:col-span-8">
-              <StageWithNarrative
+              <NarrativeLine
                 entries={entries}
-                stageKind={stageKind}
-                eventId={id}
-                settled={ch.status === 2}
-                pinnedArcanaMarkets={arcanaPins.length > 0 ? arcanaPins : undefined}
+                lastTick={lastTick && lastTick.source === "challenge" && lastTick.eventId === id ? lastTick : null}
               />
-            </div>
-            <aside className="lg:col-span-4">
-              <Standings entries={entries} stakedCount={ch.entrants} />
-              <Actions href={`/challenges/${id}`} status={status.label} />
-            </aside>
-          </div>
+
+              <div className="mt-6 grid gap-6 lg:grid-cols-12">
+                <div className="lg:col-span-8">
+                  <StageWithNarrative
+                    entries={entries}
+                    stageKind={stageKind}
+                    eventId={id}
+                    settled={ch.status === 2}
+                    pinnedArcanaMarkets={arcanaPins.length > 0 ? arcanaPins : undefined}
+                  />
+                </div>
+                <aside className="lg:col-span-4">
+                  <Standings entries={entries} stakedCount={ch.entrants} />
+                  <Actions href={`/challenges/${id}`} status={status.label} />
+                </aside>
+              </div>
+            </>
+          )}
         </>
       )}
     </Shell>
+  );
+}
+
+/// Shown in place of the live stage when an event was cancelled (under-filled or
+/// the coordinator missed the window) so the page reads as a clear terminal
+/// state instead of streaming an empty feed forever.
+function CancelledNote() {
+  return (
+    <div className="mt-6">
+      <BracketedCell pad="md">
+        <div className="flex flex-col gap-2">
+          <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-[color:var(--err)]">
+            <span aria-hidden>■</span> EVENT CANCELLED
+          </div>
+          <p className="max-w-[60ch] font-mono text-[13px] leading-[1.55] text-ink-2">
+            this one was cancelled before it could run. any stake is refunded to entrants from the dashboard.
+          </p>
+        </div>
+      </BracketedCell>
+    </div>
   );
 }
 

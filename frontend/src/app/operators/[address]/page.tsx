@@ -197,13 +197,13 @@ export default function OperatorPage() {
             xLinked={profile !== "loading" && !!profile?.xHandle}
             discordLinked={profile !== "loading" && !!profile?.discordUsername}
           />
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {agents.map((a) => (
-              <PublicAgentCard key={a.id} agent={a} />
-            ))}
+        ) : primaryAgent ? (
+          // Public view: just the operator's primary agent, no loadout. The full
+          // roster and traits are private to the owner's workshop.
+          <div className="max-w-[640px]">
+            <PublicAgentCard agent={primaryAgent} />
           </div>
-        )}
+        ) : null}
       </section>
 
       {/* SOCIALS. Public viewers only see what's linked; owner sees the full
@@ -447,10 +447,9 @@ function SocialRow({
   );
 }
 
-/// Slim agent card for the public view. No NFT badge, no train-soon chip,
-/// no inputs, just identity (avatar + name + tiers) and traits, which read
-/// as the agent's earned status. Matches the AgentCustomizeCard shell so
-/// the grid looks consistent.
+/// Slim agent card for the public view: just identity (avatar + name + tiers).
+/// The loadout (traits) is private to the owner's workshop, so it isn't shown
+/// here.
 function PublicAgentCard({ agent }: { agent: AgentState }) {
   const display = (agent.nickname ?? "").trim();
   return (
@@ -475,9 +474,6 @@ function PublicAgentCard({ agent }: { agent: AgentState }) {
             {CONTEST_TYPES.map((t) => `${t.toUpperCase()} T${tierOf(agent, t)}`).join(" · ")}
           </div>
         </div>
-      </div>
-      <div className="border-t border-[color:var(--hairline)] pt-3">
-        <AgentTraits agentId={agent.id} />
       </div>
     </BracketedCell>
   );

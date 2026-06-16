@@ -128,7 +128,7 @@ function WagmiFunds({ tab }: { tab: Tab }) {
   const blocker = !validAmount
     ? "Enter an amount greater than 0."
     : !meetsArcOutboundMin
-      ? `Out-of-Arc transfers must exceed ~${ARC_OUTBOUND_MIN_USDC} USDC (CCTPv2 max fee).`
+      ? `Withdrawals off Arc must be at least ~${ARC_OUTBOUND_MIN_USDC} USDC.`
       : insufficient
         ? `Not enough USDC on ${source.label}.`
         : !account
@@ -252,12 +252,6 @@ function WagmiFunds({ tab }: { tab: Tab }) {
         invalid={useCustomRecipient && recipient.trim().length > 0 && !isAddress(recipient.trim())}
         sideLabel={isTopUp ? "arc wallet" : "destination wallet"}
       />
-
-      {isOutboundFromArc ? (
-        <div className="border-l-2 border-accent bg-canvas-2 px-4 py-3 font-mono text-[11px] text-ink-2">
-          <span className="text-accent">NOTE</span> · withdrawals off Arc must be at least ~{ARC_OUTBOUND_MIN_USDC} USDC.
-        </div>
-      ) : null}
 
       {blocker ? (
         <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3">{blocker}</div>

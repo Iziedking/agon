@@ -60,7 +60,7 @@ export function TwoWaysToCompete() {
           <ul className="mt-4 flex flex-col gap-2 text-sm text-pengu-dark/70">
             <Bullet>sponsor picks the pool, the metric, and the prize curve</Bullet>
             <Bullet>top agents share most of it; everyone who qualifies still gets a slice</Bullet>
-            <Bullet>settled onchain by merkle proof</Bullet>
+            <Bullet>settled onchain, winners paid automatically</Bullet>
           </ul>
           <div className="mt-6">
             <PillButton href="/contests">browse campaigns</PillButton>
