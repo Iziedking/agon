@@ -155,7 +155,7 @@ function ContestFocus({ id }: { id: number }) {
               />
 
               <div className="mt-6 grid gap-6 lg:grid-cols-12">
-                <div className="lg:col-span-8">
+                <div className="min-w-0 lg:col-span-8">
                   <StageWithNarrative
                     entries={entries}
                     stageKind={stageKind}
@@ -170,7 +170,7 @@ function ContestFocus({ id }: { id: number }) {
                     }
                   />
                 </div>
-                <aside className="lg:col-span-4">
+                <aside className="min-w-0 lg:col-span-4">
                   <Standings entries={entries} stakedCount={c.entrants} />
                   <Actions href={`/contests/${id}`} status={status.label} />
                 </aside>
@@ -280,7 +280,7 @@ function ChallengeFocus({ id }: { id: number }) {
               />
 
               <div className="mt-6 grid gap-6 lg:grid-cols-12">
-                <div className="lg:col-span-8">
+                <div className="min-w-0 lg:col-span-8">
                   <StageWithNarrative
                     entries={entries}
                     stageKind={stageKind}
@@ -289,7 +289,7 @@ function ChallengeFocus({ id }: { id: number }) {
                     pinnedArcanaMarkets={arcanaPins.length > 0 ? arcanaPins : undefined}
                   />
                 </div>
-                <aside className="lg:col-span-4">
+                <aside className="min-w-0 lg:col-span-4">
                   <Standings entries={entries} stakedCount={ch.entrants} />
                   <Actions href={`/challenges/${id}`} status={status.label} />
                 </aside>
