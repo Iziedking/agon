@@ -30,6 +30,7 @@ coverage/
 
 # Production deploy secrets and backups (live only on the VPS)
 deploy/.env
+deploy/backup.env
 backups/
 **/backups/
 
