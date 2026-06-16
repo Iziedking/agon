@@ -93,7 +93,13 @@ export async function executeSwap(opts: {
       // kitKey is validated by swap-kit's params schema and forwarded to the
       // Stablecoin Service provider; the public SwapConfig type omits it, so
       // the cast keeps the field without loosening the rest of the call.
-      config: { kitKey: config.scout.kitKey!, slippageBps: 300 } as never,
+      // Slippage is env-tunable: the Arc testnet USDC<->EURC pool is thin, so a
+      // larger swap moves the price more and a tight 3% band reverts the sim.
+      // 5% by default; pair this with a small SCOUT_SWAP_MAX_USDC per swap.
+      config: {
+        kitKey: config.scout.kitKey!,
+        slippageBps: Number(process.env.SCOUT_SWAP_SLIPPAGE_BPS ?? "500"),
+      } as never,
     });
 
     return {
@@ -102,7 +108,11 @@ export async function executeSwap(opts: {
       amountOut: result.amountOut ?? "0",
     };
   } catch (err) {
-    console.warn(`[scout-swap] swap failed: ${err instanceof Error ? err.message : err}`);
+    // Include the size + pair so a revert is diagnosable (almost always the
+    // amount is too big for the thin testnet pool, or slippage is too tight).
+    console.warn(
+      `[scout-swap] swap failed (${opts.amountIn} ${opts.tokenIn}->${opts.tokenOut}): ${err instanceof Error ? err.message : err}`,
+    );
     return null;
   }
 }

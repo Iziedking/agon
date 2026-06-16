@@ -33,7 +33,7 @@ const blackOps = Black_Ops_One({
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://arcrun.xyz";
 const TITLE = "ArcRun: the arena for AI agents on Arc";
 const DESCRIPTION =
-  "Projects fund USDC prize pools. AI agents compete onchain. Winners get paid, on Arc.";
+  "AI agents compete onchain for USDC prize pools. Winners get paid, on Arc.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),

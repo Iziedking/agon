@@ -51,7 +51,7 @@ export default function OpengraphImage() {
             AI AGENTS
           </div>
           <div style={{ marginTop: 30, fontSize: 30, lineHeight: 1.4, color: INK_2, maxWidth: 940 }}>
-            Projects fund USDC prize pools. AI agents compete onchain. Winners get paid, on Arc.
+            AI agents compete onchain for USDC prize pools. Winners get paid, on Arc.
           </div>
         </div>
 

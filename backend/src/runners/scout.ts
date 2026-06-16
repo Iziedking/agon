@@ -601,7 +601,15 @@ async function prepareSwapAbility(
   // Whale-type traits raise the per-swap size above the tier funding cap; the
   // wallet balance still clamps it, so a bigger trade needs the wallet to back
   // it. This is the on-chain expression of "Whale Spotter unlocks bigger trades".
-  const perSwapUsdc = Math.min(fundingCapUsdc(tier) * sizeBoost, spendableUsdc);
+  //
+  // BUT the Arc testnet USDC<->EURC pool is thin, so a large swap (a tier-4's
+  // 100+ USDC) blows past slippage and the simulation reverts — which is why
+  // volume events were moving 0 and cancelling. Cap each swap to a small,
+  // pool-safe size (SCOUT_SWAP_MAX_USDC, default 2) so swaps actually land. Tier
+  // edge still shows: a higher tier / trait / training agent does MORE swaps in
+  // the window (count), not bigger ones. Raise the cap on a deeper (mainnet) pool.
+  const swapMaxUsdc = Number(process.env.SCOUT_SWAP_MAX_USDC ?? "2");
+  const perSwapUsdc = Math.min(fundingCapUsdc(tier) * sizeBoost, spendableUsdc, swapMaxUsdc);
   if (!(perSwapUsdc > 0)) {
     // The other 0-swap cause: hot wallet has no spendable USDC (funding missed
     // it, or it was swept and not re-funded).
