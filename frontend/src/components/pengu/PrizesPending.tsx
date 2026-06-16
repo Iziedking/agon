@@ -55,13 +55,33 @@ export function PrizesPending({ address }: { address: `0x${string}` }) {
       const claim = await fetchClaimProof(row.source, row.id, address);
       if (!claim) throw new Error("could not fetch claim proof");
       const shape = claimWriteShape(row.source);
+      // Simulate before sending. A claim reverts when the winner root isn't
+      // posted on-chain yet (a settlement that didn't finish) or the proof
+      // doesn't match. Without this, the wallet still sends it, the tx reverts,
+      // waitForTransactionReceipt resolves anyway (it does NOT throw on revert),
+      // and the prize silently re-appears on the next reload — exactly the
+      // "claimed but comes back" bug. Simulating surfaces the real revert reason
+      // before any gas is spent.
+      await publicClient.simulateContract({
+        address: shape.address,
+        abi: shape.abi,
+        functionName: shape.functionName,
+        args: [BigInt(row.id), claim.amount, claim.proof],
+        account: address,
+      });
       const hash = await writeContractAsync({
         address: shape.address,
         abi: shape.abi,
         functionName: shape.functionName,
         args: [BigInt(row.id), claim.amount, claim.proof],
       });
-      await publicClient.waitForTransactionReceipt({ hash });
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      // Belt and suspenders: a tx can still revert after a clean simulation
+      // (state changed between blocks). Treat a reverted receipt as a failure so
+      // the row never drops on a claim that didn't actually land.
+      if (receipt.status !== "success") {
+        throw new Error("claim reverted on-chain; the prize is still unclaimed");
+      }
       reportEvent("prize_claim", {
         context: { source: row.source, id: row.id, amount: claim.amount.toString() },
         address,

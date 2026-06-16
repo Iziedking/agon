@@ -25,9 +25,20 @@ PG_USER="${PG_USER:-arcrun}"
 PG_DB="${PG_DB:-arcrun}"
 KEEP="${KEEP:-14}"   # how many of each backup file to retain
 
-# Optional off-box settings live in a gitignored env file so the B2 key never
-# enters the repo. Sourced if present; absent = local-only backup.
+# Optional off-box (Backblaze B2) settings. Read them from EITHER a dedicated
+# deploy/backup.env OR straight from deploy/.env, so all config can live in one
+# place. From deploy/.env we pull ONLY the B2_* lines (not source the whole app
+# env, which may hold values bash can't parse). Already-set vars win.
 [ -f "$REPO_DIR/deploy/backup.env" ] && . "$REPO_DIR/deploy/backup.env"
+if [ -f "$REPO_DIR/deploy/.env" ]; then
+  while IFS= read -r _line; do
+    _k="${_line%%=*}"
+    [ -n "${!_k:-}" ] && continue
+    export "$_k=${_line#*=}"
+  done < <(grep -E '^B2_[A-Za-z_]+=' "$REPO_DIR/deploy/.env" 2>/dev/null || true)
+fi
+# Accept B2_APPLICATION_KEY (the name Backblaze shows) as an alias for B2_APP_KEY.
+B2_APP_KEY="${B2_APP_KEY:-${B2_APPLICATION_KEY:-}}"
 
 stamp="$(date -u +%Y%m%d-%H%M%S)"
 mkdir -p "$BACKUP_DIR"
