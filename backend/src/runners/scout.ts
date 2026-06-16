@@ -585,7 +585,14 @@ async function prepareSwapAbility(
   const balanceUsdc = Number(balance) / 1e6;
   const dailyRemaining = await dailySwapsRemaining(agentId); // in legs
   const targetLegs = Math.max(0, Math.min(targetRoundTrips * 2, dailyRemaining));
-  if (targetLegs <= 0) return { privateKey, perSwapUsdc: 0, targetLegs: 0 };
+  if (targetLegs <= 0) {
+    // Log WHY this agent will do 0 swaps so it's greppable instead of a silent
+    // no-show (the "tier 4 never swapped" mystery). Daily budget spent.
+    console.log(
+      `[scout] agent ${agentId}: 0 swaps — daily budget spent (used ${config.scout.dailySwapCap - dailyRemaining}/${config.scout.dailySwapCap}; raise SCOUT_DAILY_SWAP_CAP)`,
+    );
+    return { privateKey, perSwapUsdc: 0, targetLegs: 0 };
+  }
 
   // The principal recirculates each round-trip, so a flat gas buffer covers
   // every leg's gas; no need to scale the reserve by the full round count.
@@ -595,6 +602,13 @@ async function prepareSwapAbility(
   // wallet balance still clamps it, so a bigger trade needs the wallet to back
   // it. This is the on-chain expression of "Whale Spotter unlocks bigger trades".
   const perSwapUsdc = Math.min(fundingCapUsdc(tier) * sizeBoost, spendableUsdc);
+  if (!(perSwapUsdc > 0)) {
+    // The other 0-swap cause: hot wallet has no spendable USDC (funding missed
+    // it, or it was swept and not re-funded).
+    console.log(
+      `[scout] agent ${agentId}: 0 swaps — hot wallet underfunded (balance ${balanceUsdc.toFixed(4)} USDC at ${account.address})`,
+    );
+  }
   return { privateKey, perSwapUsdc, targetLegs };
 }
 
