@@ -152,12 +152,16 @@ export function useAuth(): AuthContextValue {
 export function useOperatorAddress(): {
   address: `0x${string}` | undefined;
   isSignedIn: boolean;
+  /// True while auth is still resolving (the session fetch or wagmi's initial
+  /// reconnect). Gate signed-out UI on this so a page doesn't FLASH the
+  /// "sign in" state for a returning user before their session loads.
+  settling: boolean;
 } {
-  const { me } = useAuth();
+  const { me, settling } = useAuth();
   const { address: walletAddress, isConnected: walletConnected } = useAccount();
   const address = (walletAddress ?? me?.address) as `0x${string}` | undefined;
   // Circle: cookie is the auth. wagmi: cookie AND connected wallet.
   const isCircle = me?.walletKind === "circle";
   const isSignedIn = isCircle ? !!me?.address : walletConnected && !!me?.address;
-  return { address, isSignedIn };
+  return { address, isSignedIn, settling };
 }

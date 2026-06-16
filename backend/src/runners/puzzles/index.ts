@@ -158,6 +158,20 @@ export async function generatePuzzlesAsync(
     }
   }
 
+  // Reserve the "research" kind for GENUINE live-data missions (ORACLE / RECON),
+  // whose answer is unknowable without paying for the data. Any research slot
+  // that did NOT become a live-data mission — oracle disabled, or a live fetch
+  // failed — is swapped for a quiz. Otherwise the field shows a static-trivia
+  // "research" question that either gets marked wrong for not paying (when the
+  // payment gate was on the kind) or, worse, gets scored WITHOUT paying — which
+  // makes the x402 spend look forced and pointless. A real research question is
+  // one you can only win by buying the data; everything else is just a quiz.
+  for (let i = 0; i < base.length; i++) {
+    if (base[i]!.kind === "research" && base[i]!.requiresData !== true) {
+      base[i] = quiz(seededRng(seed * 2003 + i + 1), new Set<number>(), difficulty);
+    }
+  }
+
   if (FRESH_RATIO <= 0) return base;
   const quizSlots: number[] = [];
   for (let i = 0; i < base.length; i++) if (base[i]!.kind === "quiz") quizSlots.push(i);

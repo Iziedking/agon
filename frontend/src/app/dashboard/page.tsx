@@ -49,7 +49,7 @@ import {
 /// stays as a bracketed sidecar.
 
 export default function DashboardPage() {
-  const { address, isSignedIn: isConnected } = useOperatorAddress();
+  const { address, isSignedIn: isConnected, settling } = useOperatorAddress();
   const [profile, setProfile] = useState<OperatorProfile | null | undefined>(undefined);
   const [agents, setAgents] = useState<AgentState[] | undefined>(undefined);
   const [activeId, setActiveId] = useState<number | null>(null);
@@ -72,6 +72,20 @@ export default function DashboardPage() {
       .catch(() => { /* keep undefined */ });
     return () => { live = false; };
   }, [address]);
+
+  // Still resolving the session / wallet reconnect: render a calm placeholder
+  // instead of the signed-out screen, so a returning user never sees the
+  // "SIGN IN" state flash before their dashboard loads.
+  if (settling) {
+    return (
+      <Shell>
+        <section className="mx-auto max-w-[1600px] px-6 py-16">
+          <SectionHeader heading="YOUR DASHBOARD" />
+          <p className="mt-8 font-mono text-sm text-ink-2">loading…</p>
+        </section>
+      </Shell>
+    );
+  }
 
   // Disconnected
   if (!isConnected || !address) {
