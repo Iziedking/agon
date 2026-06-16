@@ -178,6 +178,16 @@ export function scoutSpeedStatFactor(stats: Partial<Record<StatName, number>>): 
   return 1 + TRAIN_LEVEL_BONUS[lvl]! * SPEED_STAT_SCALE;
 }
 
+/// Total trained levels across all six stats (0..30). Used by the scout to grow
+/// the per-round op CAP permanently: every completed level lifts the ceiling, and
+/// because the cap reads this at runtime it is automatic and retroactive — an
+/// agent's current training already counts the moment a level finishes.
+export function totalTrainedLevels(stats: Partial<Record<StatName, number>>): number {
+  let total = 0;
+  for (const name of STAT_NAMES) total += Math.max(0, Math.min(MAX_TRAIN_LEVEL, Math.floor(stats[name] ?? 0)));
+  return total;
+}
+
 /// Puzzle: reasoning-budget multiplier and extra retries. Pure-skill safe; never
 /// touches the x402 research gate. Speed adds reasoning budget.
 export function solverTraitAbilities(

@@ -10,7 +10,7 @@ import { scoutScore } from "../scoring/index.js";
 import type { AgentResult, ContestEntryInput, Runner, TapeEvent } from "./types.js";
 import { callModel, llmConfigured, recordLlmRun, readExistingRuns, DailyKillError } from "./llm/client.js";
 import { resolveRuntimeParams, loadAgentStats, type RuntimeParams } from "./llm/tierConfig.js";
-import { effectiveStrength, scoutTraitAbilities, scoutSpeedStatFactor } from "../scoring/strength.js";
+import { effectiveStrength, scoutTraitAbilities, scoutSpeedStatFactor, totalTrainedLevels } from "../scoring/strength.js";
 import { getLoadout } from "../auth/loadouts.js";
 import { applyRouting } from "./solver.js";
 import {
@@ -472,6 +472,14 @@ const RACE_INTER_ROUND_MS = Number(process.env.SCOUT_RACE_DELAY_MS ?? "400");
 // by the shared 1024/day budget.
 const ROUND_SWAP_CAP_DEFAULT = Number(process.env.SCOUT_ROUND_CAP ?? "85");
 const ROUND_SWAP_CAP_MAX = Number(process.env.SCOUT_ROUND_CAP_MAX ?? "120");
+// Training permanently raises the cap: every completed stat level adds this many
+// swaps to the per-round allowance, ON TOP of the flat base + count traits. It is
+// automatic and retroactive — the cap reads the agent's current training levels,
+// so a player who has already trained gets the higher cap immediately, and every
+// future training lifts it further. The total is clamped to ROUND_SWAP_CAP_CEIL
+// (above the trait-only 120 so training can push past it) and the 1024/day budget.
+const SCOUT_TRAIN_CAP_PER_LEVEL = Number(process.env.SCOUT_TRAIN_CAP_PER_LEVEL ?? "3");
+const ROUND_SWAP_CAP_CEIL = Number(process.env.SCOUT_ROUND_CAP_CEIL ?? "250");
 // Floor on a lane's inter-round idle (ms). Pace = base delay / speedFactor, so a
 // faster agent idles less and packs more round-trips into the window, but never
 // below this floor so the RPC isn't hammered.
@@ -679,20 +687,32 @@ export class ScoutRunner implements Runner {
       // change what the agent does on-chain, and a higher tier expresses each
       // more strongly.
       const { sizeMult, capMult, speedMult } = scoutTraitAbilities(equipped, e.tier);
-      // Three independent levers, none of them tier-gated the same way:
-      //  - CAP (target): flat ROUND_SWAP_CAP_DEFAULT for every tier, raised by
-      //    count traits toward ROUND_SWAP_CAP_MAX. A lower tier with the count
-      //    trait keeps swapping past the default. Clamped to the tier op cap and
-      //    (at execution) the 1024/day budget.
+      // Three levers, each grown by traits AND permanent training:
+      //  - CAP (target): flat base for every tier, raised by count traits (to the
+      //    trait ceiling) PLUS a permanent bump per completed training level. So a
+      //    player who trains keeps swapping further every round, for good. Clamped
+      //    to the overall ceiling, the tier op cap, and (at execution) the 1024/day
+      //    budget.
       //  - SPEED (speedFactor): tier natural pace x SPEED training x Velocity.
-      //    Decides how fast it fires, so how much of the cap it reaches in time.
-      //  - SIZE (sizeBoost): bigger per-swap USDC, the tier's default edge.
+      //  - SIZE (sizeBoost): whale traits x tier x permanent training multiplier,
+      //    so a trained agent also moves bigger USDC per swap.
+      const traitCap = Math.min(ROUND_SWAP_CAP_MAX, Math.round(ROUND_SWAP_CAP_DEFAULT * capMult));
+      const trainCapBonus = totalTrainedLevels(stats) * SCOUT_TRAIN_CAP_PER_LEVEL;
       const perRoundCap = Math.min(
         limit.maxOps,
-        Math.max(ROUND_SWAP_CAP_DEFAULT, Math.min(ROUND_SWAP_CAP_MAX, Math.round(ROUND_SWAP_CAP_DEFAULT * capMult))),
+        ROUND_SWAP_CAP_CEIL,
+        Math.max(ROUND_SWAP_CAP_DEFAULT, traitCap + trainCapBonus),
       );
       const speedFactor = tierSpeedFactor(e.tier) * scoutSpeedStatFactor(stats) * speedMult;
-      plans.push({ entry: e, account, strategy, strength, speedFactor, sizeBoost: sizeMult, target: perRoundCap });
+      plans.push({
+        entry: e,
+        account,
+        strategy,
+        strength,
+        speedFactor,
+        sizeBoost: sizeMult * strength.training,
+        target: perRoundCap,
+      });
     }
 
     const execMap =
