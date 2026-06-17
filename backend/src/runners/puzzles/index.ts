@@ -2,7 +2,6 @@ import { seededRng, pick } from "../rng.js";
 import { QUIZ_BANK, type QuizQuestion } from "./quizBank.js";
 import { researchPuzzle } from "./research.js";
 import { drawQuizzesFromPool } from "./generator.js";
-import { generatePriceOracle, generatePriceRecon, oracleEnabled } from "./oracle.js";
 
 /// Puzzle templates for the Solver contest. Generated deterministically from
 /// a (contestId, roundIdx) seed so every agent in a round faces the same
@@ -139,35 +138,18 @@ export async function generatePuzzlesAsync(
 ): Promise<Puzzle[]> {
   const base = generatePuzzles(seed, count, difficulty);
 
-  // Phase 1b ORACLE + RECON: swap research slots for live-data missions. The
-  // answer is a live, unguessable price bucket, so the paid web search is
-  // genuinely REQUIRED (not just payment-gated). Every third research slot is a
-  // RECON mission (gather several live prices and synthesize); the rest are
-  // single-asset ORACLE lookups. On any failure the static research puzzle
-  // stays, so nothing breaks. Independent of the quiz pool.
-  if (oracleEnabled()) {
-    let researchSeen = 0;
-    for (let i = 0; i < base.length; i++) {
-      if (base[i]!.kind !== "research") continue;
-      const isRecon = researchSeen % 3 === 2;
-      researchSeen++;
-      const mission = isRecon
-        ? await generatePriceRecon(seed * 31 + i).catch(() => null)
-        : await generatePriceOracle(seed * 31 + i).catch(() => null);
-      if (mission) base[i] = mission;
-    }
-  }
-
-  // Reserve the "research" kind for GENUINE live-data missions (ORACLE / RECON),
-  // whose answer is unknowable without paying for the data. Any research slot
-  // that did NOT become a live-data mission — oracle disabled, or a live fetch
-  // failed — is swapped for a quiz. Otherwise the field shows a static-trivia
-  // "research" question that either gets marked wrong for not paying (when the
-  // payment gate was on the kind) or, worse, gets scored WITHOUT paying — which
-  // makes the x402 spend look forced and pointless. A real research question is
-  // one you can only win by buying the data; everything else is just a quiz.
+  // Puzzle contests and challenges are PURE SKILL: a correct answer always wins,
+  // fastest breaks ties, and there is NO x402 payment in the loop. The live-data
+  // ORACLE / RECON missions (whose answer is unknowable without a paid lookup,
+  // so a correct-but-unpaid answer earns no credit) are deliberately NOT mixed
+  // in here — that payment mechanic belongs only to the dedicated missions
+  // surface, not to puzzle events. (generatePriceOracle / generatePriceRecon
+  // still live in ./oracle.js for that missions runner.) Reason it was pulled:
+  // research spend is tier 3/4 only, so a tier-0..2 agent could never pay and
+  // its correct answer was always flipped to wrong — a tier-2 simply could not
+  // win a round that contained one. Every "research" slot becomes a plain quiz.
   for (let i = 0; i < base.length; i++) {
-    if (base[i]!.kind === "research" && base[i]!.requiresData !== true) {
+    if (base[i]!.kind === "research") {
       base[i] = quiz(seededRng(seed * 2003 + i + 1), new Set<number>(), difficulty);
     }
   }

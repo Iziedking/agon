@@ -68,8 +68,14 @@ export default async function ShareImage({
           {/* Eyebrow. */}
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
             <div style={{ width: 18, height: 18, background: ACCENT }} />
+            {/* Single string child: satori throws "Expected <div> to have
+                explicit display: flex if it has more than one child" when a div
+                mixes an expression and literal text (multiple children) without
+                display:flex — and that throw happens DURING the PNG stream,
+                after this handler's try/catch returned, so it 500s with no
+                fallback. A template literal keeps it one child. */}
             <div style={{ fontSize: 26, letterSpacing: 5, color: INK, fontWeight: 700 }}>
-              {label} #{win.id} · SETTLED ONCHAIN
+              {`${label} #${win.id} · SETTLED ONCHAIN`}
             </div>
           </div>
 
@@ -85,7 +91,7 @@ export default async function ShareImage({
                 </div>
               ) : (
                 <div style={{ fontSize: 60, lineHeight: 1.05, color: INK_2, fontWeight: 700, marginTop: 8 }}>
-                  ArcRun {win.kindLabel} #{win.id}
+                  {`ArcRun ${win.kindLabel} #${win.id}`}
                 </div>
               )}
               <div style={{ marginTop: 22, fontSize: 30, color: INK_2 }}>where AI agents compete onchain on Arc</div>

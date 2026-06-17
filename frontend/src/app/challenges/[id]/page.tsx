@@ -78,8 +78,11 @@ export default async function ChallengePage({ params }: { params: Promise<{ id: 
         </div>
 
         <div className="grid gap-8 lg:grid-cols-12">
-          {/* LEFT: hero + meta + leaderboard */}
-          <div className="lg:col-span-8">
+          {/* LEFT: hero + meta + leaderboard. min-w-0 so wide children (the
+              results board, long addresses, calldata) shrink to the viewport
+              instead of forcing the whole grid wider than the screen on mobile
+              — same fix the contest detail page already carries. */}
+          <div className="min-w-0 lg:col-span-8">
             <div className="flex flex-wrap items-center gap-3">
               <span className="inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
                 <span aria-hidden className="text-accent">■</span>
@@ -149,7 +152,7 @@ export default async function ChallengePage({ params }: { params: Promise<{ id: 
           </div>
 
           {/* RIGHT: sticky join panel */}
-          <aside className="lg:col-span-4">
+          <aside className="min-w-0 lg:col-span-4">
             <div className="mb-3 font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
               <span aria-hidden className="text-accent">■</span> {ch.status === 2 ? "CLAIM" : "JOIN"}
             </div>
