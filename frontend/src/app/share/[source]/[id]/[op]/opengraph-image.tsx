@@ -26,6 +26,37 @@ const INK_3 = "#847C70";
 const ACCENT = "#FF3D8A";
 const HAIRLINE = "rgba(26,22,18,0.12)";
 
+// Show the operator's real avatar on the card, off only if it ever misbehaves.
+// Set WIN_CARD_REMOTE_AVATAR="0" to fall back to the initial disc with no redeploy.
+const REMOTE_AVATAR = process.env.WIN_CARD_REMOTE_AVATAR !== "0";
+
+/// Fetch the avatar OURSELVES and return a data URL, so satori never does a
+/// network fetch while it streams the PNG (that mid-stream fetch failing is the
+/// uncatchable "failed to pipe response" 500 that made us drop the pfp before).
+/// Only embeds a png/jpeg we actually pulled and size-checked; anything else
+/// (svg, webp, a slow host, a non-image) returns null and the card draws the
+/// initial instead. The fetch is inside the handler's try/catch, so a failure
+/// here degrades cleanly.
+async function avatarDataUrl(url: string | null): Promise<string | null> {
+  if (!url || !REMOTE_AVATAR) return null;
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(2500) });
+    if (!res.ok) return null;
+    const ct = (res.headers.get("content-type") ?? "").toLowerCase();
+    if (!ct.includes("png") && !ct.includes("jpeg") && !ct.includes("jpg")) return null;
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    if (bytes.byteLength === 0 || bytes.byteLength > 1_500_000) return null;
+    let bin = "";
+    const CHUNK = 0x8000;
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      bin += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+    }
+    return `data:${ct.includes("png") ? "image/png" : "image/jpeg"};base64,${btoa(bin)}`;
+  } catch {
+    return null;
+  }
+}
+
 export default async function ShareImage({
   params,
 }: {
@@ -34,6 +65,7 @@ export default async function ShareImage({
   try {
     const { source, id, op } = await params;
     const win = await loadWin(source, id, op);
+    const avatar = await avatarDataUrl(win.avatarUrl);
 
     const label = win.kindLabel.toUpperCase();
     const verb = placeVerb(win.rank).toUpperCase();
@@ -97,26 +129,44 @@ export default async function ShareImage({
               <div style={{ marginTop: 22, fontSize: 30, color: INK_2 }}>where AI agents compete onchain on Arc</div>
             </div>
 
-            {/* Operator marker: a branded pink disc with the operator's initial.
-                No remote image, so the renderer can never fail to pipe. */}
+            {/* Operator marker: the real avatar when we safely pre-fetched it,
+                otherwise a branded pink disc with the operator's initial. The
+                avatar is a data URL (bytes already in hand), so the renderer
+                never fetches over the network mid-stream. */}
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
-              <div
-                style={{
-                  width: 240,
-                  height: 240,
-                  borderRadius: 240,
-                  background: ACCENT,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "#1A0E14",
-                  fontSize: 110,
-                  fontWeight: 800,
-                  border: `4px solid ${INK}`,
-                }}
-              >
-                {initial}
-              </div>
+              {avatar ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={avatar}
+                  width={240}
+                  height={240}
+                  style={{
+                    width: 240,
+                    height: 240,
+                    borderRadius: 240,
+                    objectFit: "cover",
+                    border: `4px solid ${INK}`,
+                  }}
+                />
+              ) : (
+                <div
+                  style={{
+                    width: 240,
+                    height: 240,
+                    borderRadius: 240,
+                    background: ACCENT,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "#1A0E14",
+                    fontSize: 110,
+                    fontWeight: 800,
+                    border: `4px solid ${INK}`,
+                  }}
+                >
+                  {initial}
+                </div>
+              )}
               <div style={{ fontSize: 28, color: INK, fontWeight: 700, maxWidth: 280, textAlign: "center" }}>{who}</div>
             </div>
           </div>
