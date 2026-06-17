@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 760" font-family="'JetBrains Mono','SFMono-Regular',Menlo,Consolas,monospace">
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="760" viewBox="0 0 1120 760" font-family="'JetBrains Mono','SFMono-Regular',Menlo,Consolas,monospace">
   <defs>
     <marker id="arw" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0 0 L10 5 L0 10 z" fill="#1A1612"/>
@@ -34,10 +34,10 @@
     <text class="cell-row" x="384" y="224">PointsLedger</text>
   </g>
 
-  <!-- arrows down from Arc -->
-  <path class="line" marker-end="url(#arw)" d="M430 244 L430 330"/>
+  <!-- arrows down from Arc (curved) -->
+  <path class="line" marker-end="url(#arw)" d="M430 244 Q452 287 430 330"/>
   <text class="lbl" x="300" y="292">eth_getLogs</text>
-  <path class="line" marker-end="url(#arw)" d="M660 244 L660 330"/>
+  <path class="line" marker-end="url(#arw)" d="M660 244 Q682 287 660 330"/>
   <text class="lbl" x="676" y="292">writes (viem)</text>
 
   <!-- ===== FRONTEND ===== -->
@@ -50,7 +50,7 @@
     <rect x="62" y="356" width="9" height="9" fill="#FF3D8A"/>
     <text class="cell-title" x="82" y="365">FRONTEND</text>
     <text class="cell-row" x="62" y="398">Next.js 15</text>
-    <text class="cell-row" x="62" y="422">wagmi + viem</text>
+    <text class="cell-row" x="62" y="422">wagmi and viem</text>
     <text class="cell-row" x="62" y="446">live WebSocket</text>
   </g>
 
@@ -64,7 +64,7 @@
     <rect x="322" y="356" width="9" height="9" fill="#FF3D8A"/>
     <text class="cell-title" x="342" y="365">AUTH / API</text>
     <text class="cell-row" x="322" y="398">Hono</text>
-    <text class="cell-row" x="322" y="422">SIWE + email + passkey</text>
+    <text class="cell-row" x="322" y="422">SIWE, email, passkey</text>
   </g>
 
   <!-- ===== COORDINATOR ===== -->
@@ -77,16 +77,16 @@
     <rect x="622" y="356" width="9" height="9" fill="#FF3D8A"/>
     <text class="cell-title" x="642" y="365">COORDINATOR</text>
     <text class="cell-row" x="622" y="398">BullMQ scheduler</text>
-    <text class="cell-row" x="622" y="422">runners + scoring</text>
+    <text class="cell-row" x="622" y="422">runners and scoring</text>
     <text class="cell-row" x="622" y="446">merkle settlement</text>
   </g>
 
-  <!-- HTTP between frontend and auth -->
-  <path class="line" marker-start="url(#arw)" marker-end="url(#arw)" d="M250 380 L300 380"/>
-  <text class="lbl" x="256" y="370">HTTP</text>
-  <!-- WS frontend -> coordinator -->
-  <path class="line" marker-start="url(#arw)" marker-end="url(#arw)" d="M250 452 L600 452"/>
-  <text class="lbl" x="256" y="444">WS</text>
+  <!-- HTTP between frontend and auth (curved) -->
+  <path class="line" marker-start="url(#arw)" marker-end="url(#arw)" d="M250 380 Q275 363 300 380"/>
+  <text class="lbl" x="256" y="356">HTTP</text>
+  <!-- WS frontend to coordinator (curved) -->
+  <path class="line" marker-start="url(#arw)" marker-end="url(#arw)" d="M250 452 Q425 426 600 452"/>
+  <text class="lbl" x="410" y="430">WS</text>
 
   <!-- ===== POSTGRES / REDIS ===== -->
   <g>
@@ -100,12 +100,12 @@
     <text class="cell-row" x="322" y="586">Postgres</text>
     <text class="cell-row" x="410" y="586">Redis</text>
   </g>
-  <!-- auth/coordinator to data -->
-  <path class="line" marker-end="url(#arw)" d="M420 452 L400 520"/>
-  <path class="line" marker-end="url(#arw)" d="M660 482 L490 540"/>
+  <!-- auth and coordinator to data (curved) -->
+  <path class="line" marker-end="url(#arw)" d="M420 452 Q438 486 400 520"/>
+  <path class="line" marker-end="url(#arw)" d="M660 482 Q565 498 490 540"/>
 
-  <!-- frontend reads via Arc RPC -->
-  <path class="line" marker-end="url(#arw)" d="M120 482 L120 560 L296 560"/>
+  <!-- frontend reads via Arc RPC (curved) -->
+  <path class="line" marker-end="url(#arw)" d="M120 482 C120 545 178 560 296 560"/>
   <text class="lbl" x="60" y="540">reads (multicall)</text>
   <text class="dim" x="60" y="588">Arc RPC</text>
 
@@ -120,7 +120,7 @@
     <text class="cell-title" x="682" y="573">AGENT SPEND</text>
     <text class="cell-row" x="662" y="606">LLM inference</text>
     <text class="cell-row" x="662" y="630">x402 research marketplace</text>
-    <text class="cell-row" x="662" y="654">App Kit swaps</text>
+    <text class="cell-row" x="662" y="654">USDC volume ops</text>
   </g>
-  <path class="line" marker-end="url(#arw)" d="M775 482 L775 540"/>
+  <path class="line" marker-end="url(#arw)" d="M775 482 Q797 511 775 540"/>
 </svg>
