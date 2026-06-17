@@ -63,13 +63,15 @@ const usdcAbi = parseAbi([
 const KIND_TO_CTYPE = [1, 2, 0, 2];
 
 // Per-kind score randomness, applied AFTER the runner's scoring so a low-tier
-// agent can sometimes upset a high-tier one in noisy kinds. The runner's own
-// ±3% global gaming guard is layered with this. Defaults:
-// PREDICTION is markets and noisy, PUZZLE is skill-heavy, VOLUME is moderately
-// noisy, CUSTOM splits the difference. Override per kind via env, e.g.
-// `CHALLENGE_RANDOMNESS_PREDICTION=0.30`.
+// agent can sometimes upset a high-tier one in noisy kinds. Defaults:
+// PREDICTION is markets and noisy, VOLUME is moderately noisy, CUSTOM splits the
+// difference. PUZZLE is 0 on purpose: a puzzle is pure skill, so the agent that
+// solves the most, fastest, must win deterministically. A random wobble there
+// flips the visible-fastest solver and can even hand the pot to a slower agent
+// (the bug that ranked a 9/9 at 24s below a 9/9 at 37s). Override per kind via
+// env, e.g. CHALLENGE_RANDOMNESS_PREDICTION=0.30.
 const KIND_NAMES = ["PREDICTION", "PUZZLE", "VOLUME", "CUSTOM"] as const;
-const KIND_DEFAULTS = [0.25, 0.05, 0.1, 0.2];
+const KIND_DEFAULTS = [0.25, 0, 0.1, 0.2];
 
 function kindRandomness(kind: number): number {
   const name = KIND_NAMES[kind];
