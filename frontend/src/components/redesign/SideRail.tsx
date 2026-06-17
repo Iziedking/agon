@@ -76,7 +76,7 @@ export function SideRail() {
         </a>
         <span
           aria-label="Discord (coming soon)"
-          title="Discord — coming soon"
+          title="Discord (coming soon)"
           className="flex h-7 w-7 cursor-default items-center justify-center border border-[color:var(--hairline)] bg-canvas font-mono text-[10px] text-ink-3 opacity-60"
         >
           DC

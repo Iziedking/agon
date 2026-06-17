@@ -129,7 +129,7 @@ export function FeedbackPin() {
           {sent ? (
             <div className="px-4 py-8 text-center">
               <div className="text-accent" aria-hidden style={{ fontSize: 22, lineHeight: 1 }}>■</div>
-              <div className="mt-3 font-mono text-[13px] text-ink">thanks — sent to the team.</div>
+              <div className="mt-3 font-mono text-[13px] text-ink">thanks, sent to the team.</div>
               <p className="mt-1 font-mono text-[11px] text-ink-3">we read every report.</p>
               <div className="mt-5 flex justify-center gap-2">
                 <button

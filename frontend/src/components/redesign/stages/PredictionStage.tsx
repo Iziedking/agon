@@ -488,7 +488,7 @@ function ArcanaBranch({
                       {analyst?.ticksBudget && analyst.ticksBudget > 0 ? (
                         <span
                           className="border border-[color:var(--hairline-strong)] px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em] text-ink-2"
-                          title="ticks used / tick budget (tier + speed stat + traits)"
+                          title="ticks used / tick budget (tier, speed stat, and traits)"
                         >
                           T {analyst.ticksUsed ?? 0}/{analyst.ticksBudget}
                         </span>

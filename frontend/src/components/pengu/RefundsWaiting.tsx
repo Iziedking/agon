@@ -108,7 +108,7 @@ export function RefundsWaiting({ address }: { address: `0x${string}` }) {
             const subLabel = isStale
               ? "DEADLINE PASSED · CANCEL TO RECOVER STAKE"
               : "CANCELLED · STAKE LOCKED";
-            const idle = isStale ? "CANCEL + REFUND" : "REFUND STAKE";
+            const idle = isStale ? "CANCEL AND REFUND" : "REFUND STAKE";
             const busy = isStale ? "WORKING…" : "REFUNDING…";
             return (
               <div
