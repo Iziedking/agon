@@ -66,6 +66,45 @@ export async function chainNowSeconds(): Promise<number> {
   return Number(block.timestamp);
 }
 
+/// Chain-vs-local clock skew, in seconds (chain block time minus the viewer's
+/// Date.now()). Measured once on the client and refreshed periodically. A
+/// viewer's machine clock can be minutes off; on-chain deadlines are stamped in
+/// CHAIN time, so a countdown computed against raw Date.now() shows the wrong
+/// "time left" (a slow local clock makes every deadline look further away).
+/// All user-facing countdowns tick against `chainAlignedNow()` instead.
+let chainSkewSec = 0;
+let skewInFlight: Promise<void> | null = null;
+
+/// Re-measure the chain skew. Singleton-guarded, so many countdowns mounting at
+/// once still make a single RPC call. Keeps the prior value on failure.
+export function refreshChainSkew(): Promise<void> {
+  if (skewInFlight) return skewInFlight;
+  skewInFlight = (async () => {
+    try {
+      const chain = await chainNowSeconds();
+      chainSkewSec = chain - Math.floor(Date.now() / 1000);
+    } catch {
+      /* keep the prior skew; a transient RPC miss shouldn't reset alignment */
+    } finally {
+      skewInFlight = null;
+    }
+  })();
+  return skewInFlight;
+}
+
+/// `now` in seconds, aligned to the chain block clock. Falls back to local time
+/// (skew 0) until the first measurement lands; countdowns tick every second, so
+/// they self-correct on the next tick once skew is known.
+export function chainAlignedNow(): number {
+  return Math.floor(Date.now() / 1000) + chainSkewSec;
+}
+
+// Kick off the first measurement as soon as this module loads in the browser.
+// SSR-guarded so it never runs during server render.
+if (typeof window !== "undefined") {
+  void refreshChainSkew();
+}
+
 /// Deployed ArcRun contracts on Arc testnet. Public addresses; the canonical
 /// record is contracts/deployments/arc-testnet.json.
 export const CONTRACTS = {

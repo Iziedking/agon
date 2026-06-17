@@ -108,10 +108,28 @@ export async function executeSwap(opts: {
       amountOut: result.amountOut ?? "0",
     };
   } catch (err) {
-    // Include the size + pair so a revert is diagnosable (almost always the
-    // amount is too big for the thin testnet pool, or slippage is too tight).
+    // Include the size + pair so a revert is diagnosable. swap-kit wraps the
+    // underlying viem error and only surfaces "Transaction reverted", which
+    // hides WHY (route has no liquidity, permit rejected, transfer-from failed,
+    // slippage). Dig the cause chain for the real reason so a failure is
+    // actionable instead of opaque.
+    const reason = (() => {
+      const parts: string[] = [];
+      let cur: unknown = err;
+      let depth = 0;
+      while (cur && depth < 6) {
+        const e = cur as { shortMessage?: string; message?: string; details?: string; metaMessages?: string[]; cause?: unknown };
+        if (e.shortMessage && !parts.includes(e.shortMessage)) parts.push(e.shortMessage);
+        if (e.details && !parts.includes(e.details)) parts.push(e.details);
+        if (Array.isArray(e.metaMessages)) parts.push(...e.metaMessages);
+        cur = e.cause;
+        depth += 1;
+      }
+      if (parts.length === 0 && err instanceof Error) parts.push(err.message);
+      return parts.join(" | ");
+    })();
     console.warn(
-      `[scout-swap] swap failed (${opts.amountIn} ${opts.tokenIn}->${opts.tokenOut}): ${err instanceof Error ? err.message : err}`,
+      `[scout-swap] swap failed (${opts.amountIn} ${opts.tokenIn}->${opts.tokenOut}): ${reason}`,
     );
     return null;
   }

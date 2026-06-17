@@ -81,20 +81,24 @@ export function CreateChallengeModal({ open, onClose }: { open: boolean; onClose
       // Anchor the deadlines to the CHAIN clock, not the browser's. The contract
       // checks joinDeadline against block.timestamp, and Arc's block clock can
       // run minutes ahead of the user's machine; a deadline built from a slow
-      // local clock lands in the chain's past and reverts BadDeadlines. The
-      // SIGN_BUFFER covers the seconds the user spends confirming in their
-      // wallet (and a block or two passing) before the tx is mined.
-      const SIGN_BUFFER = 120;
-      const now = (await chainNowSeconds()) + SIGN_BUFFER;
-      const joinSecs = Math.max(1, Math.floor(Number(joinMin))) * 60;
+      // local clock lands in the chain's past and reverts BadDeadlines.
+      const chainNow = await chainNowSeconds();
+      const requested = Math.max(1, Math.floor(Number(joinMin))) * 60;
+      // Honour the creator's chosen window as-is, but never let the on-chain
+      // join window be shorter than MIN_JOIN_MARGIN: the create tx needs a few
+      // seconds to be signed and mined, and a sub-minute window could otherwise
+      // land in the chain's past by the time it confirms. For any normal window
+      // (>= ~2 min) this is a no-op, so "4 min" creates a real 4-min window.
+      const MIN_JOIN_MARGIN = 90;
+      const joinSecs = Math.max(requested, MIN_JOIN_MARGIN);
       // Standard (arcrun-type) events use the SYSTEM resolve window, not a
       // creator choice: the coordinator races on lock and settles within a
       // couple of minutes, so this is just a backstop deadline. A custom event
       // (kind CUSTOM) doesn't create on-chain here at all — it goes through the
       // admin-review request above, where any special resolve span is handled.
       const resolveSecs = SYSTEM_RESOLVE_SECONDS;
-      const joinDeadline = BigInt(now + joinSecs);
-      const resolveDeadline = BigInt(now + joinSecs + resolveSecs);
+      const joinDeadline = BigInt(chainNow + joinSecs);
+      const resolveDeadline = BigInt(chainNow + joinSecs + resolveSecs);
 
       const id = await nextChallengeId();
       // The host's tier gate is enforced on-chain at join (for non-custom

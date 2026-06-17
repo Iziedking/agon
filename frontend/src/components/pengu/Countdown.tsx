@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { chainAlignedNow, refreshChainSkew } from "@/lib/arc";
 
 /// A live countdown to the contest end. Renders a placeholder on the server to
 /// avoid a hydration mismatch, then ticks once per second on the client.
@@ -8,8 +9,9 @@ export function Countdown({ endTime, status }: { endTime: number; status: number
   const [now, setNow] = useState<number | null>(null);
 
   useEffect(() => {
-    setNow(Math.floor(Date.now() / 1000));
-    const t = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1000);
+    void refreshChainSkew();
+    setNow(chainAlignedNow());
+    const t = setInterval(() => setNow(chainAlignedNow()), 1000);
     return () => clearInterval(t);
   }, []);
 

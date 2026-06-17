@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { chainAlignedNow, refreshChainSkew } from "@/lib/arc";
 
 /// Live countdown to a Unix epoch (seconds). Reads its own clock so cards
 /// across the grid all tick together. Renders as "2H 14M" above an hour,
@@ -26,11 +27,12 @@ function fmt(left: number): string {
 }
 
 export function Countdown({ targetSec, className, prefix }: Props) {
-  const [now, setNow] = useState<number>(() => Math.floor(Date.now() / 1000));
+  const [now, setNow] = useState<number>(() => chainAlignedNow());
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const tick = () => setNow(Math.floor(Date.now() / 1000));
+    void refreshChainSkew();
+    const tick = () => setNow(chainAlignedNow());
     // Tick every second so users see the digits move. The component
     // unmounts cleanly when the card unmounts so the interval is short
     // lived even with many cards on screen.

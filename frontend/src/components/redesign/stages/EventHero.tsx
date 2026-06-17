@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { StatusChip } from "@/components/redesign";
+import { chainAlignedNow, refreshChainSkew } from "@/lib/arc";
 
 /// Header strip rendered above every focused stage on /live/[source]/[id].
 /// Shows source + id eyebrow, status chip, the pool/pot in stencil-display,
@@ -27,7 +28,7 @@ interface Props {
 }
 
 function fmtCountdown(target: number): string {
-  const left = Math.max(0, target - Math.floor(Date.now() / 1000));
+  const left = Math.max(0, target - chainAlignedNow());
   const h = Math.floor(left / 3600);
   const m = Math.floor((left % 3600) / 60);
   const s = left % 60;
@@ -40,11 +41,12 @@ export function EventHero({ source, id, kindLabel, statusLabel, statusTone, pool
   const [, tick] = useState(0);
   useEffect(() => {
     if (!endSec) return;
+    void refreshChainSkew();
     const t = setInterval(() => tick((n) => n + 1), 1000);
     return () => clearInterval(t);
   }, [endSec]);
 
-  const isLive = !!endSec && endSec > Math.floor(Date.now() / 1000);
+  const isLive = !!endSec && endSec > chainAlignedNow();
   // A LOCKED event is full and racing NOW: the runner fires on lock and settles
   // within a couple of minutes. The on-chain resolve deadline can still be far
   // off (it's anchored to the join window), so counting down to it would falsely
