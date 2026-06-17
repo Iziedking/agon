@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useArcWrite } from "@/hooks/useArcWrite";
-import { CONTRACTS, publicClient } from "@/lib/arc";
+import { CONTRACTS, confirmTx } from "@/lib/arc";
 import {
   challengeArenaAbi,
   fetchPendingRefunds,
@@ -53,7 +53,7 @@ export function RefundsWaiting({ address }: { address: `0x${string}` }) {
           functionName: "cancelChallenge",
           args: [BigInt(id)],
         });
-        await publicClient.waitForTransactionReceipt({ hash: cancelHash });
+        await confirmTx(cancelHash);
         reportEvent("challenge_cancel", { context: { id, source: "dashboard" }, address });
       }
       const hash = await writeContractAsync({
@@ -62,7 +62,7 @@ export function RefundsWaiting({ address }: { address: `0x${string}` }) {
         functionName: "refund",
         args: [BigInt(id)],
       });
-      await publicClient.waitForTransactionReceipt({ hash });
+      await confirmTx(hash);
       reportEvent("challenge_refund", { context: { id, source: "dashboard" }, address });
       setChallenges((prev) => (prev ?? []).filter((r) => r.id !== id));
       void reload();

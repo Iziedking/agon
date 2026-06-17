@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth, useOperatorAddress } from "@/hooks/useAuth";
 import { useArcWrite } from "@/hooks/useArcWrite";
-import { CONTRACTS, publicClient } from "@/lib/arc";
+import { CONTRACTS, confirmTx } from "@/lib/arc";
 import { contestEngineAbi, hasEntered, hasClaimed, fetchPayout, formatUsdc } from "@/lib/contests";
 import {
   agentDisplayName,
@@ -153,7 +153,7 @@ export function EnterPanel({ contestId, status, endTime, contestType }: { contes
         functionName: "registerEntry",
         args: [BigInt(contestId), BigInt(active.id), 0n],
       });
-      await publicClient.waitForTransactionReceipt({ hash });
+      await confirmTx(hash);
       setEntered(true);
       playJoin();
       reportEvent("contest_enter", { context: { contestId, agentId: active.id }, address });
@@ -176,7 +176,7 @@ export function EnterPanel({ contestId, status, endTime, contestType }: { contes
         functionName: "claimPrize",
         args: [BigInt(contestId), payout.amount, payout.proof],
       });
-      await publicClient.waitForTransactionReceipt({ hash });
+      await confirmTx(hash);
       setClaimed(true);
       reportEvent("prize_claim", { context: { contestId, amount: payout.amount.toString() }, address });
     } catch (e) {

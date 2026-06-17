@@ -38,6 +38,34 @@ export const publicClient = createPublicClient({
   batch: { multicall: { wait: 16, batchSize: 4_096 } },
 });
 
+/// Wait for a write's receipt and throw if the tx reverted on chain.
+///
+/// viem's `waitForTransactionReceipt` RESOLVES even when the transaction
+/// reverted — it returns a receipt with `status: "reverted"` rather than
+/// rejecting. A caller that only awaited it would sail past a failed write and
+/// treat it as success (e.g. show "challenge #N is live" after the create tx
+/// actually reverted). Route every write that must land before the UI advances
+/// through this helper so a revert becomes a thrown error the catch can show.
+export async function confirmTx(hash: `0x${string}`) {
+  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  if (receipt.status !== "success") {
+    throw new Error("the transaction reverted on chain.");
+  }
+  return receipt;
+}
+
+/// The chain's latest block timestamp in seconds.
+///
+/// Anchor any ON-CHAIN deadline to this, never to the client's `Date.now()`:
+/// Arc's block clock can run several minutes ahead of a user's machine, and a
+/// deadline computed from a slow local clock lands in the chain's past, so the
+/// contract reverts (ChallengeArena `BadDeadlines`). Reading block time makes
+/// the deadline math agree with the clock the contract actually checks against.
+export async function chainNowSeconds(): Promise<number> {
+  const block = await publicClient.getBlock({ blockTag: "latest" });
+  return Number(block.timestamp);
+}
+
 /// Deployed ArcRun contracts on Arc testnet. Public addresses; the canonical
 /// record is contracts/deployments/arc-testnet.json.
 export const CONTRACTS = {

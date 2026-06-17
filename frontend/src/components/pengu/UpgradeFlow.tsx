@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { maxUint256 } from "viem";
 import { useOperatorAddress } from "@/hooks/useAuth";
 import { useArcWrite } from "@/hooks/useArcWrite";
-import { CONTRACTS, USDC, publicClient } from "@/lib/arc";
+import { CONTRACTS, USDC, publicClient, confirmTx } from "@/lib/arc";
 import {
   ABILITIES,
   CONTEST_TYPES,
@@ -86,7 +86,7 @@ export function UpgradeFlow({
           functionName: "approve",
           args: [CONTRACTS.AgentRegistry, maxUint256],
         });
-        await publicClient.waitForTransactionReceipt({ hash: approveHash });
+        await confirmTx(approveHash);
       }
       const upHash = await writeContractAsync({
         address: CONTRACTS.AgentRegistry,
@@ -94,7 +94,7 @@ export function UpgradeFlow({
         functionName: "upgradeAgent",
         args: [BigInt(agent.id), ctypeIndex(t), cur + 1],
       });
-      await publicClient.waitForTransactionReceipt({ hash: upHash });
+      await confirmTx(upHash);
       reportEvent("agent_upgrade", { context: { type: t, toTier: cur + 1 }, address });
       // Invalidate cache so onUpgraded's next fetchAgents reflects the new
       // tier instead of returning the pre-upgrade row.

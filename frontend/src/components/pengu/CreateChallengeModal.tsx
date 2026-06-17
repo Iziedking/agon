@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useOperatorAddress } from "@/hooks/useAuth";
 import { useArcWrite } from "@/hooks/useArcWrite";
-import { CONTRACTS, publicClient } from "@/lib/arc";
+import { CONTRACTS, chainNowSeconds, confirmTx } from "@/lib/arc";
 import { challengeArenaAbi, CHALLENGE_KIND, nextChallengeId } from "@/lib/challenges";
 import { friendlyError } from "@/lib/errors";
 import { reportEvent } from "@/lib/report";
@@ -78,7 +78,14 @@ export function CreateChallengeModal({ open, onClose }: { open: boolean; onClose
     try {
       const stake6 = BigInt(Math.round(Number(stake) * 1e6));
       const max = BigInt(Math.max(2, Math.floor(Number(maxEntrants))));
-      const now = Math.floor(Date.now() / 1000);
+      // Anchor the deadlines to the CHAIN clock, not the browser's. The contract
+      // checks joinDeadline against block.timestamp, and Arc's block clock can
+      // run minutes ahead of the user's machine; a deadline built from a slow
+      // local clock lands in the chain's past and reverts BadDeadlines. The
+      // SIGN_BUFFER covers the seconds the user spends confirming in their
+      // wallet (and a block or two passing) before the tx is mined.
+      const SIGN_BUFFER = 120;
+      const now = (await chainNowSeconds()) + SIGN_BUFFER;
       const joinSecs = Math.max(1, Math.floor(Number(joinMin))) * 60;
       // Standard (arcrun-type) events use the SYSTEM resolve window, not a
       // creator choice: the coordinator races on lock and settles within a
@@ -99,7 +106,9 @@ export function CreateChallengeModal({ open, onClose }: { open: boolean; onClose
         functionName: "createChallenge",
         args: [kind, stake6, max, joinDeadline, resolveDeadline, isPrivate, preset.min, preset.max],
       });
-      await publicClient.waitForTransactionReceipt({ hash });
+      // Throws if the create reverted, so the catch shows an error instead of
+      // the UI advancing to "challenge #N is live" for a tx that never landed.
+      await confirmTx(hash);
       await submitTierGate("challenge", id, preset.min, preset.max);
       setCreatedId(id);
       reportEvent("challenge_create", { context: { id, kind, stake, gate: preset.label }, address });

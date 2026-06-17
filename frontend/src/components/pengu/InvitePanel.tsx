@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useArcWrite } from "@/hooks/useArcWrite";
 import { useOperatorAddress } from "@/hooks/useAuth";
 import { BracketedCell } from "@/components/redesign";
-import { CONTRACTS, publicClient } from "@/lib/arc";
+import { CONTRACTS, confirmTx } from "@/lib/arc";
 import { challengeArenaAbi, fetchChallengeInvites, type ChallengeInvitee } from "@/lib/challenges";
 import { resolveRecipients } from "@/lib/profiles";
 import { friendlyError } from "@/lib/errors";
@@ -105,7 +105,7 @@ export function InvitePanel({ challengeId, creator, isPrivate, status }: Props) 
         functionName: "invite",
         args: [BigInt(challengeId), good],
       });
-      await publicClient.waitForTransactionReceipt({ hash });
+      await confirmTx(hash);
       reportEvent("challenge_invite", {
         context: { id: challengeId, count: good.length },
         address,

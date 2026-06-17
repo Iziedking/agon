@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useOperatorAddress } from "@/hooks/useAuth";
 import { useArcWrite } from "@/hooks/useArcWrite";
-import { CONTRACTS, publicClient } from "@/lib/arc";
+import { CONTRACTS, confirmTx } from "@/lib/arc";
 import { agentRegistryAbi, fetchAgents, invalidateAgentsCache } from "@/lib/agents";
 import { friendlyError } from "@/lib/errors";
 import { logRawError } from "@/lib/report";
@@ -105,7 +105,7 @@ export function ClaimAgentButton({
         functionName: "createAgent",
         args: ["arcrun://agent/v1"],
       });
-      await publicClient.waitForTransactionReceipt({ hash });
+      await confirmTx(hash);
       reportEvent("agent_created", { address });
       // Invalidate the agents cache so the post-claim refresh actually
       // re-reads the chain (instead of returning the pre-claim count).

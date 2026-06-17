@@ -4,7 +4,7 @@ import { useState } from "react";
 import { zeroAddress } from "viem";
 import { useOperatorAddress } from "@/hooks/useAuth";
 import { useArcWrite } from "@/hooks/useArcWrite";
-import { CONTRACTS, USDC, publicClient } from "@/lib/arc";
+import { CONTRACTS, USDC, confirmTx } from "@/lib/arc";
 import { erc20Abi } from "@/lib/agents";
 import { contestEngineAbi, listingFeeForPool, metricForType, nextContestId } from "@/lib/contests";
 import { friendlyError } from "@/lib/errors";
@@ -102,7 +102,7 @@ export function CreateContestModal({ open, onClose }: { open: boolean; onClose: 
         functionName: "approve",
         args: [CONTRACTS.PrizeEscrow, pool6 + fee],
       });
-      await publicClient.waitForTransactionReceipt({ hash: approveHash });
+      await confirmTx(approveHash);
 
       setStatus("creating campaign…");
       const id = await nextContestId();
@@ -115,7 +115,9 @@ export function CreateContestModal({ open, onClose }: { open: boolean; onClose: 
         functionName: "listContest",
         args: [cType, zeroAddress, metricForType(cType), pool6, duration, winnerCutBps, top, preset.min, preset.max],
       });
-      await publicClient.waitForTransactionReceipt({ hash });
+      // Throws if listContest reverted, so a failed create surfaces an error
+      // instead of falsely advancing to "campaign #N is live".
+      await confirmTx(hash);
       await submitTierGate("contest", id, preset.min, preset.max);
       setCreatedId(id);
       reportEvent("campaign_create", { context: { id, cType, pool, gate: preset.label }, address });

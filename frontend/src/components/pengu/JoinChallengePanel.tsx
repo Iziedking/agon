@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useOperatorAddress } from "@/hooks/useAuth";
 import { useArcWrite } from "@/hooks/useArcWrite";
-import { CONTRACTS, USDC, publicClient } from "@/lib/arc";
+import { CONTRACTS, USDC, confirmTx } from "@/lib/arc";
 import {
   agentDisplayName,
   erc20Abi,
@@ -184,7 +184,7 @@ export function JoinChallengePanel({
           functionName: "invite",
           args: [BigInt(id), [address as `0x${string}`]],
         });
-        await publicClient.waitForTransactionReceipt({ hash: ih });
+        await confirmTx(ih);
         setInvited(true);
       }
 
@@ -195,7 +195,7 @@ export function JoinChallengePanel({
         functionName: "approve",
         args: [CONTRACTS.PrizeEscrow, stakeWei],
       });
-      await publicClient.waitForTransactionReceipt({ hash: ah });
+      await confirmTx(ah);
 
       setStep("joining…");
       const h = await writeContractAsync({
@@ -204,7 +204,7 @@ export function JoinChallengePanel({
         functionName: "joinChallenge",
         args: [BigInt(id), BigInt(active.id)],
       });
-      await publicClient.waitForTransactionReceipt({ hash: h });
+      await confirmTx(h);
       setJoined(true);
       playJoin();
       reportEvent("challenge_join", { context: { id, agentId: active.id }, address });
@@ -228,7 +228,7 @@ export function JoinChallengePanel({
         functionName: "claimChallengePayout",
         args: [BigInt(id), payout.amount, payout.proof],
       });
-      await publicClient.waitForTransactionReceipt({ hash: h });
+      await confirmTx(h);
       setClaimed(true);
       reportEvent("challenge_claim", { context: { id, amount: payout.amount.toString() }, address });
     } catch (e) {
@@ -250,7 +250,7 @@ export function JoinChallengePanel({
         functionName: "refund",
         args: [BigInt(id)],
       });
-      await publicClient.waitForTransactionReceipt({ hash: h });
+      await confirmTx(h);
       setRefunded(true);
       reportEvent("challenge_refund", { context: { id }, address });
     } catch (e) {
