@@ -128,12 +128,17 @@ async function ensureCoordinatorAgent(): Promise<number> {
   // No agent yet; claim one. createAgent emits the new id; simplest path is
   // to read nextAgentId before the write (it's the id that will be assigned).
   // Falls back to re-reading agentsOf after the tx if needed.
+  //
+  // metadataURI MUST be non-empty: the ERC-8004 IdentityRegistry rejects an
+  // empty URI (reverts 0xae921357), which made every auto-fill fail and the bot
+  // agent never get created — so solo challenges kept cancelling. Use the same
+  // canonical URI the frontend mints user agents with.
   const wallet = coordinatorWallet();
   const hash = await wallet.writeContract({
     address: registry,
     abi: registryAbi,
     functionName: "createAgent",
-    args: [""],
+    args: ["arcrun://agent/v1"],
     account: wallet.account!,
     chain: arcTestnet,
   });

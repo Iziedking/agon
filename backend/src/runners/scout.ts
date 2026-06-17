@@ -1,6 +1,6 @@
 import { createWalletClient, http, parseAbi, toHex } from "viem";
 import type { Account, Hash } from "viem";
-import { mnemonicToAccount } from "viem/accounts";
+import { mnemonicToAccount, privateKeyToAccount } from "viem/accounts";
 
 import { arcTestnet, publicClient } from "../chain/arc.js";
 import { config } from "../config/index.js";
@@ -626,6 +626,40 @@ async function prepareSwapAbility(
 /// single swaps — instead of an all-or-nothing round-trip — means each op is one
 /// clean real swap with its own hash, so the field shows roughly twice as many
 /// real swaps in the same window and a stranded reverse never wastes a turn.
+/// When a DEX swap reverts, produce volume with a real USDC self-transfer
+/// instead of leaving the agent at 0. Default ON (`SCOUT_SWAP_FALLBACK_TRANSFER`
+/// != "0"). The Arc testnet USDC/EURC pool can be too thin or its route
+/// unavailable, which reverts every swap in simulation; without this the whole
+/// field moves 0 volume and the event cancels. A self-transfer is a plain
+/// ERC-20 Transfer of the same size — real on-chain volume that never depends on
+/// a pool — so events always fill and settle. Set to "0" to force swaps only.
+const SWAP_FALLBACK_TRANSFER = process.env.SCOUT_SWAP_FALLBACK_TRANSFER !== "0";
+
+/// One real USDC self-transfer leg: the pool-independent volume fallback. Funds
+/// return to the wallet (only gas is spent), same as the v0 scout op.
+async function selfTransferLeg(
+  privateKey: `0x${string}`,
+  usdcAmount: number,
+): Promise<{ txHash: Hash; vol6: bigint } | null> {
+  const amount6 = BigInt(Math.round(usdcAmount * 1e6));
+  if (amount6 <= 0n) return null;
+  try {
+    const account = privateKeyToAccount(privateKey);
+    const wallet = createWalletClient({ account, chain: arcTestnet, transport: http(config.rpcHttp) });
+    const hash = await wallet.writeContract({
+      address: config.external.USDC,
+      abi: USDC_ABI,
+      functionName: "transfer",
+      args: [account.address, amount6], // self-transfer: real Transfer event, only gas spent
+    });
+    await publicClient.waitForTransactionReceipt({ hash });
+    return { txHash: hash as Hash, vol6: amount6 };
+  } catch (err) {
+    console.warn(`[scout] self-transfer fallback failed: ${err instanceof Error ? err.message : err}`);
+    return null;
+  }
+}
+
 async function oneForwardSwap(
   privateKey: `0x${string}`,
   perSwapUsdc: number,
@@ -633,7 +667,14 @@ async function oneForwardSwap(
   const usdc = config.scout.swapTokenIn;
   const alt = config.scout.swapTokenOut;
   const fwd = await executeSwap({ privateKey, tokenIn: usdc, tokenOut: alt, amountIn: perSwapUsdc.toFixed(6) });
-  if (!fwd?.txHash) return null;
+  if (!fwd?.txHash) {
+    // Swap reverted (thin/unavailable testnet pool). Produce volume anyway with
+    // a real USDC self-transfer so the agent isn't stuck at 0 and the event
+    // still fills and settles. No EURC is held, so nothing to swap back.
+    if (!SWAP_FALLBACK_TRANSFER) return null;
+    const t = await selfTransferLeg(privateKey, perSwapUsdc);
+    return t ? { leg: t, heldAlt: 0 } : null;
+  }
   const altOut = Number(fwd.amountOut);
   return {
     leg: { txHash: fwd.txHash as Hash, vol6: BigInt(Math.round(perSwapUsdc * 1e6)) },
@@ -656,7 +697,14 @@ async function oneRoundTrip(privateKey: `0x${string}`, perSwapUsdc: number): Pro
   const usdc = config.scout.swapTokenIn;
   const alt = config.scout.swapTokenOut;
   const fwd = await executeSwap({ privateKey, tokenIn: usdc, tokenOut: alt, amountIn: perSwapUsdc.toFixed(6) });
-  if (!fwd) return { legs, heldAlt: 0 };
+  if (!fwd) {
+    // Forward swap reverted: fall back to a real USDC self-transfer so the round
+    // still produces volume instead of stalling the agent at 0.
+    if (!SWAP_FALLBACK_TRANSFER) return { legs, heldAlt: 0 };
+    const t = await selfTransferLeg(privateKey, perSwapUsdc);
+    if (t) legs.push(t);
+    return { legs, heldAlt: 0 };
+  }
   if (fwd.txHash) legs.push({ txHash: fwd.txHash as Hash, vol6: BigInt(Math.round(perSwapUsdc * 1e6)) });
   const altOut = Number(fwd.amountOut);
   if (Number.isFinite(altOut) && altOut > 0) {
