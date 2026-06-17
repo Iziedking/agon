@@ -115,10 +115,10 @@ export async function executeScout(
   });
 
   const ops = Math.max(0, Math.min(opts?.ops ?? limit.maxOps, limit.maxOps));
-  // Per-op size is the tier funding (10/25/40/70/100 USDC), recirculated via
-  // self-transfer each op, not the balance sliced across all ops (which made
-  // 0.5 USDC dust). So a higher tier moves bigger amounts per transaction.
-  const tierSize6 = BigInt(Math.round(fundingCapUsdc(tier) * 1e6));
+  // Per-op size is the per-tier swap size (2 / 5 / 10 / 15 / 25 USDC),
+  // recirculated via self-transfer each op, not the balance sliced across all
+  // ops (which made 0.5 USDC dust). So a higher tier moves bigger amounts per tx.
+  const tierSize6 = BigInt(Math.round(swapSizeUsdc(tier) * 1e6));
   // On Arc, USDC IS the gas token, so a self-transfer of the FULL balance
   // reverts with "transfer amount exceeds balance" (no USDC left to pay gas).
   // The transfer returns to self, so only gas is actually spent; reserve enough
@@ -156,12 +156,14 @@ export async function executeScout(
   };
 }
 
-/// Per-tier funding ceiling in whole USDC. Tier caps how much an agent puts to
-/// work per swap; the daily swap budget is the same for every tier, so a
-/// smaller agent has to swap more times to reach the same volume.
-function fundingCapUsdc(tier: number): number {
+/// Per-tier SIZE of one swap/transfer in whole USDC (tier 0 = 2 up to tier 4 =
+/// 25 by default). This is the base each op moves; trait size multipliers scale
+/// it and the wallet balance plus SCOUT_SWAP_MAX_USDC clamp it. The daily swap
+/// budget is the same for every tier, so a smaller agent has to swap more times
+/// to match a higher tier's volume, and upgrading raises the size per op.
+function swapSizeUsdc(tier: number): number {
   const t = Math.min(Math.max(Math.floor(tier), 0), 4);
-  return config.scout.fundingByTier[t] ?? 50;
+  return config.scout.swapSizeByTier[t] ?? 2;
 }
 
 /// How many swaps this agent has left in today's shared budget.
@@ -221,7 +223,7 @@ async function executeScoutSwaps(agentId: number, tier: number, ops?: number): P
   const gasReserveUsdc = Number(process.env.SCOUT_GAS_RESERVE_USDC ?? "0.10");
   const reserveUsdc = gasReserveUsdc * (roundTrips * 2 + 1);
   const spendableUsdc = Math.max(0, balanceUsdc - reserveUsdc);
-  const perSwapUsdc = Math.min(fundingCapUsdc(tier), spendableUsdc);
+  const perSwapUsdc = Math.min(swapSizeUsdc(tier), spendableUsdc);
   if (perSwapUsdc <= 0) {
     // Not enough USDC to swap and still cover gas: let the caller self-transfer.
     return null;
@@ -598,18 +600,15 @@ async function prepareSwapAbility(
   // every leg's gas; no need to scale the reserve by the full round count.
   const gasReserveUsdc = Number(process.env.SCOUT_GAS_RESERVE_USDC ?? "0.10");
   const spendableUsdc = Math.max(0, balanceUsdc - gasReserveUsdc * 3);
-  // Whale-type traits raise the per-swap size above the tier funding cap; the
-  // wallet balance still clamps it, so a bigger trade needs the wallet to back
-  // it. This is the on-chain expression of "Whale Spotter unlocks bigger trades".
-  //
-  // BUT the Arc testnet USDC<->EURC pool is thin, so a large swap (a tier-4's
-  // 100+ USDC) blows past slippage and the simulation reverts — which is why
-  // volume events were moving 0 and cancelling. Cap each swap to a small,
-  // pool-safe size (SCOUT_SWAP_MAX_USDC, default 2) so swaps actually land. Tier
-  // edge still shows: a higher tier / trait / training agent does MORE swaps in
-  // the window (count), not bigger ones. Raise the cap on a deeper (mainnet) pool.
-  const swapMaxUsdc = Number(process.env.SCOUT_SWAP_MAX_USDC ?? "2");
-  const perSwapUsdc = Math.min(fundingCapUsdc(tier) * sizeBoost, spendableUsdc, swapMaxUsdc);
+  // Per-swap size is the per-tier base (2 / 5 / 10 / 15 / 25 USDC) scaled by the
+  // agent's trait size multiplier (sizeBoost), so a whale-type trait genuinely
+  // buys a BIGGER trade, not just more of them. The wallet's spendable balance
+  // and SCOUT_SWAP_MAX_USDC are the only clamps. The cap defaults to 100 so the
+  // tier sizes and the whale boost both come through; it exists only to stop a
+  // misconfigured value from draining a wallet, not to flatten the tiers (the
+  // old default of 2 was doing exactly that, which is why traits had no effect).
+  const swapMaxUsdc = Number(process.env.SCOUT_SWAP_MAX_USDC ?? "100");
+  const perSwapUsdc = Math.min(swapSizeUsdc(tier) * sizeBoost, spendableUsdc, swapMaxUsdc);
   if (!(perSwapUsdc > 0)) {
     // The other 0-swap cause: hot wallet has no spendable USDC (funding missed
     // it, or it was swept and not re-funded).

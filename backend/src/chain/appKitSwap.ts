@@ -134,3 +134,55 @@ export async function executeSwap(opts: {
     return null;
   }
 }
+
+/// Read-only diagnostic: ask the aggregator whether a fillable route EXISTS for
+/// this pair on Arc, without sending anything. Circle's swap routes through a
+/// third-party DEX aggregator (currently LiFi), so a swap reverts when LiFi
+/// cannot build a route over the on-chain liquidity. `estimate` returns the
+/// route and expected output when one exists, or throws with the reason when it
+/// does not. `npm run swap:probe` prints this verdict so we stop guessing why a
+/// swap reverts: a returned estimate means the revert is tunable (slippage /
+/// permit); a thrown "no route" means there is no USDC/EURC liquidity for LiFi
+/// to use on Arc testnet, and a real swap is impossible until there is.
+export async function estimateSwap(opts: {
+  privateKey: `0x${string}`;
+  tokenIn: string;
+  tokenOut: string;
+  amountIn: string;
+}): Promise<{ ok: boolean; raw?: unknown; reason?: string }> {
+  if (!swapEnabled()) {
+    return { ok: false, reason: "swaps disabled (SCOUT_REAL_SWAPS / CIRCLE_KIT_KEY not set)" };
+  }
+  let estimate: typeof import("@circle-fin/swap-kit").estimate;
+  let createSwapKitContext: typeof import("@circle-fin/swap-kit").createSwapKitContext;
+  let SwapChain: typeof import("@circle-fin/swap-kit").SwapChain;
+  let createViemAdapterFromPrivateKey: typeof import("@circle-fin/adapter-viem-v2").createViemAdapterFromPrivateKey;
+  try {
+    ({ estimate, createSwapKitContext, SwapChain } = await import("@circle-fin/swap-kit"));
+    ({ createViemAdapterFromPrivateKey } = await import("@circle-fin/adapter-viem-v2"));
+  } catch {
+    return { ok: false, reason: "@circle-fin/swap-kit / adapter-viem-v2 not installed" };
+  }
+  try {
+    const account = privateKeyToAccount(opts.privateKey);
+    const adapterParams = {
+      privateKey: opts.privateKey,
+      getPublicClient: ({ chain }: { chain: Chain }) =>
+        createPublicClient({ chain, transport: http(config.rpcHttp) }),
+      getWalletClient: ({ chain }: { chain: Chain }) =>
+        createWalletClient({ account, chain, transport: http(config.rpcHttp) }),
+    } as unknown as Parameters<typeof createViemAdapterFromPrivateKey>[0];
+    const adapter = createViemAdapterFromPrivateKey(adapterParams);
+    const context = createSwapKitContext();
+    const raw = await estimate(context, {
+      from: { adapter: adapter as never, chain: SwapChain.Arc_Testnet },
+      tokenIn: opts.tokenIn as never,
+      tokenOut: opts.tokenOut as never,
+      amountIn: opts.amountIn,
+      config: { kitKey: config.scout.kitKey! } as never,
+    } as never);
+    return { ok: true, raw };
+  } catch (err) {
+    return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+  }
+}

@@ -125,7 +125,7 @@ const envSchema = z.object({
   SCOUT_SWAP_TOKEN_IN: z.string().default("USDC"),
   SCOUT_SWAP_TOKEN_OUT: z.string().default("EURC"),
   // Generic daily swap budget shared by every tier.
-  SCOUT_DAILY_SWAP_CAP: z.coerce.number().int().positive().default(1024),
+  SCOUT_DAILY_SWAP_CAP: z.coerce.number().int().positive().default(5000),
   // How many swaps a single contest run performs (bounded by the daily cap).
   SCOUT_SWAPS_PER_RUN: z.coerce.number().int().positive().default(24),
   // Per-tier hot-wallet funding in whole USDC, comma-separated, index 0..4.
@@ -137,6 +137,16 @@ const envSchema = z.object({
   SCOUT_FUNDING_BY_TIER: z
     .string()
     .default("10,25,40,70,100")
+    .transform((s) => s.split(",").map((n) => Number(n.trim()))),
+  // Per-tier SIZE of each swap/transfer in whole USDC, index 0..4. Separate from
+  // funding so the wallet can hold more than one swap's worth, which is what
+  // lets the whale-type size traits actually buy bigger trades. The base per
+  // op: tier 0 = 2, tier 1 = 5, tier 2 = 10, tier 3 = 15, tier 4 = 25. Trait
+  // size multipliers scale this up (clamped by the wallet's spendable balance
+  // and SCOUT_SWAP_MAX_USDC), so a higher tier or a whale agent moves more per op.
+  SCOUT_SWAP_SIZE_BY_TIER: z
+    .string()
+    .default("2,5,10,15,25")
     .transform((s) => s.split(",").map((n) => Number(n.trim()))),
   // Safety ceiling on the per-round transfer, so a misconfigured tier value
   // can't drain the coordinator wallet before the sweep returns the float.
@@ -435,6 +445,7 @@ export const config = {
     // same for every tier, so a smaller agent must swap more to match the
     // volume of a higher tier.
     fundingByTier: env.SCOUT_FUNDING_BY_TIER,
+    swapSizeByTier: env.SCOUT_SWAP_SIZE_BY_TIER,
   },
   validator: {
     privateKey: normalizePrivateKey(env.VALIDATOR_PRIVATE_KEY, "VALIDATOR_PRIVATE_KEY"),
