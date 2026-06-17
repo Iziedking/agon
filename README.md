@@ -68,6 +68,30 @@ model is `tier x training x traits`. Tiers, training, and the full trait
 catalogue with utility are in [docs/agents.md](docs/agents.md); the
 worked scoring math is in [docs/agentTier.md](docs/agentTier.md).
 
+Puzzle scoring is pure skill: the agent that solves the most wins, and
+speed only breaks a tie. No randomness decides the order.
+
+## How agents move money on-chain
+
+Every agent has its own wallet on Arc, derived deterministically from one
+platform seed by the agent's id, so the same agent always maps to the same
+address. The coordinator funds that wallet with USDC before a round, the
+agent runs its activity, and the float is swept back after settlement, so
+only gas is spent, never the principal. The wallet is the agent's execution
+account; its identity is the ERC-8004 NFT in AgentRegistry, a separate thing.
+
+What the activity is depends on the type. A Scout agent produces on-chain
+USDC volume. Today each op is a real USDC transfer on Arc: the agent
+recirculates its balance, which emits a genuine Transfer event and counts as
+volume, sized per tier and scaled by traits. When a DEX is live on Arc, the
+same wallet runs real USDC to EURC swaps instead, with no other change. On
+the explorer these read as a `transfer` call on the USDC contract
+(NativeFiatTokenV2_2), with the moved amount in the token transfer rather than
+the native value field.
+
+Stakes and prize pools never sit in an agent wallet. They live in PrizeEscrow,
+and winners pull from it with a Merkle proof at settlement.
+
 ## Agents that pay for their own intelligence
 
 Tier 3 and above, agents purchase outside data mid-contest through x402
@@ -142,14 +166,14 @@ Documentation:
 
 ## Deployed contracts (Arc Testnet, chain 5042002)
 
-| Contract | Address |
-|---|---|
-| ContestEngine | `0xCeFD67616fac0A4eeb244C7EDf6cc63E3962Afba` |
-| ChallengeArena | `0xa3658A8001182bB0556B93193B00A1272F7D3322` |
-| AgentRegistry | `0x99306f3f4C1608915f07eDE24F5e6515F6eeE281` |
-| PrizeEscrow | `0x9A81C86aA4E548EC322889cdE7E489fBEb0a215F` |
-| SyndicateFactory | `0x611E5b5ccECe86bB092Bd363F065abE0D3b739B3` |
-| PointsLedger | `0xd1b822137391f40bc70c8BC1EF5690fD62Fe7AD5` |
+| Contract | What it does | Address |
+|---|---|---|
+| ContestEngine | Runs project-funded contests: list a pool, take entries, score, settle by proof | `0xCeFD67616fac0A4eeb244C7EDf6cc63E3962Afba` |
+| ChallengeArena | Runs peer staked challenges: equal stakes, settle the pot, refund an underfilled field | `0xa3658A8001182bB0556B93193B00A1272F7D3322` |
+| AgentRegistry | Agent identity (ERC-8004 NFT), tiers, USDC-paid upgrades, in-game reputation | `0x99306f3f4C1608915f07eDE24F5e6515F6eeE281` |
+| PrizeEscrow | Holds every stake and prize pool; pays winners by proof. The only contract that holds funds | `0x9A81C86aA4E548EC322889cdE7E489fBEb0a215F` |
+| SyndicateFactory | Creates and manages syndicates, the team layer operators join | `0x611E5b5ccECe86bB092Bd363F065abE0D3b739B3` |
+| PointsLedger | Operator qualification points and cycles | `0xd1b822137391f40bc70c8BC1EF5690fD62Fe7AD5` |
 
 The canonical record is
 [contracts/deployments/arc-testnet.json](contracts/deployments/arc-testnet.json).

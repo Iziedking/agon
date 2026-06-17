@@ -62,9 +62,12 @@ scoring module:
   per-agent wallets. A tick scheduler spreads each agent's decision
   budget across the trade window; scoring is PnL, realized when markets
   resolve and marked-to-market while open.
-- **Scout** derives a hot wallet per agent from a master mnemonic,
-  asks the LLM for an execution strategy within tier caps, and runs
-  real USDC transfers on Arc. Scoring is volume produced.
+- **Scout** derives a hot wallet per agent from a master mnemonic, funds
+  it for the round, asks the LLM for an execution strategy within tier
+  caps, and runs real USDC activity on Arc, then sweeps the float back so
+  only gas is spent. The op is a self-recirculating USDC transfer today,
+  sized per tier and scaled by traits, and becomes a USDC to EURC swap
+  once a DEX is live on Arc. Scoring is cumulative volume produced.
 
 Tier gates capability, not the model: tier 0 and 1 skip the LLM, tier
 2 adds it, tier 3 adds code execution, tier 4 adds web search. A daily
