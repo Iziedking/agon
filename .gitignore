@@ -83,3 +83,4 @@ docs/brandkit/
 # env snippet is just a paste helper produced by circle-bootstrap.ts.
 backend/circle-recovery/
 backend/circle-bootstrap.env.snippet
+.firecrawl/

@@ -23,7 +23,7 @@ const PRESETS: Array<{ id: PresetKey; title: string; body: string }> = [
   { id: "winner_take_all", title: "winner takes all", body: "rank 1 takes the whole pool." },
   { id: "top2", title: "two winners", body: "60 / 40 to the top two." },
   { id: "top3", title: "three winners", body: "50 / 30 / 20 to the top three." },
-  { id: "top5_half_field", title: "top 5 + field", body: "top five share half the pool, everyone else who joined splits the rest." },
+  { id: "top5_half_field", title: "top 5 and field", body: "top five share half the pool, everyone else who joined splits the rest." },
   { id: "even_all", title: "even split", body: "everyone who joined splits the pool equally." },
   { id: "custom", title: "custom", body: "set your own winner shares and a remainder for the field." },
 ];

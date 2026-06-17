@@ -866,6 +866,11 @@ export class ScoutRunner implements Runner {
         progress: {
           kind: "scout" as const,
           opsCount: exec.opsCount,
+          // Cumulative USDC moved (6-dec string). The bars and the headline read
+          // this so they match the standings, which rank by cumulative volume.
+          // recentVolumes is only the last few txs (the tape) and must not be
+          // summed for a total.
+          volume6: exec.volumeUsdc6.toString(),
           recent,
           recentVolumes,
           researchSpent6:
@@ -983,6 +988,9 @@ export class ScoutRunner implements Runner {
           progress: {
             kind: "scout" as const,
             opsCount: l.legs,
+            // Cumulative USDC moved (6-dec string), so the bars and headline
+            // match the standings instead of summing the short tape window.
+            volume6: l.volume6.toString(),
             recent: l.txHashes.slice(-6).reverse().map((h) => h as string),
             recentVolumes: l.txVolumes6.slice(-6).reverse(),
             events: l.events.length > 0 ? l.events : undefined,

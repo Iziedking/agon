@@ -36,13 +36,18 @@ export function VolumeStage({ entries }: { entries: StandingsEntry[] }) {
   const names = useAgentNames(entries.map((e) => e.agentId));
   const skins = useAgentSkins(entries.map((e) => e.agentId));
 
-  // Per-agent volume totals (raw bigint string), used for bars.
+  // Per-agent CUMULATIVE volume (raw bigint string), used for bars. Read the
+  // cumulative `volume6` the runner sends, not the sum of recentVolumes, which
+  // is only the short tape window and would freeze the bar as the window slides.
+  // Fall back to summing recentVolumes for an older frame missing volume6.
   const totalsByAgent = useMemo(() => {
     const out = new Map<number, bigint>();
     for (const e of entries) {
       if (e.progress?.kind !== "scout") continue;
-      const sum = (e.progress.recentVolumes ?? []).reduce((acc, v) => acc + BigInt(v || "0"), 0n);
-      out.set(e.agentId, sum);
+      const cumulative = e.progress.volume6
+        ? BigInt(e.progress.volume6)
+        : (e.progress.recentVolumes ?? []).reduce((acc, v) => acc + BigInt(v || "0"), 0n);
+      out.set(e.agentId, cumulative);
     }
     return out;
   }, [entries]);

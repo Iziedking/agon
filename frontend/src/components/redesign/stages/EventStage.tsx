@@ -44,6 +44,23 @@ export function EventStage({
   // accumulates across cumulative frames; both bands read the same data.
   const { rows, totals } = useEconomyTape(entries);
 
+  // Volume events: the headline must agree with the per-agent bars and the
+  // standings, which are cumulative. The economy-tape totals are a sliding
+  // window (they drift and drop between rounds), so for volume we sum each
+  // agent's cumulative volume6 and opsCount instead. paid6 stays from the tape
+  // (research spend). Other kinds keep the tape totals unchanged.
+  let scoreboardTotals = totals;
+  if (kind === "volume") {
+    let moved6 = 0n;
+    let txCount = 0;
+    for (const e of entries) {
+      if (e.progress?.kind !== "scout") continue;
+      if (e.progress.volume6) moved6 += BigInt(e.progress.volume6);
+      txCount += e.progress.opsCount ?? 0;
+    }
+    scoreboardTotals = { moved6, paid6: totals.paid6, txCount };
+  }
+
   // Puzzle events never move USDC, so the scoreboard shows the field's total
   // correct answers instead of a perpetual "0.00 USDC" headline.
   const puzzlesSolved =
@@ -84,7 +101,7 @@ export function EventStage({
   const showTape = kind !== "volume" && rows.length > 0;
   return (
     <div>
-      <OutputScoreboard totals={totals} kind={kind} puzzlesSolved={puzzlesSolved} />
+      <OutputScoreboard totals={scoreboardTotals} kind={kind} puzzlesSolved={puzzlesSolved} />
       {stage()}
       {showTape ? <EconomyTape rows={rows} /> : null}
     </div>

@@ -142,9 +142,13 @@ export type AgentProgress =
     }
   | {
       kind: "scout";
-      /// Unified economy-tape rows (swaps + research payments).
+      /// Unified economy-tape rows (swaps and research payments).
       events?: TapeEvent[];
       opsCount: number;
+      /// Cumulative USDC moved by this agent (6-decimals string). The bars and
+      /// the moved / tx headline read this so they match the standings;
+      /// recentVolumes is only the tape window and must not be summed for a total.
+      volume6?: string;
       recent: string[];
       /// USDC amount (6-decimals string) per recent tx, aligned 1:1 with
       /// `recent[]`. Lets the live tape show value-weighted activity.
