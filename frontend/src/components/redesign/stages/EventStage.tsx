@@ -51,12 +51,24 @@ export function EventStage({
   // (research spend). Other kinds keep the tape totals unchanged.
   let scoreboardTotals = totals;
   if (kind === "volume") {
-    let moved6 = 0n;
-    let txCount = 0;
+    // Sum per agent, DEDUPED by agentId exactly like the VolumeStage bars (which
+    // key a Map by agentId, one bar per agent). Iterating entries raw would
+    // double-count if a frame ever repeats an agent, making the headline read
+    // larger than the sum of the bars and wobble between frames. Last write per
+    // agent wins, matching the bar.
+    const byAgent = new Map<number, { vol: bigint; ops: number }>();
     for (const e of entries) {
       if (e.progress?.kind !== "scout") continue;
-      if (e.progress.volume6) moved6 += BigInt(e.progress.volume6);
-      txCount += e.progress.opsCount ?? 0;
+      byAgent.set(e.agentId, {
+        vol: e.progress.volume6 ? BigInt(e.progress.volume6) : 0n,
+        ops: e.progress.opsCount ?? 0,
+      });
+    }
+    let moved6 = 0n;
+    let txCount = 0;
+    for (const v of byAgent.values()) {
+      moved6 += v.vol;
+      txCount += v.ops;
     }
     scoreboardTotals = { moved6, paid6: totals.paid6, txCount };
   }
