@@ -251,8 +251,10 @@ function WorkshopPageBody() {
           onClose={() => setUpgradingId(null)}
           agent={upgrading}
           onUpgraded={async () => {
+            // Refresh the agent so the card shows the new tier, but leave the
+            // modal open so the upgrade tx hash stays visible. The user closes
+            // it with the X when they are done.
             await refresh();
-            setUpgradingId(null);
           }}
         />
       ) : null}

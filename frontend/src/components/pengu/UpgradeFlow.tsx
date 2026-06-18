@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { maxUint256 } from "viem";
 import { useOperatorAddress } from "@/hooks/useAuth";
 import { useArcWrite } from "@/hooks/useArcWrite";
-import { CONTRACTS, USDC, publicClient, confirmTx } from "@/lib/arc";
+import { CONTRACTS, USDC, EXPLORER, publicClient, confirmTx } from "@/lib/arc";
 import {
   ABILITIES,
   CONTEST_TYPES,
@@ -45,6 +45,10 @@ export function UpgradeFlow({
   const [prices, setPrices] = useState<Record<ContestTypeName, bigint | null>>({ scout: null, analyst: null, solver: null });
   const [busy, setBusy] = useState<ContestTypeName | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The settled upgrade tx per type, so the card shows on-chain proof and stays
+  // open afterwards. Kept here (not in the parent) so it survives the agent
+  // refresh that bumps the tier.
+  const [doneTx, setDoneTx] = useState<Partial<Record<ContestTypeName, { hash: string; toTier: number }>>>({});
 
   useEffect(() => {
     if (!open) return;
@@ -95,6 +99,8 @@ export function UpgradeFlow({
         args: [BigInt(agent.id), ctypeIndex(t), cur + 1],
       });
       await confirmTx(upHash);
+      // Record the settled tx so the card shows the hash and does not close.
+      setDoneTx((prev) => ({ ...prev, [t]: { hash: upHash, toTier: cur + 1 } }));
       reportEvent("agent_upgrade", { context: { type: t, toTier: cur + 1 }, address });
       // Invalidate cache so onUpgraded's next fetchAgents reflects the new
       // tier instead of returning the pre-upgrade row.
@@ -181,6 +187,16 @@ export function UpgradeFlow({
                       </button>
                     </>
                   )}
+                  {doneTx[t] ? (
+                    <a
+                      href={`${EXPLORER}/tx/${doneTx[t]!.hash}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-4 block border-t border-[color:var(--hairline)] pt-3 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3 hover:text-accent"
+                    >
+                      UPGRADED TO TIER {doneTx[t]!.toTier} · {doneTx[t]!.hash.slice(0, 6)}…{doneTx[t]!.hash.slice(-4)} <span aria-hidden>↗</span>
+                    </a>
+                  ) : null}
                 </div>
               );
             })}
