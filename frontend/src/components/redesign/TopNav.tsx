@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
+import { useOperatorAddress } from "@/hooks/useAuth";
 import { LoginButton } from "@/components/pengu/LoginButton";
 import { ProfileLink } from "@/components/pengu/ProfileLink";
 import { ArcChainChip } from "@/components/redesign/ArcChainChip";
@@ -33,6 +34,11 @@ const ROUTES = [
 export function TopNav() {
   const pathname = usePathname() ?? "/";
   const [open, setOpen] = useState(false);
+  // Hide the whole nav, the route links and the wallet chips, until the user is
+  // signed in. A signed-out visitor sees only the brand and the sign-in button.
+  // `settling` covers the brief auth-resolving window so a returning user does
+  // not flash the signed-out nav before their session loads.
+  const { isSignedIn, settling } = useOperatorAddress();
 
   // Close the drawer on route change so users don't see a stale open state
   // after navigating.
@@ -47,6 +53,7 @@ export function TopNav() {
           <ArcRunMark />
         </a>
 
+        {isSignedIn ? (
         <nav className="hidden items-center gap-8 md:flex">
           {ROUTES.map((r) => {
             const active = pathname === r.href || pathname.startsWith(`${r.href}/`);
@@ -64,25 +71,32 @@ export function TopNav() {
           })}
           <ProfileLink />
         </nav>
+        ) : null}
 
         <div className="flex items-center gap-2">
-          <WalletBalanceChip />
-          <ArcChainChip />
-          <NotificationBell />
-          <LoginButton />
-          <button
-            type="button"
-            onClick={() => setOpen((v) => !v)}
-            aria-label={open ? "close menu" : "open menu"}
-            aria-expanded={open}
-            className="flex h-9 w-9 items-center justify-center border border-[color:var(--hairline-strong)] bg-canvas font-mono text-[14px] text-ink transition-colors hover:bg-canvas-3 md:hidden"
-          >
-            <span aria-hidden>{open ? "×" : "≡"}</span>
-          </button>
+          {isSignedIn ? (
+            <>
+              <WalletBalanceChip />
+              <ArcChainChip />
+              <NotificationBell />
+            </>
+          ) : null}
+          {settling ? null : <LoginButton />}
+          {isSignedIn ? (
+            <button
+              type="button"
+              onClick={() => setOpen((v) => !v)}
+              aria-label={open ? "close menu" : "open menu"}
+              aria-expanded={open}
+              className="flex h-9 w-9 items-center justify-center border border-[color:var(--hairline-strong)] bg-canvas font-mono text-[14px] text-ink transition-colors hover:bg-canvas-3 md:hidden"
+            >
+              <span aria-hidden>{open ? "×" : "≡"}</span>
+            </button>
+          ) : null}
         </div>
       </div>
 
-      {open ? (
+      {open && isSignedIn ? (
         <div className="border-t border-[color:var(--hairline)] bg-canvas md:hidden">
           <nav className="mx-auto flex max-w-[1600px] flex-col px-4 py-2 sm:px-6">
             {/* balance up top: the nav chip is hidden on phones, so this is
