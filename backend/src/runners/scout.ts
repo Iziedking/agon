@@ -651,7 +651,15 @@ async function selfTransferLeg(
       functionName: "transfer",
       args: [account.address, amount6], // self-transfer: real Transfer event, only gas spent
     });
-    await publicClient.waitForTransactionReceipt({ hash });
+    // Only count and show a tx that actually SUCCEEDED on chain. waitForReceipt
+    // resolves even for a reverted tx, so without this a self-transfer that ran
+    // the wallet out of gas would land on the tape as a real-looking hash that
+    // reads "failed" on the explorer. Skip anything that did not mine to success.
+    const receipt = await publicClient.waitForTransactionReceipt({ hash });
+    if (receipt.status !== "success") {
+      console.warn(`[scout] self-transfer reverted, not counting: ${hash}`);
+      return null;
+    }
     return { txHash: hash as Hash, vol6: amount6 };
   } catch (err) {
     console.warn(`[scout] self-transfer fallback failed: ${err instanceof Error ? err.message : err}`);

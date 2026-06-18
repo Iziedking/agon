@@ -147,12 +147,17 @@ function ContestFocus({ id }: { id: number }) {
             <CancelledNote />
           ) : (
             <>
-              <ConnectionLine connected={connected} live={!!live && entries.length > 0} />
-
-              <NarrativeLine
-                entries={entries}
-                lastTick={lastTick && lastTick.source === "contest" && lastTick.eventId === id ? lastTick : null}
-              />
+              {c.status === 3 ? (
+                <SettledNote kind="contest" />
+              ) : (
+                <>
+                  <ConnectionLine connected={connected} live={!!live && entries.length > 0} />
+                  <NarrativeLine
+                    entries={entries}
+                    lastTick={lastTick && lastTick.source === "contest" && lastTick.eventId === id ? lastTick : null}
+                  />
+                </>
+              )}
 
               <div className="mt-6 grid gap-6 lg:grid-cols-12">
                 <div className="min-w-0 lg:col-span-8">
@@ -272,12 +277,17 @@ function ChallengeFocus({ id }: { id: number }) {
             <CancelledNote />
           ) : (
             <>
-              <ConnectionLine connected={connected} live={!!live && entries.length > 0} />
-
-              <NarrativeLine
-                entries={entries}
-                lastTick={lastTick && lastTick.source === "challenge" && lastTick.eventId === id ? lastTick : null}
-              />
+              {ch.status === 2 ? (
+                <SettledNote kind="challenge" />
+              ) : (
+                <>
+                  <ConnectionLine connected={connected} live={!!live && entries.length > 0} />
+                  <NarrativeLine
+                    entries={entries}
+                    lastTick={lastTick && lastTick.source === "challenge" && lastTick.eventId === id ? lastTick : null}
+                  />
+                </>
+              )}
 
               <div className="mt-6 grid gap-6 lg:grid-cols-12">
                 <div className="min-w-0 lg:col-span-8">
@@ -305,6 +315,28 @@ function ChallengeFocus({ id }: { id: number }) {
 /// Shown in place of the live stage when an event was cancelled (under-filled or
 /// the coordinator missed the window) so the page reads as a clear terminal
 /// state instead of streaming an empty feed forever.
+/// Shown once an event has settled, so the page reads as a clear terminal state
+/// for EVERYONE (ended, winners paid) instead of streaming an empty feed. Only
+/// the winner gets the share modal; this gives spectators and non-winners the
+/// closure and points to the final board below. Replaces the live "waiting for
+/// next frame" chrome.
+function SettledNote({ kind }: { kind: "contest" | "challenge" }) {
+  return (
+    <div className="mt-6">
+      <BracketedCell pad="md">
+        <div className="flex flex-col gap-2">
+          <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-[color:var(--ok)]">
+            <span aria-hidden>■</span> EVENT SETTLED ONCHAIN
+          </div>
+          <p className="max-w-[60ch] font-mono text-[13px] leading-[1.55] text-ink-2">
+            this round is over and the winners are paid. the final standings are below; winners claim their prize from the {kind} page.
+          </p>
+        </div>
+      </BracketedCell>
+    </div>
+  );
+}
+
 function CancelledNote() {
   return (
     <div className="mt-6">
