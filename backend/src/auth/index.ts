@@ -3541,7 +3541,12 @@ app.get("/auth/x/start", requireAuth, async (c) => {
   const state = b64url(randomBytes(16));
   await redis.set(`xoauth:${state}`, JSON.stringify({ address, verifier }), "EX", STATE_TTL);
 
-  const url = new URL("https://twitter.com/i/oauth2/authorize");
+  // Use x.com, not twitter.com. After the rebrand, users are logged in on
+  // x.com; the legacy twitter.com authorize page does not see that session and
+  // shows "you have to be logged in to X" even when the user already is. The
+  // token and users endpoints below stay on api.twitter.com (server-to-server,
+  // no browser session involved, and that host still resolves).
+  const url = new URL("https://x.com/i/oauth2/authorize");
   url.searchParams.set("response_type", "code");
   url.searchParams.set("client_id", config.auth.x.clientId!);
   url.searchParams.set("redirect_uri", config.auth.x.callbackUrl!);
