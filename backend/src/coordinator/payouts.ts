@@ -15,8 +15,28 @@ export interface Payout {
   amount: bigint;
 }
 
+/// Skill signal carried by a runner result: the agent's effective strength
+/// (tier x training x traits), set by the scout/analyst runners on detail.
+function resultStrength(r: AgentResult): number {
+  const s = (r.detail as { strength?: { effective?: number } } | undefined)?.strength?.effective;
+  return typeof s === "number" && Number.isFinite(s) ? s : 0;
+}
+
+/// Deterministic settlement ranking. Highest score first; an exact tie breaks on
+/// the better-equipped agent (training + traits), then on the lower agent id. No
+/// randomness and no reliance on array/load order, so a peer-staked challenge
+/// always resolves on a skill metric and the merkle root is reproducible from
+/// public data (the gambling line).
+export function rankResults(a: AgentResult, b: AgentResult): number {
+  if (b.score !== a.score) return b.score - a.score;
+  const sb = resultStrength(b);
+  const sa = resultStrength(a);
+  if (sb !== sa) return sb - sa;
+  return a.agentId - b.agentId;
+}
+
 export function computePayouts(results: AgentResult[], claimable: bigint): Payout[] {
-  const ranked = results.filter((r) => r.score > 0).sort((a, b) => b.score - a.score);
+  const ranked = results.filter((r) => r.score > 0).sort(rankResults);
   if (ranked.length === 0) return [];
   if (ranked.length === 1) return [{ operator: ranked[0]!.operator, amount: claimable }];
 
@@ -95,7 +115,7 @@ export function computePresetPayouts(
   results: AgentResult[],
   claimable: bigint,
 ): Payout[] {
-  const ranked = [...results].sort((a, b) => b.score - a.score);
+  const ranked = [...results].sort(rankResults);
   if (!ranked.some((r) => r.score > 0)) return [];
 
   // One slot per operator, highest score first (ranked is already desc, so the

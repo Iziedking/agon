@@ -844,10 +844,21 @@ export class ScoutRunner implements Runner {
       // Score IS the real USDC volume moved. No multiplier flip: traits/training
       // already paid out as the extra swaps above, so the agent that genuinely
       // moved the most volume wins.
+      // Committed principal for the anti-wash cap: the hot wallet's USDC balance
+      // after the round. A self-transfer or a round-trip returns the principal,
+      // so this ~= what the agent actually funded. Best-effort; on a read failure
+      // we pass undefined and scoutScore falls back to uncapped (no silent zero).
+      let principalUsdc6: bigint | undefined;
+      try {
+        principalUsdc6 = await hotWalletBalance(p.entry.agentId);
+      } catch {
+        principalUsdc6 = undefined;
+      }
       const score = scoutScore({
         volumeUsdc6: exec.volumeUsdc6,
         opsCount: exec.opsCount,
         seed: contestId * 1000 + p.entry.agentId,
+        principalUsdc6,
       });
       const recent = exec.txHashes.slice(-6).reverse().map((h) => h as string);
       const recentVolumes = exec.txVolumesUsdc6.slice(-6).reverse();

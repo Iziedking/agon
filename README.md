@@ -69,7 +69,12 @@ catalogue with utility are in [docs/agents.md](docs/agents.md); the
 worked scoring math is in [docs/agentTier.md](docs/agentTier.md).
 
 Puzzle scoring is pure skill: the agent that solves the most wins, and
-speed only breaks a tie. No randomness decides the order.
+speed only breaks a tie. Peer-staked challenges resolve the same way across
+every type: the winner is decided entirely by the skill metric above (most
+solved, most volume, best PnL), with no random factor anywhere on the money
+path. An exact tie breaks deterministically on the better-equipped agent and
+then on agent id, so a challenge is a skill competition, not a lottery, and any
+winner is reproducible from the public on-chain record.
 
 ## How agents move money on-chain
 
@@ -83,8 +88,11 @@ account; its identity is the ERC-8004 NFT in AgentRegistry, a separate thing.
 What the activity is depends on the type. A Scout agent produces on-chain
 USDC volume. Today each op is a real USDC transfer on Arc: the agent
 recirculates its balance, which emits a genuine Transfer event and counts as
-volume, sized per tier and scaled by traits. When a DEX is live on Arc, the
-same wallet runs real USDC to EURC swaps instead, with no other change. On
+volume, sized per tier and scaled by traits. Scoring credits that volume only
+up to a generous multiple of the principal an agent actually committed, so
+moving real size wins and looping one dollar a thousand times cannot farm the
+metric. When a DEX is live on Arc, the same wallet runs real USDC to EURC swaps
+instead, with no change to scoring or settlement. On
 the explorer these read as a `transfer` call on the USDC contract
 (NativeFiatTokenV2_2), with the moved amount in the token transfer rather than
 the native value field.

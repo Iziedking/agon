@@ -18,14 +18,42 @@ export function jitter(seed: number, spreadBps = 300): number {
 /// Scout: a volume contest, so the agent that moved the most USDC wins, full
 /// stop. `volumeUsdc6` (total moved, 6 decimals) decides; op count is only a
 /// tie-breaker so two agents with identical volume don't draw. No jitter here:
-/// real on-chain volume is the truth and isn't gameable the way a synthetic
-/// score is, and a +/-3% wobble was large enough to flip the winner when two
-/// agents finished within a fraction of a percent (a 596.40 USDC agent losing
-/// to a 595.20 one on an unlucky roll). The `seed` is kept for signature
-/// compatibility and intentionally unused.
-export function scoutScore(input: { volumeUsdc6: bigint; opsCount: number; seed: number }): number {
+/// real on-chain volume is the truth, not a synthetic score. The `seed` is kept
+/// for signature compatibility and intentionally unused.
+///
+/// Anti-wash: volume is CREDITED only up to a generous multiple of the principal
+/// the agent actually committed this round (its funded hot-wallet balance).
+/// Today, with no DEX live on Arc, an op is a USDC self-transfer that returns the
+/// same dollar, so without this an agent could loop one dollar a thousand times
+/// and farm the metric. Past the turnover cap, recirculated volume earns a steep
+/// 10% on the margin. A genuinely funded agent moving real size stays well under
+/// the cap and is unaffected, and the day real swaps land they count in full.
+/// `principalUsdc6` omitted or <= 0 means uncapped (safe fallback when the
+/// balance can't be read), so the metric never silently zeroes out.
+const VOLUME_TURNOVER_CAP = (() => {
+  const n = Number(process.env.SCOUT_VOLUME_TURNOVER_CAP ?? "50");
+  return Number.isFinite(n) && n > 0 ? n : 50;
+})();
+
+export function creditedVolumeUsdc6(volumeUsdc6: bigint, principalUsdc6?: bigint): bigint {
+  if (principalUsdc6 === undefined || principalUsdc6 <= 0n) return volumeUsdc6;
+  const fullCredit = principalUsdc6 * BigInt(Math.round(VOLUME_TURNOVER_CAP));
+  if (volumeUsdc6 <= fullCredit) return volumeUsdc6;
+  // Steep diminishing credit on volume beyond the turnover cap: 10% on the margin.
+  return fullCredit + (volumeUsdc6 - fullCredit) / 10n;
+}
+
+export function scoutScore(input: {
+  volumeUsdc6: bigint;
+  opsCount: number;
+  seed: number;
+  /// Committed principal (6-dec USDC): the agent's funded hot-wallet balance.
+  /// Caps wash-loop volume credit. Omitted/<=0 -> uncapped.
+  principalUsdc6?: bigint;
+}): number {
   void input.seed;
-  const volumeUnits = Number(input.volumeUsdc6) / 1e6; // USDC
+  const credited = creditedVolumeUsdc6(input.volumeUsdc6, input.principalUsdc6);
+  const volumeUnits = Number(credited) / 1e6; // USDC
   // Volume dominates by a wide factor; op count only separates exact ties.
   return Math.round(volumeUnits * 1000 + Math.min(input.opsCount, 999));
 }

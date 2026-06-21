@@ -11,7 +11,7 @@ import { SolverRunner } from "../runners/solver.js";
 import type { AgentResult, ContestEntryInput } from "../runners/types.js";
 import { fundHotWallets, sweepHotWallets } from "./contestOps.js";
 import { merkleRoot, payoutLeaf } from "./merkle.js";
-import { computeDistribution, normalizeScoringMode } from "./payouts.js";
+import { computeDistribution, normalizeScoringMode, rankResults } from "./payouts.js";
 import { creditPoints, postValidatorFeedback } from "./reputation.js";
 import { applyTraitMultipliers, awardPlacementTraits, fetchAgentMultipliers } from "./traits.js";
 import { notify } from "../notifications/index.js";
@@ -62,36 +62,13 @@ const usdcAbi = parseAbi([
 // PREDICTION to ANALYST, PUZZLE to SOLVER, VOLUME to SCOUT, CUSTOM to SOLVER.
 const KIND_TO_CTYPE = [1, 2, 0, 2];
 
-// Per-kind score randomness, applied AFTER the runner's scoring so a low-tier
-// agent can sometimes upset a high-tier one in noisy kinds. Defaults:
-// PREDICTION is markets and noisy, VOLUME is moderately noisy, CUSTOM splits the
-// difference. PUZZLE is 0 on purpose: a puzzle is pure skill, so the agent that
-// solves the most, fastest, must win deterministically. A random wobble there
-// flips the visible-fastest solver and can even hand the pot to a slower agent
-// (the bug that ranked a 9/9 at 24s below a 9/9 at 37s). Override per kind via
-// env, e.g. CHALLENGE_RANDOMNESS_PREDICTION=0.30.
-const KIND_NAMES = ["PREDICTION", "PUZZLE", "VOLUME", "CUSTOM"] as const;
-const KIND_DEFAULTS = [0.25, 0, 0.1, 0.2];
-
-function kindRandomness(kind: number): number {
-  const name = KIND_NAMES[kind];
-  if (name) {
-    const env = process.env[`CHALLENGE_RANDOMNESS_${name}`];
-    if (env) {
-      const n = Number(env);
-      if (Number.isFinite(n) && n >= 0) return n;
-    }
-  }
-  return KIND_DEFAULTS[kind] ?? 0;
-}
-
-function applyRandomness(results: AgentResult[], factor: number): AgentResult[] {
-  if (factor <= 0) return results;
-  return results.map((r) => ({
-    ...r,
-    score: Math.max(0, r.score * (1 + (Math.random() * 2 - 1) * factor)),
-  }));
-}
+// Challenges are peer-staked: the winner takes the other operators' real USDC,
+// so settlement is deterministic skill with NO random factor anywhere on the
+// money path (the gambling line). Each kind resolves on its own skill metric
+// (most solved, most volume, best PnL); exact ties break deterministically in
+// payouts.ts (rankResults). The runner's REAL output already supplies honest
+// variance, so a lower-tier agent that genuinely outperforms still wins. There
+// is intentionally no random wobble and no env knob to switch one back on.
 
 function coordinatorWallet() {
   if (!config.coordinator.privateKey) throw new Error("COORDINATOR_PRIVATE_KEY required to resolve challenges");
@@ -246,7 +223,7 @@ async function previewScores(cType: number, challengeId: number, field: ContestE
 function standings(results: AgentResult[]) {
   return results
     .slice()
-    .sort((a, b) => b.score - a.score)
+    .sort(rankResults)
     .map((r, i) => ({
       rank: i + 1,
       agentId: r.agentId,
@@ -421,10 +398,6 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
         }
       }
 
-      // Per-kind randomness; preview frames re-roll so the race visibly
-      // shuffles, the final scoring rolls once for the authoritative winner.
-      const factor = kindRandomness(Number(ch.kind));
-
       // Trait + training + syndicate-war multipliers are stable across the
       // locked field, so fetch once and reuse for every preview frame and the
       // authoritative scoring. Combined multiplier capped at 3.5x.
@@ -486,7 +459,7 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
           previewed.add(challengeId);
           const previewUntil = Date.now() + previewSecs * 1000;
           console.log(
-            `challenge ${challengeId}: streaming ${previewSecs}s preview to ${field.length} entrant(s) (kind ${ch.kind}, randomness ±${(factor * 100).toFixed(0)}%)`,
+            `challenge ${challengeId}: streaming ${previewSecs}s preview to ${field.length} entrant(s) (kind ${ch.kind})`,
           );
           while (Date.now() < previewUntil) {
             const preview = await previewScores(cType, challengeId, field);
@@ -495,7 +468,7 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
             const withTraining = applyTrainingMultipliers(withTraits, trainMult);
             const withSyndicate = applySyndicateMultipliers(withTraining, synMult);
             const clamped = clampCombinedMultiplier(withSyndicate, baselines);
-            broadcast({ type: "challenge_standings", challengeId, entries: standings(applyRandomness(clamped, factor)) });
+            broadcast({ type: "challenge_standings", challengeId, entries: standings(clamped) });
             await sleep(2500);
           }
         }
@@ -506,16 +479,13 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
       // PUZZLE / CUSTOM (solver, cType 2) is pure skill: no upgrade
       // multipliers, so the best solver wins. PREDICTION + VOLUME apply
       // trait/syndicate (training already counts once in the runner, so its
-      // coordinator pass is a no-op). Per-kind randomness still applies.
+      // coordinator pass is a no-op). No randomness: challenges settle on skill.
       const results =
         cType === 2
-          ? applyRandomness(baseResults, factor)
-          : applyRandomness(
-              clampCombinedMultiplier(
-                applySyndicateMultipliers(applyTrainingMultipliers(applyTraitMultipliers(baseResults, traitMult), trainMult), synMult),
-                baselines,
-              ),
-              factor,
+          ? baseResults
+          : clampCombinedMultiplier(
+              applySyndicateMultipliers(applyTrainingMultipliers(applyTraitMultipliers(baseResults, traitMult), trainMult), synMult),
+              baselines,
             );
 
       // Final standings frame with the authoritative progress so the live
