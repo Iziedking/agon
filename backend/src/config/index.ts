@@ -220,7 +220,10 @@ const envSchema = z.object({
   //           Exa) directly on their chain (Base). Container-native, real USDC.
   //   "cli" - shell out to `circle services pay` (needs the Circle CLI + local
   //           auth state). The legacy default.
-  NANOPAY_PROVIDER: z.enum(["cli", "sdk", "exact"]).default("cli"),
+  // "auto" routes PER SELLER: GatewayWalletBatched sellers (Predexon) settle via
+  // the Gateway batching client, standard "exact" sellers (Exa, Gloria) via the
+  // exact client, so one mission round can pay several services correctly.
+  NANOPAY_PROVIDER: z.enum(["cli", "sdk", "exact", "auto"]).default("cli"),
   // Network the exact-scheme sellers settle on (x402 network name), e.g.
   // base | base-sepolia | polygon. Gloria/Exa declare "base" (mainnet).
   NANOPAY_EXACT_NETWORK: z.string().default("base"),

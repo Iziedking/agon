@@ -97,12 +97,73 @@ export interface PayX402Result {
   errorMessage?: string;
 }
 
+// Known x402 sellers mapped to their settlement scheme so a mission round can pay
+// several services in one pass. GatewayWalletBatched (Circle Nanopayments, e.g.
+// Predexon on Polygon) -> the Gateway batching client ("sdk"); standard "exact"
+// sellers (Exa, Gloria on Base) -> the exact client. Unknown hosts are probed
+// once and cached. Only consulted when NANOPAY_PROVIDER=auto.
+const HOST_PROVIDER: Record<string, "sdk" | "exact"> = {
+  "nano.blockrun.ai": "sdk", // Predexon: x402 v2 GatewayWalletBatched on Polygon
+  "api.exa.ai": "exact", // Exa: exact scheme, Base
+  "api.itsgloria.ai": "exact", // Gloria: exact scheme, Base
+};
+const providerCache = new Map<string, "sdk" | "exact">();
+
+/// Resolve the x402 settlement client for one seller. Known hosts map directly;
+/// an unknown host is probed once (read its 402 quote's scheme: a
+/// `GatewayWalletBatched` extra means the Gateway batched client, otherwise the
+/// exact client) and the verdict is cached per host.
+async function providerForEndpoint(endpoint: string): Promise<"sdk" | "exact"> {
+  let host = "";
+  try {
+    host = new URL(endpoint).host;
+  } catch {
+    return "exact";
+  }
+  const known = HOST_PROVIDER[host];
+  if (known) return known;
+  const cached = providerCache.get(host);
+  if (cached) return cached;
+
+  let resolved: "sdk" | "exact" = "exact";
+  try {
+    const res = await fetchWithTimeout(endpoint, { method: "GET" });
+    if (res.status === 402) {
+      let accepts: Array<Record<string, unknown>> | undefined;
+      const hdr = res.headers.get("payment-required") ?? res.headers.get("x-payment-required");
+      if (hdr) {
+        try {
+          accepts = (JSON.parse(Buffer.from(hdr, "base64").toString("utf8")) as { accepts?: Array<Record<string, unknown>> }).accepts;
+        } catch {
+          /* not the base64 header shape; fall through to the body */
+        }
+      }
+      if (!accepts) {
+        const body = (await res.json().catch(() => null)) as { accepts?: Array<Record<string, unknown>> } | null;
+        accepts = body?.accepts;
+      }
+      const extraName = (accepts?.[0]?.["extra"] as { name?: string } | undefined)?.name;
+      if (extraName === "GatewayWalletBatched") resolved = "sdk";
+    }
+  } catch {
+    /* probe failed; default to exact */
+  }
+  providerCache.set(host, resolved);
+  return resolved;
+}
+
 /// Single x402 paid call. Returns a structured result regardless of
 /// outcome. The runner is expected to inspect `status` and proceed even on
 /// rejection.
 export async function payX402(opts: PayX402Opts): Promise<PayX402Result> {
   if (!config.nanopay.enabled) {
     return persistAndReturn(opts, { status: "rejected", usdcAmount6: 0n, errorMessage: "nanopay disabled" });
+  }
+  // Auto path: route PER SELLER so a mission round can pay Predexon (Gateway
+  // batched) and Exa/Gloria (exact) in the same pass, each with the right client.
+  if (config.nanopay.provider === "auto") {
+    const p = await providerForEndpoint(opts.endpoint);
+    return p === "sdk" ? payViaSdk(opts) : payViaExact(opts);
   }
   // SDK path: real x402 payment via the Gateway batching client, signed from a
   // private key. Container-native, no CLI. For Gateway-batched sellers.
