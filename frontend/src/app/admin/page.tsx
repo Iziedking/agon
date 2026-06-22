@@ -9,10 +9,11 @@ import { EXPLORER } from "@/lib/arc";
 /// that guards /admin/events on the backend). Shows every contract's live USDC
 /// balance, the treasury and coordinator wallets, and lets an admin withdraw
 /// treasury USDC or cancel a wrongly-opened contest / challenge. The token is
-/// kept in localStorage so a refresh during the demo doesn't lock you out.
+/// held IN MEMORY only (React state, never localStorage), so it is per-tab,
+/// never written to disk, and a refresh requires re-entry. Tighter against
+/// token exfiltration and cross-tab leakage than a persisted token.
 
 const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL ?? "http://localhost:8082";
-const TOKEN_KEY = "arcrun_admin_token";
 
 interface Overview {
   chainId: number;
@@ -35,10 +36,9 @@ export default function AdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    const saved = typeof window !== "undefined" ? localStorage.getItem(TOKEN_KEY) : null;
-    if (saved) setToken(saved);
-  }, []);
+  // No restore-from-storage: the token lives only in React state, so each tab
+  // starts locked and a refresh requires re-entry. That is the per-tab,
+  // in-memory model (nothing is ever persisted to disk).
 
   const load = useCallback(async (tok: string) => {
     setLoading(true);
@@ -62,11 +62,9 @@ export default function AdminPage() {
   function unlock() {
     const t = draftToken.trim();
     if (!t) return;
-    localStorage.setItem(TOKEN_KEY, t);
-    setToken(t);
+    setToken(t); // in-memory only
   }
   function lock() {
-    localStorage.removeItem(TOKEN_KEY);
     setToken(null);
     setData(null);
     setDraftToken("");
@@ -117,6 +115,7 @@ export default function AdminPage() {
       {data ? (
         <div className="flex flex-col gap-6">
           <CountsRow counts={data.counts} />
+          <MembersSection token={token} />
           <WalletsRow data={data} />
           <ContractsTable contracts={data.contracts} />
           <div className="grid gap-6 lg:grid-cols-2">
@@ -414,6 +413,161 @@ function CommandsLog({ token }: { token: string }) {
           ))}
         </div>
       )}
+    </BracketedCell>
+  );
+}
+
+interface MemberRow {
+  address: string;
+  isPlatform: boolean;
+  hasIdentity: boolean;
+  entered: boolean;
+  agents: number;
+  identity: {
+    email: string | null;
+    x: string | null;
+    discord: string | null;
+    telegram: string | null;
+    circleWallet: boolean;
+    passkey: boolean;
+  };
+  usdcWon: string;
+  createdAt: string;
+}
+interface MembersData {
+  summary: {
+    total: number;
+    realOperators: number;
+    clearlyHuman: number;
+    enteredEvent: number;
+    clearlyHumanWhoEntered: number;
+    humanFundedCampaigns: number;
+    humanFundedPoolUsdc: string;
+  };
+  operators: MemberRow[];
+}
+
+/// Live member directory + P0 traction in one place. Polls /admin/operators
+/// every 6s so a new registration appears without a refresh, and a text filter
+/// traces any one operator by address, handle, or email. The headline cells are
+/// the real-operator and human-funded-campaign numbers, quotable on the spot.
+function MembersSection({ token }: { token: string }) {
+  const [data, setData] = useState<MembersData | null>(null);
+  const [q, setQ] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch(`${AUTH_URL}/admin/operators`, { headers: { "x-admin-token": token } });
+      if (!res.ok) throw new Error(`http ${res.status}`);
+      setData((await res.json()) as MembersData);
+      setErr(null);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "load failed");
+    }
+  }, [token]);
+
+  useEffect(() => {
+    void load();
+    const t = setInterval(() => void load(), 6000);
+    return () => clearInterval(t);
+  }, [load]);
+
+  const s = data?.summary;
+  const rows = (data?.operators ?? []).filter((o) => {
+    if (!q.trim()) return true;
+    const hay = `${o.address} ${o.identity.email ?? ""} ${o.identity.x ?? ""} ${o.identity.discord ?? ""} ${o.identity.telegram ?? ""}`.toLowerCase();
+    return hay.includes(q.trim().toLowerCase());
+  });
+
+  const badge = (label: string, on: boolean) =>
+    on ? (
+      <span className="border border-[color:var(--hairline-strong)] px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em] text-ink-2">
+        {label}
+      </span>
+    ) : null;
+
+  return (
+    <BracketedCell pad="sm">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">
+          <span aria-hidden className="text-accent">■</span> MEMBERS · LIVE
+        </div>
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="filter address / handle / email"
+          className="w-64 max-w-full border border-[color:var(--hairline-strong)] bg-canvas px-2 py-1 font-mono text-[11px] text-ink outline-none focus:border-ink"
+        />
+      </div>
+
+      {s ? (
+        <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
+          {[
+            { label: "REAL OPERATORS", value: String(s.realOperators) },
+            { label: "CLEARLY HUMAN", value: String(s.clearlyHuman) },
+            { label: "ENTERED EVENT", value: String(s.enteredEvent) },
+            { label: "HUMAN + ENTERED", value: String(s.clearlyHumanWhoEntered) },
+            { label: "FUNDED CAMPAIGNS", value: String(s.humanFundedCampaigns) },
+            { label: "CAMPAIGN POOL", value: s.humanFundedPoolUsdc },
+          ].map((cell) => (
+            <div key={cell.label} className="border border-[color:var(--hairline)] bg-canvas-2 px-2 py-2">
+              <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-ink-3">{cell.label}</div>
+              <div className="mt-0.5 font-stencil text-[20px] leading-none text-ink">{cell.value}</div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {err ? <p className="mb-2 font-mono text-[10px] text-[color:var(--err)]">{err}</p> : null}
+
+      <div className="max-h-[420px] overflow-y-auto">
+        <div className="flex flex-col">
+          {rows.map((o) => (
+            <div
+              key={o.address}
+              className="flex flex-wrap items-center justify-between gap-2 border-b border-[color:var(--hairline)] py-2 last:border-0"
+            >
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <a
+                    href={`/operators/${o.address}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-mono text-[12px] text-ink hover:text-accent"
+                  >
+                    {short(o.address)}
+                  </a>
+                  {o.isPlatform ? (
+                    <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-ink-3">PLATFORM</span>
+                  ) : null}
+                  {o.entered ? (
+                    <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-[color:var(--ok)]">ENTERED</span>
+                  ) : null}
+                </div>
+                <div className="mt-1 flex flex-wrap items-center gap-1">
+                  {badge("X", Boolean(o.identity.x))}
+                  {badge("EMAIL", Boolean(o.identity.email))}
+                  {badge("DISCORD", Boolean(o.identity.discord))}
+                  {badge("TG", Boolean(o.identity.telegram))}
+                  {badge("PASSKEY", o.identity.passkey)}
+                  {badge("CIRCLE", o.identity.circleWallet)}
+                  {!o.hasIdentity && !o.isPlatform ? (
+                    <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-ink-3">WALLET ONLY</span>
+                  ) : null}
+                </div>
+              </div>
+              <div className="flex items-center gap-4 font-mono text-[11px] text-ink-2">
+                <span>{o.agents} agent{o.agents === 1 ? "" : "s"}</span>
+                <span className="text-ink-3">{new Date(o.createdAt).toLocaleDateString()}</span>
+              </div>
+            </div>
+          ))}
+          {rows.length === 0 ? (
+            <p className="py-3 font-mono text-[11px] text-ink-3">no members{q ? " match the filter" : " yet"}</p>
+          ) : null}
+        </div>
+      </div>
     </BracketedCell>
   );
 }

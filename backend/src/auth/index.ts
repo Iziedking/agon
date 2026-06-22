@@ -1122,6 +1122,94 @@ app.get("/admin/overview", async (c) => {
   });
 });
 
+// Member directory + P0 traction, in one call. Every registered operator with
+// their identity, agents, and event participation, plus the real-vs-platform
+// headline counts, so the team proves traction and traces any user from the
+// console without a SQL session. New registrations appear on the next poll.
+app.get("/admin/operators", async (c) => {
+  if (!config.adminToken) return c.json({ error: "admin disabled (set ADMIN_TOKEN)" }, 503);
+  if (!adminAuthed(c)) return c.json({ error: "unauthorized" }, 401);
+
+  // Platform wallets to exclude from "real" counts: coordinator, treasury key,
+  // and whatever PrizeEscrow currently points at as treasury.
+  const platform = new Set<string>();
+  const coord = coordinatorSigner();
+  if (coord) platform.add(coord.account.address.toLowerCase());
+  const treas = treasurySigner();
+  if (treas) platform.add(treas.account.address.toLowerCase());
+  try {
+    const t = (await publicClient.readContract({
+      address: config.contracts.PrizeEscrow,
+      abi: treasuryViewAbi,
+      functionName: "treasury",
+    })) as string;
+    if (t) platform.add(t.toLowerCase());
+  } catch { /* leave as-is if the read fails */ }
+
+  const { rows } = await query<{
+    address: string; email: string | null; x_handle: string | null; discord_id: string | null;
+    telegram_id: string | null; circle_wallet_id: string | null; created_at: string;
+    has_passkey: boolean; agent_count: string; entered: boolean; usdc_won: string | null;
+  }>(
+    `select o.address, o.email, o.x_handle, o.discord_id, o.telegram_id, o.circle_wallet_id, o.created_at,
+            exists(select 1 from webauthn_credentials w where lower(w.operator_address)=lower(o.address)) as has_passkey,
+            (select count(*) from agents a where lower(a.owner)=lower(o.address)) as agent_count,
+            (exists(select 1 from entries e where lower(e.operator)=lower(o.address))
+             or exists(select 1 from challenge_entries ce where lower(ce.operator)=lower(o.address))) as entered,
+            (select coalesce(sum(claimed_amount),0) from entries e
+               where lower(e.operator)=lower(o.address) and e.claimed) as usdc_won
+       from operators o
+       order by o.created_at desc`,
+  );
+
+  const intStr = (v: string | null | undefined) => BigInt(String(v ?? "0").split(".")[0] || "0");
+  const operators = rows.map((r) => {
+    const isPlatform = platform.has(r.address.toLowerCase());
+    const hasIdentity = Boolean(
+      r.email || r.x_handle || r.discord_id || r.telegram_id || r.circle_wallet_id || r.has_passkey,
+    );
+    return {
+      address: r.address,
+      isPlatform,
+      hasIdentity,
+      entered: r.entered,
+      agents: Number(r.agent_count ?? 0),
+      identity: {
+        email: r.email,
+        x: r.x_handle,
+        discord: r.discord_id,
+        telegram: r.telegram_id,
+        circleWallet: Boolean(r.circle_wallet_id),
+        passkey: r.has_passkey,
+      },
+      usdcWon: usdc6(intStr(r.usdc_won)),
+      createdAt: r.created_at,
+    };
+  });
+
+  const real = operators.filter((o) => !o.isPlatform);
+  // Human-funded campaigns: contests sponsored by a non-platform address.
+  const camp = await query<{ n: string; pool: string | null }>(
+    `select count(*) as n, coalesce(sum(prize_pool),0) as pool
+       from contests where sponsor is not null and lower(sponsor) <> all($1::text[])`,
+    [Array.from(platform)],
+  );
+  const c0 = camp.rows[0];
+
+  return c.json({
+    summary: {
+      total: operators.length,
+      realOperators: real.length,
+      clearlyHuman: real.filter((o) => o.hasIdentity).length,
+      enteredEvent: real.filter((o) => o.entered).length,
+      clearlyHumanWhoEntered: real.filter((o) => o.hasIdentity && o.entered).length,
+      humanFundedCampaigns: Number(c0?.n ?? 0),
+      humanFundedPoolUsdc: usdc6(intStr(c0?.pool)),
+    },
+    operators,
+  });
+});
+
 // Withdraw treasury USDC to a destination. PrizeEscrow forwards fees straight
 // to the treasury EOA, so this MUST sign with the treasury key. It falls back
 // to the coordinator only when the coordinator IS the on-chain treasury;
