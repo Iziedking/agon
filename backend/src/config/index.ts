@@ -18,6 +18,7 @@ const envSchema = z.object({
   // Auth service
   JWT_SECRET: z.string().default("dev-insecure-secret-change-me"),
   ADMIN_TOKEN: z.string().optional(), // gates GET /admin/events; unset = read endpoint disabled
+  SUPPORT_TOKEN: z.string().optional(), // read-only admin tier (Members/Events/Audit, no money actions)
   AUTH_PORT: z.coerce.number().int().positive().default(8082),
   AUTH_DOMAIN: z.string().default("localhost:3000"),
   APP_URL: z.string().url().default("http://localhost:3000"),
@@ -384,6 +385,7 @@ export const config = {
   contracts: deployments.contracts,
   external: deployments.external,
   adminToken: env.ADMIN_TOKEN,
+  supportToken: env.SUPPORT_TOKEN,
   syndicatePoolWeeklyUsdc: env.SYNDICATE_POOL_WEEKLY_USDC,
   syndicatePoolFeePct: env.SYNDICATE_POOL_FEE_PCT,
   auth: {

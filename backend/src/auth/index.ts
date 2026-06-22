@@ -15,7 +15,7 @@ import { query } from "../db/pool.js";
 import { logEvent } from "../events.js";
 import { notify } from "../notifications/index.js";
 import { setTierGate, getTierGate, type GateSurface } from "../lib/tierGate.js";
-import { merkleProof, payoutLeaf } from "../coordinator/merkle.js";
+import { merkleProof, merkleRoot, payoutLeaf } from "../coordinator/merkle.js";
 import { redis } from "../redis.js";
 import { issueToken, requireAuth, SESSION_COOKIE } from "./jwt.js";
 import {
@@ -1012,6 +1012,23 @@ function adminAuthed(c: { req: { header: (k: string) => string | undefined } }):
   return Boolean(config.adminToken) && c.req.header("x-admin-token") === config.adminToken;
 }
 
+type AdminLevel = "admin" | "support";
+/// Resolve the caller's admin tier from the x-admin-token header. The full
+/// ADMIN_TOKEN grants "admin" (every action); a SUPPORT_TOKEN grants "support"
+/// (read-only: Members, Events, Audit, no money/settle/cancel). Unknown -> null.
+/// Lets a support team triage issues without the keys to the money actions.
+function adminLevel(c: { req: { header: (k: string) => string | undefined } }): AdminLevel | null {
+  const t = c.req.header("x-admin-token");
+  if (!t) return null;
+  if (config.adminToken && t === config.adminToken) return "admin";
+  if (config.supportToken && t === config.supportToken) return "support";
+  return null;
+}
+/// Read-only gate: admin OR support may pass.
+function readAuthed(c: { req: { header: (k: string) => string | undefined } }): boolean {
+  return adminLevel(c) !== null;
+}
+
 function coordinatorSigner() {
   const pk = config.coordinator.privateKey;
   if (!pk) return null;
@@ -1035,12 +1052,18 @@ const usdc6 = (b: bigint) => (Number(b) / 1e6).toFixed(2);
 const cancelContestAbi = parseAbi(["function cancelContest(uint256 contestId)"]);
 const cancelChallengeAbi = parseAbi(["function cancelChallenge(uint256 id)"]);
 const treasuryViewAbi = parseAbi(["function treasury() view returns (address)"]);
+const getContestRootAbi = parseAbi([
+  "function getContest(uint256 contestId) view returns ((uint8 contestType,uint8 status,uint16 winnerCutBps,uint16 topN,uint16 platformFeeBps,address sponsor,address protocolTarget,bytes32 metric,uint64 startTime,uint64 endTime,uint256 prizePool,bytes32 finalRoot))",
+]);
+const getChallengeRootAbi = parseAbi([
+  "function getChallenge(uint256 id) view returns ((address creator,uint8 kind,uint8 status,bool isPrivate,uint16 platformFeeBps,uint128 stake,uint64 maxEntrants,uint64 joinDeadline,uint64 resolveDeadline,bytes32 winnerRoot))",
+]);
 
 // Live snapshot: contract addresses, their USDC balances, the treasury and
 // coordinator wallets, and headline DB counts.
 app.get("/admin/overview", async (c) => {
   if (!config.adminToken) return c.json({ error: "admin disabled (set ADMIN_TOKEN)" }, 503);
-  if (!adminAuthed(c)) return c.json({ error: "unauthorized" }, 401);
+  if (!readAuthed(c)) return c.json({ error: "unauthorized" }, 401);
 
   const contracts = [
     { key: "ContestEngine", address: config.contracts.ContestEngine },
@@ -1128,7 +1151,7 @@ app.get("/admin/overview", async (c) => {
 // console without a SQL session. New registrations appear on the next poll.
 app.get("/admin/operators", async (c) => {
   if (!config.adminToken) return c.json({ error: "admin disabled (set ADMIN_TOKEN)" }, 503);
-  if (!adminAuthed(c)) return c.json({ error: "unauthorized" }, 401);
+  if (!readAuthed(c)) return c.json({ error: "unauthorized" }, 401);
 
   // Platform wallets to exclude from "real" counts: coordinator, treasury key,
   // and whatever PrizeEscrow currently points at as treasury.
@@ -1207,6 +1230,71 @@ app.get("/admin/operators", async (c) => {
       humanFundedPoolUsdc: usdc6(intStr(c0?.pool)),
     },
     operators,
+  });
+});
+
+// Which tier this token grants, so the console shows or hides the money actions.
+app.get("/admin/whoami", (c) => {
+  const level = adminLevel(c);
+  if (!level) return c.json({ error: "unauthorized" }, 401);
+  return c.json({ level });
+});
+
+// Settlement audit: recompute a contest/challenge payout merkle root from the
+// PUBLIC payout record and compare it to the root posted on chain, so the console
+// proves a settlement was not tampered with (P2) without a CLI. Read-only tier.
+app.get("/admin/audit/:source/:id", async (c) => {
+  if (!config.adminToken) return c.json({ error: "admin disabled (set ADMIN_TOKEN)" }, 503);
+  if (!readAuthed(c)) return c.json({ error: "unauthorized" }, 401);
+  const source = c.req.param("source");
+  const id = Number(c.req.param("id"));
+  if ((source !== "contest" && source !== "challenge") || !Number.isFinite(id)) {
+    return c.json({ error: "bad source/id" }, 400);
+  }
+  const table = source === "contest" ? "payouts" : "challenge_payouts";
+  const idCol = source === "contest" ? "contest_id" : "challenge_id";
+  const { rows: payouts } = await query<{ rank: number; operator: string; amount: string }>(
+    `select rank, operator, amount from ${table} where ${idCol} = $1 order by rank`,
+    [id],
+  );
+  if (payouts.length === 0) {
+    return c.json({ source, id, settled: false, message: "no payouts persisted (not settled yet, or an empty field)" });
+  }
+  const toWei = (v: string) => BigInt(String(v).split(".")[0] || "0");
+  const leaves = payouts.map((p) => payoutLeaf(p.operator as `0x${string}`, toWei(p.amount)));
+  const recomputed = merkleRoot(leaves).toLowerCase();
+
+  let onchain = "";
+  try {
+    if (source === "contest") {
+      const cc = (await publicClient.readContract({
+        address: config.contracts.ContestEngine,
+        abi: getContestRootAbi,
+        functionName: "getContest",
+        args: [BigInt(id)],
+      })) as { finalRoot: string };
+      onchain = cc.finalRoot.toLowerCase();
+    } else {
+      const ch = (await publicClient.readContract({
+        address: config.contracts.ChallengeArena,
+        abi: getChallengeRootAbi,
+        functionName: "getChallenge",
+        args: [BigInt(id)],
+      })) as { winnerRoot: string };
+      onchain = ch.winnerRoot.toLowerCase();
+    }
+  } catch {
+    return c.json({ error: "chain read failed" }, 502);
+  }
+
+  return c.json({
+    source,
+    id,
+    settled: true,
+    match: recomputed === onchain,
+    recomputedRoot: recomputed,
+    onchainRoot: onchain,
+    leaves: payouts.map((p) => ({ rank: p.rank, operator: p.operator, amountUsdc: usdc6(toWei(p.amount)) })),
   });
 });
 
@@ -1365,7 +1453,7 @@ app.post("/admin/commands", async (c) => {
 
 app.get("/admin/commands", async (c) => {
   if (!config.adminToken) return c.json({ error: "admin disabled (set ADMIN_TOKEN)" }, 503);
-  if (!adminAuthed(c)) return c.json({ error: "unauthorized" }, 401);
+  if (!readAuthed(c)) return c.json({ error: "unauthorized" }, 401);
   const { rows } = await query<{
     id: string;
     kind: string;

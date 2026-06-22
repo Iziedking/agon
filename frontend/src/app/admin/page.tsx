@@ -35,6 +35,7 @@ export default function AdminPage() {
   const [data, setData] = useState<Overview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [level, setLevel] = useState<"admin" | "support">("admin");
 
   // No restore-from-storage: the token lives only in React state, so each tab
   // starts locked and a refresh requires re-entry. That is the per-tab,
@@ -48,6 +49,12 @@ export default function AdminPage() {
       if (res.status === 401) throw new Error("wrong token");
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? `http ${res.status}`);
       setData((await res.json()) as Overview);
+      // Resolve the tier so the UI hides money actions for a support token. An
+      // older backend without /admin/whoami simply defaults to full admin.
+      const who = await fetch(`${AUTH_URL}/admin/whoami`, { headers: { "x-admin-token": tok } })
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null);
+      setLevel(who?.level === "support" ? "support" : "admin");
     } catch (e) {
       setError(e instanceof Error ? e.message : "could not load");
       setData(null);
@@ -99,6 +106,11 @@ export default function AdminPage() {
       <div className="mb-6 flex items-center justify-between">
         <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">
           {data ? `CHAIN ${data.chainId}` : ""}
+          {level === "support" ? (
+            <span className="ml-3 border border-[color:var(--hairline-strong)] px-2 py-0.5 text-[color:var(--warn)]">
+              SUPPORT · READ ONLY
+            </span>
+          ) : null}
         </span>
         <div className="flex items-center gap-4">
           <button onClick={() => token && void load(token)} className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:text-ink">
@@ -118,14 +130,26 @@ export default function AdminPage() {
           <MembersSection token={token} />
           <WalletsRow data={data} />
           <ContractsTable contracts={data.contracts} />
-          <div className="grid gap-6 lg:grid-cols-2">
-            <WithdrawCard token={token} treasuryUsdc={data.treasury?.usdc ?? data.coordinator?.usdc ?? "0.00"} onDone={() => void load(token)} />
-            <CancelCard token={token} onDone={() => void load(token)} />
-          </div>
-          <div className="grid gap-6 lg:grid-cols-2">
-            <ForceSettleCard token={token} />
-            <CommandsLog token={token} />
-          </div>
+          <AuditSection token={token} />
+          {level === "admin" ? (
+            <>
+              <div className="grid gap-6 lg:grid-cols-2">
+                <WithdrawCard token={token} treasuryUsdc={data.treasury?.usdc ?? data.coordinator?.usdc ?? "0.00"} onDone={() => void load(token)} />
+                <CancelCard token={token} onDone={() => void load(token)} />
+              </div>
+              <div className="grid gap-6 lg:grid-cols-2">
+                <ForceSettleCard token={token} />
+                <CommandsLog token={token} />
+              </div>
+            </>
+          ) : (
+            <>
+              <CommandsLog token={token} />
+              <p className="font-mono text-[11px] text-ink-3">
+                support tier: the money actions (withdraw, cancel, force-settle) are hidden. Ask an admin for the full token to run them.
+              </p>
+            </>
+          )}
         </div>
       ) : !error ? (
         <p className="font-mono text-sm text-ink-2">loading…</p>
@@ -568,6 +592,106 @@ function MembersSection({ token }: { token: string }) {
           ) : null}
         </div>
       </div>
+    </BracketedCell>
+  );
+}
+
+interface AuditData {
+  source: string;
+  id: number;
+  settled: boolean;
+  message?: string;
+  match?: boolean;
+  recomputedRoot?: string;
+  onchainRoot?: string;
+  leaves?: Array<{ rank: number; operator: string; amountUsdc: string }>;
+}
+
+/// Settlement audit in the console: recompute a contest/challenge payout merkle
+/// root from the public payout record and check it equals the on-chain root, with
+/// the ranked leaves shown. Proves a settlement was not tampered with (P2), no CLI.
+function AuditSection({ token }: { token: string }) {
+  const [source, setSource] = useState<"contest" | "challenge">("challenge");
+  const [id, setId] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [res, setRes] = useState<AuditData | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function run() {
+    setBusy(true);
+    setErr(null);
+    setRes(null);
+    try {
+      const r = await fetch(`${AUTH_URL}/admin/audit/${source}/${Number(id)}`, { headers: { "x-admin-token": token } });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error((d as { error?: string }).error ?? `http ${r.status}`);
+      setRes(d as AuditData);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "audit failed");
+    }
+    setBusy(false);
+  }
+
+  return (
+    <BracketedCell pad="sm">
+      <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">
+        <span aria-hidden className="text-accent">■</span> SETTLEMENT AUDIT
+      </div>
+      <div className="mt-1 font-mono text-[10px] text-ink-3">
+        recompute the payout merkle root from public data and check it against the chain
+      </div>
+      <div className="mt-3 flex gap-2">
+        <select
+          value={source}
+          onChange={(e) => setSource(e.target.value as "contest" | "challenge")}
+          className="border border-[color:var(--hairline-strong)] bg-canvas px-3 py-2 font-mono text-sm text-ink outline-none focus:border-ink"
+        >
+          <option value="challenge">CHALLENGE</option>
+          <option value="contest">CONTEST</option>
+        </select>
+        <input
+          value={id}
+          onChange={(e) => setId(e.target.value)}
+          placeholder="id"
+          inputMode="numeric"
+          className="w-24 border border-[color:var(--hairline-strong)] bg-canvas px-3 py-2 font-mono text-sm text-ink outline-none focus:border-ink"
+        />
+        <button
+          onClick={run}
+          disabled={busy || !id}
+          className="bg-accent px-4 py-2 font-mono text-[12px] uppercase tracking-[0.12em] text-accent-ink hover:bg-accent-press disabled:opacity-50"
+        >
+          {busy ? "CHECKING…" : "VERIFY →"}
+        </button>
+      </div>
+      {err ? <p className="mt-2 font-mono text-[10px] text-[color:var(--err)]">{err}</p> : null}
+      {res ? (
+        !res.settled ? (
+          <p className="mt-3 font-mono text-[11px] text-ink-3">{res.message ?? "not settled"}</p>
+        ) : (
+          <div className="mt-3">
+            <div
+              className="font-mono text-[12px] uppercase tracking-[0.12em]"
+              style={{ color: res.match ? "var(--ok)" : "var(--err)" }}
+            >
+              {res.match ? "MATCH · root commits to the public payout set" : "MISMATCH · investigate"}
+            </div>
+            <div className="mt-2 break-all font-mono text-[10px] text-ink-3">recomputed: {res.recomputedRoot}</div>
+            <div className="break-all font-mono text-[10px] text-ink-3">on-chain: {res.onchainRoot}</div>
+            <div className="mt-2 flex flex-col">
+              {(res.leaves ?? []).map((l) => (
+                <div
+                  key={l.rank}
+                  className="flex items-center justify-between border-b border-[color:var(--hairline)] py-1 font-mono text-[11px] text-ink-2 last:border-0"
+                >
+                  <span>#{l.rank} {short(l.operator)}</span>
+                  <span className="text-ink">{l.amountUsdc} USDC</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      ) : null}
     </BracketedCell>
   );
 }
