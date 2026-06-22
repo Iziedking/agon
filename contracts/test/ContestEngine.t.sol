@@ -390,4 +390,29 @@ contract ContestEngineTest is Test {
         engine.sweepUnclaimed(id);
         assertEq(usdc.balanceOf(treasury), treasuryBefore + 950e6, "unclaimed swept to treasury");
     }
+
+    // ---------- wrong-caller on the coordinator settlement path (P6 hardening) ----------
+    // Only the coordinator can post a score root or settle, so no random account
+    // can finalize a contest with a forged payout root and redirect the pot.
+
+    function test_postScoreRoot_revertsForNonCoordinator() public {
+        uint256 id = _listContest(1000e6, 1 days);
+        vm.warp(block.timestamp + 1 days);
+        vm.prank(alice);
+        vm.expectRevert(); // alice lacks COORDINATOR_ROLE
+        engine.postScoreRoot(id, keccak256("forged"));
+        assertEq(uint8(engine.getContest(id).status), uint8(ContestStatus.OPEN), "status unchanged");
+    }
+
+    function test_settle_revertsForNonCoordinator() public {
+        uint256 id = _listContest(1000e6, 1 days);
+        vm.warp(block.timestamp + 1 days);
+        vm.prank(coordinator);
+        engine.postScoreRoot(id, keccak256("root"));
+        // Now SCORING. A non-coordinator must not be able to settle.
+        vm.prank(bob);
+        vm.expectRevert();
+        engine.settle(id);
+        assertEq(uint8(engine.getContest(id).status), uint8(ContestStatus.SCORING), "still scoring");
+    }
 }

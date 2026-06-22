@@ -118,4 +118,35 @@ contract PrizeEscrowTest is Test {
         vm.expectRevert();
         escrow.setTreasury(sponsor);
     }
+
+    // ---------- wrong-caller on the fund-EXIT paths (P6 hardening) ----------
+    // The fund-moving exits must reject any caller without CONTROLLER_ROLE, so a
+    // random account can never drain or skim a pool. AccessControl reverts.
+
+    function test_payout_revertsForNonController() public {
+        _fundAndApprove(sponsor, 100e6);
+        escrow.depositPrizePool(1, sponsor, 100e6);
+        address attacker = makeAddr("attacker");
+        vm.prank(attacker);
+        vm.expectRevert(); // attacker lacks CONTROLLER_ROLE
+        escrow.payout(1, attacker, 100e6);
+        assertEq(escrow.poolBalance(address(this), 1), 100e6, "pool untouched");
+        assertEq(usdc.balanceOf(attacker), 0, "nothing stolen");
+    }
+
+    function test_skimPlatformFee_revertsForNonController() public {
+        _fundAndApprove(sponsor, 100e6);
+        escrow.depositPrizePool(1, sponsor, 100e6);
+        vm.prank(makeAddr("attacker"));
+        vm.expectRevert();
+        escrow.skimPlatformFee(1, 100e6);
+    }
+
+    function test_sweepUnclaimed_revertsForNonController() public {
+        _fundAndApprove(sponsor, 100e6);
+        escrow.depositPrizePool(1, sponsor, 100e6);
+        vm.prank(makeAddr("attacker"));
+        vm.expectRevert();
+        escrow.sweepUnclaimed(1);
+    }
 }

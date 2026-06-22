@@ -20,6 +20,7 @@
     "nanopay:deposit": "tsx scripts/nanopay-deposit.ts",
     "nanopay:probe": "tsx scripts/nanopay-probe.ts",
     "swap:probe": "tsx scripts/swap-probe.ts",
+    "verify:root": "tsx scripts/verify-root.ts",
     "test:prediction": "tsx scripts/prediction-examples.ts",
     "typecheck": "tsc --noEmit"
   },
