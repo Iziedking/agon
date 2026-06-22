@@ -402,11 +402,25 @@ export interface ExactPayResult {
 /// (read requirements, sign, retry with the signature header), and return the
 /// data plus the settlement tx. Reusable by the runner and the probe so they
 /// exercise the exact same path.
+/// fetch with a hard timeout so a hung or slow x402 seller cannot stall a runner
+/// indefinitely (plain fetch has no timeout). Aborts after NANOPAY_HTTP_TIMEOUT_MS
+/// (default 25s); the caller treats an abort like any other failed leg.
+async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+  const ms = Number(process.env.NANOPAY_HTTP_TIMEOUT_MS ?? "25000");
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), ms);
+  try {
+    return await fetch(url, { ...init, signal: ac.signal });
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 export async function payExactRequest(url: string, init: RequestInit): Promise<ExactPayResult> {
   const http = await getExactClient();
   if (!http) return { ok: false, status: 0, data: null, amount6: 0n, error: "no signer (set NANOPAY_WALLET_PRIVATE_KEY)" };
 
-  const first = await fetch(url, init);
+  const first = await fetchWithTimeout(url, init);
   if (first.status !== 402) {
     const data = await first.json().catch(() => null);
     return { ok: first.ok, status: first.status, data, amount6: 0n };
@@ -431,7 +445,7 @@ export async function payExactRequest(url: string, init: RequestInit): Promise<E
     ...((init.headers as Record<string, string>) ?? {}),
     ...payHeaders,
   };
-  const second = await fetch(url, { ...init, headers: retryHeaders });
+  const second = await fetchWithTimeout(url, { ...init, headers: retryHeaders });
   let txHash: string | undefined;
   try {
     txHash = http.getPaymentSettleResponse((n) => second.headers.get(n))?.transaction;

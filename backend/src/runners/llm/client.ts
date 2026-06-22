@@ -55,7 +55,15 @@ function getClient(): Anthropic {
   if (!config.llm.anthropicApiKey) {
     throw new Error("ANTHROPIC_API_KEY is not set; the LLM runner cannot make real calls");
   }
-  cachedClient = new Anthropic({ apiKey: config.llm.anthropicApiKey });
+  // Bound every call so a hung provider can't hold a runner for the SDK's
+  // 10-minute default. 60s per call, 2 retries, both env-tunable. Combined with
+  // the coordinator's per-run watchdog this keeps one stuck agent from stalling
+  // a whole settlement.
+  cachedClient = new Anthropic({
+    apiKey: config.llm.anthropicApiKey,
+    timeout: Number(process.env.LLM_TIMEOUT_MS ?? "60000"),
+    maxRetries: Number(process.env.LLM_MAX_RETRIES ?? "2"),
+  });
   return cachedClient;
 }
 
