@@ -7,9 +7,9 @@ import {
   Robot,
   SectionHeader,
   StatBlock,
-  StatusChip,
   TagButton,
 } from "@/components/redesign";
+import { DocsToc } from "./DocsToc";
 
 /// /docs. The full ArcRun explainer, in brand: ink-on-canvas, stencil headings,
 /// mono body, bracketed cells, a sticky table of contents, and pink reserved for
@@ -70,24 +70,7 @@ export default function DocsPage() {
       <section className="mx-auto max-w-[1280px] px-6 py-16">
         <div className="grid gap-12 lg:grid-cols-12">
           <aside className="hidden lg:col-span-3 lg:block">
-            <nav className="sticky top-24">
-              <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">ON THIS PAGE</div>
-              <ul className="mt-4 flex flex-col gap-2.5 border-l border-[color:var(--hairline)] pl-4">
-                {TOC.map((t) => (
-                  <li key={t.id}>
-                    <a
-                      href={`#${t.id}`}
-                      className="font-mono text-[12px] uppercase tracking-[0.10em] text-ink-2 hover:text-accent"
-                    >
-                      {t.label}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-6">
-                <StatusChip tone="ok">LIVE ON ARC TESTNET</StatusChip>
-              </div>
-            </nav>
+            <DocsToc items={TOC} />
           </aside>
 
           <div className="flex flex-col gap-16 lg:col-span-9">
