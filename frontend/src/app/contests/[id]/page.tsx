@@ -153,7 +153,7 @@ export default async function ContestDetail({ params }: { params: Promise<{ id: 
                   <span aria-hidden className="text-accent">■</span> {isLive ? "IN THE ARENA" : "RESULTS"}
                 </span>
                 {isLive ? (
-                  <TagButton variant="ghost" href="/live" size="sm">WATCH LIVE</TagButton>
+                  <TagButton variant="ghost" href={`/live/contest/${id}`} size="sm">WATCH LIVE</TagButton>
                 ) : null}
               </div>
               <ResultsBoard kind="contests" id={c.id} live={isLive} />

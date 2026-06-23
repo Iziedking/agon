@@ -179,7 +179,7 @@ function ChallengeCard({ ch }: { ch: Challenge }) {
         >
           WATCH LIVE →
         </a>
-        <TagButton href={`/challenges/${ch.id}`} size="sm">JOIN</TagButton>
+        <TagButton href={`/challenges/${ch.id}`} size="sm">{ch.status === 0 ? "JOIN" : "VIEW"}</TagButton>
       </div>
     </BracketedCell>
   );

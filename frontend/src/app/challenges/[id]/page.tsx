@@ -131,7 +131,7 @@ export default async function ChallengePage({ params }: { params: Promise<{ id: 
                   <span aria-hidden className="text-accent">■</span> {isLive ? "IN THE ARENA" : "RESULTS"}
                 </span>
                 {isLive ? (
-                  <TagButton variant="ghost" href="/live" size="sm">WATCH LIVE</TagButton>
+                  <TagButton variant="ghost" href={`/live/challenge/${id}`} size="sm">WATCH LIVE</TagButton>
                 ) : null}
               </div>
               <ResultsBoard

@@ -211,7 +211,7 @@ function ContestCard({ c }: { c: Contest }) {
         >
           WATCH LIVE →
         </a>
-        <TagButton href={`/contests/${c.id}`} size="sm">ENTER</TagButton>
+        <TagButton href={`/contests/${c.id}`} size="sm">{c.status === 1 ? "ENTER" : "VIEW"}</TagButton>
       </div>
     </BracketedCell>
   );
