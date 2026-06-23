@@ -24,8 +24,7 @@ import type { Commission, FragmentDecision, MakeOrBuy, MissionFragment } from ".
 import { loadMission } from "./generator.js";
 import { getSpecialistForFragment } from "./specialists.js";
 import { buyIntel } from "./a2a.js";
-
-const SCORE_SCALE = 1000;
+import { gradeSubmission, type MissionGrade } from "./grader.js";
 
 /// USDC 6-decimals as a short human string for prompts and labels.
 function fmtUsdc6(v: bigint | string): string {
@@ -113,7 +112,6 @@ export class MissionRunner implements Runner {
     const events: TapeEvent[] = [];
     const fragmentData: Array<{ ask: string; data: unknown }> = [];
     const decisionRows: FragmentDecision[] = [];
-    let spent6 = 0n;
 
     // Execute decisions sequentially: one operative wallet sends the A2A
     // transfers, so serial execution keeps the nonce ordering clean.
@@ -137,7 +135,6 @@ export class MissionRunner implements Runner {
           row.txHash = made.txHash;
           row.spent6 = made.spent6;
           row.data = made.data;
-          spent6 += BigInt(made.spent6);
           fragmentData.push({ ask: opt.fragment.ask, data: made.data });
           events.push(this.tape(entry.agentId, made.spent6, made.txHash, opt.fragment.service.chain, opt.fragment.service.label));
         }
@@ -152,7 +149,6 @@ export class MissionRunner implements Runner {
           row.spent6 = bought.price6 ?? "0";
           row.data = bought.intel;
           row.specialistAgentId = bought.sellerAgentId;
-          spent6 += BigInt(bought.price6 ?? "0");
           fragmentData.push({ ask: opt.fragment.ask, data: bought.intel });
           events.push(this.tape(entry.agentId, bought.price6 ?? "0", bought.txHash, "arc", `intel from agent ${bought.sellerAgentId}`));
         }
@@ -165,30 +161,29 @@ export class MissionRunner implements Runner {
 
     const deliverable = await this.synthesize(mission, fragmentData);
     const elapsedMs = Date.now() - startedAt;
-    const credited = decisionRows.filter((r) => r.settled).length;
 
-    // Provisional, deterministic score: credited fragments dominate; speed and
-    // thrift break ties. The judge-quality layer is added by the grader batch.
-    const speed = clamp01(perOpBudgetMs() / Math.max(elapsedMs, 1));
-    const score = Math.round((credited + 0.2 * speed) * SCORE_SCALE);
-
-    await this.persistSubmission(mission.missionId, entry, deliverable, elapsedMs, score);
+    // Grade: the judge scores quality and the credit gate re-verifies on-chain
+    // payment proof per fragment. The grade owns the final, deterministic score.
+    const grade = await gradeSubmission(mission, { agentId: entry.agentId, deliverable, elapsedMs });
+    await this.persistSubmission(mission.missionId, entry, deliverable, elapsedMs, grade);
 
     const correct = decisionRows.map((r) => r.settled);
     return {
       agentId: entry.agentId,
       operator: entry.operator,
-      score,
+      score: grade.score,
       detail: {
         domain: mission.domain,
         templateId: mission.templateId,
         fragmentsTotal: mission.fragments.length,
-        fragmentsCredited: credited,
-        spent6: spent6.toString(),
+        fragmentsCredited: grade.creditedFragments,
+        quality: grade.quality,
+        verdict: grade.verdict,
+        spent6: grade.spent6,
         decisions: decisionRows,
         deliverable,
         elapsedMs,
-        strength: { effective: credited, tierBase: entry.tier, training: 0, traits: 0 },
+        strength: { effective: grade.creditedFragments, tierBase: entry.tier, training: 0, traits: 0 },
       },
       progress: {
         kind: "solver",
@@ -361,14 +356,22 @@ export class MissionRunner implements Runner {
     entry: ContestEntryInput,
     deliverable: string,
     elapsedMs: number,
-    score: number,
+    grade: MissionGrade,
   ): Promise<void> {
+    const judged = {
+      quality: grade.quality,
+      verdict: grade.verdict,
+      credited: grade.creditedFragments,
+      total: grade.totalFragments,
+      spent6: grade.spent6,
+    };
     await query(
-      `insert into mission_submissions (contest_id, agent_id, operator, deliverable, elapsed_ms, score)
-       values ($1,$2,$3,$4,$5,$6)
+      `insert into mission_submissions (contest_id, agent_id, operator, deliverable, elapsed_ms, score, judged)
+       values ($1,$2,$3,$4,$5,$6,$7)
        on conflict (contest_id, agent_id) do update set
-         deliverable=excluded.deliverable, elapsed_ms=excluded.elapsed_ms, score=excluded.score`,
-      [missionId, entry.agentId, entry.operator.toLowerCase(), deliverable, elapsedMs, score],
+         deliverable=excluded.deliverable, elapsed_ms=excluded.elapsed_ms,
+         score=excluded.score, judged=excluded.judged`,
+      [missionId, entry.agentId, entry.operator.toLowerCase(), deliverable, elapsedMs, grade.score, JSON.stringify(judged)],
     );
   }
 }
@@ -376,14 +379,6 @@ export class MissionRunner implements Runner {
 function fragmentIndex(mission: Commission, fragmentId: string): number {
   const i = mission.fragments.findIndex((f) => f.id === fragmentId);
   return i < 0 ? 0 : i;
-}
-
-function perOpBudgetMs(): number {
-  return Number(process.env.MISSION_SPEED_BUDGET_MS ?? "60000");
-}
-
-function clamp01(x: number): number {
-  return x < 0 ? 0 : x > 1 ? 1 : x;
 }
 
 function stringifyData(d: unknown): string {
