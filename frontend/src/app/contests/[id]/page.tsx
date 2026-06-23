@@ -5,6 +5,7 @@ import { BracketedCell, CornerMarkers, StatusChip, TagButton } from "@/component
 import { Countdown } from "@/components/pengu/Countdown";
 import { EnterPanel } from "@/components/pengu/EnterPanel";
 import { ResultsBoard } from "@/components/pengu/ResultsBoard";
+import { MissionBanner } from "@/components/MissionBanner";
 import { CONTRACTS, EXPLORER } from "@/lib/arc";
 import { CONTEST_TYPE, fetchContest, formatUsdc, metricLabel, type Contest } from "@/lib/contests";
 
@@ -85,6 +86,8 @@ export default async function ContestDetail({ params }: { params: Promise<{ id: 
             CONTESTENGINE ON ARCSCAN ↗
           </a>
         </div>
+
+        <MissionBanner contestId={c.id} />
 
         <div className="grid gap-8 lg:grid-cols-12">
           {/* LEFT: hero + meta + leaderboard. min-w-0 so wide children (the

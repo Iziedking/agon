@@ -1929,6 +1929,169 @@ app.get("/challenges/:id/standings", async (c) =>
   c.json(await serveStandingsSnapshot("challenge", Number(c.req.param("id")))),
 );
 
+// ----- Missions (the agent labor market) -----
+
+// Full state of a mission for the arena page: the brief, the operatives and
+// their make-or-buy decisions, the deliverables and judge verdicts, and the
+// economy tape (agent-to-agent trades + agent-to-service x402 payments). Public
+// read. Deliberately omits the captured intel/truth (the answer an operative
+// pays for) so the page can't leak it. Returns { mission: null } for a contest
+// that is not a mission, which is how the UI decides whether to show the arena.
+app.get("/missions/:id", async (c) => {
+  const contestId = Number(c.req.param("id"));
+  if (!Number.isFinite(contestId)) return c.json({ mission: null });
+
+  const m = await query<{
+    domain: string;
+    template_id: string;
+    title: string;
+    brief: string;
+    deliverable: string;
+    status: string;
+  }>(
+    "select domain, template_id, title, brief, deliverable, status from missions where contest_id = $1",
+    [contestId],
+  );
+  const mission = m.rows[0];
+  if (!mission) return c.json({ mission: null });
+
+  const fragments = await query<{ fragment_id: string; kind: string; ask: string }>(
+    "select fragment_id, kind, ask from mission_fragments where contest_id = $1 order by fragment_id",
+    [contestId],
+  );
+  const specialists = await query<{ agent_id: string; fragment_id: string; price_usdc_6: string }>(
+    "select agent_id, fragment_id, price_usdc_6 from mission_specialists where contest_id = $1 order by agent_id",
+    [contestId],
+  );
+  const decisions = await query<{
+    agent_id: string;
+    fragment_id: string;
+    choice: string;
+    reason: string | null;
+    settled: boolean;
+    tx_hash: string | null;
+    spent_usdc_6: string;
+    specialist_agent_id: string | null;
+  }>(
+    "select agent_id, fragment_id, choice, reason, settled, tx_hash, spent_usdc_6, specialist_agent_id from mission_decisions where contest_id = $1",
+    [contestId],
+  );
+  const submissions = await query<{
+    agent_id: string;
+    operator: string;
+    deliverable: string | null;
+    elapsed_ms: number;
+    score: string | null;
+    judged: { quality?: number; verdict?: string; credited?: number; total?: number } | null;
+  }>(
+    "select agent_id, operator, deliverable, elapsed_ms, score, judged from mission_submissions where contest_id = $1",
+    [contestId],
+  );
+  const trades = await query<{
+    buyer_agent_id: string;
+    seller_agent_id: string;
+    fragment_id: string;
+    price_usdc_6: string;
+    tx_hash: string | null;
+    created_at: string;
+  }>(
+    "select buyer_agent_id, seller_agent_id, fragment_id, price_usdc_6, tx_hash, created_at::text as created_at from a2a_trades where contest_id = $1 and status = 'settled' order by id",
+    [contestId],
+  );
+  const nanopays = await query<{
+    agent_id: string;
+    endpoint_label: string | null;
+    usdc_amount_6: string;
+    tx_hash: string | null;
+    chain: string;
+    created_at: string;
+  }>(
+    "select agent_id, endpoint_label, usdc_amount_6, tx_hash, chain, created_at::text as created_at from nanopayments where contest_id = $1 and status = 'settled' order by id",
+    [contestId],
+  );
+
+  // Group decisions under each operative.
+  const decByAgent = new Map<number, unknown[]>();
+  for (const d of decisions.rows) {
+    const id = Number(d.agent_id);
+    if (!decByAgent.has(id)) decByAgent.set(id, []);
+    decByAgent.get(id)!.push({
+      fragmentId: d.fragment_id,
+      choice: d.choice,
+      reason: d.reason ?? "",
+      settled: d.settled,
+      txHash: d.tx_hash,
+      spent6: d.spent_usdc_6,
+      specialistAgentId: d.specialist_agent_id ? Number(d.specialist_agent_id) : null,
+    });
+  }
+
+  const operatives = submissions.rows
+    .map((s) => {
+      const judged = s.judged ?? {};
+      return {
+        agentId: Number(s.agent_id),
+        operator: s.operator,
+        score: s.score ? Number(s.score) : 0,
+        quality: judged.quality ?? null,
+        verdict: judged.verdict ?? "",
+        credited: judged.credited ?? null,
+        total: judged.total ?? fragments.rows.length,
+        deliverable: s.deliverable ?? "",
+        elapsedMs: s.elapsed_ms,
+        decisions: decByAgent.get(Number(s.agent_id)) ?? [],
+      };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  // The economy tape: agent-to-agent buys and agent-to-service x402 payments,
+  // oldest first so the arena can render them as a ledger.
+  const tape = [
+    ...trades.rows.map((t) => ({
+      kind: "a2a" as const,
+      fromAgentId: Number(t.buyer_agent_id),
+      toAgentId: Number(t.seller_agent_id),
+      toLabel: `agent ${t.seller_agent_id}`,
+      fragmentId: t.fragment_id,
+      amount6: t.price_usdc_6,
+      txHash: t.tx_hash,
+      chain: "arc",
+      ts: t.created_at,
+    })),
+    ...nanopays.rows.map((n) => ({
+      kind: "x402" as const,
+      fromAgentId: Number(n.agent_id),
+      toAgentId: null,
+      toLabel: n.endpoint_label ?? "data service",
+      fragmentId: null,
+      amount6: n.usdc_amount_6,
+      txHash: n.tx_hash,
+      chain: n.chain,
+      ts: n.created_at,
+    })),
+  ].sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+
+  return c.json({
+    mission: {
+      contestId,
+      domain: mission.domain,
+      templateId: mission.template_id,
+      title: mission.title,
+      brief: mission.brief,
+      deliverable: mission.deliverable,
+      status: mission.status,
+    },
+    fragments: fragments.rows.map((f) => ({ id: f.fragment_id, kind: f.kind, ask: f.ask })),
+    specialists: specialists.rows.map((s) => ({
+      agentId: Number(s.agent_id),
+      fragmentId: s.fragment_id,
+      price6: s.price_usdc_6,
+    })),
+    operatives,
+    tape,
+  });
+});
+
 // ----- Traits and mystery claims -----
 
 // The pool of awardable traits, public read so the UI can render chip labels
