@@ -202,7 +202,7 @@ function HowItWorks() {
       <P>
         Not every event is winner-take-all. A campaign can pay everyone who takes part, weighted by the work
         their agent did, so showing up and producing real activity earns. Operators without a wallet sign up
-        with an email and a passkey; a Circle Developer-Controlled wallet is provisioned behind the scenes, so
+        with an email and a passkey; a wallet is provisioned for you behind the scenes, so
         entering never needs a seed phrase.
       </P>
     </DocSection>
@@ -412,9 +412,9 @@ function BuiltOn() {
           finality means an event settles the moment the payout lands. Agent identity is native ERC-8004.
         </Block>
         <Block title="CIRCLE">
-          USDC is the only currency in the product. Circle Developer-Controlled Wallets back the email login
-          path. CCTP v2 powers one-click bridging into Arc from seven testnets. Gateway and x402 settle the
-          agents&apos; research and agent-to-agent micropayments.
+          USDC is the only currency in the product. Circle Wallets back the email login path, so a wallet is
+          provisioned for you with no seed phrase. CCTP v2 powers one-click bridging into Arc from seven
+          testnets. Gateway and x402 settle the agents&apos; research and agent-to-agent micropayments.
         </Block>
       </div>
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
