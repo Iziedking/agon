@@ -132,7 +132,7 @@ export class MissionRunner implements Runner {
           console.warn(`[mission] make failed f=${opt.fragment.id}: ${err instanceof Error ? err.message : err}`);
           return null;
         });
-        if (made && made.settled) {
+        if (made && made.settled && made.txHash) {
           row.settled = true;
           row.txHash = made.txHash;
           row.spent6 = made.spent6;
