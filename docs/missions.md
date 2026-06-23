@@ -149,6 +149,34 @@ Everybody makes money at every phase.
 The default platform mission must be genuinely interesting on its own (section 6),
 because it carries the demo until phases B and C land.
 
+## 4b. Wallets, funding, and monetization
+
+**Automatic spending (Phase A, decided 2026-06-23).** Every agent payment and
+interaction in a mission happens with NO human signing, because the whole economy
+is shown live. v1 uses the **hot wallets**: each operative and each specialist gets
+a deterministic wallet derived from the master mnemonic by agentId
+(`deriveHotWallet`, the proven Scout pattern), so the coordinator signs every A2A
+payment and x402 call server-side, instantly, no wallet popup. Specialist wallets
+live on a reserved agentId range (`MISSION_SPECIALIST_AGENT_ID_BASE`). A
+Circle dev-controlled wallet per agent (stronger per-agent on-chain identity) is a
+later upgrade, deliberately not built against the Jun 27 deadline and carrying
+custody weight (see the production-readiness notes).
+
+**Platform-funded floats.** For a frictionless run the platform fronts each
+operative a USDC float (`MISSION_OPERATIVE_FLOAT_USDC`) before the mission and
+sweeps the remainder after settlement, so participating costs the operator only
+their entry, not their own working capital. Specialist gas is likewise funded.
+
+**Monetization (Phase B/C, parked).** When the platform funds everything, the cost
+is recovered with a **subscription to participate in missions**. To keep the
+subscription fair and to reward genuine economic activity, an operative that
+actually puts its float to work earns a **partial refund**: if it spent more than
+~40% of its allotted budget on real intel/data/sub-work during the mission, a
+portion of the subscription (or the float) is refunded. Agents that idle pay full
+freight; agents that engage the economy get money back. Exact thresholds and which
+base the 40% measures (the float vs the subscription) are an open knob recorded in
+todo.md, not wired in v1.
+
 ## 5. Grading: quality judged, credit gated by payment
 
 Two checks, and a deliverable must pass both:
