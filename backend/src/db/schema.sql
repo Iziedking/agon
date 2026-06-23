@@ -829,3 +829,103 @@ create table if not exists admin_commands (
   updated_at   timestamptz not null default now()
 );
 create index if not exists admin_commands_pending_idx on admin_commands (status, id) where status = 'pending';
+
+-- Missions: the agent labor market (full design in docs/missions.md). A mission
+-- is a SOLVER-type contest tagged here. `domain` (solver | analyst | scout)
+-- decides the operative's work: solver/analyst MAKE fragments by paying x402
+-- services; scout MAKEs by doing on-chain DeFi work. One row per mission, keyed
+-- by the on-chain contest id (no contract redeploy).
+create table if not exists missions (
+  contest_id    bigint primary key,
+  domain        text not null,            -- 'solver' | 'analyst' | 'scout'
+  template_id   text not null,
+  title         text not null,
+  brief         text not null,
+  deliverable   text not null,
+  status        text not null default 'open',  -- 'open' | 'settled' | 'cancelled'
+  created_at    timestamptz not null default now()
+);
+create index if not exists missions_status_idx on missions(status, created_at desc);
+
+-- The fragments a mission's brief asks for, with the captured ground truth. The
+-- service columns name the x402 endpoint that can MAKE the fragment (null for
+-- scout `action` fragments). `truth` is what the grader checks against and what
+-- the platform specialists are seeded to hold.
+create table if not exists mission_fragments (
+  contest_id      bigint not null,
+  fragment_id     text not null,
+  kind            text not null,          -- 'intel' | 'signal' | 'market' | 'action'
+  ask             text not null,
+  service_endpoint text,
+  service_label   text,
+  service_chain   text,
+  truth           jsonb,
+  created_at      timestamptz not null default now(),
+  primary key (contest_id, fragment_id)
+);
+
+-- Platform-seeded specialist (intel-seller) agents. Each holds the captured intel
+-- for a fragment and prices it; serves it over the A2A handshake on a paid BUY.
+-- agent_id is on the reserved specialist range (MISSION_SPECIALIST_AGENT_ID_BASE)
+-- and the address is its derived hot wallet.
+create table if not exists mission_specialists (
+  contest_id   bigint not null,
+  agent_id     bigint not null,
+  address      text not null,
+  fragment_id  text not null,
+  price_usdc_6 text not null default '0',
+  intel        jsonb,
+  created_at   timestamptz not null default now(),
+  primary key (contest_id, agent_id, fragment_id)
+);
+create index if not exists mission_specialists_contest_idx on mission_specialists(contest_id);
+
+-- Agent-to-agent trades: the on-chain USDC payment from an operative (buyer) to a
+-- specialist (seller) for a fragment over the bounded handshake. This is the A2A
+-- rail's settlement record; tx_hash is the real USDC Transfer.
+create table if not exists a2a_trades (
+  id            bigserial primary key,
+  contest_id    bigint not null,
+  buyer_agent_id  bigint not null,
+  seller_agent_id bigint not null,
+  fragment_id   text not null,
+  price_usdc_6  text not null default '0',
+  tx_hash       text,
+  status        text not null default 'pending',  -- 'pending' | 'settled' | 'failed'
+  created_at    timestamptz not null default now()
+);
+create index if not exists a2a_trades_contest_idx on a2a_trades(contest_id);
+create index if not exists a2a_trades_buyer_idx on a2a_trades(buyer_agent_id);
+create index if not exists a2a_trades_recent_idx on a2a_trades(created_at desc);
+
+-- Per-operative make/buy/skip decision log, one row per fragment the operative
+-- considered. `tx_hash` is the on-chain proof the grader's credit gate checks:
+-- an x402 tx (make), an a2a_trades tx (buy), or a DeFi action tx (scout).
+create table if not exists mission_decisions (
+  contest_id          bigint not null,
+  agent_id            bigint not null,
+  fragment_id         text not null,
+  choice              text not null,      -- 'make' | 'buy' | 'skip'
+  reason              text,
+  settled             boolean not null default false,
+  tx_hash             text,
+  spent_usdc_6        text not null default '0',
+  specialist_agent_id bigint,
+  created_at          timestamptz not null default now(),
+  primary key (contest_id, agent_id, fragment_id)
+);
+create index if not exists mission_decisions_contest_idx on mission_decisions(contest_id, agent_id);
+
+-- The operative's submitted deliverable and its grade. score is the deterministic
+-- value fed into the merkle payout; `judged` holds the judge.ts verdict detail.
+create table if not exists mission_submissions (
+  contest_id   bigint not null,
+  agent_id     bigint not null,
+  operator     text not null,
+  deliverable  text,
+  elapsed_ms   int not null default 0,
+  score        numeric,
+  judged       jsonb,
+  created_at   timestamptz not null default now(),
+  primary key (contest_id, agent_id)
+);

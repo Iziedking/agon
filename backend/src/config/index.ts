@@ -300,6 +300,41 @@ const envSchema = z.object({
   // gates its own trade-creation logic so we don't double-trade. Set to
   // 0 to disable the scheduler and revert to single-pass behavior.
   PREDICTION_TICKS: z.coerce.boolean().default(true),
+
+  // Missions (the agent labor market — full spec in docs/missions.md). A mission
+  // is a SOLVER-type contest tagged in the `missions` table: platform-run
+  // specialist agents sell intel, operatives (tier 3/4) autonomously decide
+  // make (pay an x402 service) vs buy (an on-chain A2A payment to a specialist),
+  // synthesize a deliverable, and the top deliverables split the pool. Off by
+  // default so the feature ships dark until a coordinator wallet is funded.
+  MISSION_ENABLED: z.coerce.boolean().default(false),
+  // Default platform mission knobs (used by the autopilot open path).
+  MISSION_POOL_USDC: z.coerce.number().nonnegative().default(5),
+  MISSION_DURATION_SECONDS: z.coerce.number().int().positive().default(900),
+  // Operatives need research access, so missions gate to tier 3 and up.
+  MISSION_MIN_TIER: z.coerce.number().int().min(0).max(4).default(3),
+  // How many fragments a mission's brief asks for (single-source pieces the
+  // operative must make or buy before synthesizing).
+  MISSION_FRAGMENT_COUNT: z.coerce.number().int().positive().default(3),
+  // USDC float funded into each operative hot wallet before the run so it can
+  // BUY fragments from specialists. Swept back after settlement, so a higher
+  // number costs only gas, not principal.
+  MISSION_OPERATIVE_FLOAT_USDC: z.coerce.number().nonnegative().default(2),
+  // How many platform specialist (intel-seller) agents to seed per mission.
+  MISSION_SPECIALIST_COUNT: z.coerce.number().int().positive().default(2),
+  // Reserved agentId base for deriving specialist hot wallets, kept far above
+  // any real agent id so specialist wallets never collide with operator agents.
+  MISSION_SPECIALIST_AGENT_ID_BASE: z.coerce.number().int().positive().default(900000),
+  // Base price (whole USDC, decimal) a specialist quotes for one fragment in the
+  // A2A handshake. The specialist may scale this by fragment kind.
+  MISSION_INTEL_PRICE_USDC: z.coerce.number().nonnegative().default(0.5),
+  // Safety ceiling on total per-round mission funding (operative floats +
+  // specialist gas), so a misconfigured float can't drain the coordinator before
+  // the post-settlement sweep returns the floats.
+  MISSION_FUND_MAX_USDC: z.coerce.number().nonnegative().default(50),
+  // Optional model override for the judge that grades deliverables. Falls back to
+  // LLM_MODEL when unset. Pin it for determinism on the grading path.
+  MISSION_JUDGE_MODEL: z.string().optional(),
 });
 
 const addr = z
@@ -519,6 +554,19 @@ export const config = {
     scoutPriceEndpoint: env.NANOPAY_SCOUT_PRICE_ENDPOINT,
     scoutPriceLabel: env.NANOPAY_SCOUT_PRICE_LABEL,
     scoutPriceChain: env.NANOPAY_SCOUT_PRICE_CHAIN,
+  },
+  mission: {
+    enabled: env.MISSION_ENABLED,
+    poolUsdc: env.MISSION_POOL_USDC,
+    durationSeconds: env.MISSION_DURATION_SECONDS,
+    minTier: env.MISSION_MIN_TIER,
+    fragmentCount: env.MISSION_FRAGMENT_COUNT,
+    operativeFloatUsdc: env.MISSION_OPERATIVE_FLOAT_USDC,
+    specialistCount: env.MISSION_SPECIALIST_COUNT,
+    specialistAgentIdBase: env.MISSION_SPECIALIST_AGENT_ID_BASE,
+    intelPriceUsdc: env.MISSION_INTEL_PRICE_USDC,
+    fundMaxUsdc: env.MISSION_FUND_MAX_USDC,
+    judgeModel: env.MISSION_JUDGE_MODEL,
   },
   analystAutofund: {
     enabled: env.ANALYST_AUTOFUND,

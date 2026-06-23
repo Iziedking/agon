@@ -18,8 +18,8 @@ import { fetchLeaderboard, formatReputation, formatUsdcString, short, type Leade
 /// is the identity. Tablet (sm) brings ENTERED back, desktop (md) adds
 /// CYCLES + REP.
 const COLS =
-  "grid-cols-[2.5rem_1fr_4rem_5.5rem] " +
-  "sm:grid-cols-[3rem_1fr_3rem_3.5rem_5.5rem] " +
+  "grid-cols-[2.25rem_1fr_3rem_7rem] " +
+  "sm:grid-cols-[3rem_1fr_3rem_3.5rem_7rem] " +
   "md:grid-cols-[3rem_1fr_3.5rem_3.5rem_4rem_4.5rem_7rem]";
 const PER_PAGE = 20;
 
@@ -199,7 +199,7 @@ export default function LeaderboardPage() {
                 <span className="text-right font-mono text-[13px] text-ink-2">{r.wins}</span>
                 <span className="hidden text-right font-mono text-[13px] text-ink-2 md:block">{r.cycles}</span>
                 <span className="hidden text-right font-mono text-[13px] text-ink-2 md:block">{formatReputation(r.reputation)}</span>
-                <span className="text-right font-mono text-[13px] text-accent">{formatUsdcString(r.earned)}</span>
+                <span className="whitespace-nowrap text-right font-mono text-[12px] text-accent sm:text-[13px]">{formatUsdcString(r.earned)}</span>
               </a>
             );
           })
