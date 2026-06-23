@@ -5,6 +5,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { arcTestnet, publicClient } from "../chain/arc.js";
 import { config } from "../config/index.js";
 import { deriveHotWallet } from "../runners/scout.js";
+import { generateMission } from "../runners/missions/generator.js";
 
 /// Reusable contest operations (open and fund), shared by the CLI scripts and
 /// the autopilot. Pure functions, no top-level side effects.
@@ -101,6 +102,31 @@ export async function openContest(opts: OpenOpts): Promise<number> {
     ],
   });
   return Number(contestId);
+}
+
+export interface OpenMissionOpts {
+  poolUsdc: number;
+  durationSeconds: number;
+  domain?: "solver" | "analyst" | "scout";
+  templateId?: string;
+  minTier?: number;
+  maxTier?: number;
+}
+
+/// Open a mission: list a SOLVER-type contest on-chain (cType 2), then generate
+/// and persist the mission, which seeds its specialists. The mission's domain
+/// and identity live in the `missions` table; on-chain it settles like any
+/// solver contest (no contract redeploy). Returns the contest id.
+export async function openMission(opts: OpenMissionOpts): Promise<number> {
+  const contestId = await openContest({
+    type: "solver",
+    poolUsdc: opts.poolUsdc,
+    durationSeconds: opts.durationSeconds,
+    minTier: opts.minTier ?? config.mission.minTier,
+    maxTier: opts.maxTier ?? OPEN_MAX_TIER,
+  });
+  await generateMission({ contestId, domain: opts.domain, templateId: opts.templateId });
+  return contestId;
 }
 
 export interface OpenContestInfo {

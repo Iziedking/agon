@@ -8,6 +8,8 @@ import { query } from "../db/pool.js";
 import { AnalystRunner } from "../runners/analyst.js";
 import { ScoutRunner } from "../runners/scout.js";
 import { SolverRunner } from "../runners/solver.js";
+import { loadMission } from "../runners/missions/generator.js";
+import { MissionRunner } from "../runners/missions/runner.js";
 import type { AgentResult, ContestEntryInput } from "../runners/types.js";
 import { fundHotWallets, sweepHotWallets } from "./contestOps.js";
 import { applyReputation, creditPoints, postValidatorFeedback, qualifiedField } from "./reputation.js";
@@ -141,9 +143,38 @@ async function finalScores(
   field: ContestEntryInput[],
   ctx?: { broadcast: (message: unknown) => void; deadlineMs: number; source: "contest"; endsAtMs: number },
 ): Promise<AgentResult[]> {
+  // A mission rides a solver-type contest on-chain; when this contest is tagged
+  // in the missions table, run the MissionRunner instead of the family runner.
+  const mission = await loadMission(contestId);
+  if (mission) return runMission(contestId, field);
   if (cType === 0) return new ScoutRunner(5).run(contestId, field, ctx);
   if (cType === 1) return new AnalystRunner().run(contestId, field);
   return new SolverRunner(SOLVER_CONTEST_PUZZLES).run(contestId, field, ctx);
+}
+
+/// Funds each operative a small USDC float (so it can BUY intel from specialists
+/// over the A2A rail), runs the MissionRunner, then sweeps the leftover floats
+/// back. The float is bounded by MISSION_FUND_MAX_USDC across the field so a
+/// large field can't drain the coordinator. Falls through to an unfunded run
+/// (BUY paths just decline) when no master mnemonic is set.
+async function runMission(contestId: number, field: ContestEntryInput[]): Promise<AgentResult[]> {
+  const ids = field.map((e) => e.agentId);
+  const perOp = Math.min(
+    config.mission.operativeFloatUsdc,
+    config.mission.fundMaxUsdc / Math.max(ids.length, 1),
+  );
+  if (perOp > 0 && config.scout.masterMnemonic) {
+    await fundHotWallets(ids, perOp).catch((err) =>
+      console.warn(`[mission] fund failed: ${err instanceof Error ? err.message : err}`),
+    );
+  }
+  const results = await new MissionRunner().run(contestId, field);
+  if (config.scout.masterMnemonic) {
+    await sweepHotWallets(ids).catch((err) =>
+      console.warn(`[mission] sweep failed: ${err instanceof Error ? err.message : err}`),
+    );
+  }
+  return results;
 }
 
 function standings(results: AgentResult[]) {

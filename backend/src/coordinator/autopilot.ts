@@ -3,7 +3,7 @@ import { privateKeyToAccount } from "viem/accounts";
 
 import { arcTestnet, publicClient } from "../chain/arc.js";
 import { config } from "../config/index.js";
-import { coordinatorAddress, findDueContests, findOpenContests, openContest } from "./contestOps.js";
+import { coordinatorAddress, findDueContests, findOpenContests, openContest, openMission } from "./contestOps.js";
 import { runContestById } from "./runContestById.js";
 import { findActiveChallenges, resolveChallengeById } from "./runChallengeById.js";
 import { startArcanaClaimerLoop } from "../lib/arcanaClaimer.js";
@@ -315,6 +315,42 @@ async function startRandomChallengeLoop(broadcast: (message: unknown) => void): 
 /// and the per-agent prediction tick scheduler. Splitting these out lets
 /// the cadence scheduler reuse them without re-importing autopilot's
 /// open-loop.
+/// Opens a platform mission on a cadence (the agent labor market). Off by
+/// default; set MISSION_ENABLED=true. The due-sweeper settles each mission like
+/// any contest, running the MissionRunner via finalScores. Cadence is
+/// MISSION_CADENCE_SECONDS (default 1h); MISSION_DOMAIN picks solver/analyst.
+async function startMissionLoop(broadcast: (message: unknown) => void): Promise<void> {
+  if (!config.mission.enabled) return;
+  if (!config.coordinator.privateKey) {
+    console.warn("autopilot: MISSION_ENABLED set but COORDINATOR_PRIVATE_KEY missing; skipping missions");
+    return;
+  }
+  const cadence = Number(process.env.MISSION_CADENCE_SECONDS ?? "3600");
+  const domain = (process.env.MISSION_DOMAIN ?? "solver").toLowerCase() as "solver" | "analyst" | "scout";
+  console.log(`autopilot: missions on (${domain}), opening one every ${cadence}s`);
+  for (;;) {
+    try {
+      const contestId = await openMission({
+        poolUsdc: config.mission.poolUsdc,
+        durationSeconds: config.mission.durationSeconds,
+        domain,
+        minTier: config.mission.minTier,
+      });
+      await setTierGate("contest", contestId, config.mission.minTier, 4).catch(() => {});
+      broadcast({
+        type: "contest_open",
+        contestId,
+        contestType: "mission",
+        endsAt: Date.now() + config.mission.durationSeconds * 1000,
+      });
+      console.log(`autopilot: opened mission ${contestId}, ${config.mission.poolUsdc} USDC, ${config.mission.durationSeconds}s window`);
+    } catch (err) {
+      console.error("autopilot mission open failed:", err instanceof Error ? err.message : err);
+    }
+    await sleep(cadence * 1000);
+  }
+}
+
 export async function startBackgroundServices(
   broadcast: (message: unknown) => void,
 ): Promise<void> {
@@ -372,6 +408,13 @@ export async function startBackgroundServices(
   void startAdminCommandWorker(broadcast).catch((err) =>
     console.error(
       "admin command worker crashed:",
+      err instanceof Error ? err.message : err,
+    ),
+  );
+  // Optional agent-labor-market missions. No-op unless MISSION_ENABLED=true.
+  void startMissionLoop(broadcast).catch((err) =>
+    console.error(
+      "mission loop crashed:",
       err instanceof Error ? err.message : err,
     ),
   );
