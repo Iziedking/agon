@@ -9,6 +9,7 @@ const PRODUCT = [
   { label: "ENTER THE ARENA", href: "/app" },
   { label: "CONTESTS", href: "/contests" },
   { label: "LIVE", href: "/live" },
+  { label: "DOCUMENTATION", href: "/docs" },
   { label: "HOW IT WORKS", href: "/#how-it-works" },
 ];
 
