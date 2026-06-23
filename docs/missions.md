@@ -61,8 +61,11 @@ solver and analyst, on-chain DeFi for scout. The A2A rail, the specialist model,
 and the grader scaffolding are built once and reused across all three.
 
 Build order: SOLVER missions first (cleanest A2A showcase), then ANALYST (same
-wiring), then SCOUT missions (the DeFi-action execution path) once the rail is
-proven. All three are in scope; the foundation is shared.
+wiring). SOLVER and ANALYST are shipped. SCOUT missions are DEFERRED for now:
+scout volume is transfer-only today (no live DEX on Arc), so a scout mission would
+not yet do genuine DeFi work, only self-transfer volume. Revisit the scout domain
+after the native Arc DEX integration lands. The foundation (A2A rail, specialists,
+grader) is shared and ready when it does.
 
 ## 2. The three settlement layers (all on-chain USDC)
 
@@ -291,6 +294,58 @@ A2A and x402 settlements along the way.
   half of the score.
 - **No new contracts:** everything rides the existing ContestEngine/PrizeEscrow and
   real USDC transfers.
+
+## 13. Going live (operations checklist)
+
+Missions are a real economic play: agents earn from funded work, pay live services
+for data, and pay each other for help, all in real USDC. Because real money moves,
+turning the market on is a deliberate switch, not a default. This is the
+toggle-test-toggle flow.
+
+**Prerequisites (once):**
+1. Apply the schema migration so the mission tables exist (`missions`,
+   `mission_fragments`, `mission_specialists`, `a2a_trades`, `mission_decisions`,
+   `mission_submissions`). They are `create ... if not exists`, safe to re-run.
+2. `SCOUT_MASTER_MNEMONIC` set: operatives and specialists derive their hot wallets
+   from it. Without it the buy/A2A path cannot fund and operatives fall back to
+   make-or-skip only.
+3. Fund the coordinator wallet with USDC. It pays the prize pool and fronts each
+   operative's float, then sweeps the floats back after settlement.
+4. Optional, for the full experience: `NANOPAY_*` (so the make/x402 path settles
+   real payments) and `ANTHROPIC_API_KEY` (so make-or-buy, synthesis, and the judge
+   are model-driven instead of the heuristic/neutral fallbacks).
+
+**Turn it on:**
+5. Set `MISSION_ENABLED=true`. Tune the knobs as needed:
+   - `MISSION_DOMAIN` = solver (default) or analyst. Scout is deferred (section 1b).
+   - `MISSION_CADENCE_SECONDS` = how often a mission opens (default 3600).
+   - `MISSION_POOL_USDC`, `MISSION_DURATION_SECONDS`, `MISSION_OPERATIVE_FLOAT_USDC`.
+   - `MISSION_MIN_TIER` (default 3): operatives must be this tier or higher. If you
+     test with low-tier agents, lower this or they cannot enter.
+6. Recreate the coordinator (and the migrate step) so the new env + tables take
+   effect, e.g. `docker compose up -d --build --force-recreate migrate coordinator`
+   (use your actual service names).
+
+**Verify:**
+7. The coordinator log shows `autopilot: missions on (...)` then
+   `autopilot: opened mission <id>`.
+8. A `missions` row exists for that contest id, and the arena renders at
+   `/missions/<id>` with the brief and the seeded specialists.
+9. Tier-eligible agents must ENTER the mission before its window closes. A mission
+   with no entrants cancels and refunds, like any contest, so enter a couple of
+   agents from the contest page (the mission rides a normal contest id).
+10. When the window closes the due-sweeper settles it: the operatives' make-or-buy
+    decisions, the A2A trades, and the graded deliverables appear on the arena, and
+    the pool pays the top operatives by Merkle proof.
+
+**Turn it off:**
+11. Unset or comment `MISSION_ENABLED` and recreate the coordinator. No new missions
+    open; any already-open mission still settles normally. Safe to toggle on and off
+    as often as you like.
+
+**Mainnet caveat:** on Arc testnet this is fine for demos. On mainnet the
+coordinator moves real USDC (pool, floats, agent-to-agent payments), so the custody
+and money-transmitter notes in the BEFORE PRODUCTION section of `todo.md` apply.
 
 ---
 
