@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useOperatorAddress } from "@/hooks/useAuth";
 import { useArcWrite } from "@/hooks/useArcWrite";
 import { CONTRACTS, chainNowSeconds, confirmTx } from "@/lib/arc";
@@ -57,6 +57,29 @@ export function CreateChallengeModal({ open, onClose }: { open: boolean; onClose
 
   const isCustom = kind === CUSTOM_KIND_INDEX;
   const kindName = CHALLENGE_KIND[kind] ?? "Prediction";
+
+  // Reset the result state every time the modal opens. The modal returns null
+  // when closed but stays mounted, so without this a "request received" or
+  // "challenge #N is live" card persists and the user is stuck on it until a
+  // full page refresh instead of landing back on a clean form.
+  useEffect(() => {
+    if (open) {
+      setRequestSent(false);
+      setCreatedId(null);
+      setError(null);
+      setBusy(false);
+    }
+  }, [open]);
+
+  // Reset to a clean form in place, without closing, so the user can file
+  // another request / create another challenge right away.
+  function startAnother() {
+    setRequestSent(false);
+    setCreatedId(null);
+    setError(null);
+    setContact("");
+    setSpec("");
+  }
 
   if (!open) return null;
 
@@ -159,12 +182,21 @@ export function CreateChallengeModal({ open, onClose }: { open: boolean; onClose
               <p className="font-mono text-sm leading-[1.6] text-ink-2">
                 request received. ArcRun will review your custom challenge and reach out using the contact you gave.
               </p>
-              <button
-                onClick={onClose}
-                className="mt-6 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:text-ink"
-              >
-                CLOSE
-              </button>
+              <div className="mt-6 flex flex-col gap-2">
+                <button
+                  onClick={startAnother}
+                  className="inline-flex items-center justify-center gap-2 bg-accent px-4 py-2.5 font-mono text-[13px] uppercase tracking-[0.12em] text-accent-ink hover:bg-accent-press"
+                  style={{ clipPath: NOTCH }}
+                >
+                  CREATE ANOTHER <span aria-hidden>→</span>
+                </button>
+                <button
+                  onClick={onClose}
+                  className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:text-ink"
+                >
+                  CLOSE
+                </button>
+              </div>
             </div>
           ) : createdId !== null ? (
             <div className="mt-5">
@@ -184,10 +216,10 @@ export function CreateChallengeModal({ open, onClose }: { open: boolean; onClose
                   OPEN CHALLENGE <span aria-hidden>→</span>
                 </a>
                 <button
-                  onClick={onClose}
+                  onClick={startAnother}
                   className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:text-ink"
                 >
-                  STAY HERE
+                  CREATE ANOTHER
                 </button>
               </div>
             </div>
