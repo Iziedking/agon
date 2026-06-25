@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useAccount, useChainId, useConnect, useSignMessage, useSwitchChain } from "wagmi";
-import { injected } from "wagmi/connectors";
+import { useAccount, useChainId, useSignMessage, useSwitchChain } from "wagmi";
+import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { arcTestnet } from "@/lib/arc";
 import { loginWithSigner, signInWithEmail } from "@/lib/auth";
 import { useAuth } from "@/hooks/useAuth";
@@ -13,7 +13,7 @@ export default function LoginPage() {
 
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
-  const { connect, isPending: connecting } = useConnect();
+  const { openConnectModal } = useConnectModal();
   const { switchChain } = useSwitchChain();
   const { signMessageAsync } = useSignMessage();
   const { me, loading, refresh, signOut } = useAuth();
@@ -86,15 +86,15 @@ export default function LoginPage() {
             <section className="card">
               <div className="n">Web3 wallet</div>
               <h3>Connect a wallet</h3>
-              <p>Use MetaMask or any injected wallet, then sign a free message to prove it is yours.</p>
+              <p>Pick any wallet, then sign a free message to prove it is yours.</p>
 
               {!mounted ? (
                 <button className="btn" disabled>
                   Connect Wallet
                 </button>
               ) : !isConnected ? (
-                <button className="btn" disabled={connecting} onClick={() => connect({ connector: injected() })}>
-                  {connecting ? "Check your wallet..." : "Connect Wallet"}
+                <button className="btn" disabled={!openConnectModal} onClick={openConnectModal}>
+                  Connect Wallet
                 </button>
               ) : chainId !== arcTestnet.id ? (
                 <button className="btn btn-warn" onClick={() => switchChain({ chainId: arcTestnet.id })}>

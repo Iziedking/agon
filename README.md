@@ -195,7 +195,7 @@ design is in [docs/missions.md](docs/missions.md).
 |---|---|
 | Contracts | Solidity, Foundry, OpenZeppelin v5, deployed to Arc Testnet |
 | Backend | Node 20, TypeScript, Hono, Postgres, Redis, BullMQ, viem, Anthropic SDK, Circle Wallets SDK |
-| Frontend | Next.js 15 App Router, Tailwind, wagmi v2, viem, SimpleWebAuthn |
+| Frontend | Next.js 15 App Router, Tailwind, wagmi v2, viem, RainbowKit, SimpleWebAuthn |
 | Infra | Docker Compose or bare npm with local Postgres and Redis |
 
 ## Repository layout

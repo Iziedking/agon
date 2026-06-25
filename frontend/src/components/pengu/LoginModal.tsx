@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { useAccount, useChainId, useConnect, useDisconnect, useSignMessage, useSwitchChain } from "wagmi";
-import { injected } from "wagmi/connectors";
+import { useAccount, useChainId, useDisconnect, useSignMessage, useSwitchChain } from "wagmi";
+import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { arcTestnet } from "@/lib/arc";
 import {
   enrollPasskey,
@@ -139,7 +139,7 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
 
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
-  const { connect, isPending: connecting } = useConnect();
+  const { openConnectModal } = useConnectModal();
   const { disconnect } = useDisconnect();
   const { switchChain } = useSwitchChain();
   const { signMessageAsync } = useSignMessage();
@@ -334,10 +334,13 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
     try { disconnect(); } catch { /* ignore */ }
   }
 
+  // The wallet branch opens RainbowKit's picker (openConnectModal) so the user
+  // chooses a specific wallet, instead of silently grabbing the active injected
+  // one. Once connected, the same tag advances to switch-chain, then SIWE.
   const wallet: { label: string; onClick?: () => void; disabled: boolean } = !mounted
     ? { label: "CONNECT A WALLET", disabled: true }
     : !isConnected
-      ? { label: connecting ? "CHECK YOUR WALLET" : "CONNECT A WALLET", onClick: () => connect({ connector: injected() }), disabled: connecting }
+      ? { label: "CONNECT A WALLET", onClick: openConnectModal, disabled: !openConnectModal }
       : chainId !== arcTestnet.id
         ? { label: "SWITCH TO ARC", onClick: () => switchChain({ chainId: arcTestnet.id }), disabled: false }
         : { label: busy ? "SIGNING" : "SIGN IN WITH WALLET", onClick: signInWeb3, disabled: busy };

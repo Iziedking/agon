@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useAccount, useChainId, useConnect, useDisconnect, useSwitchChain } from "wagmi";
-import { injected } from "wagmi/connectors";
+import { useAccount, useChainId, useDisconnect, useSwitchChain } from "wagmi";
+import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { arcTestnet } from "@/lib/arc";
 
 /// Wallet connect button, styled as a pill to match the arena theme. Renders a
@@ -15,7 +15,7 @@ export function ConnectButton() {
   useEffect(() => setMounted(true), []);
 
   const { address, isConnected } = useAccount();
-  const { connect, isPending } = useConnect();
+  const { openConnectModal } = useConnectModal();
   const { disconnect } = useDisconnect();
   const chainId = useChainId();
   const { switchChain } = useSwitchChain();
@@ -32,10 +32,10 @@ export function ConnectButton() {
     return (
       <button
         className={`${pill} border border-pengu-blue/50 bg-pengu-card text-pengu-blue hover:bg-pengu-blue/10`}
-        onClick={() => connect({ connector: injected() })}
-        disabled={isPending}
+        onClick={openConnectModal}
+        disabled={!openConnectModal}
       >
-        {isPending ? "check your wallet" : "connect wallet"}
+        connect wallet
       </button>
     );
   }
