@@ -10,6 +10,7 @@ import { arcTestnet } from "@/lib/arc";
 import { arcrunRainbowTheme } from "@/lib/rainbowTheme";
 import { AuthProvider } from "@/hooks/useAuth";
 import { SessionEndedToast } from "@/components/SessionEndedToast";
+import { MissionAlert } from "@/components/MissionAlert";
 
 export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => new QueryClient());
@@ -31,6 +32,8 @@ export function Providers({ children }: { children: ReactNode }) {
                 stale wallet session, so the user understands why the
                 login button reappeared. */}
             <SessionEndedToast />
+            {/* Site-wide popup when a new mission goes live. */}
+            <MissionAlert />
           </AuthProvider>
         </RainbowKitProvider>
       </QueryClientProvider>
