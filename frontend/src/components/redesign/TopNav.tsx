@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useOperatorAddress } from "@/hooks/useAuth";
 import { LoginButton } from "@/components/pengu/LoginButton";
@@ -50,16 +51,16 @@ export function TopNav() {
   return (
     <header className="sticky top-0 z-20 border-b border-[color:var(--hairline)] bg-canvas">
       <div className="mx-auto flex h-16 max-w-[1600px] items-center justify-between gap-3 px-4 sm:px-6">
-        <a href="/" className="inline-flex items-center text-ink">
+        <Link href="/" className="inline-flex items-center text-ink">
           <ArcRunMark />
-        </a>
+        </Link>
 
         {isSignedIn ? (
         <nav className="hidden items-center gap-8 md:flex">
           {ROUTES.map((r) => {
             const active = pathname === r.href || pathname.startsWith(`${r.href}/`);
             return (
-              <a
+              <Link
                 key={r.href}
                 href={r.href}
                 className={`font-mono text-[11px] uppercase tracking-[0.16em] transition-colors duration-120 ${
@@ -67,7 +68,7 @@ export function TopNav() {
                 }`}
               >
                 {r.label}
-              </a>
+              </Link>
             );
           })}
           <ProfileLink />
@@ -106,7 +107,7 @@ export function TopNav() {
             {ROUTES.map((r) => {
               const active = pathname === r.href || pathname.startsWith(`${r.href}/`);
               return (
-                <a
+                <Link
                   key={r.href}
                   href={r.href}
                   className={`border-b border-[color:var(--hairline)] py-3 font-mono text-[12px] uppercase tracking-[0.16em] transition-colors last:border-0 ${
@@ -114,7 +115,7 @@ export function TopNav() {
                   }`}
                 >
                   {r.label}
-                </a>
+                </Link>
               );
             })}
             <div className="border-b border-[color:var(--hairline)] py-3 last:border-0">

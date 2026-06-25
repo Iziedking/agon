@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { CSSProperties, MouseEvent, ReactNode } from "react";
 
 /// The product's CTA shape. A rectangular tag with a single notched
@@ -64,12 +65,25 @@ export function TagButton(props: TagButtonProps) {
   );
 
   if ("href" in props && props.href !== undefined) {
+    // Internal routes go through next/link so navigation is client-side and
+    // the wallet connection survives in memory. A plain <a> would hard-reload,
+    // remounting the whole provider tree and forcing a wallet reconnect on
+    // every click. External / target="_blank" links stay a plain anchor.
+    const isInternal = props.href.startsWith("/") && !props.target;
+    const anchorCls = `${classes(variant, size, !!disabled)} ${className}`;
+    if (isInternal) {
+      return (
+        <Link href={props.href} className={anchorCls} style={notchStyle}>
+          {inner}
+        </Link>
+      );
+    }
     return (
       <a
         href={props.href}
         target={props.target}
         rel={props.rel}
-        className={`${classes(variant, size, !!disabled)} ${className}`}
+        className={anchorCls}
         style={notchStyle}
       >
         {inner}
