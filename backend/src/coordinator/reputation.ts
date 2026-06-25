@@ -5,7 +5,13 @@ import { privateKeyToAccount } from "viem/accounts";
 import { arcTestnet, publicClient } from "../chain/arc.js";
 import { config } from "../config/index.js";
 import { coordinatorWallet } from "./contestOps.js";
+import { query } from "../db/pool.js";
 import type { AgentResult } from "../runners/types.js";
+
+/// Minimal SyndicateFactory surface for rolling a member's earned reputation
+/// into their syndicate's running total. Coordinator-role gated; the contract
+/// reverts NotInSyndicate for non-members, so callers pre-filter membership.
+const syndicateContribAbi = parseAbi(["function recordContribution(address member, uint128 amount)"]);
 
 /// Step 7: on-settlement reputation and points. In-game reputation deltas go
 /// through ContestEngine (coordinator role); Cycles (points) are credited via
@@ -73,6 +79,62 @@ export async function applyReputation(contestId: number, results: AgentResult[])
   } catch (err) {
     console.error(`contest ${contestId}: applyReputationDeltas failed:`, err instanceof Error ? err.message : err);
   }
+}
+
+/// Roll the reputation each operator's agents earned this event into their
+/// SYNDICATE's running total (SyndicateFactory.recordContribution). This is what
+/// makes the weekly syndicate war real: without it, every syndicate's
+/// reputation stays 0, no week ranks, and no cycle pool can be won. Mirrors the
+/// per-operator aggregation creditPoints uses. We pre-filter to operators who
+/// are actually in a syndicate (via the indexer's operators.current_syndicate_id)
+/// so we don't burn gas on the NotInSyndicate revert for the many non-members.
+export async function recordSyndicateContributions(eventId: number, results: AgentResult[]): Promise<void> {
+  if (results.length === 0 || !config.coordinator.privateKey) return;
+
+  const perOp = new Map<string, number>();
+  for (const s of ranked(results)) {
+    const key = s.r.operator.toLowerCase();
+    perOp.set(key, (perOp.get(key) ?? 0) + rewardForRank(s.rank).rep);
+  }
+  if (perOp.size === 0) return;
+
+  let members: Set<string>;
+  try {
+    const { rows } = await query<{ address: string }>(
+      "select address from operators where current_syndicate_id is not null and address = any($1)",
+      [[...perOp.keys()]],
+    );
+    members = new Set(rows.map((r) => r.address.toLowerCase()));
+  } catch (err) {
+    console.error(`event ${eventId}: syndicate membership lookup failed:`, err instanceof Error ? err.message : err);
+    return;
+  }
+  if (members.size === 0) return;
+
+  const wallet = coordinatorWallet();
+  let recorded = 0;
+  let failed = 0;
+  for (const [operator, rep] of perOp) {
+    if (!members.has(operator) || rep <= 0) continue;
+    try {
+      const hash = await wallet.writeContract({
+        address: config.contracts.SyndicateFactory,
+        abi: syndicateContribAbi,
+        functionName: "recordContribution",
+        // Match the 1e6 reputation scale the rest of the stack stores/displays.
+        args: [operator as `0x${string}`, BigInt(rep) * REPUTATION_SCALE],
+      } as never);
+      await publicClient.waitForTransactionReceipt({ hash });
+      recorded++;
+    } catch (err) {
+      failed++;
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`event ${eventId}: recordContribution → ${operator} failed: ${msg.slice(0, 200)}`);
+    }
+  }
+  console.log(
+    `event ${eventId}: syndicate contributions recorded for ${recorded}/${members.size} member operator(s)${failed > 0 ? ` (${failed} failed)` : ""}`,
+  );
 }
 
 /// Credit Cycles to each operator (deduped across their agents) via PointsLedger.

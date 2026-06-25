@@ -12,7 +12,7 @@ import type { AgentResult, ContestEntryInput } from "../runners/types.js";
 import { fundHotWallets, sweepHotWallets } from "./contestOps.js";
 import { merkleRoot, payoutLeaf } from "./merkle.js";
 import { computeDistribution, normalizeScoringMode, rankResults } from "./payouts.js";
-import { creditPoints, postValidatorFeedback } from "./reputation.js";
+import { creditPoints, postValidatorFeedback, recordSyndicateContributions } from "./reputation.js";
 import { applyTraitMultipliers, awardPlacementTraits, fetchAgentMultipliers } from "./traits.js";
 import { notify } from "../notifications/index.js";
 import { getTierGate, tierAllowed } from "../lib/tierGate.js";
@@ -601,6 +601,9 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
       );
       await creditPoints(challengeId, cType, scoredResults).catch((err) =>
         console.error(`challenge ${challengeId}: creditPoints failed:`, err instanceof Error ? err.message : err),
+      );
+      await recordSyndicateContributions(challengeId, scoredResults).catch((err) =>
+        console.error(`challenge ${challengeId}: syndicate contributions failed:`, err instanceof Error ? err.message : err),
       );
       await postValidatorFeedback("challenge", challengeId, cType, scoredResults).catch((err) =>
         console.error(`challenge ${challengeId}: validator feedback failed:`, err instanceof Error ? err.message : err),

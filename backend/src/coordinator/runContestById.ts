@@ -12,7 +12,7 @@ import { loadMission } from "../runners/missions/generator.js";
 import { MissionRunner } from "../runners/missions/runner.js";
 import type { AgentResult, ContestEntryInput } from "../runners/types.js";
 import { fundHotWallets, sweepHotWallets } from "./contestOps.js";
-import { applyReputation, creditPoints, postValidatorFeedback, qualifiedField } from "./reputation.js";
+import { applyReputation, creditPoints, postValidatorFeedback, qualifiedField, recordSyndicateContributions } from "./reputation.js";
 import { merkleRoot, payoutLeaf } from "./merkle.js";
 import { computeDistribution, normalizeScoringMode } from "./payouts.js";
 import { applyTraitMultipliers, awardPlacementTraits, awardWinStreaks, fetchAgentMultipliers } from "./traits.js";
@@ -522,6 +522,9 @@ export async function runContestById(contestId: number, broadcast: (message: unk
   // in-game reputation, Cycles, ERC-8004 validator feedback, and one
   // placement-tagged trait per top-3 finisher.
   await applyReputation(contestId, results);
+  await recordSyndicateContributions(contestId, results).catch((err) =>
+    console.error(`contest ${contestId}: syndicate contributions failed:`, err instanceof Error ? err.message : err),
+  );
   await creditPoints(contestId, cType, results);
   await postValidatorFeedback("contest", contestId, cType, results);
   await awardPlacementTraits("contest", contestId, results).catch((err) =>
