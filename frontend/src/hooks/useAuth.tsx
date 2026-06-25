@@ -106,32 +106,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [refresh, reconnectAsync]);
 
-  // Stale-session detector + cross-account check.
-  // Runs every time `me`, `wallet`, or wagmi `status` changes. Bails
-  // until wagmi has settled its initial reconnect (status !== connecting
-  // and !== reconnecting) so we don't sign the user out during the
-  // ~200ms boot window.
+  // Cross-account check.
+  //
+  // We deliberately do NOT sign the user out just because the wallet is
+  // disconnected. The session cookie is the identity; the wallet connection is
+  // only needed at write time (to sign a tx), and wagmi reconnects it in the
+  // background on mount. The old "wallet missing -> signOut" rule meant every
+  // cold page load (and this app hard-reloads on many links) raced the
+  // reconnect and kicked the user out. Now a returning user stays signed in;
+  // if their wallet truly isn't connected when they try to write, the write
+  // flow prompts a reconnect.
+  //
+  // What we still guard: a DIFFERENT wallet connected than the session expects.
+  // That is a real safety issue (the backend would keep acting as the previous
+  // account), so we clear the session and ask them to sign in with the new one.
+  // Bail until wagmi settles so a mid-reconnect flicker doesn't false-trigger.
   useEffect(() => {
     if (!me) return;
-    // Hard gate: never judge "wallet missing" until the boot reconnect has
-    // actually resolved. Without this, a returning wallet user is signed out
-    // on every page load during the reconnect window.
     if (!walletSettled) return;
     if (status === "connecting" || status === "reconnecting") return;
 
-    // For wagmi-backed sessions: a disconnected wallet after wagmi has
-    // settled means the SIWE session is unusable for signing. Clear it
-    // so the UI shows a clean sign-in CTA instead of a logged-in shell
-    // whose writes will all fail.
-    if (me.walletKind === "wagmi" && !wallet) {
-      setSessionEndedReason("your wallet isn't connected anymore. sign in to continue.");
-      void signOut();
-      return;
-    }
-
-    // Cross-account check (existing): different wallet connected than
-    // the session expected → sign out so the backend doesn't keep
-    // acting as the previous account.
     if (wallet && me.address.toLowerCase() !== wallet.toLowerCase()) {
       setSessionEndedReason("you switched wallet accounts. sign in with the new one.");
       void signOut();
@@ -163,13 +157,15 @@ export function useAuth(): AuthContextValue {
 /// know "is someone signed in, and which address" without caring whether
 /// they came in through wagmi or Circle passkey.
 ///
-/// `isSignedIn` is true ONLY when there's a usable identity for the
-/// session's wallet kind:
-///   - Circle users: session cookie alone is enough (writes go through
-///     /wallet/execute server-side, no wagmi needed).
-///   - wagmi users: cookie AND wagmi is currently connected.
-/// Without this distinction, a wagmi user with a stale cookie would
-/// appear signed-in while every protected action fails silently.
+/// `isSignedIn` is driven by the SESSION, not the live wallet connection. The
+/// httpOnly session cookie (reflected in `me`) is the source of truth for who
+/// is signed in, for both Circle and wagmi users. We intentionally do not
+/// require `wagmi.isConnected` here: on a cold page load the wallet reconnects
+/// asynchronously, and gating "signed in" on it made a returning user flash
+/// (or get stuck in) the signed-out state on every navigation. The wallet is
+/// only needed when actually signing a tx; the write flow handles a missing
+/// connection at that point (prompting a reconnect) rather than treating the
+/// whole session as gone.
 export function useOperatorAddress(): {
   address: `0x${string}` | undefined;
   isSignedIn: boolean;
@@ -179,10 +175,10 @@ export function useOperatorAddress(): {
   settling: boolean;
 } {
   const { me, settling } = useAuth();
-  const { address: walletAddress, isConnected: walletConnected } = useAccount();
+  const { address: walletAddress } = useAccount();
   const address = (walletAddress ?? me?.address) as `0x${string}` | undefined;
-  // Circle: cookie is the auth. wagmi: cookie AND connected wallet.
-  const isCircle = me?.walletKind === "circle";
-  const isSignedIn = isCircle ? !!me?.address : walletConnected && !!me?.address;
+  // Session cookie is the auth for both kinds. Wallet connection is a
+  // write-time concern, not a signed-in concern.
+  const isSignedIn = !!me?.address;
   return { address, isSignedIn, settling };
 }
