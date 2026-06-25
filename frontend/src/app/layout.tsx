@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
 import { GeistSans } from "geist/font/sans";
 import { JetBrains_Mono, Black_Ops_One } from "next/font/google";
+import { headers } from "next/headers";
+import { cookieToInitialState } from "wagmi";
 import "../styles/tokens.css";
 import "./globals.css";
+import { config } from "@/lib/wagmi";
 import { Providers } from "@/components/Providers";
 import { ErrorReporter } from "@/components/ErrorReporter";
 import { ChainGuard } from "@/components/ChainGuard";
@@ -58,7 +61,12 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // Hydrate wagmi's connection state from the request cookies so a full page
+  // reload knows the connected wallet up front. Every nav in the app is a hard
+  // reload (plain <a> links), so this is what stops the wallet from briefly
+  // reading as disconnected on each page and tripping the sign-out detector.
+  const initialState = cookieToInitialState(config, (await headers()).get("cookie"));
   return (
     <html lang="en" className={`${GeistSans.variable} ${jetbrainsMono.variable} ${blackOps.variable}`}>
       <head>
@@ -66,7 +74,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <BodyLines />
-        <Providers>
+        <Providers initialState={initialState}>
           <ChainGuard />
           {children}
           <SideRail />
