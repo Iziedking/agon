@@ -56,8 +56,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [me, setMe] = useState<Me | null>(null);
   const [loading, setLoading] = useState(true);
   const [sessionEndedReason, setSessionEndedReason] = useState<string | null>(null);
+  // True once wagmi's initial reconnect attempt has actually resolved (one way
+  // or the other). The stale-session detector must not run before this, or it
+  // races the reconnect and signs a returning wallet user out on every page
+  // load. `status !== reconnecting` is not enough on its own: on a fresh load
+  // wagmi sits at "disconnected" for a beat BEFORE reconnect kicks in, and with
+  // RainbowKit's multi-connector config (WalletConnect, Coinbase) that beat is
+  // long enough for `me` to arrive first.
+  const [walletSettled, setWalletSettled] = useState(false);
   const { address: wallet, status } = useAccount();
-  const { reconnect } = useReconnect();
+  const { reconnectAsync } = useReconnect();
   const reconnectKicked = useRef(false);
 
   const refresh = useCallback(async () => {
@@ -71,24 +79,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setMe(null);
   }, []);
 
-  // Boot: clean any legacy token, kick wagmi's reconnect attempt against
-  // its stored connector state, then ask the auth service for the
-  // current session. The reconnect is idempotent; wagmi returns
-  // immediately when there's nothing to reconnect to.
+  // Boot: clean any legacy token, kick wagmi's reconnect attempt against its
+  // stored connector state, then ask the auth service for the current session.
+  // We AWAIT the reconnect and flip `walletSettled` only once it resolves, so
+  // the stale-session detector below has a hard signal that the reconnect is
+  // done (not merely "not currently reconnecting"). Reconnect resolves fast
+  // when there's nothing stored, so first-time / Circle users aren't held up.
   useEffect(() => {
     purgeLegacyToken();
-    if (!reconnectKicked.current) {
-      reconnectKicked.current = true;
-      try {
-        reconnect();
-      } catch {
-        // Reconnect can throw on the first call if no connectors are
-        // configured yet; safe to ignore. Worst case the user clicks
-        // CONNECT manually.
-      }
-    }
     void refresh();
-  }, [refresh, reconnect]);
+    if (reconnectKicked.current) return;
+    reconnectKicked.current = true;
+    let cancelled = false;
+    void (async () => {
+      try {
+        await reconnectAsync();
+      } catch {
+        // No stored connector, or the connector declined: nothing to restore.
+        // Either way the reconnect attempt is finished.
+      } finally {
+        if (!cancelled) setWalletSettled(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [refresh, reconnectAsync]);
 
   // Stale-session detector + cross-account check.
   // Runs every time `me`, `wallet`, or wagmi `status` changes. Bails
@@ -97,6 +113,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // ~200ms boot window.
   useEffect(() => {
     if (!me) return;
+    // Hard gate: never judge "wallet missing" until the boot reconnect has
+    // actually resolved. Without this, a returning wallet user is signed out
+    // on every page load during the reconnect window.
+    if (!walletSettled) return;
     if (status === "connecting" || status === "reconnecting") return;
 
     // For wagmi-backed sessions: a disconnected wallet after wagmi has
@@ -116,9 +136,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSessionEndedReason("you switched wallet accounts. sign in with the new one.");
       void signOut();
     }
-  }, [me, wallet, status, signOut]);
+  }, [me, wallet, status, signOut, walletSettled]);
 
-  const settling = status === "connecting" || status === "reconnecting" || loading;
+  const settling =
+    !walletSettled || status === "connecting" || status === "reconnecting" || loading;
 
   const clearSessionEndedReason = useCallback(() => setSessionEndedReason(null), []);
 
