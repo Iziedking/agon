@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useAccount } from "wagmi";
+import { useAccount, useAccountEffect } from "wagmi";
 import { useAuth } from "@/hooks/useAuth";
 import { LoginModal } from "@/components/pengu/LoginModal";
 
@@ -18,6 +18,18 @@ export function LoginButton() {
   const { address: wallet, isConnected } = useAccount();
   const display = me?.address ?? (isConnected ? wallet : null);
   const short = display ? `${display.slice(0, 6)}…${display.slice(-4)}` : null;
+
+  // Surface the sign-in popout the moment a wallet connects so the user is
+  // prompted for the SIWE signature, instead of being left connected-but-not-
+  // signed-in with no cue. `isReconnected` is false only on a fresh, user-
+  // initiated connect, so a boot-time wallet reconnect on page load does NOT
+  // re-pop the modal. We skip it when a session already exists (e.g. a Circle
+  // user, who has no wallet to connect anyway).
+  useAccountEffect({
+    onConnect({ isReconnected }) {
+      if (!isReconnected && !me) setOpen(true);
+    },
+  });
 
   return (
     <>
