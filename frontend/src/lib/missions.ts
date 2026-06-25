@@ -71,6 +71,32 @@ export interface MissionState {
   tape: TapeRow[];
 }
 
+/// One row in the mission index. Light aggregates only; the arena page carries
+/// the full detail.
+export interface MissionListItem {
+  contestId: number;
+  domain: string;
+  title: string;
+  status: string;
+  createdAt: string;
+  operatives: number;
+  payments: number;
+  spent6: string;
+}
+
+/// Fetches the mission index (open first, then newest). Returns [] on any
+/// network error so the page renders its empty state rather than throwing.
+export async function fetchMissions(): Promise<MissionListItem[]> {
+  try {
+    const res = await fetch(`${AUTH_URL}/missions`, { cache: "no-store" });
+    if (!res.ok) return [];
+    const data = (await res.json()) as { missions?: MissionListItem[] };
+    return data.missions ?? [];
+  } catch {
+    return [];
+  }
+}
+
 /// Fetches the full mission state. Returns null on a network error and a state
 /// with `mission: null` when the contest is not a mission.
 export async function fetchMission(contestId: number): Promise<MissionState | null> {

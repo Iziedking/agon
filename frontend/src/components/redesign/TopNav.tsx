@@ -26,6 +26,7 @@ const ROUTES = [
   { href: "/dashboard", label: "DASHBOARD" },
   { href: "/contests", label: "CONTESTS" },
   { href: "/challenges", label: "CHALLENGES" },
+  { href: "/missions", label: "MISSIONS" },
   { href: "/live", label: "LIVE" },
   { href: "/leaderboard", label: "LEADERBOARD" },
   { href: "/syndicates", label: "SYNDICATES" },

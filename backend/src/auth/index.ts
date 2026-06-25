@@ -1937,6 +1937,56 @@ app.get("/challenges/:id/standings", async (c) =>
 // read. Deliberately omits the captured intel/truth (the answer an operative
 // pays for) so the page can't leak it. Returns { mission: null } for a contest
 // that is not a mission, which is how the UI decides whether to show the arena.
+/// Mission index. Lists missions (open first, then newest) with light
+/// per-mission aggregates for the cards: how many operatives ran, how many
+/// on-chain payments fired, and the total USDC moved across the A2A + x402
+/// rails. Omits brief/intel/truth; the arena page (/missions/:id) carries the
+/// full detail. Capped so the list endpoint stays cheap.
+app.get("/missions", async (c) => {
+  const rows = await query<{
+    contest_id: string;
+    domain: string;
+    title: string;
+    status: string;
+    created_at: string;
+    operatives: string;
+    payments: string;
+    spent6: string;
+  }>(
+    `select
+       m.contest_id,
+       m.domain,
+       m.title,
+       m.status,
+       m.created_at::text as created_at,
+       (select count(*) from mission_submissions s where s.contest_id = m.contest_id) as operatives,
+       (
+         (select count(*) from a2a_trades t where t.contest_id = m.contest_id and t.status = 'settled')
+         + (select count(*) from nanopayments n where n.contest_id = m.contest_id and n.status = 'settled')
+       ) as payments,
+       (
+         (select coalesce(sum(price_usdc_6), 0) from a2a_trades t where t.contest_id = m.contest_id and t.status = 'settled')
+         + (select coalesce(sum(usdc_amount_6), 0) from nanopayments n where n.contest_id = m.contest_id and n.status = 'settled')
+       ) as spent6
+     from missions m
+     order by (m.status = 'open') desc, m.created_at desc
+     limit 60`,
+  );
+
+  return c.json({
+    missions: rows.rows.map((r) => ({
+      contestId: Number(r.contest_id),
+      domain: r.domain,
+      title: r.title,
+      status: r.status,
+      createdAt: r.created_at,
+      operatives: Number(r.operatives),
+      payments: Number(r.payments),
+      spent6: String(r.spent6),
+    })),
+  });
+});
+
 app.get("/missions/:id", async (c) => {
   const contestId = Number(c.req.param("id"));
   if (!Number.isFinite(contestId)) return c.json({ mission: null });
