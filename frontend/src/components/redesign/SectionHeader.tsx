@@ -13,8 +13,9 @@ interface Props {
   /// the eyebrow when it would only paraphrase the heading: the heading is
   /// the thing.
   eyebrow?: ReactNode;
-  /// The display heading. Strings only; the component handles the type.
-  heading: string;
+  /// The display heading. Usually a string; pass a node when you need to keep
+  /// multi-word phrases from breaking mid-line (wrap each in a nowrap span).
+  heading: ReactNode;
   /// Optional sub-deck mono body. Two or three lines max.
   subDeck?: ReactNode;
   /// Optional right-side slot for a tag CTA aligned to the heading row.

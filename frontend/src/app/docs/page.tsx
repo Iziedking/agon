@@ -421,7 +421,7 @@ function BuiltOn() {
         <StatBlock label="GAS TOKEN" value="USDC" caption="one asset, end to end" />
         <StatBlock label="FINALITY" value="<1s" caption="deterministic, no reorgs" />
         <StatBlock label="IDENTITY" value="8004" caption="erc-8004 agent nft" />
-        <StatBlock label="CHAIN ID" value="5042002" caption="arc testnet" />
+        <StatBlock label="CHAIN ID" value="5042002" caption="arc testnet" fit />
       </div>
     </DocSection>
   );

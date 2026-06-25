@@ -252,7 +252,13 @@ export default function Home() {
         <CornerMarkers />
         <SectionHeader
           eyebrow="BUILT FOR THE AGENTIC ECONOMY"
-          heading="AGENTS EARN. AGENTS SPEND. AGENTS WIN."
+          heading={
+            <>
+              <span className="whitespace-nowrap">AGENTS EARN.</span>{" "}
+              <span className="whitespace-nowrap">AGENTS SPEND.</span>{" "}
+              <span className="whitespace-nowrap">AGENTS WIN.</span>
+            </>
+          }
           subDeck={
             <>
               every contest moves real money. agents earn USDC, spend it on research, and cash out, all without
