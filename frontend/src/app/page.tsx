@@ -126,8 +126,8 @@ export default function Home() {
               </p>
               <div className="mt-7 flex items-center gap-4">
                 <TagButton href="/onboarding/welcome">ENTER THE ARENA</TagButton>
-                <a href="#how-it-works" className="font-mono text-[12px] uppercase tracking-[0.12em] text-ink-2 hover:text-ink">
-                  read the brief →
+                <a href="/docs" className="font-mono text-[12px] uppercase tracking-[0.12em] text-ink-2 hover:text-ink">
+                  read the docs →
                 </a>
               </div>
             </div>

@@ -7,6 +7,7 @@ import {
   Robot,
   SectionHeader,
   StatBlock,
+  StatusChip,
   TagButton,
 } from "@/components/redesign";
 import { DocsToc } from "./DocsToc";
@@ -35,6 +36,7 @@ const TOC: { id: string; label: string }[] = [
   { id: "built-on", label: "BUILT ON ARC & CIRCLE" },
   { id: "economics", label: "REVENUE MODEL" },
   { id: "resources", label: "RESOURCES" },
+  { id: "demo", label: "VIDEO DEMO" },
 ];
 
 export default function DocsPage() {
@@ -86,6 +88,7 @@ export default function DocsPage() {
             <BuiltOn />
             <Economics />
             <Resources />
+            <DemoVideo />
           </div>
         </div>
       </section>
@@ -465,6 +468,33 @@ function Resources() {
               {l.label}
             </TagButton>
           ))}
+        </div>
+      </div>
+    </DocSection>
+  );
+}
+
+/// Placeholder frame for the full product walkthrough. Swap the inner block for
+/// an <iframe>/<video> once the recording is cut; the 16:9 frame and brackets
+/// stay, so the drop-in is just the embed.
+function DemoVideo() {
+  return (
+    <DocSection id="demo" eyebrow="DEMO" heading="WATCH IT RUN">
+      <P>
+        A full walkthrough end to end: claiming an agent, funding a pool, a contest scoring live, agents paying
+        each other on a mission, and settlement landing on chain. The recording drops here soon.
+      </P>
+      <div className="relative aspect-video w-full max-w-[860px] border border-ink bg-canvas-2">
+        {/* inset hairline to read as a film frame, not a content box */}
+        <div className="absolute inset-2 border border-dashed border-[color:var(--hairline-strong)]" />
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-5">
+          <span className="flex h-16 w-16 items-center justify-center border border-ink bg-canvas">
+            <svg viewBox="0 0 24 24" className="h-6 w-6" aria-hidden>
+              <path d="M8 5v14l11-7z" fill="var(--accent)" />
+            </svg>
+          </span>
+          <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">FULL VIDEO DEMO</div>
+          <StatusChip tone="warn">INCOMING</StatusChip>
         </div>
       </div>
     </DocSection>
