@@ -29,17 +29,18 @@ export function friendlyError(e: unknown, fallback = "something went wrong. try 
   ) {
     return "your wallet is out of usdc for gas. top it up from the arc faucet and try again.";
   }
-  // Wagmi "Connector not connected" surfaces when a stored cookie session
-  // tries to write through wagmi but the wallet didn't auto-reconnect.
-  // AuthProvider should catch this case and sign the user out; this
-  // mapping covers the race where the action fires before the detector.
+  // Wagmi "Connector not connected" surfaces when a valid cookie session tries
+  // to write through wagmi but the injected wallet hasn't reconnected (common
+  // after a cold page load). The session is still good, so the user just needs
+  // to reconnect the wallet, not sign in again. useArcWrite already opens the
+  // picker for them in this case; this message tells them to retry after.
   if (
     msg.includes("connector not connected") ||
     msg.includes("not connected") ||
     msg.includes("no connector") ||
     msg.includes("disconnected")
   ) {
-    return "your wallet isn't connected. sign in to continue.";
+    return "your wallet got disconnected. reconnect it, then try again.";
   }
   if (msg.includes("chain mismatch") || msg.includes("does not match") || (msg.includes("chain") && msg.includes("switch"))) {
     return "wrong network. switch to arc and try again.";

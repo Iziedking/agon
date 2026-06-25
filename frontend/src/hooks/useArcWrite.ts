@@ -1,11 +1,22 @@
 "use client";
 
 import { useCallback } from "react";
-import { useWriteContract } from "wagmi";
+import { useAccount, useReconnect, useWriteContract } from "wagmi";
+import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { useAuth } from "@/hooks/useAuth";
 import { useCircleExecute, type CircleWriteArgs } from "@/hooks/useCircleExecute";
 import { useEnsureArc } from "@/hooks/useEnsureArc";
 import { arcTestnet } from "@/lib/arc";
+
+/// Thrown when a wagmi user's wallet is disconnected at write time and we've
+/// opened the picker for them to reconnect. The session is still valid, so the
+/// caller should surface "reconnect and retry", not "sign in".
+export class WalletReconnectError extends Error {
+  constructor() {
+    super("your wallet got disconnected. reconnect it, then try again.");
+    this.name = "WalletReconnectError";
+  }
+}
 
 /// Unified write surface for ArcRun call sites. Resolves at runtime to either
 /// wagmi's useWriteContract (for users with an injected wallet) or
@@ -22,6 +33,9 @@ export function useArcWrite() {
   const wagmi = useWriteContract();
   const circle = useCircleExecute();
   const ensureOnArc = useEnsureArc();
+  const { isConnected } = useAccount();
+  const { reconnectAsync } = useReconnect();
+  const { openConnectModal } = useConnectModal();
   const isCircle = me?.walletKind === "circle";
 
   const writeContractAsync = useCallback(
@@ -30,6 +44,26 @@ export function useArcWrite() {
         // Circle Dev-Controlled wallets are backend-signed on Arc directly,
         // so no chain switch is needed for the email-login path.
         return circle.writeContractAsync(args);
+      }
+      // The session can be valid (signed in) while the injected wallet has
+      // dropped its connection — common after a cold page load, since the
+      // wallet reconnects asynchronously and may not be back by the time the
+      // user clicks. Rather than fail the write (and make them sign out / in),
+      // reconnect in place: a silent reconnect from stored state first, and if
+      // that restores nothing, open the picker so they reconnect WITHOUT a
+      // fresh SIWE, then retry the action. The cookie session stays intact.
+      if (!isConnected) {
+        let restored = false;
+        try {
+          const connectors = await reconnectAsync();
+          restored = Array.isArray(connectors) && connectors.length > 0;
+        } catch {
+          restored = false;
+        }
+        if (!restored) {
+          openConnectModal?.();
+          throw new WalletReconnectError();
+        }
       }
       // For wagmi (injected wallet) writes: if the user is coming back from
       // /bridge with the wallet still on Sepolia or Polygon, swap to Arc
@@ -53,7 +87,7 @@ export function useArcWrite() {
         ...(args.value ? { value: BigInt(args.value) } : {}),
       } as Parameters<typeof wagmi.writeContractAsync>[0]);
     },
-    [isCircle, circle, wagmi, ensureOnArc],
+    [isCircle, circle, wagmi, ensureOnArc, isConnected, reconnectAsync, openConnectModal],
   );
 
   return {
