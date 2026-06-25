@@ -7,6 +7,7 @@ import { useArcWrite } from "@/hooks/useArcWrite";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/redesign/Footer";
 import { CornerMarkers, SectionHeader, SyndicateTile, type SyndicateKey } from "@/components/redesign";
+import { SyndicateCycleBanner } from "@/components/SyndicateCycleBanner";
 import { CONTRACTS, publicClient } from "@/lib/arc";
 import { friendlyError } from "@/lib/errors";
 import { reportEvent } from "@/lib/report";
@@ -154,6 +155,8 @@ export default function SyndicatesPage() {
 
         {error ? <p className="mt-4 font-mono text-xs text-[var(--err)]">{error}</p> : null}
       </section>
+
+      <SyndicateCycleBanner />
 
       {war && war.standings.length > 0 ? (
         <section className="mx-auto max-w-[1600px] px-6 pt-6">
