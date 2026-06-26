@@ -76,13 +76,75 @@ async function exaFindings(avoid: string[], rotate: number): Promise<LiveFinding
   }
 }
 
-/// Which source fits a domain. Internal helper so adding Firecrawl/Graph later is
-/// a one-line change here.
-async function findingsForDomain(domain: string, avoid: string[], rotate: number): Promise<{ findings: LiveFinding[]; source: string }> {
-  // Exa serves research/solver today; analyst falls back to Exa news until the
-  // Firecrawl-Polymarket and Graph sources land.
-  const findings = await exaFindings(avoid, rotate);
-  return { findings, source: "exa" };
+/// Broad Firecrawl angles. Firecrawl can capture ANY page, so the topics range
+/// well beyond crypto — prediction markets, AI, tech, science, sports, finance —
+/// which is exactly what makes solver missions varied and interesting.
+const FIRECRAWL_QUERIES = [
+  "Polymarket trending prediction markets and their odds this week",
+  "biggest movers and notable events in crypto markets today",
+  "notable AI model releases, benchmarks, and research this month",
+  "recent breakthroughs in technology and science in the news",
+  "trending GitHub repositories and developer tools this week",
+  "major world, sports, or cultural events happening right now",
+  "notable stock market moves, earnings, and macro news this week",
+  "an emerging trend or controversy people are debating online now",
+];
+
+/// Firecrawl search -> real findings from anywhere on the web. Title is the
+/// subject, the description/snippet the fact. Filters anything in `avoid`.
+async function firecrawlFindings(avoid: string[], rotate: number): Promise<LiveFinding[]> {
+  const key = config.liveData.firecrawlApiKey;
+  if (!key) return [];
+  const query = FIRECRAWL_QUERIES[rotate % FIRECRAWL_QUERIES.length]!;
+  try {
+    const res = await fetch("https://api.firecrawl.dev/v1/search", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ query, limit: 8 }),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    if (!res.ok) return [];
+    const data = (await res.json()) as {
+      data?: Array<{ title?: string; description?: string; markdown?: string; url?: string }>;
+    };
+    const avoidSet = new Set(avoid.map((s) => s.toLowerCase()));
+    const findings: LiveFinding[] = [];
+    for (const r of data.data ?? []) {
+      const subject = (r.title ?? "").trim();
+      const fact = (r.description ?? r.markdown ?? "").replace(/\s+/g, " ").trim();
+      if (!subject || fact.length < 40) continue;
+      if (avoidSet.has(subject.toLowerCase())) continue;
+      findings.push({ subject: subject.slice(0, 120), fact: fact.slice(0, 400) });
+    }
+    return findings;
+  } catch {
+    return [];
+  }
+}
+
+/// Picks findings for a mission, rotating across the available live sources for
+/// variety. Returns the first source that yields enough findings, else the
+/// richest. Adding The Graph later is one more entry in `sources`.
+async function findingsForDomain(
+  domain: string,
+  avoid: string[],
+  rotate: number,
+  minNeeded: number,
+): Promise<{ findings: LiveFinding[]; source: string }> {
+  const sources: Array<{ name: string; fn: (a: string[], r: number) => Promise<LiveFinding[]> }> = [
+    { name: "exa", fn: exaFindings },
+    { name: "firecrawl", fn: firecrawlFindings },
+  ];
+  // Rotate the start so consecutive missions favour different sources.
+  const off = rotate % sources.length;
+  const ordered = [...sources.slice(off), ...sources.slice(0, off)];
+  let best: { findings: LiveFinding[]; source: string } = { findings: [], source: "none" };
+  for (const s of ordered) {
+    const findings = await s.fn(avoid, rotate);
+    if (findings.length >= minNeeded) return { findings, source: s.name };
+    if (findings.length > best.findings.length) best = { findings, source: s.name };
+  }
+  return best;
 }
 
 /// Builds a live-grounded mission for a template, or null to fall back.
@@ -92,7 +154,7 @@ export async function buildLiveMission(template: MissionTemplate, avoid: string[
   }
   const n = template.fragments.length;
   const rotate = avoid.length; // cheap deterministic-ish rotation, no Math.random
-  const { findings, source } = await findingsForDomain(template.domain, avoid, rotate);
+  const { findings, source } = await findingsForDomain(template.domain, avoid, rotate, n);
   if (findings.length < n) return null;
 
   // One finding per fragment. Subject fills the ask shell; the real fact is the
