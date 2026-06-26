@@ -5,6 +5,7 @@ import { useAccount, useBalance, useReadContract, useSwitchChain, useWalletClien
 import { erc20Abi, formatUnits, isAddress, parseUnits } from "viem";
 
 import { BracketedCell, StatusChip, TagButton } from "@/components/redesign";
+import { EXPLORER } from "@/lib/arc";
 import { useAuth } from "@/hooks/useAuth";
 import type { config as wagmiConfig } from "@/lib/wagmi";
 import {
@@ -30,6 +31,21 @@ const ARC = BRIDGE_CHAINS.find((c) => c.code === "ARC")!;
 const ARC_ID = ARC.id;
 const DEFAULT_OTHER = BRIDGE_CHAINS.find((c) => c.code === "BASE")!.id;
 const USDC_ON_ARC = "0x3600000000000000000000000000000000000000" as const;
+
+/// A clickable arcscan link for an on-chain tx, so any settlement shown in the
+/// UI is verifiable in one click.
+function TxLink({ hash }: { hash: string }) {
+  return (
+    <a
+      href={`${EXPLORER}/tx/${hash}`}
+      target="_blank"
+      rel="noreferrer"
+      className="font-mono text-ink-2 underline decoration-dotted underline-offset-2 hover:text-accent"
+    >
+      tx {hash.slice(0, 10)}…{hash.slice(-6)} ↗
+    </a>
+  );
+}
 
 type Tab = "topup" | "withdraw";
 
@@ -329,6 +345,7 @@ function WagmiArcSend() {
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [successTx, setSuccessTx] = useState<string | null>(null);
 
   const amountNum = Number(amount);
   const validAmount = Number.isFinite(amountNum) && amountNum > 0;
@@ -349,6 +366,7 @@ function WagmiArcSend() {
   async function onSubmit() {
     setErrorMsg(null);
     setSuccessMsg(null);
+    setSuccessTx(null);
     if (!onArc) {
       try {
         await switchChainAsync({ chainId: ARC_ID as never });
@@ -367,7 +385,8 @@ function WagmiArcSend() {
         args: [recipient.trim() as `0x${string}`, parseUnits(amount, 6)],
         chainId: ARC_ID as never,
       });
-      setSuccessMsg(`Sent. tx ${hash.slice(0, 10)}…${hash.slice(-6)}.`);
+      setSuccessMsg("Sent on Arc.");
+      setSuccessTx(hash);
     } catch (err) {
       setErrorMsg(friendlyError(err, "Arc"));
     } finally {
@@ -429,6 +448,12 @@ function WagmiArcSend() {
       {successMsg ? (
         <div className="border-l-2 border-[color:var(--ok)] bg-canvas-2 px-4 py-3 font-mono text-[12px] text-ink-2">
           <span style={{ color: "var(--ok)" }}>OK</span> · {successMsg}
+          {successTx ? (
+            <>
+              {" "}
+              <TxLink hash={successTx} />
+            </>
+          ) : null}
         </div>
       ) : null}
     </BracketedCell>

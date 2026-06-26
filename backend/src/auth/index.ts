@@ -2126,6 +2126,11 @@ app.post("/missions/:id/buy-intel", requireAuth, async (c) => {
   if (!mm.rows[0]) return c.json({ error: "not a mission" }, 404);
   if (mm.rows[0].status !== "open") return c.json({ error: "this mission is no longer open" }, 409);
 
+  // The seller agent must be one of the caller's own agents (the resolver already
+  // enforces this, but the buy endpoint re-checks so it can't be bypassed).
+  const owned = await query("select 1 from agents where id = $1 and lower(owner) = $2", [agentId, operator]);
+  if (owned.rows.length === 0) return c.json({ error: "that agent is not one of yours" }, 403);
+
   // The platform piece for this fragment, still on the shelf.
   const plat = await query<{ price_usdc_6: string; intel: unknown }>(
     "select price_usdc_6, intel from mission_specialists where contest_id = $1 and fragment_id = $2 and owner = 'platform' and claimed_by is null",
@@ -2649,6 +2654,60 @@ app.get("/agents/identities", async (c) => {
     }
   }
   return c.json({ identities });
+});
+
+/// Resolves a free-text reference to one of the SIGNED-IN operator's agents, so
+/// a specialist can identify their agent by whatever is convenient: the numeric
+/// id, the agent's custom name, or the operator's linked X / Discord / Telegram
+/// handle (with or without a leading @). Scoped to the caller's own agents, so
+/// it doubles as an ownership check. Returns the matched agent, or 404 with the
+/// caller's agent list so the UI can hint.
+app.get("/agents/resolve", requireAuth, async (c) => {
+  const operator = c.get("address").toLowerCase();
+  const q = (c.req.query("q") ?? "").trim();
+  if (!q) return c.json({ error: "enter an agent id, name, or handle" }, 400);
+
+  const { rows: agents } = await query<{ id: string; nickname: string | null; display_mode: string | null }>(
+    "select id, nickname, display_mode from agents where lower(owner) = $1 order by id",
+    [operator],
+  );
+  if (agents.length === 0) return c.json({ error: "you have no agents yet" }, 404);
+
+  const { rows: opRows } = await query<{ x_handle: string | null; discord_username: string | null; telegram_username: string | null }>(
+    "select x_handle, discord_username, telegram_username from operators where lower(address) = $1",
+    [operator],
+  );
+  const op = opRows[0] ?? { x_handle: null, discord_username: null, telegram_username: null };
+
+  const norm = (s: string) => s.trim().replace(/^@/, "").toLowerCase();
+  const nq = norm(q);
+  const list = agents.map((a) => ({ agentId: Number(a.id), name: a.nickname, displayMode: a.display_mode }));
+
+  // 1. a numeric id the caller owns.
+  if (/^[0-9]+$/.test(q)) {
+    const hit = list.find((a) => a.agentId === Number(q));
+    if (hit) return c.json({ agentId: hit.agentId, name: hit.name });
+    return c.json({ error: `agent ${q} is not one of yours`, agents: list }, 404);
+  }
+  // 2. an agent's custom name (exact).
+  const byNick = list.find((a) => a.name && norm(a.name) === nq);
+  if (byNick) return c.json({ agentId: byNick.agentId, name: byNick.name });
+  // 3. the operator's linked handle -> the agent that reads as that identity,
+  //    else the operator's first agent.
+  const handle =
+    (op.x_handle && norm(op.x_handle) === nq && "x") ||
+    (op.discord_username && norm(op.discord_username) === nq && "discord") ||
+    (op.telegram_username && norm(op.telegram_username) === nq && "telegram") ||
+    null;
+  if (handle) {
+    const preferred = list.find((a) => a.displayMode === handle) ?? list[0]!;
+    return c.json({ agentId: preferred.agentId, name: preferred.name });
+  }
+  // 4. a partial custom-name match.
+  const byContains = list.find((a) => a.name && norm(a.name).includes(nq));
+  if (byContains) return c.json({ agentId: byContains.agentId, name: byContains.name });
+
+  return c.json({ error: `no agent of yours matches "${q}"`, agents: list }, 404);
 });
 
 /// Bulk raw display modes for agents (the chosen mode, not the resolved one).

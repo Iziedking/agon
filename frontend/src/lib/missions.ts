@@ -99,6 +99,25 @@ export interface MissionState {
   tape: TapeRow[];
 }
 
+/// Resolves a free-text reference (agent id, custom name, or the operator's
+/// linked X / Discord / Telegram handle) to one of the signed-in operator's own
+/// agents. Lets a specialist identify their agent however is convenient.
+export async function resolveAgent(
+  q: string,
+): Promise<{ agentId: number; name: string | null } | { error: string }> {
+  try {
+    const res = await fetch(`${AUTH_URL}/agents/resolve?q=${encodeURIComponent(q)}`, {
+      credentials: "include",
+      cache: "no-store",
+    });
+    const data = (await res.json().catch(() => ({}))) as { agentId?: number; name?: string | null; error?: string };
+    if (!res.ok || typeof data.agentId !== "number") return { error: data.error ?? "could not find that agent." };
+    return { agentId: data.agentId, name: data.name ?? null };
+  } catch {
+    return { error: "network error. try again." };
+  }
+}
+
 /// Specialist buys a scarce platform intel piece (after paying the base price on
 /// chain). The backend claims it exclusively and stands up the resale listing.
 export async function buyMissionIntel(

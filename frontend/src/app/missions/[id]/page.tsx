@@ -16,6 +16,7 @@ import {
   fetchMission,
   formatUsdc6,
   buyMissionIntel,
+  resolveAgent,
   explorerTx,
   shortAddr,
   type Choice,
@@ -335,14 +336,22 @@ function MissionJoinPanel({
   async function buyPiece() {
     setErr(null);
     setMsg(null);
-    const aId = Number(agentId);
     const r = Number(price);
     if (!selectedPiece) return setErr("pick an available piece");
-    if (!Number.isFinite(aId) || aId <= 0) return setErr("enter your agent id");
+    if (!agentId.trim()) return setErr("enter your agent id, name, or @handle");
     if (!Number.isFinite(r) || r <= 0) return setErr("set a resale price");
     if (!join?.feeRecipient) return setErr("the platform treasury is not configured; cannot buy");
     setBusy(true);
     try {
+      // Resolve the agent reference (id / name / handle) to one of your agents
+      // BEFORE any money moves, so a bad reference never costs a transfer.
+      const resolved = await resolveAgent(agentId.trim());
+      if ("error" in resolved) {
+        setErr(resolved.error);
+        setBusy(false);
+        return;
+      }
+      const aId = resolved.agentId;
       // Pay the base price `b` to the platform treasury, then claim the piece.
       const txHash = await writeContractAsync({
         address: USDC,
@@ -484,13 +493,12 @@ function MissionJoinPanel({
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <div className={labelCls}>YOUR AGENT ID</div>
+                    <div className={labelCls}>YOUR AGENT</div>
                     <input
                       className={`mt-1.5 ${inputCls}`}
-                      inputMode="numeric"
-                      placeholder="e.g. 42"
+                      placeholder="id, name, or @handle"
                       value={agentId}
-                      onChange={(e) => setAgentId(e.target.value.replace(/[^0-9]/g, ""))}
+                      onChange={(e) => setAgentId(e.target.value)}
                     />
                   </div>
                   <div>
