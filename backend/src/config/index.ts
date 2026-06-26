@@ -92,6 +92,14 @@ const envSchema = z.object({
   TIER2_MODEL: z.string().default("meta-llama/llama-3.1-8b-instruct"),
   TIER3_MODEL: z.string().default("openai/gpt-4o-mini"),
   TIER4_MODEL: z.string().default("claude-haiku-4-5-20251001"),
+  // Live-data mission sources (v2 diversity). Each is optional; the generator
+  // uses whichever are set and falls back to LLM/canned otherwise.
+  EXA_API_KEY: z.string().optional(),
+  FIRECRAWL_API_KEY: z.string().optional(),
+  GRAPH_API_KEY: z.string().optional(),
+  // Comma-separated The Graph gateway subgraph ids to draw on-chain subjects
+  // from. Default is the Uniswap v3 mainnet subgraph (deep, reliable data).
+  GRAPH_SUBGRAPH_IDS: z.string().default("5zvR82QoaXYFyDEKLZ9t6v9adgnptxYpKpSbxtgVENFV"),
   // Testing safety belt. When true:
   //  - web_search tool is stripped from every tier (avoids $0.01/search)
   //  - max_tokens is clamped to 200 regardless of POWER stat
@@ -630,6 +638,12 @@ export const config = {
     specialistMaxBuy: env.MISSION_SPECIALIST_MAX_BUY,
     intelPieces: env.MISSION_INTEL_PIECES,
     operativeSeats: env.MISSION_OPERATIVE_SEATS,
+  },
+  liveData: {
+    exaApiKey: env.EXA_API_KEY?.trim() || undefined,
+    firecrawlApiKey: env.FIRECRAWL_API_KEY?.trim() || undefined,
+    graphApiKey: env.GRAPH_API_KEY?.trim() || undefined,
+    graphSubgraphIds: env.GRAPH_SUBGRAPH_IDS.split(",").map((s) => s.trim()).filter(Boolean),
   },
   analystAutofund: {
     enabled: env.ANALYST_AUTOFUND,

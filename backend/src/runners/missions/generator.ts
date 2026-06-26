@@ -14,6 +14,7 @@ import { config } from "../../config/index.js";
 import { query } from "../../db/pool.js";
 import { computeMissionEconomics } from "./economics.js";
 import { seedSpecialists } from "./specialists.js";
+import { buildLiveMission } from "./liveSources.js";
 import {
   defaultTemplateForDomain,
   templateById,
@@ -200,7 +201,11 @@ export async function generateMission(opts: {
   );
   const avoid = recentRows.map((r) => r.subject_key);
 
-  const built = (await llmGenerate(template, avoid).catch(() => null)) ?? cannedGenerate(template, avoid);
+  // Prefer a live-data-grounded mission (real Exa/Polymarket/onchain facts) so
+  // missions are educative and never repeat; fall back to the LLM, then canned.
+  const live = await buildLiveMission(template, avoid).catch(() => null);
+  if (live) console.log(`[mission ${opts.contestId}] grounded via live source: ${live.source}`);
+  const built = live ?? (await llmGenerate(template, avoid).catch(() => null)) ?? cannedGenerate(template, avoid);
 
   const fragments: MissionFragment[] = template.fragments.map((tf, i) => {
     const b = built.fragments[i] ?? { ask: tf.askShell, intel: null };
