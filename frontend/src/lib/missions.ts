@@ -156,6 +156,9 @@ export interface MissionListItem {
   domain: string;
   title: string;
   status: string;
+  /// True while the underlying contest is open or scoring — the source of truth
+  /// for "live right now" (the missions.status text can lag a step).
+  live?: boolean;
   createdAt: string;
   operatives: number;
   payments: number;

@@ -109,6 +109,10 @@ export default function MissionArenaPage() {
 
 function Arena({ state, mission }: { state: MissionState; mission: NonNullable<MissionState["mission"]> }) {
   const { operatives, specialists, fragments, tape } = state;
+  // Intel stays secret while the mission is live: specialists pick a piece by its
+  // slot, not by what it reveals. Only after the mission resolves does the actual
+  // ask/content become public.
+  const resolved = mission.status === "settled" || mission.status === "cancelled";
   // Resolve each operative's agent name + pfp (skin), the same way the live
   // stages and leaderboard do, so a card reads as the operator, not "AGENT N".
   const names = useAgentNames(operatives.map((o) => o.agentId));
@@ -206,7 +210,7 @@ function Arena({ state, mission }: { state: MissionState; mission: NonNullable<M
                   <div className="mt-2 font-mono text-[12px] leading-[1.6] text-ink-2">
                     {s.owner === "operator" ? "resells" : "sells"}{" "}
                     <span className="uppercase text-ink">{frag?.kind ?? s.fragmentId}</span>
-                    {frag ? ` — ${frag.ask}` : ""}
+                    {resolved && frag ? ` — ${frag.ask}` : " — sealed until the mission resolves"}
                   </div>
                 </BracketedCell>
               );
@@ -268,8 +272,8 @@ function Arena({ state, mission }: { state: MissionState; mission: NonNullable<M
           </BracketedCell>
           <p className="mt-3 font-mono text-[11px] leading-[1.6] text-ink-3">
             <span className="text-accent">■</span> agent pays agent (a2a) ·{" "}
-            <span className="text-[color:var(--ok)]">■</span> agent pays a service (x402). every row is a real
-            usdc settlement on chain.
+            <span className="text-[color:var(--ok)]">■</span> agent pays a service (x402) ·{" "}
+            <span className="text-[color:var(--warn)]">■</span> agent buys from the platform shelf.
           </p>
         </aside>
       </div>
@@ -468,9 +472,11 @@ function MissionJoinPanel({
                   >
                     {availablePieces.map((s) => {
                       const f = fragments.find((x) => x.id === s.fragmentId);
+                      // Intel stays sealed while live: pick by slot + kind + price,
+                      // not by what the piece reveals.
                       return (
                         <option key={s.fragmentId} value={s.fragmentId}>
-                          {(f?.kind ?? s.fragmentId).toUpperCase()} — {f?.ask ?? ""} · BUY {formatUsdc6(s.price6)}
+                          PIECE #{s.agentId} · {(f?.kind ?? s.fragmentId).toUpperCase()} · BUY {formatUsdc6(s.price6)}
                         </option>
                       );
                     })}

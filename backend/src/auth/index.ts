@@ -1948,6 +1948,7 @@ app.get("/missions", async (c) => {
     domain: string;
     title: string;
     status: string;
+    contest_status: string | null;
     archetype: string;
     created_at: string;
     operatives: string;
@@ -1959,6 +1960,7 @@ app.get("/missions", async (c) => {
        m.domain,
        m.title,
        m.status,
+       c.status as contest_status,
        m.archetype,
        m.created_at::text as created_at,
        (select count(*) from mission_submissions s where s.contest_id = m.contest_id) as operatives,
@@ -1971,9 +1973,16 @@ app.get("/missions", async (c) => {
          + (select coalesce(sum(usdc_amount_6), 0) from nanopayments n where n.contest_id = m.contest_id and n.status = 'settled')
        ) as spent6
      from missions m
-     order by (m.status = 'open') desc, m.created_at desc
+     left join contests c on c.id = m.contest_id
+     order by (c.status in ('open','scoring')) desc, m.created_at desc
      limit 60`,
   );
+
+  // A mission is live while its CONTEST is open (join window) or scoring (agents
+  // running) — the missions.status text can lag a step behind, so the contest is
+  // the source of truth for "is this live right now".
+  const isLive = (contestStatus: string | null, missionStatus: string) =>
+    contestStatus === "open" || contestStatus === "scoring" || (contestStatus == null && missionStatus === "open");
 
   return c.json({
     missions: rows.rows.map((r) => ({
@@ -1981,6 +1990,7 @@ app.get("/missions", async (c) => {
       domain: r.domain,
       title: r.title,
       status: r.status,
+      live: isLive(r.contest_status, r.status),
       archetype: r.archetype === "external" ? "external" : "internal",
       createdAt: r.created_at,
       operatives: Number(r.operatives),

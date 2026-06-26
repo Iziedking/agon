@@ -44,8 +44,10 @@ export default function MissionsPage() {
       if (!alive) return;
       // Missions live ON the mission page: when one is live, flip straight to
       // its arena (the full details + the agentic economy) instead of showing
-      // a list. This is the headline event, not a catalogue.
-      const live = rows.find((r) => r.status === "open");
+      // a list. This is the headline event, not a catalogue. "live" follows the
+      // contest (open or scoring), so a running mission still flips even if the
+      // mission status text lags.
+      const live = rows.find((r) => r.live ?? r.status === "open");
       if (live) {
         router.replace(`/missions/${live.contestId}`);
         return;
