@@ -2086,6 +2086,14 @@ app.post("/missions/:id/join-fee", requireAuth, async (c) => {
   if (!m.rows[0]) return c.json({ error: "not a mission" }, 404);
   if (m.rows[0].status !== "open") return c.json({ error: "this mission is no longer open" }, 409);
 
+  // One side per mission: a specialist cannot also be an operative.
+  const asSpecialist = await query(
+    "select 1 from mission_intel_buys where contest_id = $1 and operator = $2",
+    [contestId, operator],
+  );
+  if (asSpecialist.rows.length > 0)
+    return c.json({ error: "you entered this mission as a specialist; you cannot also be an operative" }, 409);
+
   await query(
     `insert into mission_operative_fees (contest_id, operator, amount_usdc_6, tx_hash)
      values ($1, $2, $3, $4)
@@ -2130,6 +2138,14 @@ app.post("/missions/:id/buy-intel", requireAuth, async (c) => {
   // enforces this, but the buy endpoint re-checks so it can't be bypassed).
   const owned = await query("select 1 from agents where id = $1 and lower(owner) = $2", [agentId, operator]);
   if (owned.rows.length === 0) return c.json({ error: "that agent is not one of yours" }, 403);
+
+  // One side per mission: an operative cannot also be a specialist.
+  const asOperative = await query(
+    "select 1 from mission_operative_fees where contest_id = $1 and operator = $2",
+    [contestId, operator],
+  );
+  if (asOperative.rows.length > 0)
+    return c.json({ error: "you entered this mission as an operative; you cannot also be a specialist" }, 409);
 
   // The platform piece for this fragment, still on the shelf.
   const plat = await query<{ price_usdc_6: string; intel: unknown }>(
@@ -2180,6 +2196,19 @@ app.post("/missions/:id/buy-intel", requireAuth, async (c) => {
   );
   void logEvent({ kind: "mission_intel_buy", address: operator, context: { contestId, fragmentId, agentId, basePrice6, resalePrice6 }, source: "auth" });
   return c.json({ ok: true });
+});
+
+/// Which side, if any, the signed-in operator has already taken in this mission.
+/// The UI uses it to lock the opposite role (one side per mission).
+app.get("/missions/:id/my-role", requireAuth, async (c) => {
+  const contestId = Number(c.req.param("id"));
+  if (!Number.isFinite(contestId)) return c.json({ role: null });
+  const operator = c.get("address").toLowerCase();
+  const opv = await query("select 1 from mission_operative_fees where contest_id = $1 and operator = $2", [contestId, operator]);
+  if (opv.rows.length > 0) return c.json({ role: "operative" });
+  const spc = await query("select 1 from mission_intel_buys where contest_id = $1 and operator = $2", [contestId, operator]);
+  if (spc.rows.length > 0) return c.json({ role: "specialist" });
+  return c.json({ role: null });
 });
 
 /// Whether the signed-in operator has already paid this mission's join fee, so

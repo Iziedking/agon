@@ -10,6 +10,7 @@ import { ArcChainChip } from "@/components/redesign/ArcChainChip";
 import { WalletBalanceChip } from "@/components/redesign/WalletBalanceChip";
 import { ArcRunMark } from "@/components/redesign/ArcRunMark";
 import { NotificationBell } from "@/components/redesign/NotificationBell";
+import { LiveMissionBanner } from "@/components/redesign/LiveMissionBanner";
 
 /// The product nav. Left: ■ ARCRUN mono wordmark with the pink square mark.
 /// Center: mono caps route links separated by 32px on desktop. Right: the
@@ -124,6 +125,8 @@ export function TopNav() {
           </nav>
         </div>
       ) : null}
+
+      <LiveMissionBanner />
     </header>
   );
 }

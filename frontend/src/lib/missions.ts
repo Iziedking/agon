@@ -139,6 +139,22 @@ export async function buyMissionIntel(
   }
 }
 
+/// Which side the signed-in operator has already taken in this mission, if any.
+/// Used to lock the opposite role (one side per mission).
+export async function missionMyRole(missionId: number): Promise<"operative" | "specialist" | null> {
+  try {
+    const res = await fetch(`${AUTH_URL}/missions/${missionId}/my-role`, {
+      credentials: "include",
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const role = ((await res.json()) as { role?: string }).role;
+    return role === "operative" ? "operative" : role === "specialist" ? "specialist" : null;
+  } catch {
+    return null;
+  }
+}
+
 /// Whether the signed-in operator already paid this mission's join fee (so entry
 /// does not charge twice on a retry). Defaults to false on any error.
 export async function missionFeeStatus(missionId: number): Promise<boolean> {

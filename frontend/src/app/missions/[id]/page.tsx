@@ -17,6 +17,7 @@ import {
   formatUsdc6,
   buyMissionIntel,
   resolveAgent,
+  missionMyRole,
   explorerTx,
   shortAddr,
   type Choice,
@@ -131,10 +132,13 @@ function Arena({ state, mission }: { state: MissionState; mission: NonNullable<M
         <StatusChip tone={statusTone(mission.status)}>{mission.status.toUpperCase()}</StatusChip>
         {mission.archetype ? (
           <span
-            className={`inline-block border px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em] ${
-              mission.archetype === "external" ? "border-[color:var(--ok)] text-[color:var(--ok)]" : "border-accent text-accent"
+            className={`inline-flex items-center gap-1.5 border px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-ink ${
+              mission.archetype === "external" ? "border-[color:var(--ok)]" : "border-accent"
             }`}
           >
+            <span aria-hidden style={{ color: mission.archetype === "external" ? "var(--ok)" : "var(--accent)" }}>
+              ■
+            </span>
             {mission.archetype === "external" ? "X402 · PAY PER CALL" : "INTEL MARKET"}
           </span>
         ) : null}
@@ -300,6 +304,25 @@ function MissionJoinPanel({
 }) {
   const { isSignedIn } = useOperatorAddress();
   const [role, setRole] = useState<"operative" | "specialist">("operative");
+  // One side per mission: once you've taken a side it locks, so you can't also
+  // play the other (even with a different agent).
+  const [lockedRole, setLockedRole] = useState<"operative" | "specialist" | null>(null);
+  useEffect(() => {
+    if (!isSignedIn) {
+      setLockedRole(null);
+      return;
+    }
+    let live = true;
+    void missionMyRole(mission.contestId).then((r) => {
+      if (live && r) {
+        setLockedRole(r);
+        setRole(r);
+      }
+    });
+    return () => {
+      live = false;
+    };
+  }, [isSignedIn, mission.contestId]);
   // The mission rides a solver contest; operative entry happens right here via
   // the same EnterPanel the contest page uses, so the operator never leaves the
   // mission. We just need the contest's live status + window for it.
@@ -395,22 +418,32 @@ function MissionJoinPanel({
       </div>
       <BracketedCell>
         <div className="inline-flex border border-[color:var(--hairline-strong)]">
-          {(["operative", "specialist"] as const).map((r) => (
-            <button
-              key={r}
-              onClick={() => {
-                setRole(r);
-                setErr(null);
-                setMsg(null);
-              }}
-              className={`px-4 py-2 font-mono text-[11px] uppercase tracking-[0.12em] transition-colors ${
-                role === r ? "bg-accent text-accent-ink" : "bg-canvas text-ink-2 hover:text-ink"
-              }`}
-            >
-              {r === "operative" ? "OPERATIVE · COMPETE" : "SPECIALIST · SUPPLY"}
-            </button>
-          ))}
+          {(["operative", "specialist"] as const).map((r) => {
+            const blocked = lockedRole != null && lockedRole !== r;
+            return (
+              <button
+                key={r}
+                disabled={blocked}
+                onClick={() => {
+                  if (blocked) return;
+                  setRole(r);
+                  setErr(null);
+                  setMsg(null);
+                }}
+                className={`px-4 py-2 font-mono text-[11px] uppercase tracking-[0.12em] transition-colors ${
+                  role === r ? "bg-accent text-accent-ink" : "bg-canvas text-ink-2 hover:text-ink"
+                } ${blocked ? "cursor-not-allowed opacity-40" : ""}`}
+              >
+                {r === "operative" ? "OPERATIVE · COMPETE" : "SPECIALIST · SUPPLY"}
+              </button>
+            );
+          })}
         </div>
+        {lockedRole ? (
+          <p className="mt-3 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3">
+            you are a {lockedRole} in this mission · one side per mission
+          </p>
+        ) : null}
 
         {!isSignedIn ? (
           <p className="mt-4 font-mono text-[12px] text-ink-2">sign in to join this mission.</p>

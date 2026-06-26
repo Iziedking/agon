@@ -5,6 +5,7 @@ import { config } from "../config/index.js";
 import { query } from "../db/pool.js";
 import { coordinatorWallet } from "./contestOps.js";
 import { settleContestToCompletion, resolveChallengeToCompletion } from "./autopilot.js";
+import { refundMissionFees, refundMissionBuys, markMissionStatus } from "../runners/missions/fees.js";
 
 /// Admin command worker. The admin console (auth API process) inserts rows into
 /// admin_commands; this loop runs in the COORDINATOR process and drains them, so
@@ -77,6 +78,17 @@ async function execute(cmd: Command, broadcast: (message: unknown) => void): Pro
     case "cancel_contest":
     case "cancel_challenge": {
       const hash = await cancelOnChain(cmd.kind, BigInt(id));
+      if (cmd.kind === "cancel_contest") {
+        // If this contest is a mission, return the operatives' join fees and the
+        // specialists' intel purchases, then stamp it cancelled. No-op otherwise.
+        await refundMissionFees(id).catch((e) =>
+          console.error(`admin cancel ${id}: fee refund failed:`, e instanceof Error ? e.message : e),
+        );
+        await refundMissionBuys(id).catch((e) =>
+          console.error(`admin cancel ${id}: buy refund failed:`, e instanceof Error ? e.message : e),
+        );
+        await markMissionStatus(id, "cancelled");
+      }
       return `${cmd.kind} ${id} sent: ${hash}`;
     }
     default:
