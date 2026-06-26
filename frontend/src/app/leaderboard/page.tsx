@@ -282,6 +282,21 @@ function PageBtn({
   );
 }
 
+/// Map a founding syndicate to its brand robot color by name, matching the
+/// syndicate tiles. Community syndicates (no match) fall back to a stable
+/// hashed color from the id.
+function syndicateVariant(
+  name: string | null,
+  syndicateId: number,
+): Parameters<typeof Robot>[0]["variant"] {
+  const n = (name ?? "").toLowerCase();
+  if (n.includes("crimson")) return "crimson";
+  if (n.includes("cyan")) return "mint";
+  if (n.includes("gold")) return "gold";
+  if (n.includes("violet")) return "violet";
+  return robotVariantForId(syndicateId);
+}
+
 /// Lifetime syndicate board: each syndicate by cumulative reputation its members
 /// have contributed. Links to the syndicate page.
 function SyndicateBoard({ rows }: { rows: SyndicateLeaderRow[] | null }) {

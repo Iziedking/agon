@@ -309,7 +309,10 @@ const envSchema = z.object({
   // default so the feature ships dark until a coordinator wallet is funded.
   MISSION_ENABLED: z.coerce.boolean().default(false),
   // Default platform mission knobs (used by the autopilot open path).
-  MISSION_POOL_USDC: z.coerce.number().nonnegative().default(5),
+  // Missions are the headline, heavily-funded events: default 100 USDC, well
+  // above ordinary contests (1-10). The coordinator wallet must hold at least
+  // this much per mission to fund the pool.
+  MISSION_POOL_USDC: z.coerce.number().nonnegative().default(100),
   MISSION_DURATION_SECONDS: z.coerce.number().int().positive().default(900),
   // Operatives need research access, so missions gate to tier 3 and up.
   MISSION_MIN_TIER: z.coerce.number().int().min(0).max(4).default(3),

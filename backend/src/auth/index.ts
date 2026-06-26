@@ -4340,16 +4340,21 @@ app.get("/syndicates/war/live", async (c) => {
 /// reputation contributed all-time (never resets, unlike the weekly war). Backs
 /// the SYNDICATES toggle on the leaderboard page.
 app.get("/syndicates/leaderboard", async (c) => {
+  // NB: the output column is aliased `reputation`, NOT `total_reputation`, on
+  // purpose. Postgres resolves ORDER BY to output aliases first, so aliasing the
+  // ::text cast as total_reputation would sort the TEXT lexically ("20000000" >
+  // "1760000000") instead of the numeric column. With a different alias, ORDER
+  // BY total_reputation binds to the real numeric column and sorts correctly.
   const { rows } = await query<{
     id: string;
     name: string | null;
-    total_reputation: string;
-    member_count: string;
+    reputation: string;
+    member_count: number;
   }>(
-    `select id::text                          as id,
+    `select id::text                            as id,
             name,
-            coalesce(total_reputation, 0)::text as total_reputation,
-            coalesce(member_count, 0)::text     as member_count
+            coalesce(total_reputation, 0)::text as reputation,
+            coalesce(member_count, 0)::int      as member_count
        from syndicates
       order by total_reputation desc nulls last, member_count desc, id asc`,
   );
@@ -4358,7 +4363,7 @@ app.get("/syndicates/leaderboard", async (c) => {
       rank: i + 1,
       syndicateId: Number(r.id),
       name: r.name,
-      reputation: r.total_reputation,
+      reputation: r.reputation,
       memberCount: Number(r.member_count),
     })),
   });
