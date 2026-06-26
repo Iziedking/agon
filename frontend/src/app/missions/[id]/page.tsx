@@ -78,10 +78,10 @@ export default function MissionArenaPage() {
       <section className="relative mx-auto max-w-[1400px] px-6 pb-16 pt-12">
         <CornerMarkers />
         <a
-          href={`/contests/${id}`}
+          href="/missions"
           className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:text-ink"
         >
-          ← CONTEST #{Number.isFinite(id) ? id : ""}
+          ← ALL MISSIONS
         </a>
 
         {!loaded ? (
@@ -623,6 +623,50 @@ function MissionCountdown({ contestId }: { contestId: number }) {
   );
 }
 
+/// Renders an inline markdown-ish string: **bold** and ## headers become bold
+/// ink spans, everything else stays mono body.
+function renderInline(s: string, keyBase: string) {
+  const parts = s.split(/(\*\*[^*]+\*\*|#{1,6}\s+[^#\n]+)/g).filter(Boolean);
+  return parts.map((p, i) => {
+    if (p.startsWith("**") && p.endsWith("**")) {
+      return (
+        <strong key={`${keyBase}-${i}`} className="font-semibold text-ink">
+          {p.slice(2, -2)}
+        </strong>
+      );
+    }
+    const hm = p.match(/^#{1,6}\s+(.*)$/);
+    if (hm) {
+      return (
+        <strong key={`${keyBase}-${i}`} className="font-semibold text-ink">
+          {hm[1]}
+        </strong>
+      );
+    }
+    return <span key={`${keyBase}-${i}`}>{p}</span>;
+  });
+}
+
+/// Lightweight, dependency-free markdown for a deliverable: `---` splits
+/// paragraphs, `**bold**` and `## headers` render as bold ink. Keeps the brand
+/// mono body without pulling in a markdown library.
+function DeliverableBody({ text }: { text: string }) {
+  const segments = text
+    .replace(/\r/g, "")
+    .split(/\s*---\s*|\n{2,}/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return (
+    <div className="mt-2 space-y-2">
+      {segments.map((seg, i) => (
+        <p key={i} className="font-mono text-[12px] leading-[1.7] text-ink-2">
+          {renderInline(seg, `s${i}`)}
+        </p>
+      ))}
+    </div>
+  );
+}
+
 function EconStat({ label, value }: { label: string; value: string }) {
   return (
     <BracketedCell pad="sm">
@@ -707,11 +751,11 @@ function OperativeCard({
       {op.deliverable ? (
         <div className="mt-4 border-t border-[color:var(--hairline)] pt-3">
           <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">DELIVERABLE</div>
-          <p className="mt-1.5 font-mono text-[12px] leading-[1.7] text-ink-2">{op.deliverable}</p>
+          <DeliverableBody text={op.deliverable} />
           {op.verdict ? (
-            <p className="mt-2 font-mono text-[11px] leading-[1.6] text-ink-3">
-              <span className="uppercase tracking-[0.12em]">judge</span> — {op.verdict}
-            </p>
+            <div className="mt-3 border-l-2 border-[color:var(--hairline-strong)] pl-3 font-mono text-[11px] leading-[1.6] text-ink-3">
+              <span className="uppercase tracking-[0.12em] text-ink-2">judge</span> — {op.verdict}
+            </div>
           ) : null}
         </div>
       ) : null}

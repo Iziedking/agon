@@ -165,7 +165,7 @@ export class MissionRunner implements Runner {
 
     // Grade: the judge scores quality and the credit gate re-verifies on-chain
     // payment proof per fragment. The grade owns the final, deterministic score.
-    const grade = await gradeSubmission(mission, { agentId: entry.agentId, deliverable, elapsedMs });
+    const grade = await gradeSubmission(mission, { agentId: entry.agentId, deliverable, elapsedMs, tier: entry.tier });
     await this.persistSubmission(mission.missionId, entry, deliverable, elapsedMs, grade);
 
     const correct = decisionRows.map((r) => r.settled);

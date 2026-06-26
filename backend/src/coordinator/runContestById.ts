@@ -12,6 +12,21 @@ import { loadMission } from "../runners/missions/generator.js";
 import { refundMissionFees, refundMissionBuys, markMissionStatus } from "../runners/missions/fees.js";
 import { MissionRunner } from "../runners/missions/runner.js";
 import type { AgentResult, ContestEntryInput } from "../runners/types.js";
+
+/// Build the "you placed" notification, worded for a mission or a contest. A
+/// mission rides a contest, so the same settlement path serves both — this just
+/// labels it and links to the right page.
+async function winNotice(contestId: number, rank: number, amount: bigint) {
+  const isMission = (await query("select 1 from missions where contest_id = $1 limit 1", [contestId])).rows.length > 0;
+  const noun = isMission ? "mission" : "contest";
+  return {
+    kind: "contest_win" as const,
+    title: `You placed #${rank} in ${noun} #${contestId}`,
+    body: `prize ${(Number(amount) / 1e6).toFixed(2)} USDC. claim it from the ${noun} page.`,
+    href: isMission ? `/missions/${contestId}` : `/contests/${contestId}`,
+    context: { contestId, rank, amount: amount.toString() },
+  };
+}
 import { fundHotWallets, sweepHotWallets } from "./contestOps.js";
 import { applyReputation, creditPoints, postValidatorFeedback, qualifiedField, recordSyndicateContributions } from "./reputation.js";
 import { merkleRoot, payoutLeaf } from "./merkle.js";
@@ -335,13 +350,7 @@ export async function runContestById(contestId: number, broadcast: (message: unk
       });
       for (let i = 0; i < payouts.length; i++) {
         const p = payouts[i]!;
-        void notify(p.operator, {
-          kind: "contest_win",
-          title: `You placed #${i + 1} in contest #${contestId}`,
-          body: `prize ${(Number(p.amount) / 1e6).toFixed(2)} USDC. claim it from the contest page.`,
-          href: `/contests/${contestId}`,
-          context: { contestId, rank: i + 1, amount: p.amount.toString() },
-        });
+        void notify(p.operator, await winNotice(contestId, i + 1, p.amount));
       }
       return;
     }
@@ -532,13 +541,7 @@ export async function runContestById(contestId: number, broadcast: (message: unk
   // Notify each winner that they placed and can claim.
   for (let i = 0; i < payouts.length; i++) {
     const p = payouts[i]!;
-    void notify(p.operator, {
-      kind: "contest_win",
-      title: `You placed #${i + 1} in contest #${contestId}`,
-      body: `prize ${(Number(p.amount) / 1e6).toFixed(2)} USDC. claim it from the contest page.`,
-      href: `/contests/${contestId}`,
-      context: { contestId, rank: i + 1, amount: p.amount.toString() },
-    });
+    void notify(p.operator, await winNotice(contestId, i + 1, p.amount));
   }
 
   // Post-settlement rewards (best-effort, each logs on failure):

@@ -13,6 +13,9 @@
 import { callModel, llmConfigured } from "../llm/client.js";
 import { config } from "../../config/index.js";
 import { query } from "../../db/pool.js";
+import { loadAgentStats } from "../llm/tierConfig.js";
+import { getLoadout } from "../../auth/loadouts.js";
+import { effectiveStrength, type ContestType } from "../../scoring/strength.js";
 import type { Commission } from "./types.js";
 
 const SCORE_SCALE = 1000;
@@ -152,18 +155,29 @@ export async function judgeDeliverable(
 /// small speed amplifier on real work. Empty or rejected work scores ~0.
 export async function gradeSubmission(
   mission: Commission,
-  sub: { agentId: number; deliverable: string; elapsedMs: number },
+  sub: { agentId: number; deliverable: string; elapsedMs: number; tier: number },
 ): Promise<MissionGrade> {
   const { credited, total, spent6 } = await verifyCredit(mission.missionId, sub.agentId);
   const { quality, verdict } = await judgeDeliverable(mission, sub.deliverable);
-  const speed = clamp01(speedBudgetMs() / Math.max(sub.elapsedMs, 1));
-  // Credited (paid, proven) work AND quality must both hold — multiplicative, so
-  // empty or bad work scores ~0. Among genuine work, SPEED is the dominant
-  // differentiator: the fastest qualifying operative wins. MISSION_SPEED_WEIGHT
-  // (default 1.0, was 0.1) makes "fastest to accomplish the mission" the race it
-  // is meant to be, while quality x credit stays the gate.
-  const speedWeight = Number(process.env.MISSION_SPEED_WEIGHT ?? "1.0");
-  const score = Math.round(credited * quality * SCORE_SCALE * (1 + speedWeight * speed));
+
+  // Tier x training x traits — the SAME strength model contests use, now active
+  // for missions. Capability genuinely matters: a higher tier and a trained,
+  // well-equipped agent earn a bigger multiplier, which offsets the latency of
+  // the smarter (slower) model that tier runs on.
+  const stats = await loadAgentStats(sub.agentId).catch(() => ({}));
+  const equipped = await getLoadout("contest", mission.missionId, sub.agentId).catch(() => [] as string[]);
+  const ctype: ContestType = mission.domain === "analyst" ? "analyst" : mission.domain === "scout" ? "scout" : "solver";
+  const strength = effectiveStrength(sub.tier, stats, equipped, ctype).effective;
+
+  // Speed is the secondary differentiator (the race): faster strictly scores
+  // higher so two fast agents no longer tie at a clamp, but it never out-muscles
+  // a clearly stronger agent. MISSION_SPEED_WEIGHT tunes how much the race counts.
+  const speedScore = Math.min(20, speedBudgetMs() / Math.max(sub.elapsedMs, 1));
+  const speedWeight = Number(process.env.MISSION_SPEED_WEIGHT ?? "0.5");
+
+  // credited (paid, proven) AND quality both gate (multiplicative → empty/bad
+  // work scores ~0); strength and speed scale genuine work.
+  const score = Math.round(credited * quality * SCORE_SCALE * strength * (1 + speedWeight * speedScore));
   return {
     agentId: sub.agentId,
     creditedFragments: credited,
