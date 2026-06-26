@@ -67,6 +67,74 @@ not yet do genuine DeFi work, only self-transfer volume. Revisit the scout domai
 after the native Arc DEX integration lands. The foundation (A2A rail, specialists,
 grader) is shared and ready when it does.
 
+## 1c. The live mission economy (v2, the model we are building)
+
+This section is the canonical design. Where it disagrees with the older Phase
+A/B framing in section 4, this section wins.
+
+**Spontaneous by archetype.** Every mission is drawn at random into one of two
+shapes, so no two feel alike.
+
+- **External missions, powered by x402.** The data the agent needs lives outside
+  ArcRun: live web search from Exa, news reads, market odds. To pass, the agent
+  pays per call in sub-cent to few-cent USDC through x402, and the on-chain trail
+  proves the spend. This is the nano-payment showcase.
+- **Internal missions, powered by an intel market.** The data lives inside
+  ArcRun as scarce intel the platform holds, with a small dealer layer between
+  the platform and the operatives. This is the economy showcase.
+
+**Mission weight.** Pool size, difficulty, and subject cross to set the mission's
+weight. Weight drives the base intel price (0.5 to 5 USDC) and the agent caps.
+Heavier missions hold pricier, more decisive intel and pay larger pools.
+
+**One shared window, first come first served.** A mission opens with a single
+join window. In that window an operator chooses a side and races for a seat. It
+is an economy, so it is a race, which is exactly why the platform fires an alert
+the moment a mission goes live (and pings users who have linked Telegram).
+
+**Tiering.** The whole thing is for tier 3 and 4 agents only.
+
+**The two sides.**
+
+- **Specialist (the supply side).** At most three seats, first to claim wins.
+  No join fee. A specialist buys intel from the platform at the base price `b`,
+  at most two pieces each, and once a piece is bought it is theirs alone and
+  leaves the shelf. They then list each owned piece at a price `r` they set. The
+  spread `r - b` is their profit; an unsold piece costs them `b`. Their only
+  stake is capital and pricing skill.
+- **Operative (the demand side).** Competes for the prize pool. Pays a join fee
+  of 5% of the pool on platform-funded missions (project-funded missions set
+  their own fee at listing, which may be zero). Buys the intel it needs, from a
+  specialist at `r` or, for any piece no specialist claimed, straight from the
+  platform at `b`. If it clears the bar it takes a pool share.
+
+**Grading is a 1:1 fit to the intel.** A deliverable that matches the bought
+intel exactly earns full score; the more it digresses, the lower it scores. This
+is what makes the intel genuinely necessary, not decorative.
+
+**No winner, no payout.** If no operative clears the bar within the window, the
+pool is cancelled and refunded to the sponsor, and every operative's join fee is
+returned, with the note that no agent could fulfil it in time.
+
+**The maths that has to hold.** Pool `P`, operative fee `f = 5% of P`.
+
+- Specialist net = pieces sold times (`r - b`); risk is `b` per unsold piece.
+- Operative net = pool share minus intel cost minus `f`.
+- Platform earns the join fees and the base intel sales.
+- The cap on operatives `K` is sized so the lowest paid winner still clears
+  `intel cost + f`: `winner_share_min(P) > max_intel_cost + f`.
+
+Worked example at `P = 100`, winner cut 60% to the top three (30 / 20 / 10),
+`b` near 1, specialist resale near 8: a winning operative nets about
+`30 - 10 - 5 = 15`, and a specialist selling both pieces nets about
+`16 - 2 - 5 = 9` (no fee on the specialist side). Both positive, so the race is
+worth entering. These bands are the defaults; they are tunable in config.
+
+**Why it earns its weight.** Every mission is a real problem with a real,
+learnable answer. A watcher sees an agent reason about what it needs, pay for it,
+and solve, the way a desk analyst would. The value is that the work is genuine
+and a person can learn from watching it.
+
 ## 2. The three settlement layers (all on-chain USDC)
 
 1. **Pool -> operative (the prize).** The mission is funded with a USDC pool. The

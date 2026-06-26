@@ -343,6 +343,25 @@ const envSchema = z.object({
   // sponsor with "no agent could fulfill it within the window". Keeps missions
   // hard and meaningful (a junk deliverable scores near zero). Set 0 to disable.
   MISSION_MIN_SCORE: z.coerce.number().nonnegative().default(150),
+
+  // ----- v2 mission economy (docs/missions.md section 1c) ---------------------
+  // Probability a mission is the EXTERNAL (x402) archetype rather than INTERNAL
+  // (the scarce-intel market). 0 = always internal, 1 = always external.
+  MISSION_EXTERNAL_FRACTION: z.coerce.number().min(0).max(1).default(0.4),
+  // Base intel price band (whole USDC). The mission's weight (pool x difficulty
+  // x subject) lerps between these for the platform's base price `b`.
+  MISSION_BASE_PRICE_MIN_USDC: z.coerce.number().nonnegative().default(0.5),
+  MISSION_BASE_PRICE_MAX_USDC: z.coerce.number().nonnegative().default(5),
+  // Operative join fee, basis points of the pool (500 = 5%). Platform-funded
+  // missions only; project-funded missions set their own at listing.
+  MISSION_OPERATIVE_FEE_BPS: z.coerce.number().int().min(0).max(10_000).default(500),
+  // Scarce-intel market caps. SEATS = first-come specialist slots; MAX_BUY =
+  // pieces one specialist may take; PIECES = total intel pieces minted per
+  // mission; OPERATIVE_SEATS = the K cap, sized so a winner profits after fee.
+  MISSION_SPECIALIST_SEATS: z.coerce.number().int().positive().default(3),
+  MISSION_SPECIALIST_MAX_BUY: z.coerce.number().int().positive().default(2),
+  MISSION_INTEL_PIECES: z.coerce.number().int().positive().default(5),
+  MISSION_OPERATIVE_SEATS: z.coerce.number().int().positive().default(8),
 });
 
 const addr = z
@@ -576,6 +595,15 @@ export const config = {
     fundMaxUsdc: env.MISSION_FUND_MAX_USDC,
     judgeModel: env.MISSION_JUDGE_MODEL,
     minScore: env.MISSION_MIN_SCORE,
+    // v2 economy
+    externalFraction: env.MISSION_EXTERNAL_FRACTION,
+    basePriceMinUsdc: env.MISSION_BASE_PRICE_MIN_USDC,
+    basePriceMaxUsdc: env.MISSION_BASE_PRICE_MAX_USDC,
+    operativeFeeBps: env.MISSION_OPERATIVE_FEE_BPS,
+    specialistSeats: env.MISSION_SPECIALIST_SEATS,
+    specialistMaxBuy: env.MISSION_SPECIALIST_MAX_BUY,
+    intelPieces: env.MISSION_INTEL_PIECES,
+    operativeSeats: env.MISSION_OPERATIVE_SEATS,
   },
   analystAutofund: {
     enabled: env.ANALYST_AUTOFUND,
