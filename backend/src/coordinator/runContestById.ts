@@ -9,7 +9,7 @@ import { AnalystRunner } from "../runners/analyst.js";
 import { ScoutRunner } from "../runners/scout.js";
 import { SolverRunner } from "../runners/solver.js";
 import { loadMission } from "../runners/missions/generator.js";
-import { refundMissionFees, markMissionStatus } from "../runners/missions/fees.js";
+import { refundMissionFees, refundMissionBuys, markMissionStatus } from "../runners/missions/fees.js";
 import { MissionRunner } from "../runners/missions/runner.js";
 import type { AgentResult, ContestEntryInput } from "../runners/types.js";
 import { fundHotWallets, sweepHotWallets } from "./contestOps.js";
@@ -503,10 +503,14 @@ export async function runContestById(contestId: number, broadcast: (message: unk
   if (payouts.length === 0) {
     console.log(`contest ${contestId}: no scoring entrants; cancelling and refunding the sponsor`);
     await send({ address: engine, abi: engineAbi, functionName: "cancelContest", args: [BigInt(contestId)] });
-    // Mission close: return the operatives' join fees and mark it cancelled.
-    // Both no-op for ordinary contests.
+    // Mission close: return the operatives' join fees and the specialists'
+    // intel purchases (a void mission costs nobody), then mark it cancelled.
+    // All no-op for ordinary contests.
     await refundMissionFees(contestId).catch((err) =>
       console.error(`contest ${contestId}: mission fee refund failed:`, err instanceof Error ? err.message : err),
+    );
+    await refundMissionBuys(contestId).catch((err) =>
+      console.error(`contest ${contestId}: mission intel-buy refund failed:`, err instanceof Error ? err.message : err),
     );
     await markMissionStatus(contestId, "cancelled");
     broadcast({ type: "settled", contestId, winners: [] });

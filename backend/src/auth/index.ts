@@ -2086,6 +2086,87 @@ app.post("/missions/:id/join-fee", requireAuth, async (c) => {
   return c.json({ ok: true });
 });
 
+/// Specialist BUYS a scarce intel piece from the platform shelf (v2). The
+/// operator pays the base price `b` to the treasury on chain, then posts the
+/// proof here. We claim the piece exclusively (one buyer per piece), carry the
+/// platform's intel into the operator's resale listing at their chosen price,
+/// and mark the platform row claimed so it leaves the shelf. Seat cap (3) and
+/// the two-piece limit are enforced; session-gated; mission must be open.
+app.post("/missions/:id/buy-intel", requireAuth, async (c) => {
+  const contestId = Number(c.req.param("id"));
+  if (!Number.isFinite(contestId)) return c.json({ error: "bad mission id" }, 400);
+  const operator = c.get("address").toLowerCase();
+
+  let body: { fragmentId?: string; agentId?: number; resalePriceUsdc?: number; txHash?: string };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "bad json" }, 400);
+  }
+  const fragmentId = String(body.fragmentId ?? "");
+  const agentId = Number(body.agentId);
+  const resalePriceUsdc = Number(body.resalePriceUsdc);
+  const txHash = (body.txHash ?? "").trim() || null;
+  if (!fragmentId) return c.json({ error: "pick a piece to buy" }, 400);
+  if (!Number.isFinite(agentId) || agentId <= 0) return c.json({ error: "pick an agent" }, 400);
+  if (!Number.isFinite(resalePriceUsdc) || resalePriceUsdc <= 0 || resalePriceUsdc > 100)
+    return c.json({ error: "set a resale price between 0 and 100 USDC" }, 400);
+
+  const mm = await query<{ status: string }>("select status from missions where contest_id = $1", [contestId]);
+  if (!mm.rows[0]) return c.json({ error: "not a mission" }, 404);
+  if (mm.rows[0].status !== "open") return c.json({ error: "this mission is no longer open" }, 409);
+
+  // The platform piece for this fragment, still on the shelf.
+  const plat = await query<{ price_usdc_6: string; intel: unknown }>(
+    "select price_usdc_6, intel from mission_specialists where contest_id = $1 and fragment_id = $2 and owner = 'platform' and claimed_by is null",
+    [contestId, fragmentId],
+  );
+  if (!plat.rows[0]) return c.json({ error: "that piece is already taken or not available" }, 409);
+  const basePrice6 = plat.rows[0].price_usdc_6;
+  const intel = plat.rows[0].intel;
+
+  // Seat cap (distinct buyers) and the per-buyer two-piece limit.
+  const buyRows = await query<{ operator: string }>(
+    "select operator from mission_intel_buys where contest_id = $1",
+    [contestId],
+  );
+  const distinctOps = new Set(buyRows.rows.map((r) => (r.operator ?? "").toLowerCase()));
+  const myCount = buyRows.rows.filter((r) => (r.operator ?? "").toLowerCase() === operator).length;
+  if (!distinctOps.has(operator) && distinctOps.size >= config.mission.specialistSeats) {
+    return c.json({ error: `specialist seats are full (${config.mission.specialistSeats} max)` }, 409);
+  }
+  if (myCount >= config.mission.specialistMaxBuy) {
+    return c.json({ error: `you already hold the max ${config.mission.specialistMaxBuy} pieces` }, 409);
+  }
+
+  const resalePrice6 = String(Math.round(resalePriceUsdc * 1e6));
+
+  // Claim the piece. The PK makes this the single source of exclusivity: a
+  // conflict means another specialist beat this caller to it.
+  const claim = await query(
+    `insert into mission_intel_buys (contest_id, fragment_id, operator, agent_id, base_price_6, resale_price_6, tx_hash)
+     values ($1, $2, $3, $4, $5, $6, $7) on conflict (contest_id, fragment_id) do nothing`,
+    [contestId, fragmentId, operator, agentId, basePrice6, resalePrice6, txHash],
+  );
+  if (claim.rowCount === 0) return c.json({ error: "that piece was just taken" }, 409);
+
+  // Take the platform piece off the shelf and stand up the operator's resale
+  // listing carrying the platform's intel.
+  await query(
+    "update mission_specialists set claimed_by = $3 where contest_id = $1 and fragment_id = $2 and owner = 'platform'",
+    [contestId, fragmentId, operator],
+  );
+  await query(
+    `insert into mission_specialists (contest_id, agent_id, address, fragment_id, price_usdc_6, intel, owner, operator)
+     values ($1, $2, $3, $4, $5, $6, 'operator', $3)
+     on conflict (contest_id, agent_id, fragment_id) do update set
+       price_usdc_6 = excluded.price_usdc_6, intel = excluded.intel, owner = 'operator', operator = excluded.operator`,
+    [contestId, agentId, operator, fragmentId, resalePrice6, JSON.stringify(intel ?? null)],
+  );
+  void logEvent({ kind: "mission_intel_buy", address: operator, context: { contestId, fragmentId, agentId, basePrice6, resalePrice6 }, source: "auth" });
+  return c.json({ ok: true });
+});
+
 /// Whether the signed-in operator has already paid this mission's join fee, so
 /// the entry flow does not charge it twice on a retry.
 app.get("/missions/:id/fee-status", requireAuth, async (c) => {
@@ -2131,8 +2212,9 @@ app.get("/missions/:id", async (c) => {
     price_usdc_6: string;
     owner: string;
     operator: string | null;
+    claimed_by: string | null;
   }>(
-    "select agent_id, fragment_id, price_usdc_6, owner, operator from mission_specialists where contest_id = $1 order by agent_id",
+    "select agent_id, fragment_id, price_usdc_6, owner, operator, claimed_by from mission_specialists where contest_id = $1 order by agent_id",
     [contestId],
   );
   const decisions = await query<{
@@ -2291,6 +2373,9 @@ app.get("/missions/:id", async (c) => {
       price6: s.price_usdc_6,
       owner: s.owner === "operator" ? "operator" : "platform",
       operator: s.operator,
+      // A platform piece with a claimer has left the shelf (a specialist owns
+      // it now). Unclaimed platform pieces are still buyable from the platform.
+      claimed: s.owner === "platform" ? s.claimed_by != null : false,
     })),
     operatives,
     tape,

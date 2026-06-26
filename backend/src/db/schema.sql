@@ -918,10 +918,32 @@ create table if not exists mission_operative_fees (
 -- Operator-run specialists: an operator can enter a mission on the SUPPLY side,
 -- registering one of their agents to sell intel for a fragment at their own
 -- price. `owner` distinguishes them from the platform-seeded sellers; `operator`
--- is the wallet the A2A payment lands in when an operative buys. Added after the
+-- is the wallet the A2A payment lands in when an operative buys. `claimed_by` is
+-- set on a PLATFORM row once a specialist buys that piece, making it exclusive:
+-- the platform no longer sells it (only the specialist resells). Added after the
 -- create so existing DBs gain the columns.
-alter table mission_specialists add column if not exists owner    text not null default 'platform';
-alter table mission_specialists add column if not exists operator text;
+alter table mission_specialists add column if not exists owner      text not null default 'platform';
+alter table mission_specialists add column if not exists operator   text;
+alter table mission_specialists add column if not exists claimed_by text;
+
+-- The scarce-intel market ledger (v2). One row per piece a specialist buys from
+-- the platform shelf at the base price `b`, then resells at `resale_price_6`. The
+-- (contest_id, fragment_id) primary key enforces exclusivity: a piece has at most
+-- one buyer. Refunded from the treasury if the mission cancels.
+create table if not exists mission_intel_buys (
+  contest_id     bigint not null,
+  fragment_id    text not null,
+  operator       text not null,
+  agent_id       bigint not null,
+  base_price_6   text not null,
+  resale_price_6 text not null,
+  tx_hash        text,
+  refunded       boolean not null default false,
+  refund_tx      text,
+  created_at     timestamptz not null default now(),
+  primary key (contest_id, fragment_id)
+);
+create index if not exists mission_intel_buys_op_idx on mission_intel_buys(contest_id, operator);
 create index if not exists mission_specialists_contest_idx on mission_specialists(contest_id);
 
 -- Agent-to-agent trades: the on-chain USDC payment from an operative (buyer) to a

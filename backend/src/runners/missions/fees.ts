@@ -48,6 +48,44 @@ export async function refundMissionFees(contestId: number): Promise<void> {
   console.log(`[mission ${contestId}] refunded ${refunded}/${rows.length} operative join fee(s) from the treasury`);
 }
 
+/// Refund every unrefunded specialist intel purchase for a mission, from the
+/// treasury (which received the base price). Called when a mission cancels, so a
+/// specialist who bought a piece on a void mission is made whole.
+export async function refundMissionBuys(contestId: number): Promise<void> {
+  if (!config.treasury.privateKey || !config.treasury.address) return;
+  const { rows } = await query<{ operator: string; fragment_id: string; base_price_6: string }>(
+    "select operator, fragment_id, base_price_6 from mission_intel_buys where contest_id = $1 and refunded = false",
+    [contestId],
+  );
+  if (rows.length === 0) return;
+
+  const account = privateKeyToAccount(config.treasury.privateKey) as Account;
+  const wallet = createWalletClient({ account, chain: arcTestnet, transport: http(config.rpcHttp) });
+  let refunded = 0;
+  for (const r of rows) {
+    const amount = BigInt(r.base_price_6 || "0");
+    if (amount <= 0n) continue;
+    try {
+      const hash = await wallet.writeContract({
+        address: config.external.USDC,
+        abi: USDC_ABI,
+        functionName: "transfer",
+        args: [r.operator as `0x${string}`, amount],
+      });
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      if (receipt.status !== "success") throw new Error("refund tx reverted");
+      await query(
+        "update mission_intel_buys set refunded = true, refund_tx = $3 where contest_id = $1 and fragment_id = $2",
+        [contestId, r.fragment_id, hash],
+      );
+      refunded += 1;
+    } catch (err) {
+      console.error(`[mission ${contestId}] intel-buy refund -> ${r.operator} failed: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+  console.log(`[mission ${contestId}] refunded ${refunded}/${rows.length} specialist intel purchase(s) from the treasury`);
+}
+
 /// Stamp a mission's lifecycle status. No-op for non-mission contests (the update
 /// touches zero rows), so it is safe to call on every settlement.
 export async function markMissionStatus(contestId: number, status: "settled" | "cancelled"): Promise<void> {

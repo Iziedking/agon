@@ -92,6 +92,7 @@ export async function getSpecialistForFragment(
     `select agent_id, address, price_usdc_6, intel
        from mission_specialists
       where contest_id = $1 and fragment_id = $2
+        and (owner = 'operator' or claimed_by is null)
       order by (owner = 'operator') desc, price_usdc_6::numeric asc, agent_id asc
       limit 1`,
     [missionId, fragmentId],
