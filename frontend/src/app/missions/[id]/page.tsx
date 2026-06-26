@@ -10,6 +10,7 @@ import { nameFor, skinFor, useAgentNames, useAgentSkins } from "@/hooks/useAgent
 import { EnterPanel } from "@/components/pengu/EnterPanel";
 import { fetchContest, type Contest } from "@/lib/contests";
 import { USDC, confirmTx } from "@/lib/arc";
+import { checkEntry } from "@/lib/entry";
 import { useOperatorAddress } from "@/hooks/useAuth";
 import { useArcWrite } from "@/hooks/useArcWrite";
 import {
@@ -375,6 +376,14 @@ function MissionJoinPanel({
         return;
       }
       const aId = resolved.agentId;
+      // Concurrency rules: one agent per event + the operator event cap, checked
+      // before the base-price transfer.
+      const guard = await checkEntry(aId, mission.contestId);
+      if (!guard.ok) {
+        setErr(guard.reason ?? "this agent can't take a seat right now.");
+        setBusy(false);
+        return;
+      }
       // Pay the base price `b` to the platform treasury, then claim the piece.
       const txHash = await writeContractAsync({
         address: USDC,

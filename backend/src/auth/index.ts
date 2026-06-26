@@ -18,6 +18,7 @@ import { setTierGate, getTierGate, type GateSurface } from "../lib/tierGate.js";
 import { merkleProof, merkleRoot, payoutLeaf } from "../coordinator/merkle.js";
 import { redis } from "../redis.js";
 import { issueToken, requireAuth, SESSION_COOKIE } from "./jwt.js";
+import { checkEntry } from "./entryGuard.js";
 import {
   DAILY_POOL_MAX,
   MYSTERY_ODDS,
@@ -2147,6 +2148,11 @@ app.post("/missions/:id/buy-intel", requireAuth, async (c) => {
   if (asOperative.rows.length > 0)
     return c.json({ error: "you entered this mission as an operative; you cannot also be a specialist" }, 409);
 
+  // Concurrency rules: the agent can't be busy elsewhere and the operator must be
+  // under the event cap.
+  const guard = await checkEntry(operator, agentId, { contestId });
+  if (!guard.ok) return c.json({ error: guard.reason ?? "cannot enter" }, 409);
+
   // The platform piece for this fragment, still on the shelf.
   const plat = await query<{ price_usdc_6: string; intel: unknown }>(
     "select price_usdc_6, intel from mission_specialists where contest_id = $1 and fragment_id = $2 and owner = 'platform' and claimed_by is null",
@@ -2683,6 +2689,19 @@ app.get("/agents/identities", async (c) => {
     }
   }
   return c.json({ identities });
+});
+
+/// Pre-entry concurrency check: may the signed-in operator enter an event with
+/// this agent? Enforces one-agent-per-event and the max-concurrent-events cap.
+/// The UI calls this before any on-chain entry so a busy agent / over-cap
+/// operator is stopped before money moves.
+app.get("/entry/check", requireAuth, async (c) => {
+  const operator = c.get("address").toLowerCase();
+  const agentId = Number(c.req.query("agentId"));
+  if (!Number.isFinite(agentId) || agentId <= 0) return c.json({ ok: false, reason: "bad agent id" }, 400);
+  const contestId = c.req.query("contestId") ? Number(c.req.query("contestId")) : undefined;
+  const res = await checkEntry(operator, agentId, { contestId });
+  return c.json(res);
 });
 
 /// Resolves a free-text reference to one of the SIGNED-IN operator's agents, so

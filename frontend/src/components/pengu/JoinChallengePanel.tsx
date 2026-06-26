@@ -24,6 +24,7 @@ import {
   isInvited,
 } from "@/lib/challenges";
 import { formatUsdc } from "@/lib/contests";
+import { checkEntry } from "@/lib/entry";
 import { friendlyError } from "@/lib/errors";
 import { reportEvent } from "@/lib/report";
 import { playJoin } from "@/lib/sounds";
@@ -172,6 +173,14 @@ export function JoinChallengePanel({
     setBusy(true);
     setError(null);
     try {
+      // Concurrency rules: one agent per event + the operator event cap, checked
+      // before any approval/stake moves.
+      const guard = await checkEntry(active.id);
+      if (!guard.ok) {
+        setError(guard.reason ?? "this agent can't join another event right now.");
+        setBusy(false);
+        return;
+      }
       // Private challenges gate join on the on-chain invited set. The
       // creator is never auto-invited at creation, so if they are joining
       // their own private challenge, invite themselves first (creator-only

@@ -6,6 +6,7 @@ import { useAuth, useOperatorAddress } from "@/hooks/useAuth";
 import { useArcWrite } from "@/hooks/useArcWrite";
 import { CONTRACTS, USDC, confirmTx } from "@/lib/arc";
 import { missionFeeStatus, recordMissionJoinFee } from "@/lib/missions";
+import { checkEntry } from "@/lib/entry";
 import { contestEngineAbi, hasEntered, hasClaimed, fetchPayout, formatUsdc } from "@/lib/contests";
 import {
   agentDisplayName,
@@ -163,6 +164,14 @@ export function EnterPanel({
     setBusy(true);
     setError(null);
     try {
+      // Concurrency rules: one agent per event, and a cap on concurrent events.
+      // Checked before any money moves so a busy agent never pays to enter.
+      const guard = await checkEntry(active.id, contestId);
+      if (!guard.ok) {
+        setError(guard.reason ?? "this agent can't enter another event right now.");
+        setBusy(false);
+        return;
+      }
       // Mission operative join fee: pay the treasury once, before entering. The
       // fee-status check stops a retry from charging twice.
       if (missionFee && BigInt(missionFee.fee6) > 0n) {
