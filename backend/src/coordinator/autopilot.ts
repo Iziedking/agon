@@ -327,12 +327,19 @@ async function startMissionLoop(broadcast: (message: unknown) => void): Promise<
   }
   const cadence = Number(process.env.MISSION_CADENCE_SECONDS ?? "3600");
   const domain = (process.env.MISSION_DOMAIN ?? "solver").toLowerCase() as "solver" | "analyst" | "scout";
-  console.log(`autopilot: missions on (${domain}), opening one every ${cadence}s`);
+  // Variable join window (5 / 10 / 15 min) so missions don't all feel the same,
+  // and a variable, heavily-funded pool (>= the configured min, default 100).
+  const WINDOWS = [300, 600, 900];
+  const poolMin = Math.max(100, config.mission.poolUsdc);
+  const poolMax = Math.max(poolMin, Number(process.env.MISSION_POOL_USDC_MAX ?? poolMin + 150));
+  console.log(`autopilot: missions on (${domain}), opening one every ${cadence}s, pool ${poolMin}-${poolMax} USDC, window 5/10/15 min`);
   for (;;) {
     try {
+      const windowSecs = WINDOWS[Math.floor(Math.random() * WINDOWS.length)]!;
+      const poolUsdc = poolMin + Math.floor(Math.random() * (poolMax - poolMin + 1));
       const contestId = await openMission({
-        poolUsdc: config.mission.poolUsdc,
-        durationSeconds: config.mission.durationSeconds,
+        poolUsdc,
+        durationSeconds: windowSecs,
         domain,
         minTier: config.mission.minTier,
       });
@@ -341,9 +348,9 @@ async function startMissionLoop(broadcast: (message: unknown) => void): Promise<
         type: "contest_open",
         contestId,
         contestType: "mission",
-        endsAt: Date.now() + config.mission.durationSeconds * 1000,
+        endsAt: Date.now() + windowSecs * 1000,
       });
-      console.log(`autopilot: opened mission ${contestId}, ${config.mission.poolUsdc} USDC, ${config.mission.durationSeconds}s window`);
+      console.log(`autopilot: opened mission ${contestId}, ${poolUsdc} USDC, ${windowSecs}s window`);
     } catch (err) {
       console.error("autopilot mission open failed:", err instanceof Error ? err.message : err);
     }

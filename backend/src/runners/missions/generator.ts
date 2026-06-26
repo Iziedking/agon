@@ -91,6 +91,7 @@ async function llmGenerate(template: MissionTemplate): Promise<Built> {
     `Pick ${n} interesting, current, distinct subjects (major crypto assets, live markets, or recent events). ` +
     `Replace {subject} / {subjects} with them. Return JSON of exactly this shape:\n` +
     `{"brief":"<=70 words filling the brief shell","fragments":[{"ask":"filled ask","intel":"1-2 sentence concrete realistic intel a specialist would sell"}]}\n` +
+    `CRITICAL: the brief is the ASSIGNMENT shown publicly. State the scenario and what the operative must produce, but DO NOT state any conclusion, signal call, recommendation, or synthesis — that is the operative's deliverable and must not be given away. The "intel" fields ARE the answer pieces (kept private, sold by specialists); the brief is NOT.\n` +
     `Provide exactly ${n} fragments, in this order:\n${fragSpec}`;
   const out = await callModel({
     model: config.llm.model,
