@@ -12,7 +12,7 @@ import {
   StatusChip,
   TagButton,
 } from "@/components/redesign";
-import { fetchMissions, formatUsdc6, type MissionListItem } from "@/lib/missions";
+import { fetchMissions, formatUsdc6, missionNo, type MissionListItem } from "@/lib/missions";
 
 /// /missions. The mission index: the agent labor market at a glance. Open
 /// missions first, then settled/cancelled. Each card links into the arena
@@ -69,7 +69,7 @@ export default function MissionsPage() {
     <div className="min-h-screen bg-canvas text-ink">
       <AppHeader />
 
-      <section className="relative mx-auto max-w-[1600px] px-6 pt-16">
+      <section className="relative mx-auto max-w-[1600px] px-4 pt-16 sm:px-6">
         <CornerMarkers />
         <SectionHeader
           eyebrow="THE AGENT LABOR MARKET"
@@ -88,7 +88,7 @@ export default function MissionsPage() {
         />
       </section>
 
-      <section className="mx-auto max-w-[1600px] px-6 py-12">
+      <section className="mx-auto max-w-[1600px] px-4 py-12 sm:px-6">
         {loading ? (
           <p className="font-mono text-[13px] uppercase tracking-[0.12em] text-ink-3">LOADING MISSIONS…</p>
         ) : empty ? (
@@ -121,7 +121,7 @@ export default function MissionsPage() {
                 <BracketedCell key={m.contestId}>
                   <div className="flex items-center justify-between">
                     <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3">
-                      <span aria-hidden className="text-accent">■</span> MISSION #{m.contestId}
+                      <span aria-hidden className="text-accent">■</span> {m.seq ? missionNo(m.seq) : `MISSION #${m.contestId}`}
                     </div>
                     <StatusChip tone={chip.tone}>{chip.label}</StatusChip>
                   </div>

@@ -869,6 +869,10 @@ alter table missions add column if not exists archetype         text    not null
 alter table missions add column if not exists weight            numeric not null default 0;
 alter table missions add column if not exists base_price_usdc_6 text    not null default '0';
 alter table missions add column if not exists pool_usdc_6       text    not null default '0';
+-- A display sequence so missions read as "MISSION 001" rather than the on-chain
+-- contest id (one counter across all contests). The URL still uses contest_id.
+create sequence if not exists mission_display_seq;
+alter table missions add column if not exists seq bigint not null default nextval('mission_display_seq');
 create index if not exists missions_status_idx on missions(status, created_at desc);
 
 -- The fragments a mission's brief asks for, with the captured ground truth. The

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useAccount } from "wagmi";
 import { useContestSocket } from "@/hooks/useContestSocket";
 import { WinShareModal } from "@/components/redesign/WinShareModal";
+import { isMissionContest } from "@/lib/missions";
 
 /// Site-wide "you placed" listener. Mounted in the root layout so it lives on
 /// every page. Subscribes to the coordinator socket and pops the win-share
@@ -62,11 +63,28 @@ export function WinWatcher() {
     return null;
   }, [me, settled, shownContest, challengeSettled, shownChallenge]);
 
+  // A settled contest may be a mission; check so the modal reads "MISSION" and
+  // links to the mission arena. Defaults to false until the check resolves.
+  const [isMission, setIsMission] = useState(false);
+  useEffect(() => {
+    if (pick?.source === "contest") {
+      let alive = true;
+      void isMissionContest(pick.id).then((m) => {
+        if (alive) setIsMission(m);
+      });
+      return () => {
+        alive = false;
+      };
+    }
+    setIsMission(false);
+  }, [pick?.source, pick?.id]);
+
   if (!pick || !address) return null;
 
   return (
     <WinShareModal
       source={pick.source}
+      isMission={pick.source === "contest" && isMission}
       id={pick.id}
       winners={pick.winners}
       youAddress={address}

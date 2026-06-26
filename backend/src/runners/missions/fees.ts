@@ -148,6 +148,12 @@ export async function clearMissionHistory(): Promise<string> {
     const r = await query(`delete from ${t}`);
     total += r.rowCount ?? 0;
   }
+  // Restart the display numbering so the next mission is MISSION 001 again.
+  try {
+    await query("select setval('mission_display_seq', 1, false)");
+  } catch {
+    /* sequence may not exist on an older DB; harmless */
+  }
   return `mission history cleared (${total} rows)`;
 }
 

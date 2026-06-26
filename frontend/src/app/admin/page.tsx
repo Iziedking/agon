@@ -164,7 +164,7 @@ export default function AdminPage() {
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-canvas text-ink">
-      <section className="relative mx-auto max-w-[1100px] px-6 py-16">
+      <section className="relative mx-auto max-w-[1100px] px-4 py-16 sm:px-6">
         <CornerMarkers />
         <h1 className="font-stencil uppercase text-ink" style={{ fontSize: "clamp(32px,5vw,56px)", lineHeight: 0.95, letterSpacing: "-0.02em" }}>
           ADMIN CONSOLE

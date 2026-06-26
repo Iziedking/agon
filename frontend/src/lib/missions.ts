@@ -71,6 +71,8 @@ export interface MissionMeta {
   archetype?: "external" | "internal";
   weight?: number;
   basePrice6?: string;
+  /// Display sequence ("MISSION 001"); the URL still uses contestId.
+  seq?: number;
 }
 
 export interface MissionSeats {
@@ -186,11 +188,18 @@ export async function recordMissionJoinFee(missionId: number, txHash: string, am
 
 /// One row in the mission index. Light aggregates only; the arena page carries
 /// the full detail.
+/// "MISSION 001"-style display label from a sequence number.
+export function missionNo(seq?: number): string {
+  return `MISSION ${String(seq && seq > 0 ? seq : 0).padStart(3, "0")}`;
+}
+
 export interface MissionListItem {
   contestId: number;
   domain: string;
   title: string;
   status: string;
+  /// Display sequence; URL still uses contestId.
+  seq?: number;
   /// True while the underlying contest is open or scoring — the source of truth
   /// for "live right now" (the missions.status text can lag a step).
   live?: boolean;
@@ -210,6 +219,16 @@ export async function fetchMissions(): Promise<MissionListItem[]> {
     return data.missions ?? [];
   } catch {
     return [];
+  }
+}
+
+/// Whether a contest id is actually a mission (used to label the win modal).
+export async function isMissionContest(contestId: number): Promise<boolean> {
+  try {
+    const s = await fetchMission(contestId);
+    return s?.mission != null;
+  } catch {
+    return false;
   }
 }
 

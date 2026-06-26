@@ -1954,6 +1954,7 @@ app.get("/missions", async (c) => {
     status: string;
     contest_status: string | null;
     archetype: string;
+    seq: string;
     created_at: string;
     operatives: string;
     payments: string;
@@ -1966,6 +1967,7 @@ app.get("/missions", async (c) => {
        m.status,
        c.status as contest_status,
        m.archetype,
+       m.seq,
        m.created_at::text as created_at,
        (select count(*) from mission_submissions s where s.contest_id = m.contest_id) as operatives,
        (
@@ -1996,6 +1998,7 @@ app.get("/missions", async (c) => {
       status: r.status,
       live: isLive(r.contest_status, r.status),
       archetype: r.archetype === "external" ? "external" : "internal",
+      seq: Number(r.seq) || 0,
       createdAt: r.created_at,
       operatives: Number(r.operatives),
       payments: Number(r.payments),
@@ -2275,8 +2278,9 @@ app.get("/missions/:id", async (c) => {
     weight: string;
     base_price_usdc_6: string;
     pool_usdc_6: string;
+    seq: string;
   }>(
-    "select domain, template_id, title, brief, deliverable, status, archetype, weight, base_price_usdc_6, pool_usdc_6 from missions where contest_id = $1",
+    "select domain, template_id, title, brief, deliverable, status, archetype, weight, base_price_usdc_6, pool_usdc_6, seq from missions where contest_id = $1",
     [contestId],
   );
   const mission = m.rows[0];
@@ -2457,6 +2461,7 @@ app.get("/missions/:id", async (c) => {
       archetype: mission.archetype === "external" ? "external" : "internal",
       weight: Number(mission.weight) || 0,
       basePrice6: mission.base_price_usdc_6,
+      seq: Number(mission.seq) || 0,
     },
     join: {
       poolUsdc6: poolUsdc6.toString(),

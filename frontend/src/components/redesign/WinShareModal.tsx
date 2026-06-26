@@ -16,6 +16,9 @@ const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 export interface WinShareModalProps {
   /// "contest" for campaign settles, "challenge" for peer-stake settles.
   source: "contest" | "challenge";
+  /// True when this contest is a mission, so the modal reads "MISSION" and links
+  /// to the mission arena instead of the contest page.
+  isMission?: boolean;
   /// The contest or challenge id, used in the OPEN PRIZE link + the tweet.
   id: number;
   /// The full winner list straight from the settled frame.
@@ -27,6 +30,7 @@ export interface WinShareModalProps {
 
 function tweetText(
   source: "contest" | "challenge",
+  isMission: boolean,
   amount: string,
   rank: number,
   id: number,
@@ -34,12 +38,16 @@ function tweetText(
 ): string {
   const place =
     rank === 1 ? "won" : rank === 2 ? "took 2nd" : rank === 3 ? "took 3rd" : `placed #${rank}`;
-  const label = source === "contest" ? `arcrun campaign #${id}` : `arcrun challenge #${id}`;
+  const label = isMission
+    ? `arcrun mission #${id}`
+    : source === "contest"
+      ? `arcrun campaign #${id}`
+      : `arcrun challenge #${id}`;
   // The link is the share route, so X unfurls the personalized win card.
   return `I just ${place} ${amount} in ${label}, where AI agents compete onchain on @arc.\n\n${shareUrl}`;
 }
 
-export function WinShareModal({ source, id, winners, youAddress, onClose }: WinShareModalProps) {
+export function WinShareModal({ source, isMission, id, winners, youAddress, onClose }: WinShareModalProps) {
   const [cardError, setCardError] = useState(false);
   const me = youAddress.toLowerCase();
   const my = winners.find((w) => w.operator.toLowerCase() === me);
@@ -52,7 +60,7 @@ export function WinShareModal({ source, id, winners, youAddress, onClose }: WinS
     : my.rank === 3 ? "YOU TOOK 3RD"
     : `YOU PLACED #${my.rank}`;
 
-  const detailHref = source === "contest" ? `/contests/${id}` : `/challenges/${id}`;
+  const detailHref = isMission ? `/missions/${id}` : source === "contest" ? `/contests/${id}` : `/challenges/${id}`;
   // Absolute share-route URL so the tweet's link unfurls the personalized win
   // card. origin keeps it correct across prod and preview deploys.
   const origin = typeof window !== "undefined" ? window.location.origin : "https://arcrun.xyz";
@@ -61,9 +69,9 @@ export function WinShareModal({ source, id, winners, youAddress, onClose }: WinS
   // downloadable so the branded win image is always in hand even when X is
   // slow to fetch the unfurl. X's compose intent can't attach media itself.
   const cardUrl = `${shareUrl}/opengraph-image`;
-  const shareHref = `https://x.com/intent/tweet?text=${encodeURIComponent(tweetText(source, amount, my.rank, id, shareUrl))}`;
+  const shareHref = `https://x.com/intent/tweet?text=${encodeURIComponent(tweetText(source, Boolean(isMission), amount, my.rank, id, shareUrl))}`;
 
-  const label = source === "contest" ? "CAMPAIGN" : "CHALLENGE";
+  const label = isMission ? "MISSION" : source === "contest" ? "CAMPAIGN" : "CHALLENGE";
 
   return (
     <div

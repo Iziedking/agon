@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useArcWrite } from "@/hooks/useArcWrite";
 import { ActivityLedger, BracketedCell } from "@/components/redesign";
 import { WinShareModal } from "@/components/redesign/WinShareModal";
+import { isMissionContest } from "@/lib/missions";
 import { CHALLENGE_KIND } from "@/lib/challenges";
 import { CONTEST_TYPE, formatUsdc } from "@/lib/contests";
 import { friendlyError } from "@/lib/errors";
@@ -37,6 +38,20 @@ export function PrizesPending({ address }: { address: `0x${string}` }) {
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [err, setErr] = useState<{ key: string; friendly: string } | null>(null);
   const [success, setSuccess] = useState<SuccessState | null>(null);
+  // Whether the just-claimed prize is a mission, so the share modal says MISSION.
+  const [successIsMission, setSuccessIsMission] = useState(false);
+  useEffect(() => {
+    if (success?.source === "contest") {
+      let alive = true;
+      void isMissionContest(success.id).then((m) => {
+        if (alive) setSuccessIsMission(m);
+      });
+      return () => {
+        alive = false;
+      };
+    }
+    setSuccessIsMission(false);
+  }, [success?.source, success?.id]);
 
   const reload = useCallback(async () => {
     const next = await fetchPendingWinnings(address);
@@ -163,6 +178,7 @@ export function PrizesPending({ address }: { address: `0x${string}` }) {
       {success ? (
         <WinShareModal
           source={success.source}
+          isMission={success.source === "contest" && successIsMission}
           id={success.id}
           winners={[
             { rank: 1, operator: address, amount: success.amount.toString() },

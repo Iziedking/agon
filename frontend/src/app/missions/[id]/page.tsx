@@ -16,6 +16,7 @@ import { useArcWrite } from "@/hooks/useArcWrite";
 import {
   fetchMission,
   formatUsdc6,
+  missionNo,
   buyMissionIntel,
   resolveAgent,
   missionMyRole,
@@ -128,7 +129,7 @@ function Arena({ state, mission }: { state: MissionState; mission: NonNullable<M
       <div className="flex flex-wrap items-center gap-3">
         <span className="inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
           <span aria-hidden className="text-accent">■</span>
-          MISSION · #{mission.contestId} · {mission.domain.toUpperCase()}
+          {mission.seq ? missionNo(mission.seq) : `MISSION · #${mission.contestId}`} · {mission.domain.toUpperCase()}
         </span>
         <StatusChip tone={statusTone(mission.status)}>{mission.status.toUpperCase()}</StatusChip>
         {mission.archetype ? (
