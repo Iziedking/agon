@@ -151,6 +151,8 @@ create table if not exists agents (
 create index if not exists agents_owner_idx on agents(owner);
 -- Backfill columns for installs that pre-date them; no-op when already present.
 alter table agents add column if not exists nickname text;
+-- Last time the nickname changed, for the once-every-30-days rename cooldown.
+alter table agents add column if not exists nickname_updated_at timestamptz;
 -- Custom skin: base64 data URL (image/png|jpeg|webp|gif), capped 256KB on the
 -- server. Null means "use the mascot variant fallback".
 alter table agents add column if not exists skin text;

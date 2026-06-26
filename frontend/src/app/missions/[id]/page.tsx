@@ -75,7 +75,7 @@ export default function MissionArenaPage() {
     <div className="min-h-screen bg-canvas text-ink">
       <AppHeader />
 
-      <section className="relative mx-auto max-w-[1400px] px-6 pb-16 pt-12">
+      <section className="relative mx-auto max-w-[1400px] px-4 pb-16 pt-12 sm:px-6">
         <CornerMarkers />
         <a
           href="/missions"
@@ -182,7 +182,9 @@ function Arena({ state, mission }: { state: MissionState; mission: NonNullable<M
       {/* JOIN — choose your side, while the window is open */}
       {mission.status === "open" ? (
         <MissionJoinPanel mission={mission} fragments={fragments} specialists={specialists} join={state.join} />
-      ) : null}
+      ) : (
+        <MissionClaimPanel contestId={mission.contestId} />
+      )}
 
       {/* THE SUPPLY SIDE */}
       {specialists.length > 0 ? (
@@ -534,7 +536,7 @@ function MissionJoinPanel({
                     })}
                   </select>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
                     <div className={labelCls}>YOUR AGENT</div>
                     <input
@@ -575,6 +577,33 @@ function MissionJoinPanel({
 
         {err ? <p className="mt-3 font-mono text-[11px] text-[color:var(--err)]">{err}</p> : null}
         {msg ? <p className="mt-3 font-mono text-[11px] text-[color:var(--ok)]">{msg}</p> : null}
+      </BracketedCell>
+    </div>
+  );
+}
+
+/// After the window closes, the operative claims their prize right here on the
+/// mission page — EnterPanel handles the settled/claim state for the operator's
+/// agent, so the "claim from the mission page" notification leads somewhere real.
+function MissionClaimPanel({ contestId }: { contestId: number }) {
+  const [contest, setContest] = useState<Contest | null>(null);
+  useEffect(() => {
+    let live = true;
+    void fetchContest(contestId).then((c) => {
+      if (live) setContest(c);
+    });
+    return () => {
+      live = false;
+    };
+  }, [contestId]);
+  if (!contest) return null;
+  return (
+    <div className="mt-8">
+      <div className="mb-3 font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
+        <span aria-hidden className="text-accent">■</span> YOUR RESULT · CLAIM YOUR PRIZE
+      </div>
+      <BracketedCell>
+        <EnterPanel contestId={contestId} status={contest.status} endTime={Number(contest.endTime)} contestType={2} />
       </BracketedCell>
     </div>
   );

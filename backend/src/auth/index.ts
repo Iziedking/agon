@@ -2537,15 +2537,38 @@ app.post("/agents/:id/name", requireAuth, async (c) => {
     return c.json({ error: "name must be 1-24 chars: letters, numbers, space, dot, dash, underscore" }, 400);
   }
 
-  const { rows } = await query<{ owner: string }>("select owner from agents where id = $1", [agentId]);
+  const { rows } = await query<{ owner: string; nickname: string | null; nickname_updated_at: string | null }>(
+    "select owner, nickname, nickname_updated_at::text as nickname_updated_at from agents where id = $1",
+    [agentId],
+  );
   const owner = rows[0]?.owner;
   if (!owner) return c.json({ error: "agent not found" }, 404);
   if (owner.toLowerCase() !== operator.toLowerCase()) {
     return c.json({ error: "you do not own this agent" }, 403);
   }
 
-  await query("update agents set nickname = $2 where id = $1", [agentId, trimmed || null]);
-  return c.json({ id: agentId, nickname: trimmed || null });
+  const next = trimmed || null;
+  const current = rows[0]?.nickname ?? null;
+  const changing = next !== current;
+
+  // Once-every-30-days rename cooldown, so names can't be spammed.
+  if (changing && rows[0]?.nickname_updated_at) {
+    const last = new Date(rows[0].nickname_updated_at).getTime();
+    const days = (Date.now() - last) / 86_400_000;
+    if (days < 30) {
+      const nextDate = new Date(last + 30 * 86_400_000).toISOString().slice(0, 10);
+      return c.json({ error: `you can rename an agent once every 30 days — next change after ${nextDate}` }, 429);
+    }
+  }
+
+  // Names are unique (case-insensitive) across all agents.
+  if (next) {
+    const dup = await query("select 1 from agents where lower(nickname) = lower($1) and id <> $2 limit 1", [next, agentId]);
+    if (dup.rows.length > 0) return c.json({ error: "agent name taken" }, 409);
+  }
+
+  await query("update agents set nickname = $2, nickname_updated_at = now() where id = $1", [agentId, next]);
+  return c.json({ id: agentId, nickname: next });
 });
 
 // ----- Agent skins -----

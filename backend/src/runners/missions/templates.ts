@@ -80,7 +80,11 @@ export const MISSION_TEMPLATES: MissionTemplate[] = [
     deliverable:
       "A committed YES/NO (or directional) call on each subject with a confidence " +
       "(0-100) and a one-line justification grounded in the fragments.",
+    // Three buyable pieces so a specialist can reach the two-piece max even after
+    // another seat claims one (an analyst mission with only two pieces leaves at
+    // most one on the shelf once a specialist buys).
     fragments: [
+      { kind: "intel", askShell: "The most material recent fact about {subject}." },
       { kind: "signal", askShell: "The news read that moves {subject}." },
       { kind: "market", askShell: "The current implied probability on {subject}." },
     ],
