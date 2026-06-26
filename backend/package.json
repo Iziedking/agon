@@ -16,7 +16,7 @@
     "coordinator": "tsx src/coordinator/index.ts",
     "open-contest": "tsx src/coordinator/openContest.ts",
     "fund-scouts": "tsx src/coordinator/fundScouts.ts",
-    "backfill:syndicate-week": "tsx src/scripts/backfill-syndicate-week.ts",
+    "backfill:syndicate-week": "tsx src/coordinator/backfillSyndicateWeek.ts",
     "nanopay:doctor": "tsx scripts/nanopay-doctor.ts",
     "nanopay:deposit": "tsx scripts/nanopay-deposit.ts",
     "nanopay:probe": "tsx scripts/nanopay-probe.ts",
