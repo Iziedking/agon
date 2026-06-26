@@ -122,9 +122,55 @@ async function firecrawlFindings(avoid: string[], rotate: number): Promise<LiveF
   }
 }
 
+/// The Graph -> real on-chain stats. Queries the configured subgraph(s) (default
+/// Uniswap v3) for the top pools by volume; each pool is a subject and its real
+/// TVL / volume / fee / tx-count the ground-truth fact. Best for scout/analyst
+/// missions, where the answer is literally on chain.
+async function graphFindings(avoid: string[], rotate: number): Promise<LiveFinding[]> {
+  const key = config.liveData.graphApiKey;
+  const ids = config.liveData.graphSubgraphIds;
+  if (!key || ids.length === 0) return [];
+  const subgraphId = ids[rotate % ids.length]!;
+  const gql = `{ pools(first: 12, orderBy: volumeUSD, orderDirection: desc, where: { volumeUSD_gt: "1000000" }) { token0 { symbol } token1 { symbol } feeTier totalValueLockedUSD volumeUSD txCount } }`;
+  try {
+    const res = await fetch(`https://gateway.thegraph.com/api/${key}/subgraphs/id/${subgraphId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: gql }),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    if (!res.ok) return [];
+    const data = (await res.json()) as {
+      data?: {
+        pools?: Array<{
+          token0: { symbol: string };
+          token1: { symbol: string };
+          feeTier: string;
+          totalValueLockedUSD: string;
+          volumeUSD: string;
+          txCount: string;
+        }>;
+      };
+    };
+    const avoidSet = new Set(avoid.map((s) => s.toLowerCase()));
+    const usd = (v: string) => Math.round(Number(v) || 0).toLocaleString("en-US");
+    const findings: LiveFinding[] = [];
+    for (const p of data.data?.pools ?? []) {
+      const subject = `${p.token0.symbol}/${p.token1.symbol} pool on Uniswap v3`;
+      if (avoidSet.has(subject.toLowerCase())) continue;
+      const fee = (Number(p.feeTier) || 0) / 10000;
+      const fact = `Real onchain data: TVL $${usd(p.totalValueLockedUSD)}, lifetime volume $${usd(p.volumeUSD)}, ${fee}% fee tier, ${usd(p.txCount)} transactions.`;
+      findings.push({ subject: subject.slice(0, 120), fact: fact.slice(0, 400) });
+    }
+    return findings;
+  } catch {
+    return [];
+  }
+}
+
 /// Picks findings for a mission, rotating across the available live sources for
 /// variety. Returns the first source that yields enough findings, else the
-/// richest. Adding The Graph later is one more entry in `sources`.
+/// richest. On-chain domains (scout/analyst) try The Graph first.
 async function findingsForDomain(
   domain: string,
   avoid: string[],
@@ -135,6 +181,10 @@ async function findingsForDomain(
     { name: "exa", fn: exaFindings },
     { name: "firecrawl", fn: firecrawlFindings },
   ];
+  // On-chain domains lead with The Graph, where the ground truth is on chain.
+  if (domain === "scout" || domain === "analyst") {
+    sources.unshift({ name: "graph", fn: graphFindings });
+  }
   // Rotate the start so consecutive missions favour different sources.
   const off = rotate % sources.length;
   const ordered = [...sources.slice(off), ...sources.slice(0, off)];
