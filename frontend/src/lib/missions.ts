@@ -47,7 +47,7 @@ export interface MissionOperative {
 }
 
 export interface TapeRow {
-  kind: "a2a" | "x402";
+  kind: "a2a" | "x402" | "shelf";
   fromAgentId: number;
   toAgentId: number | null;
   toLabel: string;
@@ -66,6 +66,11 @@ export interface MissionMeta {
   brief: string;
   deliverable: string;
   status: string;
+  /// v2 economy. EXTERNAL missions source data via x402; INTERNAL run the intel
+  /// market. weight 0..1; basePrice6 is the platform base price `b` (1e6).
+  archetype?: "external" | "internal";
+  weight?: number;
+  basePrice6?: string;
 }
 
 export interface MissionSeats {

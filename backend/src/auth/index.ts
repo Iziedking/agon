@@ -2263,6 +2263,16 @@ app.get("/missions/:id", async (c) => {
     "select agent_id, endpoint_label, usdc_amount_6, tx_hash, chain, created_at::text as created_at from nanopayments where contest_id = $1 and status = 'settled' order by id",
     [contestId],
   );
+  const intelBuys = await query<{
+    agent_id: string;
+    fragment_id: string;
+    base_price_6: string;
+    tx_hash: string | null;
+    created_at: string;
+  }>(
+    "select agent_id, fragment_id, base_price_6, tx_hash, created_at::text as created_at from mission_intel_buys where contest_id = $1 order by created_at",
+    [contestId],
+  );
 
   // Group decisions under each operative.
   const decByAgent = new Map<number, unknown[]>();
@@ -2322,6 +2332,17 @@ app.get("/missions/:id", async (c) => {
       txHash: n.tx_hash,
       chain: n.chain,
       ts: n.created_at,
+    })),
+    ...intelBuys.rows.map((b) => ({
+      kind: "shelf" as const,
+      fromAgentId: Number(b.agent_id),
+      toAgentId: null,
+      toLabel: "platform shelf",
+      fragmentId: b.fragment_id,
+      amount6: b.base_price_6,
+      txHash: b.tx_hash,
+      chain: "arc",
+      ts: b.created_at,
     })),
   ].sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
 

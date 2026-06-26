@@ -124,6 +124,15 @@ function Arena({ state, mission }: { state: MissionState; mission: NonNullable<M
           MISSION · #{mission.contestId} · {mission.domain.toUpperCase()}
         </span>
         <StatusChip tone={statusTone(mission.status)}>{mission.status.toUpperCase()}</StatusChip>
+        {mission.archetype ? (
+          <span
+            className={`inline-block border px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em] ${
+              mission.archetype === "external" ? "border-[color:var(--ok)] text-[color:var(--ok)]" : "border-accent text-accent"
+            }`}
+          >
+            {mission.archetype === "external" ? "X402 · PAY PER CALL" : "INTEL MARKET"}
+          </span>
+        ) : null}
       </div>
       <h1
         className="mt-6 font-stencil uppercase text-ink"
@@ -139,6 +148,25 @@ function Arena({ state, mission }: { state: MissionState; mission: NonNullable<M
           <div className="mt-2 font-mono text-[14px] leading-[1.7] text-ink-2">{mission.deliverable}</div>
         </BracketedCell>
       </div>
+
+      {/* THE ECONOMY AT A GLANCE */}
+      {state.join ? (
+        <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <EconStat label="PRIZE POOL" value={formatUsdc6(state.join.poolUsdc6)} />
+          <EconStat
+            label="OPERATIVE FEE"
+            value={Number(state.join.operativeFee6) > 0 ? formatUsdc6(state.join.operativeFee6) : "FREE"}
+          />
+          <EconStat
+            label="SPECIALIST SEATS"
+            value={`${state.join.specialistSeats.taken}/${state.join.specialistSeats.total}`}
+          />
+          <EconStat
+            label="OPERATIVE SEATS"
+            value={`${state.join.operativeSeats.taken}/${state.join.operativeSeats.total}`}
+          />
+        </div>
+      ) : null}
 
       {/* JOIN — choose your side, while the window is open */}
       {mission.status === "open" ? (
@@ -160,7 +188,7 @@ function Arena({ state, mission }: { state: MissionState; mission: NonNullable<M
                 <BracketedCell key={`${s.agentId}-${s.fragmentId}`}>
                   <div className="flex items-center justify-between">
                     <span className="font-mono text-[12px] uppercase tracking-[0.12em] text-ink">
-                      SPECIALIST #{s.agentId}
+                      {s.owner === "operator" ? `SPECIALIST #${s.agentId}` : "ON THE SHELF"}
                     </span>
                     <span className="font-mono text-[12px] text-accent">{formatUsdc6(s.price6)}</span>
                   </div>
@@ -169,14 +197,15 @@ function Arena({ state, mission }: { state: MissionState; mission: NonNullable<M
                       className={`inline-block border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em] ${
                         s.owner === "operator"
                           ? "border-accent text-accent"
-                          : "border-[color:var(--hairline-strong)] text-ink-3"
+                          : "border-[color:var(--ok)] text-[color:var(--ok)]"
                       }`}
                     >
-                      {s.owner === "operator" ? "OPERATOR" : "PLATFORM"}
+                      {s.owner === "operator" ? "RESALE" : "BUY FROM PLATFORM"}
                     </span>
                   </div>
                   <div className="mt-2 font-mono text-[12px] leading-[1.6] text-ink-2">
-                    sells <span className="uppercase text-ink">{frag?.kind ?? s.fragmentId}</span>
+                    {s.owner === "operator" ? "resells" : "sells"}{" "}
+                    <span className="uppercase text-ink">{frag?.kind ?? s.fragmentId}</span>
                     {frag ? ` — ${frag.ask}` : ""}
                   </div>
                 </BracketedCell>
@@ -494,6 +523,15 @@ function MissionJoinPanel({
   );
 }
 
+function EconStat({ label, value }: { label: string; value: string }) {
+  return (
+    <BracketedCell pad="sm">
+      <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">{label}</div>
+      <div className="mt-1.5 font-mono text-[15px] tabular-nums text-ink">{value}</div>
+    </BracketedCell>
+  );
+}
+
 function ChoiceChip({ choice }: { choice: Choice }) {
   const conf =
     choice === "buy"
@@ -615,8 +653,8 @@ function DecisionRow({ d, fragments }: { d: MissionDecision; fragments: MissionS
 }
 
 function TapeRowView({ row }: { row: TapeRow }) {
-  const isA2A = row.kind === "a2a";
-  const color = isA2A ? "var(--accent)" : "var(--ok)";
+  const color = row.kind === "a2a" ? "var(--accent)" : row.kind === "shelf" ? "var(--warn)" : "var(--ok)";
+  const label = row.kind === "a2a" ? "A2A · RESALE" : row.kind === "shelf" ? "SHELF · BOUGHT INTEL" : "X402 · DATA";
   return (
     <div className="flex items-center gap-3 py-2.5">
       <span aria-hidden style={{ color }}>
@@ -626,9 +664,7 @@ function TapeRowView({ row }: { row: TapeRow }) {
         <div className="font-mono text-[12px] text-ink">
           agent {row.fromAgentId} <span className="text-ink-3">→</span> {row.toLabel}
         </div>
-        <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
-          {isA2A ? "A2A · INTEL" : "X402 · DATA"}
-        </div>
+        <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">{label}</div>
       </div>
       <div className="text-right">
         <div className="font-mono text-[12px] text-ink">{formatUsdc6(row.amount6)}</div>
