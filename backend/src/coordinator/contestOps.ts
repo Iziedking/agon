@@ -118,14 +118,28 @@ export interface OpenMissionOpts {
 /// and identity live in the `missions` table; on-chain it settles like any
 /// solver contest (no contract redeploy). Returns the contest id.
 export async function openMission(opts: OpenMissionOpts): Promise<number> {
-  const contestId = await openContest({
-    type: "solver",
-    poolUsdc: opts.poolUsdc,
-    durationSeconds: opts.durationSeconds,
-    minTier: opts.minTier ?? config.mission.minTier,
-    maxTier: opts.maxTier ?? OPEN_MAX_TIER,
-  });
-  await generateMission({ contestId, domain: opts.domain, templateId: opts.templateId });
+  // Label each step so a failure says which one (the contest list vs the
+  // mission generation/seed) and carries the original stack, instead of a bare
+  // "Missing or invalid parameters." with no context.
+  let contestId: number;
+  try {
+    contestId = await openContest({
+      type: "solver",
+      poolUsdc: opts.poolUsdc,
+      durationSeconds: opts.durationSeconds,
+      minTier: opts.minTier ?? config.mission.minTier,
+      maxTier: opts.maxTier ?? OPEN_MAX_TIER,
+    });
+  } catch (e) {
+    throw new Error(`openMission: openContest failed: ${e instanceof Error ? e.stack ?? e.message : String(e)}`);
+  }
+  try {
+    await generateMission({ contestId, domain: opts.domain, templateId: opts.templateId });
+  } catch (e) {
+    throw new Error(
+      `openMission: generateMission failed (solver contest ${contestId} created): ${e instanceof Error ? e.stack ?? e.message : String(e)}`,
+    );
+  }
   return contestId;
 }
 
