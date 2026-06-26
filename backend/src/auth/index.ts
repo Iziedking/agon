@@ -2053,6 +2053,52 @@ app.post("/missions/:id/specialist", requireAuth, async (c) => {
   return c.json({ ok: true });
 });
 
+/// Records the operative join fee for a mission. The client pays the fee to the
+/// treasury on chain (after which it posts the tx here); the row lets the
+/// coordinator refund it from the treasury if the mission cancels with no
+/// qualifier. Session-gated; only while the mission is open.
+app.post("/missions/:id/join-fee", requireAuth, async (c) => {
+  const contestId = Number(c.req.param("id"));
+  if (!Number.isFinite(contestId)) return c.json({ error: "bad mission id" }, 400);
+  const operator = c.get("address").toLowerCase();
+
+  let body: { txHash?: string; amount6?: string };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "bad json" }, 400);
+  }
+  const txHash = (body.txHash ?? "").trim() || null;
+  const amount6 = String(body.amount6 ?? "0");
+  if (!/^[0-9]+$/.test(amount6) || amount6 === "0") return c.json({ error: "bad amount" }, 400);
+
+  const m = await query<{ status: string }>("select status from missions where contest_id = $1", [contestId]);
+  if (!m.rows[0]) return c.json({ error: "not a mission" }, 404);
+  if (m.rows[0].status !== "open") return c.json({ error: "this mission is no longer open" }, 409);
+
+  await query(
+    `insert into mission_operative_fees (contest_id, operator, amount_usdc_6, tx_hash)
+     values ($1, $2, $3, $4)
+     on conflict (contest_id, operator) do update set amount_usdc_6 = excluded.amount_usdc_6, tx_hash = excluded.tx_hash`,
+    [contestId, operator, amount6, txHash],
+  );
+  void logEvent({ kind: "mission_join_fee", address: operator, context: { contestId, amount6, txHash }, source: "auth" });
+  return c.json({ ok: true });
+});
+
+/// Whether the signed-in operator has already paid this mission's join fee, so
+/// the entry flow does not charge it twice on a retry.
+app.get("/missions/:id/fee-status", requireAuth, async (c) => {
+  const contestId = Number(c.req.param("id"));
+  if (!Number.isFinite(contestId)) return c.json({ paid: false });
+  const operator = c.get("address").toLowerCase();
+  const r = await query(
+    "select 1 from mission_operative_fees where contest_id = $1 and operator = $2",
+    [contestId, operator],
+  );
+  return c.json({ paid: r.rows.length > 0 });
+});
+
 app.get("/missions/:id", async (c) => {
   const contestId = Number(c.req.param("id"));
   if (!Number.isFinite(contestId)) return c.json({ mission: null });
@@ -2207,7 +2253,14 @@ app.get("/missions/:id", async (c) => {
     [contestId],
   );
   const poolUsdc6 = BigInt(mission.pool_usdc_6 || "0");
-  const operativeFee6 = (poolUsdc6 * BigInt(config.mission.operativeFeeBps)) / 10_000n;
+  // The fee is only live when there is a treasury to receive (and later refund)
+  // it. Without a treasury key the join is free.
+  const feeRecipient = config.treasury.address;
+  const operativeFee6 = feeRecipient ? (poolUsdc6 * BigInt(config.mission.operativeFeeBps)) / 10_000n : 0n;
+  const feePaid = await query<{ n: string }>(
+    "select count(*)::text as n from mission_operative_fees where contest_id = $1",
+    [contestId],
+  );
 
   return c.json({
     mission: {
@@ -2225,7 +2278,9 @@ app.get("/missions/:id", async (c) => {
     join: {
       poolUsdc6: poolUsdc6.toString(),
       operativeFee6: operativeFee6.toString(),
-      feeBps: config.mission.operativeFeeBps,
+      feeBps: feeRecipient ? config.mission.operativeFeeBps : 0,
+      feeRecipient,
+      feesPaid: Number(feePaid.rows[0]?.n ?? 0),
       specialistSeats: { total: config.mission.specialistSeats, taken: Number(specSeats.rows[0]?.n ?? 0) },
       operativeSeats: { total: config.mission.operativeSeats, taken: Number(opSeats.rows[0]?.n ?? 0) },
     },

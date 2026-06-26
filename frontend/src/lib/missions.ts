@@ -65,12 +65,59 @@ export interface MissionMeta {
   status: string;
 }
 
+export interface MissionSeats {
+  total: number;
+  taken: number;
+}
+
+export interface MissionJoin {
+  poolUsdc6: string;
+  /// Operative join fee, 1e6-scaled (0 when no treasury / fee disabled).
+  operativeFee6: string;
+  feeBps: number;
+  /// Treasury address the fee is paid to, or null when the fee is off.
+  feeRecipient: string | null;
+  feesPaid: number;
+  specialistSeats: MissionSeats;
+  operativeSeats: MissionSeats;
+}
+
 export interface MissionState {
   mission: MissionMeta | null;
+  join?: MissionJoin;
   fragments: MissionFragment[];
   specialists: MissionSpecialist[];
   operatives: MissionOperative[];
   tape: TapeRow[];
+}
+
+/// Whether the signed-in operator already paid this mission's join fee (so entry
+/// does not charge twice on a retry). Defaults to false on any error.
+export async function missionFeeStatus(missionId: number): Promise<boolean> {
+  try {
+    const res = await fetch(`${AUTH_URL}/missions/${missionId}/fee-status`, {
+      credentials: "include",
+      cache: "no-store",
+    });
+    if (!res.ok) return false;
+    return Boolean(((await res.json()) as { paid?: boolean }).paid);
+  } catch {
+    return false;
+  }
+}
+
+/// Records that the operative paid the join fee (after the on-chain transfer).
+export async function recordMissionJoinFee(missionId: number, txHash: string, amount6: string): Promise<void> {
+  try {
+    await fetch(`${AUTH_URL}/missions/${missionId}/join-fee`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ txHash, amount6 }),
+    });
+  } catch {
+    /* best-effort; the transfer already happened on chain */
+  }
 }
 
 /// One row in the mission index. Light aggregates only; the arena page carries

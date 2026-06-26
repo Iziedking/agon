@@ -900,6 +900,21 @@ create table if not exists mission_specialists (
   created_at   timestamptz not null default now(),
   primary key (contest_id, agent_id, fragment_id)
 );
+-- Operative join fees (v2 economy). An operative pays a % of the pool to the
+-- treasury when it enters a mission; recorded here so the fee can be refunded
+-- from the treasury if the mission cancels with no qualifier. One row per
+-- operator per mission (re-paying is idempotent on the key).
+create table if not exists mission_operative_fees (
+  contest_id   bigint not null,
+  operator     text not null,
+  amount_usdc_6 text not null,
+  tx_hash      text,
+  refunded     boolean not null default false,
+  refund_tx    text,
+  created_at   timestamptz not null default now(),
+  primary key (contest_id, operator)
+);
+
 -- Operator-run specialists: an operator can enter a mission on the SUPPLY side,
 -- registering one of their agents to sell intel for a fragment at their own
 -- price. `owner` distinguishes them from the platform-seeded sellers; `operator`

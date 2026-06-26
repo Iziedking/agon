@@ -1,9 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { erc20Abi } from "viem";
 import { useAuth, useOperatorAddress } from "@/hooks/useAuth";
 import { useArcWrite } from "@/hooks/useArcWrite";
-import { CONTRACTS, confirmTx } from "@/lib/arc";
+import { CONTRACTS, USDC, confirmTx } from "@/lib/arc";
+import { missionFeeStatus, recordMissionJoinFee } from "@/lib/missions";
 import { contestEngineAbi, hasEntered, hasClaimed, fetchPayout, formatUsdc } from "@/lib/contests";
 import {
   agentDisplayName,
@@ -34,7 +36,21 @@ type Payout = { amount: bigint; proof: `0x${string}`[] };
 /// connected wallet and at least one agent. When the operator owns more than one
 /// agent, a picker lets them choose which agent enters; the choice persists in
 /// localStorage via the active-agent helpers in `lib/agents`.
-export function EnterPanel({ contestId, status, endTime, contestType }: { contestId: number; status: number; endTime: number; contestType?: number }) {
+export function EnterPanel({
+  contestId,
+  status,
+  endTime,
+  contestType,
+  missionFee,
+}: {
+  contestId: number;
+  status: number;
+  endTime: number;
+  contestType?: number;
+  /// When this contest is a mission, the operative pays this fee to the treasury
+  /// before entering (charged once). Omitted for ordinary contests.
+  missionFee?: { fee6: string; recipient: string; missionId: number };
+}) {
   const { address, isSignedIn: isConnected } = useOperatorAddress();
   const { me } = useAuth();
   const { writeContractAsync } = useArcWrite();
@@ -147,6 +163,21 @@ export function EnterPanel({ contestId, status, endTime, contestType }: { contes
     setBusy(true);
     setError(null);
     try {
+      // Mission operative join fee: pay the treasury once, before entering. The
+      // fee-status check stops a retry from charging twice.
+      if (missionFee && BigInt(missionFee.fee6) > 0n) {
+        const alreadyPaid = await missionFeeStatus(missionFee.missionId);
+        if (!alreadyPaid) {
+          const feeHash = await writeContractAsync({
+            address: USDC,
+            abi: erc20Abi,
+            functionName: "transfer",
+            args: [missionFee.recipient as `0x${string}`, BigInt(missionFee.fee6)],
+          });
+          await confirmTx(feeHash);
+          await recordMissionJoinFee(missionFee.missionId, feeHash, missionFee.fee6);
+        }
+      }
       const hash = await writeContractAsync({
         address: CONTRACTS.ContestEngine,
         abi: contestEngineAbi,

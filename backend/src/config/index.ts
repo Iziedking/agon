@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { privateKeyToAccount } from "viem/accounts";
 import { z } from "zod";
 
 /// Loads and validates all backend configuration in one place. Secrets come
@@ -431,6 +432,12 @@ function normalizePrivateKey(raw?: string, name = "COORDINATOR_PRIVATE_KEY"): `0
   return v as `0x${string}`;
 }
 
+/// The address for a private key env var, or null when unset / malformed.
+function addressOfKey(raw: string | undefined, name: string): `0x${string}` | null {
+  const key = normalizePrivateKey(raw, name);
+  return key ? privateKeyToAccount(key).address : null;
+}
+
 const env = loadEnv();
 const deployments = loadDeployments(env.DEPLOYMENTS_FILE);
 
@@ -494,6 +501,10 @@ export const config = {
   },
   treasury: {
     privateKey: normalizePrivateKey(env.TREASURY_PRIVATE_KEY, "TREASURY_PRIVATE_KEY"),
+    // The on-chain treasury address, derived from the key. Operative join fees
+    // are paid here, and refunded from here when a mission cancels. Null when no
+    // treasury key is set, in which case the join fee is disabled.
+    address: addressOfKey(env.TREASURY_PRIVATE_KEY, "TREASURY_PRIVATE_KEY"),
   },
   scout: {
     masterMnemonic: env.SCOUT_MASTER_MNEMONIC?.trim() || undefined,

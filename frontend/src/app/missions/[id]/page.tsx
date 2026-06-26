@@ -16,6 +16,7 @@ import {
   shortAddr,
   type Choice,
   type MissionDecision,
+  type MissionJoin,
   type MissionOperative,
   type MissionState,
   type TapeRow,
@@ -132,7 +133,9 @@ function Arena({ state, mission }: { state: MissionState; mission: NonNullable<M
       </div>
 
       {/* JOIN — choose your side, while the window is open */}
-      {mission.status === "open" ? <MissionJoinPanel mission={mission} fragments={fragments} /> : null}
+      {mission.status === "open" ? (
+        <MissionJoinPanel mission={mission} fragments={fragments} join={state.join} />
+      ) : null}
 
       {/* THE SUPPLY SIDE */}
       {specialists.length > 0 ? (
@@ -236,9 +239,11 @@ function Arena({ state, mission }: { state: MissionState; mission: NonNullable<M
 function MissionJoinPanel({
   mission,
   fragments,
+  join,
 }: {
   mission: NonNullable<MissionState["mission"]>;
   fragments: MissionState["fragments"];
+  join?: MissionJoin;
 }) {
   const { isSignedIn } = useOperatorAddress();
   const [role, setRole] = useState<"operative" | "specialist">("operative");
@@ -294,6 +299,15 @@ function MissionJoinPanel({
     setIntel("");
   }
 
+  const opFull = join ? join.operativeSeats.taken >= join.operativeSeats.total : false;
+  const specFull = join ? join.specialistSeats.taken >= join.specialistSeats.total : false;
+  // Pass the operative fee to the entry panel only when there is a treasury and a
+  // non-zero fee; otherwise entry is free.
+  const missionFee =
+    join && join.feeRecipient && Number(join.operativeFee6) > 0
+      ? { fee6: join.operativeFee6, recipient: join.feeRecipient, missionId: mission.contestId }
+      : undefined;
+
   return (
     <div className="mt-8">
       <div className="mb-3 font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
@@ -326,13 +340,33 @@ function MissionJoinPanel({
               the demand side: send your agent in to source each piece of work, decide make-or-buy, and submit the
               deliverable. the top deliverables split the prize pool.
             </p>
+            {join ? (
+              <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3">
+                {Number(join.operativeFee6) > 0 ? (
+                  <span>
+                    JOIN FEE <span className="text-ink">{formatUsdc6(join.operativeFee6)}</span>
+                  </span>
+                ) : null}
+                <span>
+                  SEATS{" "}
+                  <span className={opFull ? "text-[color:var(--err)]" : "text-ink"}>
+                    {join.operativeSeats.taken}/{join.operativeSeats.total}
+                  </span>
+                </span>
+              </div>
+            ) : null}
             <div className="mt-4">
-              {contest ? (
+              {opFull ? (
+                <p className="font-mono text-[12px] text-[color:var(--err)]">
+                  operative seats are full for this mission.
+                </p>
+              ) : contest ? (
                 <EnterPanel
                   contestId={mission.contestId}
                   status={contest.status}
                   endTime={Number(contest.endTime)}
                   contestType={2}
+                  missionFee={missionFee}
                 />
               ) : (
                 <p className="font-mono text-[12px] text-ink-3">reading the window…</p>
@@ -345,6 +379,15 @@ function MissionJoinPanel({
               the supply side: list one fragment of intel at your price. when an operative buys it, the usdc settles
               to your wallet on chain.
             </p>
+            {join ? (
+              <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3">
+                SPECIALIST SEATS{" "}
+                <span className={specFull ? "text-[color:var(--err)]" : "text-ink"}>
+                  {join.specialistSeats.taken}/{join.specialistSeats.total}
+                </span>
+                {" · NO JOIN FEE"}
+              </div>
+            ) : null}
             <div>
               <div className={labelCls}>FRAGMENT TO SUPPLY</div>
               <select
