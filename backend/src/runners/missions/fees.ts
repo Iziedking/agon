@@ -1,0 +1,59 @@
+import { createWalletClient, http, parseAbi } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import type { Account } from "viem";
+import { arcTestnet, publicClient } from "../../chain/arc.js";
+import { config } from "../../config/index.js";
+import { query } from "../../db/pool.js";
+
+/// v2 economy join-fee settlement (docs/missions.md s1c). When a mission cancels
+/// with no qualifier, the operatives' join fees are returned from the treasury
+/// (which received them). Both helpers are safe to call on any contest: they
+/// no-op when there are no recorded fees / the row is not a mission.
+
+const USDC_ABI = parseAbi(["function transfer(address to, uint256 amount) returns (bool)"]);
+
+/// Refund every unrefunded operative join fee for a mission, from the treasury.
+export async function refundMissionFees(contestId: number): Promise<void> {
+  if (!config.treasury.privateKey || !config.treasury.address) return;
+  const { rows } = await query<{ operator: string; amount_usdc_6: string }>(
+    "select operator, amount_usdc_6 from mission_operative_fees where contest_id = $1 and refunded = false",
+    [contestId],
+  );
+  if (rows.length === 0) return;
+
+  const account = privateKeyToAccount(config.treasury.privateKey) as Account;
+  const wallet = createWalletClient({ account, chain: arcTestnet, transport: http(config.rpcHttp) });
+  let refunded = 0;
+  for (const r of rows) {
+    const amount = BigInt(r.amount_usdc_6 || "0");
+    if (amount <= 0n) continue;
+    try {
+      const hash = await wallet.writeContract({
+        address: config.external.USDC,
+        abi: USDC_ABI,
+        functionName: "transfer",
+        args: [r.operator as `0x${string}`, amount],
+      });
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      if (receipt.status !== "success") throw new Error("refund tx reverted");
+      await query(
+        "update mission_operative_fees set refunded = true, refund_tx = $3 where contest_id = $1 and operator = $2",
+        [contestId, r.operator, hash],
+      );
+      refunded += 1;
+    } catch (err) {
+      console.error(`[mission ${contestId}] fee refund -> ${r.operator} failed: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+  console.log(`[mission ${contestId}] refunded ${refunded}/${rows.length} operative join fee(s) from the treasury`);
+}
+
+/// Stamp a mission's lifecycle status. No-op for non-mission contests (the update
+/// touches zero rows), so it is safe to call on every settlement.
+export async function markMissionStatus(contestId: number, status: "settled" | "cancelled"): Promise<void> {
+  try {
+    await query("update missions set status = $2 where contest_id = $1", [contestId, status]);
+  } catch (err) {
+    console.error(`[mission ${contestId}] status update failed: ${err instanceof Error ? err.message : err}`);
+  }
+}

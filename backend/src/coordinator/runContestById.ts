@@ -9,6 +9,7 @@ import { AnalystRunner } from "../runners/analyst.js";
 import { ScoutRunner } from "../runners/scout.js";
 import { SolverRunner } from "../runners/solver.js";
 import { loadMission } from "../runners/missions/generator.js";
+import { refundMissionFees, markMissionStatus } from "../runners/missions/fees.js";
 import { MissionRunner } from "../runners/missions/runner.js";
 import type { AgentResult, ContestEntryInput } from "../runners/types.js";
 import { fundHotWallets, sweepHotWallets } from "./contestOps.js";
@@ -502,6 +503,12 @@ export async function runContestById(contestId: number, broadcast: (message: unk
   if (payouts.length === 0) {
     console.log(`contest ${contestId}: no scoring entrants; cancelling and refunding the sponsor`);
     await send({ address: engine, abi: engineAbi, functionName: "cancelContest", args: [BigInt(contestId)] });
+    // Mission close: return the operatives' join fees and mark it cancelled.
+    // Both no-op for ordinary contests.
+    await refundMissionFees(contestId).catch((err) =>
+      console.error(`contest ${contestId}: mission fee refund failed:`, err instanceof Error ? err.message : err),
+    );
+    await markMissionStatus(contestId, "cancelled");
     broadcast({ type: "settled", contestId, winners: [] });
     return;
   }
@@ -509,6 +516,7 @@ export async function runContestById(contestId: number, broadcast: (message: unk
   const root = merkleRoot(payouts.map((p) => payoutLeaf(p.operator, p.amount)));
   await send({ address: engine, abi: engineAbi, functionName: "postScoreRoot", args: [BigInt(contestId), root] });
   await send({ address: engine, abi: engineAbi, functionName: "settle", args: [BigInt(contestId)] });
+  await markMissionStatus(contestId, "settled");
   console.log(`contest ${contestId} settled on-chain with ${payouts.length} winner(s)`);
 
   broadcast({
