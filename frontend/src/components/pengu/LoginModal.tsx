@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useAccount, useChainId, useDisconnect, useSignMessage, useSwitchChain } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
@@ -172,6 +172,25 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
+  // Auto-prompt the SIWE signature once a wallet is connected on Arc with no
+  // session yet, so connecting flows straight into the signature instead of
+  // making the user click "SIGN IN WITH WALLET". Fires once per connection; on a
+  // failure (or disconnect) it does not loop — the manual button is the retry.
+  const autoSignFired = useRef(false);
+  useEffect(() => {
+    if (!isConnected) {
+      autoSignFired.current = false;
+      return;
+    }
+    if (!open || !mounted || me || busy) return;
+    if (chainId !== arcTestnet.id) return;
+    if (autoSignFired.current) return;
+    autoSignFired.current = true;
+    void signInWeb3();
+    // signInWeb3 is a stable hoisted declaration; deps intentionally minimal.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isConnected, open, mounted, me, busy, chainId]);
+
   async function signInWeb3() {
     if (!address) return;
     setBusy(true);
@@ -181,7 +200,12 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
       await refresh();
       reportEvent("login", { context: { method: "wallet" } });
     } catch (e) {
-      setError(friendlyError(e, "sign in failed."));
+      // Surface the REAL reason (e.g. "bad domain", "invalid or expired nonce",
+      // "wrong chain", "bad signature") as the fallback instead of a generic
+      // "sign in failed", so a misconfig is actually visible. friendlyError
+      // still maps known cases (user rejected -> "you cancelled the request").
+      const raw = e instanceof Error ? e.message : "sign in failed.";
+      setError(friendlyError(e, raw.toLowerCase()));
       logRawError("login_error", e, { context: { method: "wallet" } });
     } finally {
       setBusy(false);
