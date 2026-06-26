@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useAccount, useBalance, useReadContract, useSwitchChain, useWalletClient } from "wagmi";
+import { useAccount, useBalance, useReadContract, useSwitchChain, useWalletClient, useWriteContract } from "wagmi";
 import { erc20Abi, formatUnits, isAddress, parseUnits } from "viem";
 
 import { BracketedCell, StatusChip, TagButton } from "@/components/redesign";
@@ -87,6 +87,9 @@ function WagmiFunds({ tab }: { tab: Tab }) {
   const { data: walletClient } = useWalletClient();
 
   const isTopUp = tab === "topup";
+  // Withdraw can be same-chain (Arc -> another Arc wallet, a plain USDC transfer)
+  // or cross-chain (the CCTP bridge). Top up is always the bridge.
+  const [withdrawMode, setWithdrawMode] = useState<"same" | "cross">("same");
   const [otherId, setOtherId] = useState<number>(DEFAULT_OTHER);
   const [amount, setAmount] = useState("1.00");
   const [useCustomRecipient, setUseCustomRecipient] = useState(false);
@@ -226,7 +229,28 @@ function WagmiFunds({ tab }: { tab: Tab }) {
     }
   }
 
+  // Withdraw → another Arc wallet is a plain same-chain USDC transfer, not a
+  // bridge, so it gets its own simple panel.
+  if (!isTopUp && withdrawMode === "same") {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-wrap gap-2">
+          <ModePill active onClick={() => setWithdrawMode("same")}>ANOTHER ARC WALLET</ModePill>
+          <ModePill active={false} onClick={() => setWithdrawMode("cross")}>ANOTHER CHAIN</ModePill>
+        </div>
+        <WagmiArcSend />
+      </div>
+    );
+  }
+
   return (
+    <div className="flex flex-col gap-4">
+      {!isTopUp ? (
+        <div className="flex flex-wrap gap-2">
+          <ModePill active={false} onClick={() => setWithdrawMode("same")}>ANOTHER ARC WALLET</ModePill>
+          <ModePill active onClick={() => setWithdrawMode("cross")}>ANOTHER CHAIN</ModePill>
+        </div>
+      ) : null}
     <BracketedCell pad="lg" className="flex flex-col gap-6">
       <ChainPicker
         label={isTopUp ? "FROM CHAIN" : "TO CHAIN"}
@@ -287,6 +311,126 @@ function WagmiFunds({ tab }: { tab: Tab }) {
       ) : null}
 
       <GasFaucetCard chain={source} />
+    </BracketedCell>
+    </div>
+  );
+}
+
+/// Same-chain withdraw for wallet users: send USDC straight to another Arc
+/// wallet in one transfer. No bridge, no minimum. The user signs on Arc.
+function WagmiArcSend() {
+  const { address, isConnected, chainId } = useAccount();
+  const { switchChainAsync } = useSwitchChain();
+  const { writeContractAsync } = useWriteContract();
+  const arcBalance = useArcBalance(address);
+
+  const [amount, setAmount] = useState("1.00");
+  const [recipient, setRecipient] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  const amountNum = Number(amount);
+  const validAmount = Number.isFinite(amountNum) && amountNum > 0;
+  const validRecipient = recipient.trim().length > 0 && isAddress(recipient.trim());
+  const insufficient = arcBalance !== null && validAmount && amountNum > arcBalance;
+  const onArc = isConnected && chainId === ARC_ID;
+
+  const blocker = !validAmount
+    ? "Enter an amount greater than 0."
+    : !validRecipient
+      ? "Enter a recipient address on Arc."
+      : insufficient
+        ? "Not enough USDC on Arc."
+        : !isConnected
+          ? "Connect a wallet first."
+          : null;
+
+  async function onSubmit() {
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    if (!onArc) {
+      try {
+        await switchChainAsync({ chainId: ARC_ID as never });
+      } catch {
+        setErrorMsg("Switch your wallet to Arc to send.");
+      }
+      return;
+    }
+    if (blocker) return;
+    setBusy(true);
+    try {
+      const hash = await writeContractAsync({
+        address: USDC_ON_ARC,
+        abi: erc20Abi,
+        functionName: "transfer",
+        args: [recipient.trim() as `0x${string}`, parseUnits(amount, 6)],
+        chainId: ARC_ID as never,
+      });
+      setSuccessMsg(`Sent. tx ${hash.slice(0, 10)}…${hash.slice(-6)}.`);
+    } catch (err) {
+      setErrorMsg(friendlyError(err, "Arc"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <BracketedCell pad="lg" className="flex flex-col gap-6">
+      <div className="grid gap-6 sm:grid-cols-2">
+        <div className="min-w-0">
+          <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">YOUR ARC WALLET</div>
+          <div className="mt-1 break-all font-mono text-[13px] text-ink">{address ?? "connect a wallet"}</div>
+        </div>
+        <div>
+          <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">USDC ON ARC</div>
+          <div className="mt-1 font-stencil leading-none text-ink" style={{ fontSize: "clamp(28px, 5vw, 44px)" }}>
+            {arcBalance === null ? "—" : arcBalance.toFixed(4)}
+          </div>
+        </div>
+      </div>
+
+      <AmountInput
+        value={amount}
+        onChange={setAmount}
+        sourceCode="ARC"
+        onMax={arcBalance !== null ? () => setAmount(String(arcBalance)) : undefined}
+      />
+
+      <div>
+        <div className="mb-2 flex items-center justify-between font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3">
+          <span>RECIPIENT (ARC)</span>
+        </div>
+        <input
+          type="text"
+          spellCheck={false}
+          value={recipient}
+          onChange={(e) => setRecipient(e.target.value)}
+          placeholder="0x... arc wallet"
+          className="w-full border border-[color:var(--hairline-strong)] bg-canvas-2 px-4 py-3 font-mono text-[13px] text-ink outline-none placeholder:text-ink-3"
+          aria-label="Recipient address on Arc"
+        />
+      </div>
+
+      {blocker ? <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3">{blocker}</p> : null}
+
+      <div className="flex flex-wrap items-center gap-3">
+        <TagButton onClick={onSubmit} disabled={busy || !isConnected || (onArc && Boolean(blocker))}>
+          {busy ? "SENDING…" : onArc ? "SEND ON ARC →" : "SWITCH TO ARC"}
+        </TagButton>
+        <span className="font-mono text-[11px] text-ink-3">settles in one transaction, no bridge.</span>
+      </div>
+
+      {errorMsg ? (
+        <div className="border-l-2 border-[color:var(--err)] bg-canvas-2 px-4 py-3 font-mono text-[12px] text-ink-2">
+          <span className="text-accent">HEADS UP</span> · {errorMsg}
+        </div>
+      ) : null}
+      {successMsg ? (
+        <div className="border-l-2 border-[color:var(--ok)] bg-canvas-2 px-4 py-3 font-mono text-[12px] text-ink-2">
+          <span style={{ color: "var(--ok)" }}>OK</span> · {successMsg}
+        </div>
+      ) : null}
     </BracketedCell>
   );
 }

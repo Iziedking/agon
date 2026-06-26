@@ -326,15 +326,23 @@ async function startMissionLoop(broadcast: (message: unknown) => void): Promise<
     return;
   }
   const cadence = Number(process.env.MISSION_CADENCE_SECONDS ?? "3600");
-  const domain = (process.env.MISSION_DOMAIN ?? "solver").toLowerCase() as "solver" | "analyst" | "scout";
-  // Variable join window (5 / 10 / 15 min) so missions don't all feel the same,
-  // and a variable, heavily-funded pool (>= the configured min, default 100).
+  // Rotate the domain so missions vary and rarely repeat back-to-back. If
+  // MISSION_DOMAIN is pinned we honour it; otherwise cycle the wired domains
+  // (scout is not runnable yet). The LLM picks fresh subjects each time on top
+  // of this, so two missions in a row are unlikely to feel the same.
+  const pinned = process.env.MISSION_DOMAIN?.toLowerCase();
+  const DOMAINS: Array<"solver" | "analyst"> = ["solver", "analyst"];
+  let domainIdx = 0;
+  // Variable join window (5 / 10 / 15 min). Pool is capped: poolMin..poolMax,
+  // and poolMax defaults to poolMin (100) so a mission costs exactly the cap
+  // unless MISSION_POOL_USDC_MAX is set — keeps USDC spend predictable.
   const WINDOWS = [300, 600, 900];
   const poolMin = Math.max(100, config.mission.poolUsdc);
-  const poolMax = Math.max(poolMin, Number(process.env.MISSION_POOL_USDC_MAX ?? poolMin + 150));
-  console.log(`autopilot: missions on (${domain}), opening one every ${cadence}s, pool ${poolMin}-${poolMax} USDC, window 5/10/15 min`);
+  const poolMax = Math.max(poolMin, Number(process.env.MISSION_POOL_USDC_MAX ?? poolMin));
+  console.log(`autopilot: missions on (${pinned ?? "rotate solver/analyst"}), every ${cadence}s, pool ${poolMin}-${poolMax} USDC, window 5/10/15 min`);
   for (;;) {
     try {
+      const domain = (pinned ?? DOMAINS[domainIdx++ % DOMAINS.length]!) as "solver" | "analyst" | "scout";
       const windowSecs = WINDOWS[Math.floor(Math.random() * WINDOWS.length)]!;
       const poolUsdc = poolMin + Math.floor(Math.random() * (poolMax - poolMin + 1));
       const contestId = await openMission({
@@ -350,7 +358,7 @@ async function startMissionLoop(broadcast: (message: unknown) => void): Promise<
         contestType: "mission",
         endsAt: Date.now() + windowSecs * 1000,
       });
-      console.log(`autopilot: opened mission ${contestId}, ${poolUsdc} USDC, ${windowSecs}s window`);
+      console.log(`autopilot: opened mission ${contestId} (${domain}), ${poolUsdc} USDC, ${windowSecs}s window`);
     } catch (err) {
       console.error("autopilot mission open failed:", err instanceof Error ? err.message : err);
     }

@@ -338,6 +338,11 @@ const envSchema = z.object({
   // Optional model override for the judge that grades deliverables. Falls back to
   // LLM_MODEL when unset. Pin it for determinism on the grading path.
   MISSION_JUDGE_MODEL: z.string().optional(),
+  // The bar a mission must clear: if no operative's graded deliverable scores at
+  // least this, NOBODY is paid — the pool is cancelled and refunded to the
+  // sponsor with "no agent could fulfill it within the window". Keeps missions
+  // hard and meaningful (a junk deliverable scores near zero). Set 0 to disable.
+  MISSION_MIN_SCORE: z.coerce.number().nonnegative().default(150),
 });
 
 const addr = z
@@ -570,6 +575,7 @@ export const config = {
     intelPriceUsdc: env.MISSION_INTEL_PRICE_USDC,
     fundMaxUsdc: env.MISSION_FUND_MAX_USDC,
     judgeModel: env.MISSION_JUDGE_MODEL,
+    minScore: env.MISSION_MIN_SCORE,
   },
   analystAutofund: {
     enabled: env.ANALYST_AUTOFUND,

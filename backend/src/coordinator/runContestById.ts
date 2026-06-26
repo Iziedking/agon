@@ -174,6 +174,17 @@ async function runMission(contestId: number, field: ContestEntryInput[]): Promis
       console.warn(`[mission] sweep failed: ${err instanceof Error ? err.message : err}`),
     );
   }
+  // The bar: a mission only pays out if at least one operative cleared
+  // MISSION_MIN_SCORE. If nobody did (junk deliverables score near zero), pay
+  // no one — returning [] routes the contest into the no-scoring-entrants path,
+  // which cancels and refunds the sponsor.
+  const best = results.reduce((m, r) => Math.max(m, r.score), 0);
+  if (config.mission.minScore > 0 && best < config.mission.minScore) {
+    console.log(
+      `[mission ${contestId}] no operative met the bar (best ${Math.round(best)} < ${config.mission.minScore}); cancelling and refunding — no agent could fulfill it within the window`,
+    );
+    return [];
+  }
   return results;
 }
 

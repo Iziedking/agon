@@ -245,7 +245,7 @@ export function EnterPanel({ contestId, status, endTime, contestType }: { contes
           <>
             <AgentPicker agents={agents} activeId={active.id} onPick={pick} />
             <p className="mt-3 text-sm text-ink-2">{agentDisplayName(active)} is entered. it competes for the window. you can leave the page.</p>
-            <a href="/live" className={`mt-5 ${chunky}`}>
+            <a href={`/live/contest/${contestId}`} className={`mt-5 ${chunky}`}>
               watch live
             </a>
           </>
