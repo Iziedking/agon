@@ -56,6 +56,12 @@ export interface Commission {
   /// What the deliverable must be (the synthesis ask, or for scout the on-chain
   /// objective).
   deliverable: string;
+  /// v2 economy (docs/missions.md s1c). EXTERNAL missions source data via x402;
+  /// INTERNAL run the scarce intel market. `weight` (0..1) and `basePrice6` (the
+  /// platform base price `b`) come from computeMissionEconomics.
+  archetype: "external" | "internal";
+  weight: number;
+  basePrice6: bigint;
 }
 
 /// The operative's autonomous per-fragment decision. The make-vs-buy choice is

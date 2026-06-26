@@ -134,7 +134,7 @@ export async function openMission(opts: OpenMissionOpts): Promise<number> {
     throw new Error(`openMission: openContest failed: ${e instanceof Error ? e.stack ?? e.message : String(e)}`);
   }
   try {
-    await generateMission({ contestId, domain: opts.domain, templateId: opts.templateId });
+    await generateMission({ contestId, domain: opts.domain, templateId: opts.templateId, poolUsdc: opts.poolUsdc });
   } catch (e) {
     throw new Error(
       `openMission: generateMission failed (solver contest ${contestId} created): ${e instanceof Error ? e.stack ?? e.message : String(e)}`,

@@ -12,6 +12,7 @@
 import { callModel, llmConfigured } from "../llm/client.js";
 import { config } from "../../config/index.js";
 import { query } from "../../db/pool.js";
+import { computeMissionEconomics } from "./economics.js";
 import { seedSpecialists } from "./specialists.js";
 import {
   defaultTemplateForDomain,
@@ -150,11 +151,15 @@ export async function generateMission(opts: {
   contestId: number;
   domain?: MissionDomain;
   templateId?: string;
+  poolUsdc?: number;
 }): Promise<Commission> {
   const template =
     (opts.templateId ? templateById(opts.templateId) : undefined) ??
     (opts.domain ? defaultTemplateForDomain(opts.domain) : undefined) ??
     defaultTemplateForDomain("solver")!;
+
+  // v2 economy: roll the archetype + weight, which set the base intel price.
+  const econ = computeMissionEconomics(opts.poolUsdc ?? 100);
 
   const built = (await llmGenerate(template).catch(() => null)) ?? cannedGenerate(template);
 
@@ -177,15 +182,29 @@ export async function generateMission(opts: {
     brief: built.brief,
     fragments,
     deliverable: template.deliverable,
+    archetype: econ.archetype,
+    weight: econ.weight,
+    basePrice6: econ.basePrice6,
   };
 
   await query(
-    `insert into missions (contest_id, domain, template_id, title, brief, deliverable, status)
-     values ($1, $2, $3, $4, $5, $6, 'open')
+    `insert into missions (contest_id, domain, template_id, title, brief, deliverable, status, archetype, weight, base_price_usdc_6)
+     values ($1, $2, $3, $4, $5, $6, 'open', $7, $8, $9)
      on conflict (contest_id) do update set
        domain = excluded.domain, template_id = excluded.template_id, title = excluded.title,
-       brief = excluded.brief, deliverable = excluded.deliverable`,
-    [commission.missionId, commission.domain, commission.templateId, commission.title, commission.brief, commission.deliverable],
+       brief = excluded.brief, deliverable = excluded.deliverable,
+       archetype = excluded.archetype, weight = excluded.weight, base_price_usdc_6 = excluded.base_price_usdc_6`,
+    [
+      commission.missionId,
+      commission.domain,
+      commission.templateId,
+      commission.title,
+      commission.brief,
+      commission.deliverable,
+      commission.archetype,
+      commission.weight,
+      commission.basePrice6.toString(),
+    ],
   );
   for (const f of fragments) {
     await query(
@@ -208,7 +227,11 @@ export async function generateMission(opts: {
     );
   }
 
-  await seedSpecialists(commission);
+  // Only INTERNAL missions run the intel market, so only they get a platform
+  // shelf. EXTERNAL (x402) missions source their data from outside ArcRun.
+  if (commission.archetype === "internal") {
+    await seedSpecialists(commission);
+  }
   return commission;
 }
 
@@ -222,8 +245,12 @@ export async function loadMission(contestId: number): Promise<Commission | null>
     title: string;
     brief: string;
     deliverable: string;
+    archetype: string;
+    weight: string;
+    base_price_usdc_6: string;
   }>(
-    `select domain, template_id, title, brief, deliverable from missions where contest_id = $1`,
+    `select domain, template_id, title, brief, deliverable, archetype, weight, base_price_usdc_6
+       from missions where contest_id = $1`,
     [contestId],
   );
   const m = mr[0];
@@ -263,5 +290,8 @@ export async function loadMission(contestId: number): Promise<Commission | null>
     brief: m.brief,
     fragments,
     deliverable: m.deliverable,
+    archetype: m.archetype === "external" ? "external" : "internal",
+    weight: Number(m.weight) || 0,
+    basePrice6: BigInt(m.base_price_usdc_6 || "0"),
   };
 }

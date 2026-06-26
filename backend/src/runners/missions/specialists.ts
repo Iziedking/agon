@@ -42,7 +42,10 @@ export async function seedSpecialists(mission: Commission): Promise<Specialist[]
     const agentId = base + idx;
     idx += 1;
     const account = deriveHotWallet(agentId);
-    const price6 = toUsdc6(config.mission.intelPriceUsdc * (PRICE_MULTIPLIER[f.kind] ?? 1));
+    // v2: the platform shelf sells every piece at the mission's base price `b`
+    // (set by weight). A small per-kind multiplier still nudges decisive pieces
+    // up. Specialists buy from this shelf at `b` and resell at their own price.
+    const price6 = BigInt(Math.round(Number(mission.basePrice6) * (PRICE_MULTIPLIER[f.kind] ?? 1)));
     const intel = f.truth ?? null;
     await query(
       `insert into mission_specialists (contest_id, agent_id, address, fragment_id, price_usdc_6, intel)

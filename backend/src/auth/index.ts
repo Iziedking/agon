@@ -1948,6 +1948,7 @@ app.get("/missions", async (c) => {
     domain: string;
     title: string;
     status: string;
+    archetype: string;
     created_at: string;
     operatives: string;
     payments: string;
@@ -1958,6 +1959,7 @@ app.get("/missions", async (c) => {
        m.domain,
        m.title,
        m.status,
+       m.archetype,
        m.created_at::text as created_at,
        (select count(*) from mission_submissions s where s.contest_id = m.contest_id) as operatives,
        (
@@ -1979,6 +1981,7 @@ app.get("/missions", async (c) => {
       domain: r.domain,
       title: r.title,
       status: r.status,
+      archetype: r.archetype === "external" ? "external" : "internal",
       createdAt: r.created_at,
       operatives: Number(r.operatives),
       payments: Number(r.payments),
@@ -2048,8 +2051,11 @@ app.get("/missions/:id", async (c) => {
     brief: string;
     deliverable: string;
     status: string;
+    archetype: string;
+    weight: string;
+    base_price_usdc_6: string;
   }>(
-    "select domain, template_id, title, brief, deliverable, status from missions where contest_id = $1",
+    "select domain, template_id, title, brief, deliverable, status, archetype, weight, base_price_usdc_6 from missions where contest_id = $1",
     [contestId],
   );
   const mission = m.rows[0];
@@ -2186,6 +2192,9 @@ app.get("/missions/:id", async (c) => {
       brief: mission.brief,
       deliverable: mission.deliverable,
       status: mission.status,
+      archetype: mission.archetype === "external" ? "external" : "internal",
+      weight: Number(mission.weight) || 0,
+      basePrice6: mission.base_price_usdc_6,
     },
     fragments: fragments.rows.map((f) => ({ id: f.fragment_id, kind: f.kind, ask: f.ask })),
     specialists: specialists.rows.map((s) => ({

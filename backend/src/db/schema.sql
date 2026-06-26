@@ -859,6 +859,11 @@ create table if not exists missions (
   status        text not null default 'open',  -- 'open' | 'settled' | 'cancelled'
   created_at    timestamptz not null default now()
 );
+-- v2 economy (docs/missions.md s1c): archetype decides external-x402 vs the
+-- internal intel market; weight (0..1) and base_price set the intel price band.
+alter table missions add column if not exists archetype         text    not null default 'internal';
+alter table missions add column if not exists weight            numeric not null default 0;
+alter table missions add column if not exists base_price_usdc_6 text    not null default '0';
 create index if not exists missions_status_idx on missions(status, created_at desc);
 
 -- The fragments a mission's brief asks for, with the captured ground truth. The
