@@ -4,14 +4,17 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/redesign/Footer";
+import { erc20Abi } from "viem";
 import { BracketedCell, CornerMarkers, StatusChip } from "@/components/redesign";
 import { EnterPanel } from "@/components/pengu/EnterPanel";
 import { fetchContest, type Contest } from "@/lib/contests";
+import { USDC, confirmTx } from "@/lib/arc";
 import { useOperatorAddress } from "@/hooks/useAuth";
+import { useArcWrite } from "@/hooks/useArcWrite";
 import {
   fetchMission,
   formatUsdc6,
-  registerSpecialist,
+  buyMissionIntel,
   explorerTx,
   shortAddr,
   type Choice,
@@ -134,7 +137,7 @@ function Arena({ state, mission }: { state: MissionState; mission: NonNullable<M
 
       {/* JOIN — choose your side, while the window is open */}
       {mission.status === "open" ? (
-        <MissionJoinPanel mission={mission} fragments={fragments} join={state.join} />
+        <MissionJoinPanel mission={mission} fragments={fragments} specialists={specialists} join={state.join} />
       ) : null}
 
       {/* THE SUPPLY SIDE */}
@@ -144,7 +147,9 @@ function Arena({ state, mission }: { state: MissionState; mission: NonNullable<M
             <span aria-hidden className="text-accent">■</span> THE SUPPLY SIDE · INTEL SPECIALISTS
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {specialists.map((s) => {
+            {specialists
+              .filter((s) => !(s.owner === "platform" && s.claimed))
+              .map((s) => {
               const frag = fragments.find((f) => f.id === s.fragmentId);
               return (
                 <BracketedCell key={`${s.agentId}-${s.fragmentId}`}>
@@ -239,10 +244,12 @@ function Arena({ state, mission }: { state: MissionState; mission: NonNullable<M
 function MissionJoinPanel({
   mission,
   fragments,
+  specialists,
   join,
 }: {
   mission: NonNullable<MissionState["mission"]>;
   fragments: MissionState["fragments"];
+  specialists: MissionState["specialists"];
   join?: MissionJoin;
 }) {
   const { isSignedIn } = useOperatorAddress();
@@ -260,43 +267,62 @@ function MissionJoinPanel({
       live = false;
     };
   }, [mission.contestId]);
+  const { writeContractAsync } = useArcWrite();
   const [fragmentId, setFragmentId] = useState("");
   const [agentId, setAgentId] = useState("");
-  const [price, setPrice] = useState("0.5");
-  const [intel, setIntel] = useState("");
+  const [price, setPrice] = useState("10");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
-  const buyable = fragments.filter((f) => f.kind !== "action");
+  // The scarce shelf: platform pieces still unclaimed. A specialist buys one of
+  // these at its base price `b`, then resells it.
+  const availablePieces = specialists.filter((s) => s.owner === "platform" && !s.claimed);
   useEffect(() => {
-    if (!fragmentId && buyable[0]) setFragmentId(buyable[0].id);
-  }, [buyable, fragmentId]);
+    if (!fragmentId && availablePieces[0]) setFragmentId(availablePieces[0].fragmentId);
+  }, [availablePieces, fragmentId]);
+  const selectedPiece = availablePieces.find((p) => p.fragmentId === fragmentId);
 
   const inputCls =
     "w-full border border-[color:var(--hairline-strong)] bg-canvas px-3 py-2 font-mono text-[13px] text-ink outline-none focus:border-ink";
   const labelCls = "font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3";
 
-  async function submitSpecialist() {
+  async function buyPiece() {
     setErr(null);
     setMsg(null);
     const aId = Number(agentId);
-    const p = Number(price);
+    const r = Number(price);
+    if (!selectedPiece) return setErr("pick an available piece");
     if (!Number.isFinite(aId) || aId <= 0) return setErr("enter your agent id");
-    if (!fragmentId) return setErr("pick a fragment to supply");
-    if (!Number.isFinite(p) || p <= 0) return setErr("set a price");
-    if (intel.trim().length < 10) return setErr("describe the intel you are selling");
+    if (!Number.isFinite(r) || r <= 0) return setErr("set a resale price");
+    if (!join?.feeRecipient) return setErr("the platform treasury is not configured; cannot buy");
     setBusy(true);
-    const res = await registerSpecialist(mission.contestId, {
-      agentId: aId,
-      fragmentId,
-      priceUsdc: p,
-      intel: intel.trim(),
-    });
-    setBusy(false);
-    if (!res.ok) return setErr(res.error);
-    setMsg("you are live on the supply side. when an operative buys your intel, the usdc lands in your wallet.");
-    setIntel("");
+    try {
+      // Pay the base price `b` to the platform treasury, then claim the piece.
+      const txHash = await writeContractAsync({
+        address: USDC,
+        abi: erc20Abi,
+        functionName: "transfer",
+        args: [join.feeRecipient as `0x${string}`, BigInt(selectedPiece.price6)],
+      });
+      await confirmTx(txHash);
+      const res = await buyMissionIntel(mission.contestId, {
+        fragmentId,
+        agentId: aId,
+        resalePriceUsdc: r,
+        txHash,
+      });
+      if (!res.ok) {
+        setErr(res.error);
+        setBusy(false);
+        return;
+      }
+      setMsg("you own this piece. it is listed for resale; an operative buys it from you on chain.");
+      setBusy(false);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message.toLowerCase() : "could not buy the piece.");
+      setBusy(false);
+    }
   }
 
   const opFull = join ? join.operativeSeats.taken >= join.operativeSeats.total : false;
@@ -376,8 +402,8 @@ function MissionJoinPanel({
         ) : (
           <div className="mt-4 flex max-w-[560px] flex-col gap-3">
             <p className="font-mono text-[13px] leading-[1.7] text-ink-2">
-              the supply side: list one fragment of intel at your price. when an operative buys it, the usdc settles
-              to your wallet on chain.
+              the supply side: buy a scarce intel piece from the platform at its base price, then list it at your own
+              resale price. an operative who needs it buys it from you on chain.
             </p>
             {join ? (
               <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3">
@@ -385,64 +411,67 @@ function MissionJoinPanel({
                 <span className={specFull ? "text-[color:var(--err)]" : "text-ink"}>
                   {join.specialistSeats.taken}/{join.specialistSeats.total}
                 </span>
-                {" · NO JOIN FEE"}
+                {" · NO JOIN FEE · MAX 2 PIECES"}
               </div>
             ) : null}
-            <div>
-              <div className={labelCls}>FRAGMENT TO SUPPLY</div>
-              <select
-                value={fragmentId}
-                onChange={(e) => setFragmentId(e.target.value)}
-                className={`mt-1.5 ${inputCls} uppercase`}
-              >
-                {buyable.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.kind.toUpperCase()} — {f.ask}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <div className={labelCls}>YOUR AGENT ID</div>
-                <input
-                  className={`mt-1.5 ${inputCls}`}
-                  inputMode="numeric"
-                  placeholder="e.g. 42"
-                  value={agentId}
-                  onChange={(e) => setAgentId(e.target.value.replace(/[^0-9]/g, ""))}
-                />
-              </div>
-              <div>
-                <div className={labelCls}>PRICE (USDC)</div>
-                <input
-                  className={`mt-1.5 ${inputCls}`}
-                  inputMode="decimal"
-                  value={price}
-                  onChange={(e) => setPrice(e.target.value.replace(/[^0-9.]/g, ""))}
-                />
-              </div>
-            </div>
-            <div>
-              <div className={labelCls}>THE INTEL YOU SELL</div>
-              <textarea
-                className={`mt-1.5 ${inputCls}`}
-                rows={3}
-                placeholder="the concrete fact / read you are selling for this fragment"
-                value={intel}
-                onChange={(e) => setIntel(e.target.value)}
-              />
-            </div>
-            <div>
-              <button
-                onClick={submitSpecialist}
-                disabled={busy}
-                className="inline-flex items-center gap-2 bg-accent px-4 py-2.5 font-mono text-[12px] uppercase tracking-[0.12em] text-accent-ink transition-colors hover:bg-accent-press disabled:opacity-60"
-                style={{ clipPath: "polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%)" }}
-              >
-                {busy ? "REGISTERING…" : "JOIN AS SPECIALIST →"}
-              </button>
-            </div>
+            {availablePieces.length === 0 ? (
+              <p className="font-mono text-[12px] text-ink-3">every piece on the shelf has been claimed.</p>
+            ) : (
+              <>
+                <div>
+                  <div className={labelCls}>PIECE TO BUY</div>
+                  <select
+                    value={fragmentId}
+                    onChange={(e) => setFragmentId(e.target.value)}
+                    className={`mt-1.5 ${inputCls} uppercase`}
+                  >
+                    {availablePieces.map((s) => {
+                      const f = fragments.find((x) => x.id === s.fragmentId);
+                      return (
+                        <option key={s.fragmentId} value={s.fragmentId}>
+                          {(f?.kind ?? s.fragmentId).toUpperCase()} — {f?.ask ?? ""} · BUY {formatUsdc6(s.price6)}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <div className={labelCls}>YOUR AGENT ID</div>
+                    <input
+                      className={`mt-1.5 ${inputCls}`}
+                      inputMode="numeric"
+                      placeholder="e.g. 42"
+                      value={agentId}
+                      onChange={(e) => setAgentId(e.target.value.replace(/[^0-9]/g, ""))}
+                    />
+                  </div>
+                  <div>
+                    <div className={labelCls}>YOUR RESALE PRICE (USDC)</div>
+                    <input
+                      className={`mt-1.5 ${inputCls}`}
+                      inputMode="decimal"
+                      value={price}
+                      onChange={(e) => setPrice(e.target.value.replace(/[^0-9.]/g, ""))}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <button
+                    onClick={buyPiece}
+                    disabled={busy || specFull || !selectedPiece}
+                    className="inline-flex items-center gap-2 bg-accent px-4 py-2.5 font-mono text-[12px] uppercase tracking-[0.12em] text-accent-ink transition-colors hover:bg-accent-press disabled:opacity-60"
+                    style={{ clipPath: "polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%)" }}
+                  >
+                    {busy
+                      ? "BUYING…"
+                      : selectedPiece
+                        ? `BUY FOR ${formatUsdc6(selectedPiece.price6)} →`
+                        : "BUY →"}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         )}
 

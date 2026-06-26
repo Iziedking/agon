@@ -18,6 +18,9 @@ export interface MissionSpecialist {
   price6: string;
   owner: "platform" | "operator";
   operator: string | null;
+  /// Platform piece that a specialist has bought (off the shelf). Always false
+  /// for operator listings and unclaimed platform pieces.
+  claimed: boolean;
 }
 
 export interface MissionDecision {
@@ -89,6 +92,27 @@ export interface MissionState {
   specialists: MissionSpecialist[];
   operatives: MissionOperative[];
   tape: TapeRow[];
+}
+
+/// Specialist buys a scarce platform intel piece (after paying the base price on
+/// chain). The backend claims it exclusively and stands up the resale listing.
+export async function buyMissionIntel(
+  missionId: number,
+  input: { fragmentId: string; agentId: number; resalePriceUsdc: number; txHash: string },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const res = await fetch(`${AUTH_URL}/missions/${missionId}/buy-intel`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    if (!res.ok) return { ok: false, error: data.error ?? "could not buy the piece." };
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "network error. try again." };
+  }
 }
 
 /// Whether the signed-in operator already paid this mission's join fee (so entry
