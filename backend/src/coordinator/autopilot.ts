@@ -334,11 +334,12 @@ async function startMissionLoop(broadcast: (message: unknown) => void): Promise<
   const pinned = process.env.MISSION_DOMAIN?.toLowerCase();
   const DOMAINS: Array<"solver" | "analyst"> = ["solver", "analyst"];
   let domainIdx = 0;
-  // Variable join window (5 / 10 / 15 min). Pool is capped: poolMin..poolMax,
-  // and poolMax defaults to poolMin (100) so a mission costs exactly the cap
-  // unless MISSION_POOL_USDC_MAX is set — keeps USDC spend predictable.
+  // Variable join window (5 / 10 / 15 min). Pool randomizes in poolMin..poolMax.
+  // MISSION_POOL_USDC_MIN / _MAX set the band (defaults: min = MISSION_POOL_USDC
+  // or 100, max = min). Each mission costs a real USDC pool, so the band is the
+  // spend control.
   const WINDOWS = [300, 600, 900];
-  const poolMin = Math.max(100, config.mission.poolUsdc);
+  const poolMin = Math.max(1, Number(process.env.MISSION_POOL_USDC_MIN ?? Math.max(100, config.mission.poolUsdc)));
   const poolMax = Math.max(poolMin, Number(process.env.MISSION_POOL_USDC_MAX ?? poolMin));
   console.log(`autopilot: missions on (${pinned ?? "rotate solver/analyst"}), every ${cadence}s, pool ${poolMin}-${poolMax} USDC, window 5/10/15 min`);
   for (;;) {

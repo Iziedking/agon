@@ -4,6 +4,9 @@ import type { Account } from "viem";
 import { arcTestnet, publicClient } from "../../chain/arc.js";
 import { config } from "../../config/index.js";
 import { query } from "../../db/pool.js";
+import { notify } from "../../notifications/index.js";
+
+const fmtUsdc = (amount: bigint) => `${(Number(amount) / 1e6).toFixed(2)} USDC`;
 
 /// v2 economy join-fee settlement (docs/missions.md s1c). When a mission cancels
 /// with no qualifier, the operatives' join fees are returned from the treasury
@@ -40,6 +43,13 @@ export async function refundMissionFees(contestId: number): Promise<void> {
         "update mission_operative_fees set refunded = true, refund_tx = $3 where contest_id = $1 and operator = $2",
         [contestId, r.operator, hash],
       );
+      void notify(r.operator, {
+        kind: "balance_credit",
+        title: "Join fee refunded",
+        body: `${fmtUsdc(amount)} returned to your wallet — mission #${contestId} cancelled with no winner. No claim needed.`,
+        href: `/missions/${contestId}`,
+        context: { contestId, amount6: amount.toString(), txHash: hash, kind: "join_fee_refund" },
+      });
       refunded += 1;
     } catch (err) {
       console.error(`[mission ${contestId}] fee refund -> ${r.operator} failed: ${err instanceof Error ? err.message : err}`);
@@ -78,6 +88,13 @@ export async function refundMissionBuys(contestId: number): Promise<void> {
         "update mission_intel_buys set refunded = true, refund_tx = $3 where contest_id = $1 and fragment_id = $2",
         [contestId, r.fragment_id, hash],
       );
+      void notify(r.operator, {
+        kind: "balance_credit",
+        title: "Intel purchase refunded",
+        body: `${fmtUsdc(amount)} returned to your wallet — mission #${contestId} cancelled. No claim needed.`,
+        href: `/missions/${contestId}`,
+        context: { contestId, amount6: amount.toString(), txHash: hash, kind: "intel_buy_refund" },
+      });
       refunded += 1;
     } catch (err) {
       console.error(`[mission ${contestId}] intel-buy refund -> ${r.operator} failed: ${err instanceof Error ? err.message : err}`);
