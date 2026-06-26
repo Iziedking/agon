@@ -1428,6 +1428,9 @@ const ADMIN_COMMAND_KINDS = new Set([
   "resolve_challenge",
   "cancel_contest",
   "cancel_challenge",
+  // Mission ops (targetId optional: 0 = all, or a specific mission id).
+  "refund_missions",
+  "clear_missions",
 ]);
 
 app.post("/admin/commands", async (c) => {
@@ -2136,13 +2139,32 @@ app.post("/missions/:id/buy-intel", requireAuth, async (c) => {
   if (mm.rows[0].status !== "open") return c.json({ error: "this mission is no longer open" }, 409);
 
   // The seller agent must be one of the caller's own agents (the resolver already
-  // enforces this, but the buy endpoint re-checks so it can't be bypassed).
-  const owned = await query("select 1 from agents where id = $1 and lower(owner) = $2", [agentId, operator]);
+  // enforces this, but the buy endpoint re-checks so it can't be bypassed), AND
+  // it must clear the mission's tier gate — specialists are tier 3-4, same as
+  // operatives. The agent's effective tier is the best across its domains.
+  const owned = await query<{ solver_tier: number; analyst_tier: number; scout_tier: number }>(
+    "select solver_tier, analyst_tier, scout_tier from agents where id = $1 and lower(owner) = $2",
+    [agentId, operator],
+  );
   if (owned.rows.length === 0) return c.json({ error: "that agent is not one of yours" }, 403);
+  const at = owned.rows[0]!;
+  const agentTier = Math.max(at.solver_tier ?? 0, at.analyst_tier ?? 0, at.scout_tier ?? 0);
+  if (agentTier < config.mission.minTier) {
+    return c.json(
+      { error: `specialists must be tier ${config.mission.minTier}-4 — agent ${agentId} is tier ${agentTier}` },
+      403,
+    );
+  }
 
-  // One side per mission: an operative cannot also be a specialist.
+  // One side per mission: an operative (with ANY of their agents) cannot also be
+  // a specialist. The operative signal is the on-chain entry OR the paid fee —
+  // checking both covers free/external missions (no fee) and the indexer lag
+  // window right after entry.
   const asOperative = await query(
-    "select 1 from mission_operative_fees where contest_id = $1 and operator = $2",
+    `select 1 from entries where contest_id = $1 and lower(operator) = $2
+     union all
+     select 1 from mission_operative_fees where contest_id = $1 and operator = $2
+     limit 1`,
     [contestId, operator],
   );
   if (asOperative.rows.length > 0)
@@ -2210,7 +2232,15 @@ app.get("/missions/:id/my-role", requireAuth, async (c) => {
   const contestId = Number(c.req.param("id"));
   if (!Number.isFinite(contestId)) return c.json({ role: null });
   const operator = c.get("address").toLowerCase();
-  const opv = await query("select 1 from mission_operative_fees where contest_id = $1 and operator = $2", [contestId, operator]);
+  // Operative = an on-chain entry (any agent) OR a paid join fee, so the lock
+  // engages even on free/external missions that charge no fee.
+  const opv = await query(
+    `select 1 from entries where contest_id = $1 and lower(operator) = $2
+     union all
+     select 1 from mission_operative_fees where contest_id = $1 and operator = $2
+     limit 1`,
+    [contestId, operator],
+  );
   if (opv.rows.length > 0) return c.json({ role: "operative" });
   const spc = await query("select 1 from mission_intel_buys where contest_id = $1 and operator = $2", [contestId, operator]);
   if (spc.rows.length > 0) return c.json({ role: "specialist" });

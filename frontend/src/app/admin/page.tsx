@@ -139,6 +139,9 @@ export default function AdminPage() {
               </div>
               <div className="grid gap-6 lg:grid-cols-2">
                 <ForceSettleCard token={token} />
+                <MissionOpsCard token={token} />
+              </div>
+              <div className="grid gap-6">
                 <CommandsLog token={token} />
               </div>
             </>
@@ -372,6 +375,77 @@ function ForceSettleCard({ token }: { token: string }) {
         <button onClick={submit} disabled={busy || !id}
           className="bg-accent px-4 py-2 font-mono text-[12px] uppercase tracking-[0.12em] text-accent-ink hover:bg-accent-press disabled:opacity-50">
           {busy ? "QUEUEING…" : "RUN →"}
+        </button>
+      </div>
+      {result ? (
+        <p className={`mt-2 font-mono text-[10px] ${result.ok ? "text-[color:var(--ok)]" : "text-[color:var(--err)]"}`}>{result.text}</p>
+      ) : null}
+    </BracketedCell>
+  );
+}
+
+/// Mission maintenance, queued to the coordinator (same pipeline as force-settle).
+/// REFUND CANCELLED returns operative join fees + specialist intel buys from the
+/// treasury for cancelled missions (one id, or all). CLEAR HISTORY wipes the
+/// mission tables for a fresh start (on-chain contests remain).
+function MissionOpsCard({ token }: { token: string }) {
+  const [missionId, setMissionId] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
+
+  async function run(kind: string, targetId: number) {
+    setBusy(kind);
+    setResult(null);
+    try {
+      const res = await fetch(`${AUTH_URL}/admin/commands`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-admin-token": token },
+        body: JSON.stringify({ kind, targetId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((data as { error?: string }).error ?? `http ${res.status}`);
+      setResult({ ok: true, text: `queued #${(data as { id?: string }).id ?? "?"} — runs in the coordinator, see the log` });
+    } catch (e) {
+      setResult({ ok: false, text: e instanceof Error ? e.message : "failed" });
+    }
+    setBusy(null);
+  }
+
+  return (
+    <BracketedCell pad="sm">
+      <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">MISSION OPS</div>
+      <div className="mt-1 font-mono text-[10px] text-ink-3">queued to the coordinator · refunds paid from the treasury</div>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <input
+          value={missionId}
+          onChange={(e) => setMissionId(e.target.value.replace(/[^0-9]/g, ""))}
+          placeholder="mission id (blank = all)"
+          inputMode="numeric"
+          className="w-44 border border-[color:var(--hairline-strong)] bg-canvas px-3 py-2 font-mono text-sm text-ink outline-none focus:border-ink"
+        />
+        <button
+          onClick={() => run("refund_missions", Number(missionId) || 0)}
+          disabled={busy !== null}
+          className="bg-accent px-4 py-2 font-mono text-[12px] uppercase tracking-[0.12em] text-accent-ink hover:bg-accent-press disabled:opacity-50"
+        >
+          {busy === "refund_missions" ? "QUEUEING…" : "REFUND CANCELLED →"}
+        </button>
+      </div>
+      <div className="mt-2">
+        <button
+          onClick={() => {
+            if (
+              window.confirm(
+                "Clear ALL mission history? This wipes every mission, fee, intel buy, and A2A trade. On-chain contests remain. This cannot be undone.",
+              )
+            ) {
+              void run("clear_missions", 0);
+            }
+          }}
+          disabled={busy !== null}
+          className="border border-[color:var(--err)] px-4 py-2 font-mono text-[12px] uppercase tracking-[0.12em] text-[color:var(--err)] hover:bg-canvas-3 disabled:opacity-50"
+        >
+          {busy === "clear_missions" ? "QUEUEING…" : "CLEAR MISSION HISTORY"}
         </button>
       </div>
       {result ? (

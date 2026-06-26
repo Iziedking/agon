@@ -5,7 +5,13 @@ import { config } from "../config/index.js";
 import { query } from "../db/pool.js";
 import { coordinatorWallet } from "./contestOps.js";
 import { settleContestToCompletion, resolveChallengeToCompletion } from "./autopilot.js";
-import { refundMissionFees, refundMissionBuys, markMissionStatus } from "../runners/missions/fees.js";
+import {
+  refundMissionFees,
+  refundMissionBuys,
+  markMissionStatus,
+  refundAllCancelledMissions,
+  clearMissionHistory,
+} from "../runners/missions/fees.js";
 
 /// Admin command worker. The admin console (auth API process) inserts rows into
 /// admin_commands; this loop runs in the COORDINATOR process and drains them, so
@@ -91,6 +97,11 @@ async function execute(cmd: Command, broadcast: (message: unknown) => void): Pro
       }
       return `${cmd.kind} ${id} sent: ${hash}`;
     }
+    case "refund_missions":
+      // id > 0 targets one mission; 0 refunds every cancelled mission.
+      return await refundAllCancelledMissions(id > 0 ? id : undefined);
+    case "clear_missions":
+      return await clearMissionHistory();
     default:
       throw new Error(`unknown command kind ${cmd.kind}`);
   }

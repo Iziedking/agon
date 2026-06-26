@@ -103,6 +103,54 @@ export async function refundMissionBuys(contestId: number): Promise<void> {
   console.log(`[mission ${contestId}] refunded ${refunded}/${rows.length} specialist intel purchase(s) from the treasury`);
 }
 
+/// Refund every cancelled mission with unrefunded fees/buys (or just `onlyId`).
+/// Idempotent. Shared by the backfill script and the /admin console.
+export async function refundAllCancelledMissions(onlyId?: number): Promise<string> {
+  let ids: number[];
+  if (onlyId != null && Number.isFinite(onlyId) && onlyId > 0) {
+    ids = [onlyId];
+  } else {
+    const { rows } = await query<{ contest_id: string }>(
+      `select distinct m.contest_id from missions m
+        where m.status = 'cancelled'
+          and (exists (select 1 from mission_operative_fees f where f.contest_id = m.contest_id and f.refunded = false)
+            or exists (select 1 from mission_intel_buys b where b.contest_id = m.contest_id and b.refunded = false))
+        order by m.contest_id`,
+    );
+    ids = rows.map((r) => Number(r.contest_id));
+  }
+  if (ids.length === 0) return "nothing to refund";
+  for (const id of ids) {
+    await refundMissionFees(id);
+    await refundMissionBuys(id);
+  }
+  return `refunded ${ids.length} cancelled mission(s): ${ids.join(", ")}`;
+}
+
+/// Wipes all mission history (mission tables + mission x402 spend + A2A trades).
+/// On-chain contests remain; a cleared mission is just ignored. Shared by the
+/// clear script and the /admin console.
+export async function clearMissionHistory(): Promise<string> {
+  const np = await query("delete from nanopayments where contest_id in (select contest_id from missions)");
+  let total = np.rowCount ?? 0;
+  const tables = [
+    "a2a_trades",
+    "mission_intel_buys",
+    "mission_operative_fees",
+    "mission_decisions",
+    "mission_submissions",
+    "mission_specialists",
+    "mission_fragments",
+    "mission_subjects",
+    "missions",
+  ];
+  for (const t of tables) {
+    const r = await query(`delete from ${t}`);
+    total += r.rowCount ?? 0;
+  }
+  return `mission history cleared (${total} rows)`;
+}
+
 /// Stamp a mission's lifecycle status. No-op for non-mission contests (the update
 /// touches zero rows), so it is safe to call on every settlement.
 export async function markMissionStatus(contestId: number, status: "settled" | "cancelled"): Promise<void> {

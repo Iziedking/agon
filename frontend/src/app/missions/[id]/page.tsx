@@ -143,6 +143,7 @@ function Arena({ state, mission }: { state: MissionState; mission: NonNullable<M
             {mission.archetype === "external" ? "X402 · PAY PER CALL" : "INTEL MARKET"}
           </span>
         ) : null}
+        {mission.status === "open" ? <MissionCountdown contestId={mission.contestId} /> : null}
       </div>
       <h1
         className="mt-6 font-stencil uppercase text-ink"
@@ -449,8 +450,8 @@ function MissionJoinPanel({
           })}
         </div>
         {lockedRole ? (
-          <p className="mt-3 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3">
-            you are a {lockedRole} in this mission · one side per mission
+          <p className="mt-3 font-mono text-[11px] uppercase tracking-[0.12em] text-[color:var(--warn)]">
+            you already entered as {lockedRole === "operative" ? "an operative" : "a specialist"} · one side per mission
           </p>
         ) : null}
 
@@ -576,6 +577,49 @@ function MissionJoinPanel({
         {msg ? <p className="mt-3 font-mono text-[11px] text-[color:var(--ok)]">{msg}</p> : null}
       </BracketedCell>
     </div>
+  );
+}
+
+/// Live countdown to the mission's join/run window close, in the header. Reads
+/// the contest's endTime (unix seconds) and ticks every second.
+function MissionCountdown({ contestId }: { contestId: number }) {
+  const [endTime, setEndTime] = useState<number | null>(null);
+  const [now, setNow] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    void fetchContest(contestId).then((c) => {
+      if (alive && c) setEndTime(Number(c.endTime));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [contestId]);
+  useEffect(() => {
+    setNow(Math.floor(Date.now() / 1000));
+    const t = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 1000);
+    return () => clearInterval(t);
+  }, []);
+  if (endTime == null || now === 0) return null;
+  const remaining = endTime - now;
+  if (remaining <= 0) {
+    return (
+      <span className="inline-flex items-center gap-1.5 border border-[color:var(--hairline-strong)] px-2 py-1 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3">
+        WINDOW CLOSED
+      </span>
+    );
+  }
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const h = Math.floor(remaining / 3600);
+  const m = Math.floor((remaining % 3600) / 60);
+  const s = remaining % 60;
+  const label = h > 0 ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+  return (
+    <span className="inline-flex items-center gap-1.5 border border-[color:var(--warn)] px-2 py-1 font-mono text-[11px] uppercase tracking-[0.12em] text-ink tabular-nums">
+      <span aria-hidden style={{ color: "var(--warn)" }}>
+        ■
+      </span>
+      CLOSES IN {label}
+    </span>
   );
 }
 
