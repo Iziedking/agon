@@ -44,6 +44,15 @@ function rateFor(model: string): { input: number; output: number } {
   return RATES[model] ?? RATES["claude-haiku-4-5-20251001"]!;
 }
 
+/// Tolerate undated Claude aliases some envs use (e.g. TIER4_MODEL=claude-haiku-4-5)
+/// by mapping them to the dated API id the Anthropic SDK actually accepts.
+const CLAUDE_ALIASES: Record<string, string> = {
+  "claude-haiku-4-5": "claude-haiku-4-5-20251001",
+};
+function normalizeAnthropicModel(model: string): string {
+  return CLAUDE_ALIASES[model] ?? model;
+}
+
 let cachedClient: Anthropic | null = null;
 
 export function llmConfigured(): boolean {
@@ -150,12 +159,13 @@ export async function callModel(params: CallParams): Promise<CallResult> {
   }
 
   const client = getClient();
+  const model = normalizeAnthropicModel(params.model);
   const t0 = Date.now();
   // Server-side tools (code_execution, web_search) are typed loosely by
   // the SDK's union shape. The runtime accepts the {type, name} object
   // form directly; cast keeps the call site readable.
   const response = await client.messages.create({
-    model: params.model,
+    model,
     max_tokens: params.maxTokens,
     temperature: params.temperature,
     system: params.systemPrompt,
