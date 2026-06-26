@@ -1970,8 +1970,8 @@ app.get("/missions", async (c) => {
          + (select count(*) from nanopayments n where n.contest_id = m.contest_id and n.status = 'settled')
        ) as payments,
        (
-         (select coalesce(sum(price_usdc_6), 0) from a2a_trades t where t.contest_id = m.contest_id and t.status = 'settled')
-         + (select coalesce(sum(usdc_amount_6), 0) from nanopayments n where n.contest_id = m.contest_id and n.status = 'settled')
+         (select coalesce(sum(price_usdc_6::numeric), 0) from a2a_trades t where t.contest_id = m.contest_id and t.status = 'settled')
+         + (select coalesce(sum(usdc_amount_6::numeric), 0) from nanopayments n where n.contest_id = m.contest_id and n.status = 'settled')
        ) as spent6
      from missions m
      left join contests c on c.id = m.contest_id
