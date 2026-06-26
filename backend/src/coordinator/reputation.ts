@@ -88,8 +88,27 @@ export async function applyReputation(contestId: number, results: AgentResult[])
 /// per-operator aggregation creditPoints uses. We pre-filter to operators who
 /// are actually in a syndicate (via the indexer's operators.current_syndicate_id)
 /// so we don't burn gas on the NotInSyndicate revert for the many non-members.
-export async function recordSyndicateContributions(eventId: number, results: AgentResult[]): Promise<void> {
+export async function recordSyndicateContributions(
+  source: "contest" | "challenge",
+  eventId: number,
+  results: AgentResult[],
+): Promise<void> {
   if (results.length === 0 || !config.coordinator.privateKey) return;
+
+  // Idempotency: claim the event before recording. recordContribution is
+  // additive on-chain, so an event must roll in at most once. If the claim
+  // finds the row already there (another settlement pass, or a backfill
+  // re-run), skip — never double-count.
+  try {
+    const claim = await query(
+      "insert into syndicate_contrib_events (source, event_id) values ($1, $2) on conflict do nothing",
+      [source, eventId],
+    );
+    if (claim.rowCount === 0) return; // already recorded
+  } catch (err) {
+    console.error(`event ${source} ${eventId}: contribution claim failed:`, err instanceof Error ? err.message : err);
+    return;
+  }
 
   const perOp = new Map<string, number>();
   for (const s of ranked(results)) {

@@ -252,6 +252,20 @@ create table if not exists syndicate_contributions (
 create index if not exists syndicate_contrib_syn_idx on syndicate_contributions(syndicate_id, recorded_at);
 create index if not exists syndicate_contrib_member_idx on syndicate_contributions(member, recorded_at);
 
+-- Idempotency guard for syndicate contribution recording. recordContribution is
+-- ADDITIVE on-chain, so an event's reputation must roll into its syndicate at
+-- most once, ever. The settlement path and the backfill both claim the event
+-- here first (insert on conflict do nothing); a claim that finds the row already
+-- present skips, so re-running a backfill or replaying an event never
+-- double-counts. Keyed by (source, event_id): a contest 88 and a challenge 88
+-- are distinct.
+create table if not exists syndicate_contrib_events (
+  source      text not null,        -- 'contest' | 'challenge'
+  event_id    bigint not null,
+  recorded_at timestamptz not null default now(),
+  primary key (source, event_id)
+);
+
 -- Weekly war standings snapshot. The coordinator's settle job writes one
 -- row per syndicate per ISO-week with the syndicate's rank and total
 -- contribution that week. The scoring path reads the latest week's row

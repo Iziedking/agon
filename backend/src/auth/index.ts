@@ -4336,6 +4336,34 @@ app.get("/syndicates/war/live", async (c) => {
   });
 });
 
+/// Lifetime syndicate leaderboard: every syndicate ranked by cumulative
+/// reputation contributed all-time (never resets, unlike the weekly war). Backs
+/// the SYNDICATES toggle on the leaderboard page.
+app.get("/syndicates/leaderboard", async (c) => {
+  const { rows } = await query<{
+    id: string;
+    name: string | null;
+    total_reputation: string;
+    member_count: string;
+  }>(
+    `select id::text                          as id,
+            name,
+            coalesce(total_reputation, 0)::text as total_reputation,
+            coalesce(member_count, 0)::text     as member_count
+       from syndicates
+      order by total_reputation desc nulls last, member_count desc, id asc`,
+  );
+  return c.json({
+    syndicates: rows.map((r, i) => ({
+      rank: i + 1,
+      syndicateId: Number(r.id),
+      name: r.name,
+      reputation: r.total_reputation,
+      memberCount: Number(r.member_count),
+    })),
+  });
+});
+
 serve({ fetch: app.fetch, port: config.auth.port }, (info) => {
   console.log(`auth service on http://localhost:${info.port}`);
 });

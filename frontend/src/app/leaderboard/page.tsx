@@ -6,6 +6,9 @@ import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/redesign/Footer";
 import { CornerMarkers, Robot, SectionHeader, robotVariantForId } from "@/components/redesign";
 import { fetchLeaderboard, formatReputation, formatUsdcString, short, type LeaderRow } from "@/lib/profiles";
+import { fetchSyndicateLeaderboard, type SyndicateLeaderRow } from "@/lib/syndicates";
+
+type View = "operators" | "syndicates";
 
 /// /leaderboard. True mono table, not a rounded
 /// card: header row in --ink-3 mono caps with a hairline below, rows
@@ -53,13 +56,16 @@ function matchesQuery(r: RankedRow, q: string): boolean {
 export default function LeaderboardPage() {
   const { address } = useAccount();
   const me = address?.toLowerCase();
+  const [view, setView] = useState<View>("operators");
   const [rows, setRows] = useState<LeaderRow[] | null>(null);
+  const [synRows, setSynRows] = useState<SyndicateLeaderRow[] | null>(null);
   const [page, setPage] = useState(1);
   const [queryText, setQueryText] = useState("");
 
   useEffect(() => {
     let live = true;
     fetchLeaderboard(200).then((r) => { if (live) setRows(r); });
+    fetchSyndicateLeaderboard().then((r) => { if (live) setSynRows(r); });
     return () => { live = false; };
   }, []);
 
@@ -90,10 +96,35 @@ export default function LeaderboardPage() {
         <CornerMarkers />
         <SectionHeader
           heading="LEADERBOARD"
-          subDeck={<>ranked by wins, then usdc earned.</>}
+          subDeck={
+            view === "operators" ? (
+              <>ranked by wins, then usdc earned.</>
+            ) : (
+              <>syndicates ranked by lifetime reputation their members have earned.</>
+            )
+          }
         />
       </section>
 
+      {/* OPERATORS / SYNDICATES toggle */}
+      <section className="mx-auto max-w-[1600px] px-6 pt-6">
+        <div className="inline-flex border border-[color:var(--hairline-strong)]">
+          {(["operators", "syndicates"] as View[]).map((v) => (
+            <button
+              key={v}
+              onClick={() => { setView(v); setPage(1); }}
+              className={`px-4 py-2 font-mono text-[11px] uppercase tracking-[0.12em] transition-colors ${
+                view === v ? "bg-accent text-accent-ink" : "bg-canvas text-ink-2 hover:text-ink"
+              }`}
+            >
+              {v}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {view === "operators" ? (
+      <>
       <section className="mx-auto max-w-[1600px] px-6 pt-6">
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative flex-1 min-w-[240px] max-w-[420px]">
@@ -215,6 +246,10 @@ export default function LeaderboardPage() {
           </div>
         ) : null}
       </section>
+      </>
+      ) : (
+        <SyndicateBoard rows={synRows} />
+      )}
 
       <Footer />
     </div>
@@ -244,5 +279,58 @@ function PageBtn({
     >
       {children}
     </button>
+  );
+}
+
+/// Lifetime syndicate board: each syndicate by cumulative reputation its members
+/// have contributed. Links to the syndicate page.
+function SyndicateBoard({ rows }: { rows: SyndicateLeaderRow[] | null }) {
+  const COLS = "grid-cols-[2.25rem_1fr_4rem_6rem] sm:grid-cols-[3rem_1fr_5rem_7rem]";
+  return (
+    <section className="mx-auto max-w-[1600px] px-6 py-6 pb-16">
+      <div className={`grid ${COLS} items-center gap-3 border-b border-[color:var(--hairline-strong)] py-3 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3`}>
+        <span>RANK</span>
+        <span>SYNDICATE</span>
+        <span className="text-right">MEMBERS</span>
+        <span className="text-right">REPUTATION</span>
+      </div>
+
+      {rows === null ? (
+        <p className="py-8 font-mono text-sm text-ink-2">loading syndicates…</p>
+      ) : rows.length === 0 ? (
+        <p className="py-8 font-mono text-sm text-ink-2">
+          no syndicate reputation yet. once members compete and contests settle, syndicates rank here.
+        </p>
+      ) : (
+        rows.map((r, i) => {
+          const topThree = r.rank <= 3;
+          const isAlt = i % 2 === 1;
+          return (
+            <a
+              key={r.syndicateId}
+              href={`/syndicates/${r.syndicateId}`}
+              className={`grid ${COLS} items-center gap-3 border-b border-[color:var(--hairline)] py-3 transition-colors hover:bg-canvas-3 last:border-0`}
+              style={{ background: isAlt ? "var(--canvas-2)" : undefined }}
+            >
+              <span className="font-stencil" style={{ fontSize: 20, color: topThree ? "var(--accent)" : "var(--ink)" }}>
+                #{r.rank}
+              </span>
+              <span className="flex min-w-0 items-center gap-2.5">
+                <span className="flex h-6 w-6 flex-none items-center justify-center overflow-hidden bg-canvas-3">
+                  <Robot variant={robotVariantForId(r.syndicateId)} size={22} decorative />
+                </span>
+                <span className="truncate font-mono text-[13px] uppercase tracking-[0.08em] text-ink">
+                  {r.name ?? `SYNDICATE ${r.syndicateId}`}
+                </span>
+              </span>
+              <span className="text-right font-mono text-[13px] text-ink-2">{r.memberCount}</span>
+              <span className="whitespace-nowrap text-right font-mono text-[12px] text-accent sm:text-[13px]">
+                {formatReputation(r.reputation).toLocaleString()}
+              </span>
+            </a>
+          );
+        })
+      )}
+    </section>
   );
 }

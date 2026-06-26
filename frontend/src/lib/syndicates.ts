@@ -105,3 +105,27 @@ export function formatReputationBig(raw: bigint): number {
   // as whole points to match the rest of the UI.
   return Math.round(Number(raw) / 1e6);
 }
+
+const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL ?? "http://localhost:8082";
+
+export interface SyndicateLeaderRow {
+  rank: number;
+  syndicateId: number;
+  name: string | null;
+  reputation: string; // 1e6-scaled cumulative reputation
+  memberCount: number;
+}
+
+/// Lifetime syndicate leaderboard from the indexer (cumulative reputation,
+/// never resets). Returns [] on any error so the page renders empty rather than
+/// throwing.
+export async function fetchSyndicateLeaderboard(): Promise<SyndicateLeaderRow[]> {
+  try {
+    const res = await fetch(`${AUTH_URL}/syndicates/leaderboard`, { cache: "no-store" });
+    if (!res.ok) return [];
+    const data = (await res.json()) as { syndicates?: SyndicateLeaderRow[] };
+    return data.syndicates ?? [];
+  } catch {
+    return [];
+  }
+}

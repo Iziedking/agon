@@ -522,7 +522,7 @@ export async function runContestById(contestId: number, broadcast: (message: unk
   // in-game reputation, Cycles, ERC-8004 validator feedback, and one
   // placement-tagged trait per top-3 finisher.
   await applyReputation(contestId, results);
-  await recordSyndicateContributions(contestId, results).catch((err) =>
+  await recordSyndicateContributions("contest", contestId, results).catch((err) =>
     console.error(`contest ${contestId}: syndicate contributions failed:`, err instanceof Error ? err.message : err),
   );
   await creditPoints(contestId, cType, results);

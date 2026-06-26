@@ -602,7 +602,7 @@ export async function resolveChallengeById(challengeId: number, broadcast: (mess
       await creditPoints(challengeId, cType, scoredResults).catch((err) =>
         console.error(`challenge ${challengeId}: creditPoints failed:`, err instanceof Error ? err.message : err),
       );
-      await recordSyndicateContributions(challengeId, scoredResults).catch((err) =>
+      await recordSyndicateContributions("challenge", challengeId, scoredResults).catch((err) =>
         console.error(`challenge ${challengeId}: syndicate contributions failed:`, err instanceof Error ? err.message : err),
       );
       await postValidatorFeedback("challenge", challengeId, cType, scoredResults).catch((err) =>
