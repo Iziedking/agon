@@ -157,9 +157,13 @@ export async function gradeSubmission(
   const { credited, total, spent6 } = await verifyCredit(mission.missionId, sub.agentId);
   const { quality, verdict } = await judgeDeliverable(mission, sub.deliverable);
   const speed = clamp01(speedBudgetMs() / Math.max(sub.elapsedMs, 1));
-  // Both must agree: credited (paid, proven) work AND quality. Multiplicative so
-  // empty or bad work scores ~0; speed only amplifies genuine, judged work.
-  const score = Math.round(credited * quality * SCORE_SCALE * (1 + 0.1 * speed));
+  // Credited (paid, proven) work AND quality must both hold — multiplicative, so
+  // empty or bad work scores ~0. Among genuine work, SPEED is the dominant
+  // differentiator: the fastest qualifying operative wins. MISSION_SPEED_WEIGHT
+  // (default 1.0, was 0.1) makes "fastest to accomplish the mission" the race it
+  // is meant to be, while quality x credit stays the gate.
+  const speedWeight = Number(process.env.MISSION_SPEED_WEIGHT ?? "1.0");
+  const score = Math.round(credited * quality * SCORE_SCALE * (1 + speedWeight * speed));
   return {
     agentId: sub.agentId,
     creditedFragments: credited,

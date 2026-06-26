@@ -90,8 +90,12 @@ export interface RuntimeParams extends TierCapabilities {
 /// env (typical mainnet config). Tiers 0..3 always use the default
 /// LLM_MODEL, which keeps testnet cost flat.
 export function modelForTier(tier: number): string {
+  // Per-tier reasoning models (tier 0..4): llama / gpt for the lower tiers via
+  // OpenRouter, Haiku for tier 4. LLM_MODEL_TIER4 still wins for tier 4 if set
+  // (e.g. a smarter mainnet model), then the per-tier table, then the default.
   if (tier >= 4 && config.llm.modelTier4) return config.llm.modelTier4;
-  return config.llm.model;
+  const t = Math.max(0, Math.min(4, Math.floor(tier)));
+  return config.llm.tierModels[t] ?? config.llm.model;
 }
 
 export async function resolveRuntimeParams(agentId: number, tier: number): Promise<RuntimeParams> {

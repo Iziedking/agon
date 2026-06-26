@@ -82,6 +82,16 @@ const envSchema = z.object({
   // are claude-sonnet-4-6 or claude-opus-4-7. Leave unset on testnet to
   // keep costs low.
   LLM_MODEL_TIER4: z.string().optional(),
+  // OpenRouter routes the per-tier reasoning models for missions (llama / gpt /
+  // claude) through one OpenAI-compatible endpoint. Required for tiers 0-3.
+  OPENROUTER_API_KEY: z.string().optional(),
+  // Per-tier reasoning models. Tiers 0-3 are OpenRouter slugs (have a "/");
+  // tier 4 is the Anthropic Haiku id (uses ANTHROPIC_API_KEY). Override per env.
+  TIER0_MODEL: z.string().default("meta-llama/llama-3.2-1b-instruct"),
+  TIER1_MODEL: z.string().default("meta-llama/llama-3.2-3b-instruct"),
+  TIER2_MODEL: z.string().default("meta-llama/llama-3.1-8b-instruct"),
+  TIER3_MODEL: z.string().default("openai/gpt-4o-mini"),
+  TIER4_MODEL: z.string().default("claude-haiku-4-5-20251001"),
   // Testing safety belt. When true:
   //  - web_search tool is stripped from every tier (avoids $0.01/search)
   //  - max_tokens is clamped to 200 regardless of POWER stat
@@ -542,9 +552,14 @@ export const config = {
   },
   llm: {
     anthropicApiKey: env.ANTHROPIC_API_KEY,
+    openrouterApiKey: env.OPENROUTER_API_KEY?.trim() || undefined,
     dailyKillUsd: env.LLM_DAILY_KILL_USD,
     model: env.LLM_MODEL,
     modelTier4: env.LLM_MODEL_TIER4,
+    // Per-tier reasoning models (index = tier 0..4). Slugs with a "/" route
+    // through OpenRouter; bare claude-* ids use the Anthropic key. Drives the
+    // mission runner's make-vs-buy reasoning, so tier differentiates capability.
+    tierModels: [env.TIER0_MODEL, env.TIER1_MODEL, env.TIER2_MODEL, env.TIER3_MODEL, env.TIER4_MODEL],
     testing: env.LLM_TESTING,
   },
   arcana: {

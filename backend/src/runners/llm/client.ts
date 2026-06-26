@@ -47,7 +47,55 @@ function rateFor(model: string): { input: number; output: number } {
 let cachedClient: Anthropic | null = null;
 
 export function llmConfigured(): boolean {
-  return Boolean(config.llm.anthropicApiKey);
+  return Boolean(config.llm.anthropicApiKey || config.llm.openrouterApiKey);
+}
+
+/// OpenRouter call for the non-Anthropic tier models (llama, gpt). One
+/// OpenAI-compatible endpoint covers every provider; we route here whenever the
+/// model id is a slug (provider/model). Cost is recorded as ~0 (these are cheap
+/// and don't gate the Anthropic kill switch). Plain completion: the small models
+/// reason about make-vs-buy from the prompt, no server tools.
+async function callOpenRouter(params: CallParams): Promise<CallResult> {
+  const key = config.llm.openrouterApiKey;
+  if (!key) throw new Error(`OPENROUTER_API_KEY is not set; cannot call ${params.model}`);
+  const t0 = Date.now();
+  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${key}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": "https://arcrun.xyz",
+      "X-Title": "ArcRun",
+    },
+    body: JSON.stringify({
+      model: params.model,
+      messages: [
+        { role: "system", content: params.systemPrompt },
+        { role: "user", content: params.userPrompt },
+      ],
+      max_tokens: params.maxTokens,
+      temperature: params.temperature,
+    }),
+    signal: AbortSignal.timeout(Number(process.env.LLM_TIMEOUT_MS ?? "60000")),
+  });
+  const latencyMs = Date.now() - t0;
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`openrouter ${res.status}: ${body.slice(0, 200)}`);
+  }
+  const data = (await res.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+    usage?: { prompt_tokens?: number; completion_tokens?: number };
+  };
+  const text = (data.choices?.[0]?.message?.content ?? "").trim();
+  return {
+    text,
+    inputTokens: data.usage?.prompt_tokens ?? 0,
+    outputTokens: data.usage?.completion_tokens ?? 0,
+    costUsd: 0,
+    latencyMs,
+    model: params.model,
+  };
 }
 
 function getClient(): Anthropic {
@@ -93,6 +141,12 @@ export async function callModel(params: CallParams): Promise<CallResult> {
   if (cap > 0) {
     const spent = await spendToday();
     if (spent >= cap) throw new DailyKillError(spent, cap);
+  }
+
+  // Slug models (provider/model) go through OpenRouter; bare claude-* ids use
+  // the Anthropic SDK below.
+  if (params.model.includes("/")) {
+    return callOpenRouter(params);
   }
 
   const client = getClient();

@@ -900,6 +900,17 @@ create table if not exists mission_specialists (
   created_at   timestamptz not null default now(),
   primary key (contest_id, agent_id, fragment_id)
 );
+-- Recent mission subjects (v2 diversity). One row per subject a mission used, so
+-- the generator can avoid anything seen in the last 60 days and missions never
+-- feel repeated. subject_key is the lowercased subject.
+create table if not exists mission_subjects (
+  subject_key text not null,
+  contest_id  bigint not null,
+  created_at  timestamptz not null default now(),
+  primary key (subject_key, contest_id)
+);
+create index if not exists mission_subjects_recent_idx on mission_subjects(created_at desc);
+
 -- Operative join fees (v2 economy). An operative pays a % of the pool to the
 -- treasury when it enters a mission; recorded here so the fee can be refunded
 -- from the treasury if the mission cancels with no qualifier. One row per

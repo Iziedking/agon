@@ -35,6 +35,9 @@ interface BuiltFragment {
 interface Built {
   brief: string;
   fragments: BuiltFragment[];
+  /// The subjects the generator chose, lowercased — recorded so future missions
+  /// can avoid them for 60 days.
+  subjects: string[];
 }
 
 /// Resolves the live x402 endpoint that can MAKE a fragment of this kind, read
@@ -76,7 +79,7 @@ function parseJsonLoose(text: string): Record<string, unknown> | null {
 
 /// Asks the model for fresh subjects, a filled brief, and per-fragment intel.
 /// Throws on a missing key or malformed JSON so the caller falls back to canned.
-async function llmGenerate(template: MissionTemplate): Promise<Built> {
+async function llmGenerate(template: MissionTemplate, avoid: string[]): Promise<Built> {
   if (!llmConfigured()) throw new Error("llm not configured");
   const n = template.fragments.length;
   const fragSpec = template.fragments
@@ -84,30 +87,42 @@ async function llmGenerate(template: MissionTemplate): Promise<Built> {
     .join("\n");
   const system =
     "You generate fresh, realistic content for a competitive AI-agent mission. " +
+    "Variety matters: each mission should feel genuinely different from the last. " +
     "Return ONLY a valid JSON object: no prose, no code fences.";
+  // Hand the model the recently-used subjects so it picks genuinely new ground.
+  const avoidLine =
+    avoid.length > 0
+      ? `Do NOT use any of these recently-used subjects (pick clearly different ones, ` +
+        `and prefer specific, current, less-obvious picks over the usual BTC/ETH/SOL): ${avoid.slice(0, 60).join(", ")}.\n`
+      : "Prefer specific, current, less-obvious subjects over the usual BTC/ETH/SOL.\n";
   const user =
     `Mission: ${template.title}\n` +
     `Brief shell: "${template.briefShell}"\n` +
     `Deliverable: ${template.deliverable}\n\n` +
-    `Pick ${n} interesting, current, distinct subjects (major crypto assets, live markets, or recent events). ` +
+    `Pick ${n} interesting, current, distinct subjects (crypto assets, live markets, protocols, or recent events). ` +
+    avoidLine +
     `Replace {subject} / {subjects} with them. Return JSON of exactly this shape:\n` +
-    `{"brief":"<=70 words filling the brief shell","fragments":[{"ask":"filled ask","intel":"1-2 sentence concrete realistic intel a specialist would sell"}]}\n` +
+    `{"subjects":["subject1","subject2"],"brief":"<=70 words filling the brief shell","fragments":[{"ask":"filled ask","intel":"1-2 sentence concrete realistic intel a specialist would sell"}]}\n` +
     `CRITICAL: the brief is the ASSIGNMENT shown publicly. State the scenario and what the operative must produce, but DO NOT state any conclusion, signal call, recommendation, or synthesis — that is the operative's deliverable and must not be given away. The "intel" fields ARE the answer pieces (kept private, sold by specialists); the brief is NOT.\n` +
     `Provide exactly ${n} fragments, in this order:\n${fragSpec}`;
   const out = await callModel({
     model: config.llm.model,
     systemPrompt: system,
     userPrompt: user,
-    maxTokens: 700,
-    temperature: 0.85,
+    maxTokens: 800,
+    temperature: 0.95,
   });
   const parsed = parseJsonLoose(out.text);
   const frags = parsed?.fragments;
   if (!parsed || typeof parsed.brief !== "string" || !Array.isArray(frags) || frags.length < n) {
     throw new Error("malformed mission JSON from model");
   }
+  const subjects = Array.isArray(parsed.subjects)
+    ? (parsed.subjects as unknown[]).map((s) => String(s).trim()).filter(Boolean)
+    : [];
   return {
     brief: parsed.brief,
+    subjects,
     fragments: (frags as Array<Record<string, unknown>>).slice(0, n).map((x) => ({
       ask: String(x.ask ?? ""),
       intel: x.intel != null ? String(x.intel) : null,
@@ -132,17 +147,34 @@ function cannedIntel(kind: FragmentKind, subject: string): string {
   }
 }
 
-function cannedGenerate(template: MissionTemplate): Built {
-  const subjects = ["Bitcoin", "Ethereum", "Solana", "Arc", "USDC"];
-  const fragments = template.fragments.map((f, i) => {
-    const subject = subjects[i % subjects.length]!;
-    return {
-      ask: f.askShell.replace(/\{subject\}/g, subject),
-      intel: cannedIntel(f.kind, subject),
-    };
-  });
-  const picked = subjects.slice(0, Math.max(1, template.fragments.length)).join(", ");
-  return { brief: template.briefShell.replace(/\{subjects\}/g, picked), fragments };
+/// A broad subject pool for the keyless fallback, so even without an LLM the
+/// canned path rotates through enough names to dodge the 60-day window.
+const CANNED_SUBJECTS = [
+  "Bitcoin", "Ethereum", "Solana", "Arbitrum", "Optimism", "Base", "Polygon", "Avalanche",
+  "Chainlink", "Uniswap", "Aave", "Lido", "Maker", "Curve", "Pendle", "Ethena",
+  "Celestia", "Sui", "Aptos", "Sei", "Injective", "TON", "Near", "Cosmos",
+  "EigenLayer restaking", "the ETH staking rate", "stablecoin supply growth",
+  "L2 sequencer revenue", "RWA tokenization", "a major airdrop unlock",
+];
+
+function cannedGenerate(template: MissionTemplate, avoid: string[]): Built {
+  const avoidSet = new Set(avoid.map((s) => s.toLowerCase()));
+  const fresh = CANNED_SUBJECTS.filter((s) => !avoidSet.has(s.toLowerCase()));
+  // Rotate a different window of the pool each time; fall back to the full pool
+  // if the avoid list has swallowed almost everything.
+  const pool = fresh.length >= template.fragments.length ? fresh : CANNED_SUBJECTS;
+  const start = pool.length > 0 ? avoidSet.size % pool.length : 0;
+  const pick = (i: number) => pool[(start + i) % pool.length]!;
+  const subjects = template.fragments.map((_, i) => pick(i));
+  const fragments = template.fragments.map((f, i) => ({
+    ask: f.askShell.replace(/\{subject\}/g, subjects[i]!),
+    intel: cannedIntel(f.kind, subjects[i]!),
+  }));
+  return {
+    brief: template.briefShell.replace(/\{subjects\}/g, subjects.join(", ")),
+    subjects,
+    fragments,
+  };
 }
 
 /// Generates and persists a mission for a contest, seeds its specialists, and
@@ -161,7 +193,14 @@ export async function generateMission(opts: {
   // v2 economy: roll the archetype + weight, which set the base intel price.
   const econ = computeMissionEconomics(opts.poolUsdc ?? 100);
 
-  const built = (await llmGenerate(template).catch(() => null)) ?? cannedGenerate(template);
+  // 60-day no-repeat: hand the generator everything used recently so it picks
+  // genuinely fresh subjects and missions stop feeling the same.
+  const { rows: recentRows } = await query<{ subject_key: string }>(
+    "select subject_key from mission_subjects where created_at > now() - interval '60 days' order by created_at desc limit 200",
+  );
+  const avoid = recentRows.map((r) => r.subject_key);
+
+  const built = (await llmGenerate(template, avoid).catch(() => null)) ?? cannedGenerate(template, avoid);
 
   const fragments: MissionFragment[] = template.fragments.map((tf, i) => {
     const b = built.fragments[i] ?? { ask: tf.askShell, intel: null };
@@ -227,6 +266,16 @@ export async function generateMission(opts: {
         f.service?.chain ?? null,
         JSON.stringify(f.truth ?? null),
       ],
+    );
+  }
+
+  // Record this mission's subjects so the next 60 days steer clear of them.
+  for (const s of built.subjects) {
+    const key = s.toLowerCase().trim().slice(0, 200);
+    if (!key) continue;
+    await query(
+      "insert into mission_subjects (subject_key, contest_id) values ($1, $2) on conflict do nothing",
+      [key, opts.contestId],
     );
   }
 

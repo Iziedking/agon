@@ -12,6 +12,7 @@
 import { config } from "../../config/index.js";
 import { query } from "../../db/pool.js";
 import { callModel, llmConfigured } from "./../llm/client.js";
+import { modelForTier } from "./../llm/tierConfig.js";
 import { deriveHotWallet } from "../scout.js";
 import { payX402 } from "../../nanopayments/index.js";
 import type {
@@ -159,7 +160,7 @@ export class MissionRunner implements Runner {
       await this.persistDecision(mission.missionId, entry.agentId, row);
     }
 
-    const deliverable = await this.synthesize(mission, fragmentData);
+    const deliverable = await this.synthesize(mission, fragmentData, entry.tier);
     const elapsedMs = Date.now() - startedAt;
 
     // Grade: the judge scores quality and the credit gate re-verifies on-chain
@@ -201,7 +202,7 @@ export class MissionRunner implements Runner {
   private async decide(
     mission: Commission,
     options: FragmentOptions[],
-    _tier: number,
+    tier: number,
   ): Promise<Map<string, { choice: MakeOrBuy; reason: string }>> {
     const out = new Map<string, { choice: MakeOrBuy; reason: string }>();
     const fallback = () => {
@@ -238,7 +239,7 @@ export class MissionRunner implements Runner {
 
     try {
       const res = await callModel({
-        model: config.llm.model,
+        model: modelForTier(tier),
         systemPrompt: system,
         userPrompt: user,
         maxTokens: 500,
@@ -311,6 +312,7 @@ export class MissionRunner implements Runner {
   private async synthesize(
     mission: Commission,
     gathered: Array<{ ask: string; data: unknown }>,
+    tier: number,
   ): Promise<string> {
     if (gathered.length === 0) return "(no fragments sourced)";
     const bundle = gathered.map((g, i) => `(${i + 1}) ${g.ask}\n${stringifyData(g.data)}`).join("\n\n");
@@ -319,7 +321,7 @@ export class MissionRunner implements Runner {
     }
     try {
       const res = await callModel({
-        model: config.llm.model,
+        model: modelForTier(tier),
         systemPrompt:
           "You are an operative agent producing the mission deliverable. Synthesize the " +
           "gathered fragments into the required deliverable. Be concise and concrete; use " +
