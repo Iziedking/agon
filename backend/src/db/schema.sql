@@ -892,6 +892,13 @@ create table if not exists mission_specialists (
   created_at   timestamptz not null default now(),
   primary key (contest_id, agent_id, fragment_id)
 );
+-- Operator-run specialists: an operator can enter a mission on the SUPPLY side,
+-- registering one of their agents to sell intel for a fragment at their own
+-- price. `owner` distinguishes them from the platform-seeded sellers; `operator`
+-- is the wallet the A2A payment lands in when an operative buys. Added after the
+-- create so existing DBs gain the columns.
+alter table mission_specialists add column if not exists owner    text not null default 'platform';
+alter table mission_specialists add column if not exists operator text;
 create index if not exists mission_specialists_contest_idx on mission_specialists(contest_id);
 
 -- Agent-to-agent trades: the on-chain USDC payment from an operative (buyer) to a

@@ -4,10 +4,12 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/redesign/Footer";
-import { BracketedCell, CornerMarkers, StatusChip } from "@/components/redesign";
+import { BracketedCell, CornerMarkers, StatusChip, TagButton } from "@/components/redesign";
+import { useOperatorAddress } from "@/hooks/useAuth";
 import {
   fetchMission,
   formatUsdc6,
+  registerSpecialist,
   explorerTx,
   shortAddr,
   type Choice,
@@ -127,6 +129,9 @@ function Arena({ state, mission }: { state: MissionState; mission: NonNullable<M
         </BracketedCell>
       </div>
 
+      {/* JOIN — choose your side, while the window is open */}
+      {mission.status === "open" ? <MissionJoinPanel mission={mission} fragments={fragments} /> : null}
+
       {/* THE SUPPLY SIDE */}
       {specialists.length > 0 ? (
         <div className="mt-10">
@@ -143,6 +148,17 @@ function Arena({ state, mission }: { state: MissionState; mission: NonNullable<M
                       SPECIALIST #{s.agentId}
                     </span>
                     <span className="font-mono text-[12px] text-accent">{formatUsdc6(s.price6)}</span>
+                  </div>
+                  <div className="mt-1.5">
+                    <span
+                      className={`inline-block border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em] ${
+                        s.owner === "operator"
+                          ? "border-accent text-accent"
+                          : "border-[color:var(--hairline-strong)] text-ink-3"
+                      }`}
+                    >
+                      {s.owner === "operator" ? "OPERATOR" : "PLATFORM"}
+                    </span>
                   </div>
                   <div className="mt-2 font-mono text-[12px] leading-[1.6] text-ink-2">
                     sells <span className="uppercase text-ink">{frag?.kind ?? s.fragmentId}</span>
@@ -206,6 +222,168 @@ function Arena({ state, mission }: { state: MissionState; mission: NonNullable<M
           </p>
         </aside>
       </div>
+    </div>
+  );
+}
+
+/// The entry panel: an operator chooses a side while the window is open. OPERATIVE
+/// routes to the contest entry (the mission rides a solver contest), where they
+/// send an agent in to compete. SPECIALIST registers an agent on the supply side
+/// to sell intel for a fragment at a price; any operative who buys it pays the
+/// operator's wallet on chain.
+function MissionJoinPanel({
+  mission,
+  fragments,
+}: {
+  mission: NonNullable<MissionState["mission"]>;
+  fragments: MissionState["fragments"];
+}) {
+  const { isSignedIn } = useOperatorAddress();
+  const [role, setRole] = useState<"operative" | "specialist">("operative");
+  const [fragmentId, setFragmentId] = useState("");
+  const [agentId, setAgentId] = useState("");
+  const [price, setPrice] = useState("0.5");
+  const [intel, setIntel] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const buyable = fragments.filter((f) => f.kind !== "action");
+  useEffect(() => {
+    if (!fragmentId && buyable[0]) setFragmentId(buyable[0].id);
+  }, [buyable, fragmentId]);
+
+  const inputCls =
+    "w-full border border-[color:var(--hairline-strong)] bg-canvas px-3 py-2 font-mono text-[13px] text-ink outline-none focus:border-ink";
+  const labelCls = "font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3";
+
+  async function submitSpecialist() {
+    setErr(null);
+    setMsg(null);
+    const aId = Number(agentId);
+    const p = Number(price);
+    if (!Number.isFinite(aId) || aId <= 0) return setErr("enter your agent id");
+    if (!fragmentId) return setErr("pick a fragment to supply");
+    if (!Number.isFinite(p) || p <= 0) return setErr("set a price");
+    if (intel.trim().length < 10) return setErr("describe the intel you are selling");
+    setBusy(true);
+    const res = await registerSpecialist(mission.contestId, {
+      agentId: aId,
+      fragmentId,
+      priceUsdc: p,
+      intel: intel.trim(),
+    });
+    setBusy(false);
+    if (!res.ok) return setErr(res.error);
+    setMsg("you are live on the supply side. when an operative buys your intel, the usdc lands in your wallet.");
+    setIntel("");
+  }
+
+  return (
+    <div className="mt-8">
+      <div className="mb-3 font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
+        <span aria-hidden className="text-accent">■</span> JOIN THIS MISSION · CHOOSE YOUR SIDE
+      </div>
+      <BracketedCell>
+        <div className="inline-flex border border-[color:var(--hairline-strong)]">
+          {(["operative", "specialist"] as const).map((r) => (
+            <button
+              key={r}
+              onClick={() => {
+                setRole(r);
+                setErr(null);
+                setMsg(null);
+              }}
+              className={`px-4 py-2 font-mono text-[11px] uppercase tracking-[0.12em] transition-colors ${
+                role === r ? "bg-accent text-accent-ink" : "bg-canvas text-ink-2 hover:text-ink"
+              }`}
+            >
+              {r === "operative" ? "OPERATIVE · COMPETE" : "SPECIALIST · SUPPLY"}
+            </button>
+          ))}
+        </div>
+
+        {!isSignedIn ? (
+          <p className="mt-4 font-mono text-[12px] text-ink-2">sign in to join this mission.</p>
+        ) : role === "operative" ? (
+          <div className="mt-4 max-w-[60ch]">
+            <p className="font-mono text-[13px] leading-[1.7] text-ink-2">
+              the demand side: send your agent in to source each piece of work, decide make-or-buy, and submit the
+              deliverable. the top deliverables split the prize pool.
+            </p>
+            <div className="mt-4">
+              <TagButton href={`/contests/${mission.contestId}`} size="sm">
+                ENTER AS OPERATIVE →
+              </TagButton>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-4 flex max-w-[560px] flex-col gap-3">
+            <p className="font-mono text-[13px] leading-[1.7] text-ink-2">
+              the supply side: list one fragment of intel at your price. when an operative buys it, the usdc settles
+              to your wallet on chain.
+            </p>
+            <div>
+              <div className={labelCls}>FRAGMENT TO SUPPLY</div>
+              <select
+                value={fragmentId}
+                onChange={(e) => setFragmentId(e.target.value)}
+                className={`mt-1.5 ${inputCls} uppercase`}
+              >
+                {buyable.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.kind.toUpperCase()} — {f.ask}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <div className={labelCls}>YOUR AGENT ID</div>
+                <input
+                  className={`mt-1.5 ${inputCls}`}
+                  inputMode="numeric"
+                  placeholder="e.g. 42"
+                  value={agentId}
+                  onChange={(e) => setAgentId(e.target.value.replace(/[^0-9]/g, ""))}
+                />
+              </div>
+              <div>
+                <div className={labelCls}>PRICE (USDC)</div>
+                <input
+                  className={`mt-1.5 ${inputCls}`}
+                  inputMode="decimal"
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value.replace(/[^0-9.]/g, ""))}
+                />
+              </div>
+            </div>
+            <div>
+              <div className={labelCls}>THE INTEL YOU SELL</div>
+              <textarea
+                className={`mt-1.5 ${inputCls}`}
+                rows={3}
+                placeholder="the concrete fact / read you are selling for this fragment"
+                value={intel}
+                onChange={(e) => setIntel(e.target.value)}
+              />
+            </div>
+            <div>
+              <button
+                onClick={submitSpecialist}
+                disabled={busy}
+                className="inline-flex items-center gap-2 bg-accent px-4 py-2.5 font-mono text-[12px] uppercase tracking-[0.12em] text-accent-ink transition-colors hover:bg-accent-press disabled:opacity-60"
+                style={{ clipPath: "polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%)" }}
+              >
+                {busy ? "REGISTERING…" : "JOIN AS SPECIALIST →"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {err ? <p className="mt-3 font-mono text-[11px] text-[color:var(--err)]">{err}</p> : null}
+        {msg ? <p className="mt-3 font-mono text-[11px] text-[color:var(--ok)]">{msg}</p> : null}
+      </BracketedCell>
     </div>
   );
 }

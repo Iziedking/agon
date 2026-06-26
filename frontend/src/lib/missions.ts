@@ -16,6 +16,8 @@ export interface MissionSpecialist {
   agentId: number;
   fragmentId: string;
   price6: string;
+  owner: "platform" | "operator";
+  operator: string | null;
 }
 
 export interface MissionDecision {
@@ -106,6 +108,28 @@ export async function fetchMission(contestId: number): Promise<MissionState | nu
     return (await res.json()) as MissionState;
   } catch {
     return null;
+  }
+}
+
+/// Operator joins a mission's SUPPLY side: registers an agent to sell intel for
+/// a fragment at a price. Session-gated (sends the cookie). The A2A payment from
+/// any operative who buys lands in the operator's wallet.
+export async function registerSpecialist(
+  missionId: number,
+  input: { agentId: number; fragmentId: string; priceUsdc: number; intel: string },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const res = await fetch(`${AUTH_URL}/missions/${missionId}/specialist`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    if (!res.ok) return { ok: false, error: data.error ?? "could not register as a specialist." };
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "network error. try again." };
   }
 }
 

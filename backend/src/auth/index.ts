@@ -1987,6 +1987,56 @@ app.get("/missions", async (c) => {
   });
 });
 
+/// Operator joins a mission on the SUPPLY side: registers one of their agents as
+/// an intel specialist for a fragment at their own price. Operatives can then
+/// buy that intel agent-to-agent, and the USDC lands in the operator's wallet.
+/// Session-gated; only while the mission is open and the fragment is buyable.
+app.post("/missions/:id/specialist", requireAuth, async (c) => {
+  const contestId = Number(c.req.param("id"));
+  if (!Number.isFinite(contestId)) return c.json({ error: "bad mission id" }, 400);
+  const operator = c.get("address").toLowerCase();
+
+  let body: { agentId?: number; fragmentId?: string; priceUsdc?: number; intel?: string };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "bad json" }, 400);
+  }
+  const agentId = Number(body.agentId);
+  const fragmentId = String(body.fragmentId ?? "");
+  const priceUsdc = Number(body.priceUsdc);
+  const intel = String(body.intel ?? "").trim();
+  if (!Number.isFinite(agentId) || agentId <= 0) return c.json({ error: "pick an agent" }, 400);
+  if (!fragmentId) return c.json({ error: "pick a fragment to supply" }, 400);
+  if (!Number.isFinite(priceUsdc) || priceUsdc <= 0 || priceUsdc > 50)
+    return c.json({ error: "price must be between 0 and 50 USDC" }, 400);
+  if (intel.length < 10) return c.json({ error: "describe the intel you are selling (a sentence or two)" }, 400);
+
+  const m = await query<{ status: string }>("select status from missions where contest_id = $1", [contestId]);
+  if (!m.rows[0]) return c.json({ error: "not a mission" }, 404);
+  if (m.rows[0].status !== "open") return c.json({ error: "this mission is no longer open" }, 409);
+
+  const f = await query<{ kind: string }>(
+    "select kind from mission_fragments where contest_id = $1 and fragment_id = $2",
+    [contestId, fragmentId],
+  );
+  if (!f.rows[0]) return c.json({ error: "unknown fragment" }, 404);
+  if (f.rows[0].kind === "action") return c.json({ error: "that fragment cannot be supplied as intel" }, 400);
+
+  // The A2A payment lands in the operator's own wallet (address = operator), so
+  // a registration can only ever earn to the caller. agentId is the seller label.
+  await query(
+    `insert into mission_specialists (contest_id, agent_id, address, fragment_id, price_usdc_6, intel, owner, operator)
+     values ($1, $2, $3, $4, $5, $6, 'operator', $7)
+     on conflict (contest_id, agent_id, fragment_id) do update set
+       address = excluded.address, price_usdc_6 = excluded.price_usdc_6,
+       intel = excluded.intel, owner = 'operator', operator = excluded.operator`,
+    [contestId, agentId, operator, fragmentId, String(Math.round(priceUsdc * 1e6)), JSON.stringify(intel), operator],
+  );
+  void logEvent({ kind: "mission_specialist_join", address: operator, context: { contestId, fragmentId, agentId }, source: "auth" });
+  return c.json({ ok: true });
+});
+
 app.get("/missions/:id", async (c) => {
   const contestId = Number(c.req.param("id"));
   if (!Number.isFinite(contestId)) return c.json({ mission: null });
@@ -2009,8 +2059,14 @@ app.get("/missions/:id", async (c) => {
     "select fragment_id, kind, ask from mission_fragments where contest_id = $1 order by fragment_id",
     [contestId],
   );
-  const specialists = await query<{ agent_id: string; fragment_id: string; price_usdc_6: string }>(
-    "select agent_id, fragment_id, price_usdc_6 from mission_specialists where contest_id = $1 order by agent_id",
+  const specialists = await query<{
+    agent_id: string;
+    fragment_id: string;
+    price_usdc_6: string;
+    owner: string;
+    operator: string | null;
+  }>(
+    "select agent_id, fragment_id, price_usdc_6, owner, operator from mission_specialists where contest_id = $1 order by agent_id",
     [contestId],
   );
   const decisions = await query<{
@@ -2136,6 +2192,8 @@ app.get("/missions/:id", async (c) => {
       agentId: Number(s.agent_id),
       fragmentId: s.fragment_id,
       price6: s.price_usdc_6,
+      owner: s.owner === "operator" ? "operator" : "platform",
+      operator: s.operator,
     })),
     operatives,
     tape,

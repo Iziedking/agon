@@ -72,9 +72,10 @@ export async function seedSpecialists(mission: Commission): Promise<Specialist[]
   return seeded;
 }
 
-/// The platform specialist holding a given fragment for a mission, or null when
-/// none does (e.g. an action fragment, or the mission was not seeded). Picks the
-/// lowest agentId when several hold it, for determinism.
+/// The specialist holding a given fragment for a mission, or null when none does
+/// (e.g. an action fragment, or the mission was not seeded). When a real operator
+/// has joined the supply side for this fragment, prefer them — their A2A sale is
+/// the point of the two-sided market — then the cheapest, then a stable agentId.
 export async function getSpecialistForFragment(
   missionId: number,
   fragmentId: string,
@@ -88,7 +89,7 @@ export async function getSpecialistForFragment(
     `select agent_id, address, price_usdc_6, intel
        from mission_specialists
       where contest_id = $1 and fragment_id = $2
-      order by agent_id asc
+      order by (owner = 'operator') desc, price_usdc_6::numeric asc, agent_id asc
       limit 1`,
     [missionId, fragmentId],
   );
