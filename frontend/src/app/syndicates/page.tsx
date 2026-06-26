@@ -29,10 +29,23 @@ interface WarStanding {
   memberCount: number;
 }
 
+interface Contributor {
+  rank: number;
+  operator: string;
+  syndicateId: number;
+  syndicateName: string | null;
+  total: string;
+}
+
 interface WarBoard {
   weekId: string | null;
   standings: WarStanding[];
+  contributors?: Contributor[];
   multipliersByRank: Record<string, number>;
+}
+
+function shortOp(addr: string): string {
+  return addr && addr.length > 12 ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : addr;
 }
 
 /// /syndicates. Four tube tiles, no emoji icon
@@ -208,6 +221,42 @@ export default function SyndicatesPage() {
                 </div>
               );
             })}
+          </div>
+        </section>
+      ) : null}
+
+      {liveWar && (liveWar.contributors?.length ?? 0) > 0 ? (
+        <section className="mx-auto max-w-[1600px] px-6 pt-8">
+          <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
+            <span aria-hidden className="text-accent">■</span> TOP CONTRIBUTORS · THIS WEEK
+          </div>
+          <div className="mt-3 border-t border-[color:var(--hairline)]">
+            <div className="grid grid-cols-[3rem_1fr_1fr_auto] gap-4 border-b border-[color:var(--hairline)] py-2.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
+              <span>RANK</span>
+              <span>OPERATOR</span>
+              <span>SYNDICATE</span>
+              <span className="text-right">REP</span>
+            </div>
+            {liveWar.contributors!.map((cb) => (
+              <div
+                key={cb.operator}
+                className="grid grid-cols-[3rem_1fr_1fr_auto] items-center gap-4 border-b border-[color:var(--hairline)] py-2.5 font-mono text-[12px] text-ink"
+              >
+                <span
+                  className="font-stencil text-[16px] tabular-nums"
+                  style={{ color: cb.rank === 1 ? "var(--accent)" : "var(--ink)" }}
+                >
+                  #{cb.rank}
+                </span>
+                <span className="tabular-nums">{shortOp(cb.operator)}</span>
+                <span className="uppercase tracking-[0.08em] text-ink-2">
+                  {cb.syndicateName ?? `SYNDICATE ${cb.syndicateId}`}
+                </span>
+                <span className="text-right tabular-nums">
+                  {Math.round(Number(cb.total || "0") / 1e6).toLocaleString()}
+                </span>
+              </div>
+            ))}
           </div>
         </section>
       ) : null}

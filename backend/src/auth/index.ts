@@ -4286,6 +4286,28 @@ app.get("/syndicates/war/live", async (c) => {
     [start.toISOString()],
   );
 
+  // Top individual contributors this week — who is topping so far. These are
+  // the operators whose agents earned the most reputation this week; they're
+  // the ones who'd take the largest pool shares if their syndicate wins.
+  const top = await query<{
+    member: string;
+    total: string;
+    syndicate_id: string;
+    name: string | null;
+  }>(
+    `select sc.member               as member,
+            sum(sc.amount)::text    as total,
+            sc.syndicate_id::text   as syndicate_id,
+            max(s.name)             as name
+       from syndicate_contributions sc
+       left join syndicates s on s.id = sc.syndicate_id
+      where sc.recorded_at >= $1
+      group by sc.member, sc.syndicate_id
+      order by sum(sc.amount) desc
+      limit 12`,
+    [start.toISOString()],
+  );
+
   // Current ISO-8601 week id (e.g. "2026-W26").
   const t = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   t.setUTCDate(t.getUTCDate() - ((t.getUTCDay() + 6) % 7) + 3);
@@ -4296,6 +4318,13 @@ app.get("/syndicates/war/live", async (c) => {
   return c.json({
     weekId,
     live: true,
+    contributors: top.rows.map((r, i) => ({
+      rank: i + 1,
+      operator: r.member,
+      syndicateId: Number(r.syndicate_id),
+      syndicateName: r.name,
+      total: r.total,
+    })),
     standings: rows.map((r, i) => ({
       syndicateId: Number(r.syndicate_id),
       name: r.name,
