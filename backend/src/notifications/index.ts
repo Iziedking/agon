@@ -96,6 +96,40 @@ async function relayTelegram(operator: string, input: NotifyInput): Promise<void
   }
 }
 
+/// Broadcasts a one-line alert to EVERY operator who has linked Telegram. Used
+/// for global, opt-in events (a heavily-funded mission opening). It deliberately
+/// does NOT write the in-app feed — the live WebSocket already carries the
+/// in-arena alert, so this never spams the bell. Best-effort per chat; a single
+/// failed send never blocks the rest.
+export async function broadcastTelegram(input: { title: string; body?: string; href?: string }): Promise<void> {
+  const token = config.auth.telegram.botToken;
+  if (!token) return;
+  try {
+    const { rows } = await query<{ telegram_id: string }>(
+      "select telegram_id from operators where telegram_id is not null",
+    );
+    if (rows.length === 0) return;
+    const link = input.href ? `${config.auth.appUrl.replace(/\/$/, "")}${input.href}` : null;
+    const text = [input.title, input.body, link].filter(Boolean).join("\n");
+    let sent = 0;
+    for (const r of rows) {
+      try {
+        const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ chat_id: r.telegram_id, text, disable_web_page_preview: true }),
+        });
+        if (res.ok) sent += 1;
+      } catch (err) {
+        console.warn(`[notify] mission telegram -> ${r.telegram_id} failed: ${err instanceof Error ? err.message : err}`);
+      }
+    }
+    console.log(`[notify] mission alert sent to ${sent}/${rows.length} telegram chat(s)`);
+  } catch (err) {
+    console.warn(`[notify] mission telegram broadcast failed: ${err instanceof Error ? err.message : err}`);
+  }
+}
+
 /// Notify several operators at once (e.g. every winner of a settled contest).
 export async function notifyMany(operators: string[], input: NotifyInput): Promise<void> {
   const seen = new Set<string>();

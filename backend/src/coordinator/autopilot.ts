@@ -10,6 +10,7 @@ import { startArcanaClaimerLoop } from "../lib/arcanaClaimer.js";
 import { pinArcanaMarketsForContest } from "../lib/arcanaPins.js";
 import { startTickScheduler } from "./predictionTicks.js";
 import { startSyndicateWarSettler } from "./syndicateWar.js";
+import { broadcastTelegram } from "../notifications/index.js";
 import { startPuzzlePoolTopUp } from "../runners/puzzles/generator.js";
 import { setTierGate } from "../lib/tierGate.js";
 import { startAdminCommandWorker } from "./adminCommands.js";
@@ -358,6 +359,14 @@ async function startMissionLoop(broadcast: (message: unknown) => void): Promise<
         contestType: "mission",
         endsAt: Date.now() + windowSecs * 1000,
       });
+      // Telegram alert to opted-in operators (anyone who linked Telegram). The
+      // in-arena alert already rides the WebSocket above; this reaches people
+      // who are away. Best-effort, never blocks the loop.
+      void broadcastTelegram({
+        title: `New mission live · ${poolUsdc} USDC pool`,
+        body: `${domain.toUpperCase()} mission #${contestId} is open for ${Math.round(windowSecs / 60)} min. Enter as an operative or grab a specialist seat.`,
+        href: `/missions/${contestId}`,
+      }).catch(() => {});
       console.log(`autopilot: opened mission ${contestId} (${domain}), ${poolUsdc} USDC, ${windowSecs}s window`);
     } catch (err) {
       console.error("autopilot mission open failed:", err instanceof Error ? err.message : err);
