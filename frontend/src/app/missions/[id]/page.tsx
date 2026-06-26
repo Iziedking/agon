@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/redesign/Footer";
-import { BracketedCell, CornerMarkers, StatusChip, TagButton } from "@/components/redesign";
+import { BracketedCell, CornerMarkers, StatusChip } from "@/components/redesign";
+import { EnterPanel } from "@/components/pengu/EnterPanel";
+import { fetchContest, type Contest } from "@/lib/contests";
 import { useOperatorAddress } from "@/hooks/useAuth";
 import {
   fetchMission,
@@ -240,6 +242,19 @@ function MissionJoinPanel({
 }) {
   const { isSignedIn } = useOperatorAddress();
   const [role, setRole] = useState<"operative" | "specialist">("operative");
+  // The mission rides a solver contest; operative entry happens right here via
+  // the same EnterPanel the contest page uses, so the operator never leaves the
+  // mission. We just need the contest's live status + window for it.
+  const [contest, setContest] = useState<Contest | null>(null);
+  useEffect(() => {
+    let live = true;
+    void fetchContest(mission.contestId).then((c) => {
+      if (live) setContest(c);
+    });
+    return () => {
+      live = false;
+    };
+  }, [mission.contestId]);
   const [fragmentId, setFragmentId] = useState("");
   const [agentId, setAgentId] = useState("");
   const [price, setPrice] = useState("0.5");
@@ -312,9 +327,16 @@ function MissionJoinPanel({
               deliverable. the top deliverables split the prize pool.
             </p>
             <div className="mt-4">
-              <TagButton href={`/contests/${mission.contestId}`} size="sm">
-                ENTER AS OPERATIVE →
-              </TagButton>
+              {contest ? (
+                <EnterPanel
+                  contestId={mission.contestId}
+                  status={contest.status}
+                  endTime={Number(contest.endTime)}
+                  contestType={2}
+                />
+              ) : (
+                <p className="font-mono text-[12px] text-ink-3">reading the window…</p>
+              )}
             </div>
           </div>
         ) : (

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/redesign/Footer";
 import {
@@ -33,13 +34,23 @@ function statusChip(status: string): { tone: "ok" | "ink" | "err"; label: string
 }
 
 export default function MissionsPage() {
+  const router = useRouter();
   const [missions, setMissions] = useState<MissionListItem[] | null>(null);
 
   useEffect(() => {
     let alive = true;
     const load = async () => {
       const rows = await fetchMissions();
-      if (alive) setMissions(rows);
+      if (!alive) return;
+      // Missions live ON the mission page: when one is live, flip straight to
+      // its arena (the full details + the agentic economy) instead of showing
+      // a list. This is the headline event, not a catalogue.
+      const live = rows.find((r) => r.status === "open");
+      if (live) {
+        router.replace(`/missions/${live.contestId}`);
+        return;
+      }
+      setMissions(rows);
     };
     void load();
     const t = setInterval(load, 8000);
@@ -47,7 +58,7 @@ export default function MissionsPage() {
       alive = false;
       clearInterval(t);
     };
-  }, []);
+  }, [router]);
 
   const loading = missions === null;
   const empty = !loading && missions.length === 0;

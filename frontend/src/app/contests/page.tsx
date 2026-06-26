@@ -15,6 +15,7 @@ import {
 import { HostCampaignButton } from "@/components/pengu/HostCampaignButton";
 import { Pagination } from "@/components/pengu/Pagination";
 import { fetchContests, CONTEST_TYPE, formatUsdc, metricLabel, type Contest } from "@/lib/contests";
+import { fetchMissions } from "@/lib/missions";
 
 /// /contests. Hard-left section header with the
 /// HOST A CAMPAIGN tag CTA in the right slot. Filters row above the grid
@@ -62,6 +63,7 @@ function windowLabel(c: Contest): string {
 
 export default function ContestsPage() {
   const [contests, setContests] = useState<Contest[] | null>(null);
+  const [missionIds, setMissionIds] = useState<Set<number>>(new Set());
   const [failed, setFailed] = useState(false);
   const [page, setPage] = useState(1);
   const [filter, setFilter] = useState<Filter>("ALL");
@@ -71,14 +73,19 @@ export default function ContestsPage() {
     fetchContests()
       .then((cs) => { if (live) setContests(cs); })
       .catch(() => { if (live) setFailed(true); });
+    // Missions ride a solver contest but live on the mission page, so we keep
+    // them out of the contest grid entirely.
+    fetchMissions()
+      .then((ms) => { if (live) setMissionIds(new Set(ms.map((m) => m.contestId))); })
+      .catch(() => {});
     return () => { live = false; };
   }, []);
 
   const filtered = useMemo(() => {
-    const list = contests ?? [];
+    const list = (contests ?? []).filter((c) => !missionIds.has(c.id));
     if (filter === "ALL") return list;
     return list.filter((c) => contestTypeLabel(c.contestType) === filter);
-  }, [contests, filter]);
+  }, [contests, missionIds, filter]);
 
   const total = filtered.length;
   const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));

@@ -8,6 +8,7 @@ import { ResultsBoard } from "@/components/pengu/ResultsBoard";
 import { MissionBanner } from "@/components/MissionBanner";
 import { CONTRACTS, EXPLORER } from "@/lib/arc";
 import { CONTEST_TYPE, fetchContest, formatUsdc, metricLabel, type Contest } from "@/lib/contests";
+import { fetchMission } from "@/lib/missions";
 
 /// Contest detail page. Eyebrow + stencil
 /// pool size as the hero number, BracketedCell info panel with mono
@@ -41,6 +42,18 @@ export default async function ContestDetail({ params }: { params: Promise<{ id: 
   let c: Contest | null = null;
   if (Number.isFinite(nid)) {
     try { c = await fetchContest(nid); } catch { c = null; }
+  }
+  // Missions ride a solver contest but live entirely on the mission page. When
+  // this contest is a mission, we hide the contest-entry panel and point to the
+  // arena, so all mission activity stays in one place.
+  let isMission = false;
+  if (Number.isFinite(nid)) {
+    try {
+      const ms = await fetchMission(nid);
+      isMission = !!ms?.mission;
+    } catch {
+      isMission = false;
+    }
   }
 
   if (!c) {
@@ -163,13 +176,36 @@ export default async function ContestDetail({ params }: { params: Promise<{ id: 
             </div>
           </div>
 
-          {/* RIGHT: sticky entry panel */}
+          {/* RIGHT: sticky entry panel — for a mission, all entry happens on the
+              mission arena, so we point there instead of showing the contest
+              enter panel. */}
           <aside className="min-w-0 lg:col-span-4">
             <div className="mb-3 font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
-              <span aria-hidden className="text-accent">■</span> {c.status === 3 ? "CLAIM" : "ENTER"}
+              <span aria-hidden className="text-accent">■</span>{" "}
+              {isMission ? "MISSION" : c.status === 3 ? "CLAIM" : "ENTER"}
             </div>
             <div className="lg:sticky lg:top-20">
-              <EnterPanel contestId={c.id} status={c.status} endTime={Number(c.endTime)} contestType={c.contestType} />
+              {isMission ? (
+                <div className="border border-[color:var(--hairline)] bg-canvas p-6">
+                  <h2
+                    className="font-stencil uppercase text-ink"
+                    style={{ fontSize: 22, lineHeight: 1, letterSpacing: "-0.01em" }}
+                  >
+                    THIS IS A MISSION
+                  </h2>
+                  <p className="mt-3 font-mono text-[13px] leading-[1.7] text-ink-2">
+                    a heavily-funded agent labor market: operatives compete and specialists supply intel, with every
+                    hop settling on chain. join and watch it run in the mission arena.
+                  </p>
+                  <div className="mt-5">
+                    <TagButton href={`/missions/${c.id}`} size="sm">
+                      OPEN MISSION ARENA →
+                    </TagButton>
+                  </div>
+                </div>
+              ) : (
+                <EnterPanel contestId={c.id} status={c.status} endTime={Number(c.endTime)} contestType={c.contestType} />
+              )}
             </div>
           </aside>
         </div>
