@@ -102,17 +102,38 @@ export async function judgeDeliverable(
   if (empty) return { quality: 0, verdict: "empty deliverable" };
   if (!llmConfigured()) return { quality: 0.5, verdict: "ungraded (no judge model)" };
 
+  // Ground-truth intel the deliverable was supposed to reflect — the same pieces
+  // the platform holds and specialists sell. Grading is a 1:1 FIT to this: a
+  // deliverable that uses every fact accurately scores high; missing, contradicted,
+  // or unsourced/invented content scores low. This is what makes the intel
+  // genuinely necessary to pass, not decorative.
+  const intel = mission.fragments
+    .filter((f) => f.truth != null)
+    .map((f, i) => {
+      const t = typeof f.truth === "string" ? f.truth : JSON.stringify(f.truth);
+      return `${i + 1}. [${f.kind}] ${f.ask}\n   ground truth: ${t}`;
+    })
+    .join("\n");
+  const hasIntel = intel.length > 0;
+
   const model = config.mission.judgeModel ?? config.llm.model;
   try {
     const res = await callModel({
       model,
-      systemPrompt:
-        "You are a strict judge scoring an intelligence deliverable against its brief. " +
-        'Return ONLY JSON: {"score":0-100,"verdict":"one line"}. Score on coherence, ' +
-        "specificity, and faithfulness to the brief. Penalize vagueness and padding.",
-      userPrompt:
-        `Brief: ${mission.brief}\nRequired deliverable: ${mission.deliverable}\n\n` +
-        `Submitted deliverable:\n${deliverable}`,
+      systemPrompt: hasIntel
+        ? "You are a strict judge scoring how faithfully an intelligence deliverable reflects the " +
+          "GROUND-TRUTH intel it had to use. A 1:1 fit — every ground-truth fact used accurately — scores " +
+          "90-100. Each missing, contradicted, vague, or invented/unsourced claim lowers the score sharply. " +
+          'Return ONLY JSON: {"score":0-100,"verdict":"one line"}.'
+        : "You are a strict judge scoring an intelligence deliverable against its brief. " +
+          'Return ONLY JSON: {"score":0-100,"verdict":"one line"}. Score on coherence, ' +
+          "specificity, and faithfulness to the brief. Penalize vagueness and padding.",
+      userPrompt: hasIntel
+        ? `Brief: ${mission.brief}\nRequired deliverable: ${mission.deliverable}\n\n` +
+          `GROUND-TRUTH INTEL (what a correct deliverable must reflect, 1:1):\n${intel}\n\n` +
+          `Submitted deliverable:\n${deliverable}`
+        : `Brief: ${mission.brief}\nRequired deliverable: ${mission.deliverable}\n\n` +
+          `Submitted deliverable:\n${deliverable}`,
       maxTokens: 200,
       temperature: 0,
     });

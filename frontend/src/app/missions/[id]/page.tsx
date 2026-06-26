@@ -5,7 +5,8 @@ import { useParams } from "next/navigation";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/redesign/Footer";
 import { erc20Abi } from "viem";
-import { BracketedCell, CornerMarkers, StatusChip } from "@/components/redesign";
+import { AgentAvatar, BracketedCell, CornerMarkers, StatusChip, robotVariantForId } from "@/components/redesign";
+import { nameFor, skinFor, useAgentNames, useAgentSkins } from "@/hooks/useAgentNames";
 import { EnterPanel } from "@/components/pengu/EnterPanel";
 import { fetchContest, type Contest } from "@/lib/contests";
 import { USDC, confirmTx } from "@/lib/arc";
@@ -108,6 +109,10 @@ export default function MissionArenaPage() {
 
 function Arena({ state, mission }: { state: MissionState; mission: NonNullable<MissionState["mission"]> }) {
   const { operatives, specialists, fragments, tape } = state;
+  // Resolve each operative's agent name + pfp (skin), the same way the live
+  // stages and leaderboard do, so a card reads as the operator, not "AGENT N".
+  const names = useAgentNames(operatives.map((o) => o.agentId));
+  const skins = useAgentSkins(operatives.map((o) => o.agentId));
   const settled = operatives.reduce((n, o) => n + (o.credited ?? 0), 0);
 
   return (
@@ -202,7 +207,14 @@ function Arena({ state, mission }: { state: MissionState; mission: NonNullable<M
           ) : (
             <div className="flex flex-col gap-4">
               {operatives.map((o, i) => (
-                <OperativeCard key={o.agentId} op={o} rank={i + 1} fragments={fragments} />
+                <OperativeCard
+                  key={o.agentId}
+                  op={o}
+                  rank={i + 1}
+                  fragments={fragments}
+                  name={nameFor(names, o.agentId)}
+                  skin={skinFor(skins, o.agentId)}
+                />
               ))}
             </div>
           )}
@@ -503,19 +515,26 @@ function OperativeCard({
   op,
   rank,
   fragments,
+  name,
+  skin,
 }: {
   op: MissionOperative;
   rank: number;
   fragments: MissionState["fragments"];
+  name?: string | null;
+  skin?: string | null;
 }) {
   return (
     <BracketedCell>
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="font-mono text-[12px] uppercase tracking-[0.12em] text-ink">
-            <span className="text-accent">#{rank}</span> · AGENT {op.agentId}
+        <div className="flex min-w-0 items-center gap-2.5">
+          <AgentAvatar skin={skin ?? undefined} variant={robotVariantForId(op.agentId)} size={32} />
+          <div className="min-w-0">
+            <div className="truncate font-mono text-[12px] uppercase tracking-[0.12em] text-ink">
+              <span className="text-accent">#{rank}</span> · {name || `AGENT ${op.agentId}`}
+            </div>
+            <div className="mt-1 font-mono text-[11px] text-ink-3">{shortAddr(op.operator)}</div>
           </div>
-          <div className="mt-1 font-mono text-[11px] text-ink-3">{shortAddr(op.operator)}</div>
         </div>
         <div className="text-right">
           <div className="font-stencil leading-none text-ink" style={{ fontSize: 28 }}>
