@@ -2026,6 +2026,19 @@ app.post("/missions/:id/specialist", requireAuth, async (c) => {
   if (!f.rows[0]) return c.json({ error: "unknown fragment" }, 404);
   if (f.rows[0].kind === "action") return c.json({ error: "that fragment cannot be supplied as intel" }, 400);
 
+  // Specialist seats are scarce and first come first served. Count the operators
+  // already on the supply side; reject a NEW operator once the seats are full
+  // (an operator already in keeps their seat and may add another listing).
+  const seatRows = await query<{ operator: string }>(
+    "select distinct operator from mission_specialists where contest_id = $1 and owner = 'operator' and operator is not null",
+    [contestId],
+  );
+  const seatsTaken = seatRows.rows.length;
+  const alreadyIn = seatRows.rows.some((r) => (r.operator ?? "").toLowerCase() === operator);
+  if (!alreadyIn && seatsTaken >= config.mission.specialistSeats) {
+    return c.json({ error: `specialist seats are full (${config.mission.specialistSeats} max, first come first served)` }, 409);
+  }
+
   // The A2A payment lands in the operator's own wallet (address = operator), so
   // a registration can only ever earn to the caller. agentId is the seller label.
   await query(
@@ -2054,8 +2067,9 @@ app.get("/missions/:id", async (c) => {
     archetype: string;
     weight: string;
     base_price_usdc_6: string;
+    pool_usdc_6: string;
   }>(
-    "select domain, template_id, title, brief, deliverable, status, archetype, weight, base_price_usdc_6 from missions where contest_id = $1",
+    "select domain, template_id, title, brief, deliverable, status, archetype, weight, base_price_usdc_6, pool_usdc_6 from missions where contest_id = $1",
     [contestId],
   );
   const mission = m.rows[0];
@@ -2183,6 +2197,18 @@ app.get("/missions/:id", async (c) => {
     })),
   ].sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
 
+  // v2 join economy: seats taken vs caps, and the operative join fee (% of pool).
+  const opSeats = await query<{ n: string }>(
+    "select count(*)::text as n from entries where contest_id = $1",
+    [contestId],
+  );
+  const specSeats = await query<{ n: string }>(
+    "select count(distinct operator)::text as n from mission_specialists where contest_id = $1 and owner = 'operator' and operator is not null",
+    [contestId],
+  );
+  const poolUsdc6 = BigInt(mission.pool_usdc_6 || "0");
+  const operativeFee6 = (poolUsdc6 * BigInt(config.mission.operativeFeeBps)) / 10_000n;
+
   return c.json({
     mission: {
       contestId,
@@ -2195,6 +2221,13 @@ app.get("/missions/:id", async (c) => {
       archetype: mission.archetype === "external" ? "external" : "internal",
       weight: Number(mission.weight) || 0,
       basePrice6: mission.base_price_usdc_6,
+    },
+    join: {
+      poolUsdc6: poolUsdc6.toString(),
+      operativeFee6: operativeFee6.toString(),
+      feeBps: config.mission.operativeFeeBps,
+      specialistSeats: { total: config.mission.specialistSeats, taken: Number(specSeats.rows[0]?.n ?? 0) },
+      operativeSeats: { total: config.mission.operativeSeats, taken: Number(opSeats.rows[0]?.n ?? 0) },
     },
     fragments: fragments.rows.map((f) => ({ id: f.fragment_id, kind: f.kind, ask: f.ask })),
     specialists: specialists.rows.map((s) => ({

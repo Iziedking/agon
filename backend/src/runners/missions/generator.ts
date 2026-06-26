@@ -187,13 +187,15 @@ export async function generateMission(opts: {
     basePrice6: econ.basePrice6,
   };
 
+  const poolUsdc6 = BigInt(Math.round((opts.poolUsdc ?? 0) * 1e6)).toString();
   await query(
-    `insert into missions (contest_id, domain, template_id, title, brief, deliverable, status, archetype, weight, base_price_usdc_6)
-     values ($1, $2, $3, $4, $5, $6, 'open', $7, $8, $9)
+    `insert into missions (contest_id, domain, template_id, title, brief, deliverable, status, archetype, weight, base_price_usdc_6, pool_usdc_6)
+     values ($1, $2, $3, $4, $5, $6, 'open', $7, $8, $9, $10)
      on conflict (contest_id) do update set
        domain = excluded.domain, template_id = excluded.template_id, title = excluded.title,
        brief = excluded.brief, deliverable = excluded.deliverable,
-       archetype = excluded.archetype, weight = excluded.weight, base_price_usdc_6 = excluded.base_price_usdc_6`,
+       archetype = excluded.archetype, weight = excluded.weight, base_price_usdc_6 = excluded.base_price_usdc_6,
+       pool_usdc_6 = excluded.pool_usdc_6`,
     [
       commission.missionId,
       commission.domain,
@@ -204,6 +206,7 @@ export async function generateMission(opts: {
       commission.archetype,
       commission.weight,
       commission.basePrice6.toString(),
+      poolUsdc6,
     ],
   );
   for (const f of fragments) {
