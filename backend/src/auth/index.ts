@@ -4258,6 +4258,55 @@ app.get("/syndicates/war", async (c) => {
   });
 });
 
+/// Live "this week so far" standings: the CURRENT ISO-week's contributions
+/// ranked on the fly, before the week settles. Lets the syndicates page show a
+/// running rank instead of only the last settled week. Empty until this week's
+/// contributions exist.
+app.get("/syndicates/war/live", async (c) => {
+  const now = new Date();
+  // Back up to this week's Monday 00:00 UTC.
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  start.setUTCDate(start.getUTCDate() - ((start.getUTCDay() + 6) % 7));
+
+  const { rows } = await query<{
+    syndicate_id: string;
+    total: string;
+    member_count: string;
+    name: string | null;
+  }>(
+    `select sc.syndicate_id::text         as syndicate_id,
+            sum(sc.amount)::text          as total,
+            count(distinct sc.member)::text as member_count,
+            s.name
+       from syndicate_contributions sc
+       left join syndicates s on s.id = sc.syndicate_id
+      where sc.recorded_at >= $1
+      group by sc.syndicate_id, s.name
+      order by sum(sc.amount) desc`,
+    [start.toISOString()],
+  );
+
+  // Current ISO-8601 week id (e.g. "2026-W26").
+  const t = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  t.setUTCDate(t.getUTCDate() - ((t.getUTCDay() + 6) % 7) + 3);
+  const firstThu = new Date(Date.UTC(t.getUTCFullYear(), 0, 4));
+  const week = 1 + Math.round(((t.getTime() - firstThu.getTime()) / 86_400_000 - 3 + ((firstThu.getUTCDay() + 6) % 7)) / 7);
+  const weekId = `${t.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
+
+  return c.json({
+    weekId,
+    live: true,
+    standings: rows.map((r, i) => ({
+      syndicateId: Number(r.syndicate_id),
+      name: r.name,
+      rank: i + 1,
+      total: r.total,
+      memberCount: Number(r.member_count),
+    })),
+    multipliersByRank: { 1: 1.05, 2: 1.03, 3: 1.02 },
+  });
+});
+
 serve({ fetch: app.fetch, port: config.auth.port }, (info) => {
   console.log(`auth service on http://localhost:${info.port}`);
 });

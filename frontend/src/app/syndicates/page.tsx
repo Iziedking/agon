@@ -56,11 +56,12 @@ export default function SyndicatesPage() {
   const [busy, setBusy] = useState<number | "leave" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [war, setWar] = useState<WarBoard | null>(null);
+  const [liveWar, setLiveWar] = useState<WarBoard | null>(null);
 
-  // Pull the last settled war week's standings so we can render the
-  // top-3 multiplier band above the syndicate tiles. Best-effort: if
-  // the auth API is down or no week has settled yet, we skip the band
-  // and the page still works.
+  // Pull the last settled war week's standings (the top-3 multiplier band) and
+  // the CURRENT week's running standings ("this week so far"). Both best-effort:
+  // if the auth API is down or nothing has accrued yet, the bands skip and the
+  // page still works. The live board refreshes on a short interval.
   useEffect(() => {
     let live = true;
     fetch(`${AUTH_URL}/syndicates/war`)
@@ -69,8 +70,19 @@ export default function SyndicatesPage() {
         if (live && data) setWar(data);
       })
       .catch(() => {});
+
+    const loadLive = () =>
+      fetch(`${AUTH_URL}/syndicates/war/live`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data: WarBoard | null) => {
+          if (live && data) setLiveWar(data);
+        })
+        .catch(() => {});
+    void loadLive();
+    const t = setInterval(loadLive, 20000);
     return () => {
       live = false;
+      clearInterval(t);
     };
   }, []);
 
@@ -157,6 +169,48 @@ export default function SyndicatesPage() {
       </section>
 
       <SyndicateCycleBanner />
+
+      {liveWar && liveWar.standings.length > 0 ? (
+        <section className="mx-auto max-w-[1600px] px-6 pt-6">
+          <div className="flex flex-wrap items-baseline justify-between gap-3">
+            <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
+              <span aria-hidden className="text-accent">■</span> THIS WEEK SO FAR · {liveWar.weekId}
+            </span>
+            <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3">
+              LIVE · RANKED BY REPUTATION CONTRIBUTED THIS WEEK
+            </span>
+          </div>
+          <div className="mt-3 flex flex-col border-t border-[color:var(--hairline)]">
+            {liveWar.standings.map((s) => {
+              const mult = liveWar.multipliersByRank[String(s.rank)];
+              const pct = mult ? `+${((mult - 1) * 100).toFixed(0)}%` : null;
+              const points = Math.round(Number(s.total || "0") / 1e6).toLocaleString();
+              return (
+                <div
+                  key={s.syndicateId}
+                  className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-4 border-b border-[color:var(--hairline)] py-3"
+                >
+                  <span
+                    className="font-stencil text-[20px] tabular-nums"
+                    style={{ color: s.rank === 1 ? "var(--accent)" : "var(--ink)" }}
+                  >
+                    #{s.rank}
+                  </span>
+                  <span className="font-mono text-[12px] uppercase tracking-[0.12em] text-ink">
+                    {s.name ?? `SYNDICATE ${s.syndicateId}`}
+                  </span>
+                  <span className="text-right font-mono text-[12px] tabular-nums text-ink-2">
+                    {points} REP · {s.memberCount} ACTIVE
+                  </span>
+                  <span className="w-12 text-right font-mono text-[11px] uppercase tracking-[0.12em] text-accent">
+                    {pct ?? ""}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
 
       {war && war.standings.length > 0 ? (
         <section className="mx-auto max-w-[1600px] px-6 pt-6">
