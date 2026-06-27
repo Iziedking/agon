@@ -60,7 +60,7 @@ export default async function ContestDetail({ params }: { params: Promise<{ id: 
     return (
       <div className="min-h-screen bg-canvas text-ink">
         <AppHeader />
-        <section className="mx-auto max-w-[1600px] px-6 pb-16 pt-16">
+        <section className="mx-auto max-w-[1600px] px-4 sm:px-6 pb-16 pt-16">
           <a href="/contests" className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:text-ink">
             ← ALL CONTESTS
           </a>
@@ -84,7 +84,7 @@ export default async function ContestDetail({ params }: { params: Promise<{ id: 
     <div className="min-h-screen bg-canvas text-ink">
       <AppHeader />
 
-      <section className="relative mx-auto max-w-[1600px] px-6 pb-16 pt-12">
+      <section className="relative mx-auto max-w-[1600px] px-4 sm:px-6 pb-16 pt-12">
         <CornerMarkers />
         <div className="mb-8 flex items-center justify-between">
           <a href="/contests" className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:text-ink">

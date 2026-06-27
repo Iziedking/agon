@@ -14,7 +14,7 @@ function WalletBody() {
   const params = useSearchParams();
   const tab = params.get("tab") === "withdraw" ? "withdraw" : "topup";
   return (
-    <section className="mx-auto max-w-[1200px] px-6 py-10">
+    <section className="mx-auto max-w-[1200px] px-4 sm:px-6 py-10">
       <FundsPanel initialTab={tab} />
     </section>
   );
@@ -24,7 +24,7 @@ export default function WalletPage() {
   return (
     <div className="min-h-screen bg-canvas text-ink">
       <AppHeader />
-      <section className="relative mx-auto max-w-[1200px] px-6 pt-16">
+      <section className="relative mx-auto max-w-[1200px] px-4 sm:px-6 pt-16">
         <CornerMarkers />
         <SectionHeader
           eyebrow={

@@ -96,7 +96,7 @@ export default function ContestsPage() {
     <div className="min-h-screen bg-canvas text-ink">
       <AppHeader />
 
-      <section className="relative mx-auto max-w-[1600px] px-6 pt-16">
+      <section className="relative mx-auto max-w-[1600px] px-4 sm:px-6 pt-16">
         <CornerMarkers />
         <SectionHeader
           heading="CONTESTS"
@@ -116,7 +116,7 @@ export default function ContestsPage() {
       </section>
 
       {/* FILTER ROW */}
-      <section className="mx-auto max-w-[1600px] px-6 pt-8">
+      <section className="mx-auto max-w-[1600px] px-4 sm:px-6 pt-8">
         <div className="flex flex-wrap items-center gap-2">
           {(["ALL", "VOLUME", "PREDICTION", "PUZZLE"] as Filter[]).map((f) => {
             const active = filter === f;
@@ -138,7 +138,7 @@ export default function ContestsPage() {
       </section>
 
       {/* GRID */}
-      <section className="mx-auto max-w-[1600px] px-6 py-8 pb-16">
+      <section className="mx-auto max-w-[1600px] px-4 sm:px-6 py-8 pb-16">
         {failed ? (
           <p className="font-mono text-sm text-ink-2">could not reach arc right now. refresh in a moment.</p>
         ) : contests === null ? (

@@ -167,7 +167,7 @@ export default function SyndicatesPage() {
     <div className="min-h-screen bg-canvas text-ink">
       <AppHeader />
 
-      <section className="relative mx-auto max-w-[1600px] px-6 pt-16">
+      <section className="relative mx-auto max-w-[1600px] px-4 sm:px-6 pt-16">
         <CornerMarkers />
         <SectionHeader
           heading="SYNDICATES"
@@ -184,7 +184,7 @@ export default function SyndicatesPage() {
       <SyndicateCycleBanner />
 
       {liveWar && liveWar.standings.length > 0 ? (
-        <section className="mx-auto max-w-[1600px] px-6 pt-6">
+        <section className="mx-auto max-w-[1600px] px-4 sm:px-6 pt-6">
           <div className="flex flex-wrap items-baseline justify-between gap-3">
             <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
               <span aria-hidden className="text-accent">■</span> THIS WEEK SO FAR · {liveWar.weekId}
@@ -226,7 +226,7 @@ export default function SyndicatesPage() {
       ) : null}
 
       {liveWar && (liveWar.contributors?.length ?? 0) > 0 ? (
-        <section className="mx-auto max-w-[1600px] px-6 pt-8">
+        <section className="mx-auto max-w-[1600px] px-4 sm:px-6 pt-8">
           <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
             <span aria-hidden className="text-accent">■</span> TOP CONTRIBUTORS · THIS WEEK
           </div>
@@ -262,7 +262,7 @@ export default function SyndicatesPage() {
       ) : null}
 
       {war && war.standings.length > 0 ? (
-        <section className="mx-auto max-w-[1600px] px-6 pt-6">
+        <section className="mx-auto max-w-[1600px] px-4 sm:px-6 pt-6">
           <div className="flex flex-wrap items-baseline justify-between gap-3">
             <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
               <span aria-hidden className="text-accent">■</span> WEEKLY WAR · {war.weekId}
@@ -303,7 +303,7 @@ export default function SyndicatesPage() {
         </section>
       ) : null}
 
-      <section className="mx-auto max-w-[1600px] px-6 py-10">
+      <section className="mx-auto max-w-[1600px] px-4 sm:px-6 py-10">
         {syndicates === null ? (
           <p className="font-mono text-sm text-ink-2">reading syndicates from arc…</p>
         ) : founding.length === 0 ? (
@@ -333,7 +333,7 @@ export default function SyndicatesPage() {
 
       {/* Community / custom syndicates table */}
       {(syndicates?.length ?? 0) > founding.length ? (
-        <section className="mx-auto max-w-[1600px] px-6 pb-16">
+        <section className="mx-auto max-w-[1600px] px-4 sm:px-6 pb-16">
           <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">
             ■ COMMUNITY SYNDICATES
           </div>

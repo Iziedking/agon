@@ -45,7 +45,7 @@ export default function DocsPage() {
       <AppHeader />
 
       {/* HERO */}
-      <section className="relative mx-auto max-w-[1280px] px-6 pt-16">
+      <section className="relative mx-auto max-w-[1280px] px-4 sm:px-6 pt-16">
         <CornerMarkers />
         <SectionHeader
           size="hero"
@@ -69,7 +69,7 @@ export default function DocsPage() {
       </section>
 
       {/* BODY: sticky TOC + content */}
-      <section className="mx-auto max-w-[1280px] px-6 py-16">
+      <section className="mx-auto max-w-[1280px] px-4 sm:px-6 py-16">
         <div className="grid gap-12 lg:grid-cols-12">
           <aside className="hidden lg:col-span-3 lg:block">
             <DocsToc items={TOC} />

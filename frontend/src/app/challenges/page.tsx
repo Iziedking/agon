@@ -69,7 +69,7 @@ export default function ChallengesPage() {
     <div className="min-h-screen bg-canvas text-ink">
       <AppHeader />
 
-      <section className="relative mx-auto max-w-[1600px] px-6 pt-16">
+      <section className="relative mx-auto max-w-[1600px] px-4 sm:px-6 pt-16">
         <CornerMarkers />
         <SectionHeader
           heading="CHALLENGES"
@@ -83,7 +83,7 @@ export default function ChallengesPage() {
         />
       </section>
 
-      <section className="mx-auto max-w-[1600px] px-6 py-10 pb-16">
+      <section className="mx-auto max-w-[1600px] px-4 sm:px-6 py-10 pb-16">
         {failed ? (
           <p className="font-mono text-sm text-ink-2">could not reach arc right now. refresh in a moment.</p>
         ) : challenges === null ? (

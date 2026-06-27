@@ -92,7 +92,7 @@ export default function LeaderboardPage() {
     <div className="min-h-screen bg-canvas text-ink">
       <AppHeader />
 
-      <section className="relative mx-auto max-w-[1600px] px-6 pt-16">
+      <section className="relative mx-auto max-w-[1600px] px-4 sm:px-6 pt-16">
         <CornerMarkers />
         <SectionHeader
           heading="LEADERBOARD"
@@ -107,7 +107,7 @@ export default function LeaderboardPage() {
       </section>
 
       {/* OPERATORS / SYNDICATES toggle */}
-      <section className="mx-auto max-w-[1600px] px-6 pt-6">
+      <section className="mx-auto max-w-[1600px] px-4 sm:px-6 pt-6">
         <div className="inline-flex border border-[color:var(--hairline-strong)]">
           {(["operators", "syndicates"] as View[]).map((v) => (
             <button
@@ -125,7 +125,7 @@ export default function LeaderboardPage() {
 
       {view === "operators" ? (
       <>
-      <section className="mx-auto max-w-[1600px] px-6 pt-6">
+      <section className="mx-auto max-w-[1600px] px-4 sm:px-6 pt-6">
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative flex-1 min-w-[240px] max-w-[420px]">
             <span
@@ -158,7 +158,7 @@ export default function LeaderboardPage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-[1600px] px-6 py-6 pb-16">
+      <section className="mx-auto max-w-[1600px] px-4 sm:px-6 py-6 pb-16">
         {/* Header row. Column visibility tracks the grid breakpoints. */}
         <div className={`grid ${COLS} items-center gap-3 border-b border-[color:var(--hairline-strong)] py-3 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3`}>
           <span>RANK</span>
@@ -302,7 +302,7 @@ function syndicateVariant(
 function SyndicateBoard({ rows }: { rows: SyndicateLeaderRow[] | null }) {
   const COLS = "grid-cols-[2.25rem_1fr_4rem_6rem] sm:grid-cols-[3rem_1fr_5rem_7rem]";
   return (
-    <section className="mx-auto max-w-[1600px] px-6 py-6 pb-16">
+    <section className="mx-auto max-w-[1600px] px-4 sm:px-6 py-6 pb-16">
       <div className={`grid ${COLS} items-center gap-3 border-b border-[color:var(--hairline-strong)] py-3 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3`}>
         <span>RANK</span>
         <span>SYNDICATE</span>

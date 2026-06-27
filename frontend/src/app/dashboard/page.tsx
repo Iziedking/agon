@@ -79,7 +79,7 @@ export default function DashboardPage() {
   if (settling) {
     return (
       <Shell>
-        <section className="mx-auto max-w-[1600px] px-6 py-16">
+        <section className="mx-auto max-w-[1600px] px-4 sm:px-6 py-16">
           <SectionHeader heading="YOUR DASHBOARD" />
           <p className="mt-8 font-mono text-sm text-ink-2">loading…</p>
         </section>
@@ -91,7 +91,7 @@ export default function DashboardPage() {
   if (!isConnected || !address) {
     return (
       <Shell>
-        <section className="mx-auto max-w-[1600px] px-6 pt-16">
+        <section className="mx-auto max-w-[1600px] px-4 sm:px-6 pt-16">
           <SectionHeader heading="SIGN IN TO CONTINUE" />
 
           <div className="mt-10 max-w-[560px]">
@@ -119,7 +119,7 @@ export default function DashboardPage() {
   if (profile === undefined || agents === undefined) {
     return (
       <Shell>
-        <section className="mx-auto max-w-[1600px] px-6 pt-16">
+        <section className="mx-auto max-w-[1600px] px-4 sm:px-6 pt-16">
           <SectionHeader heading="DASHBOARD" />
           <p className="mt-8 font-mono text-sm text-ink-2">loading…</p>
         </section>
@@ -158,7 +158,7 @@ export default function DashboardPage() {
 
   return (
     <Shell>
-      <section className="relative mx-auto max-w-[1600px] px-6 pt-16">
+      <section className="relative mx-auto max-w-[1600px] px-4 sm:px-6 pt-16">
         <CornerMarkers />
         <SectionHeader
           heading="DASHBOARD"
@@ -182,7 +182,7 @@ export default function DashboardPage() {
       </section>
 
       {/* Stats row */}
-      <section className="mx-auto max-w-[1600px] px-6 py-10">
+      <section className="mx-auto max-w-[1600px] px-4 sm:px-6 py-10">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatBlock
             label="EARNED"
@@ -209,7 +209,7 @@ export default function DashboardPage() {
           stage. Challenges the operator joined are a follow-up (need a backend
           endpoint that lists an operator's active challenges). */}
       {inFlight.length > 0 ? (
-        <section className="mx-auto max-w-[1600px] px-6 pb-4">
+        <section className="mx-auto max-w-[1600px] px-4 sm:px-6 pb-4">
           <div className="mb-3 flex items-center justify-between">
             <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
               <span aria-hidden style={{ color: "var(--ok)" }}>●</span> LIVE ENTRIES
@@ -229,7 +229,7 @@ export default function DashboardPage() {
       ) : null}
 
       {/* MY AGENTS + PRIZES PENDING */}
-      <section className="mx-auto max-w-[1600px] px-6 pb-10">
+      <section className="mx-auto max-w-[1600px] px-4 sm:px-6 pb-10">
         <div className="grid gap-6 lg:grid-cols-12">
           {/* MY AGENTS */}
           <div className="lg:col-span-7">
@@ -333,7 +333,7 @@ export default function DashboardPage() {
 
       {/* MYSTERY CLAIM: kept as a bracketed sidecar */}
       {agents.length > 0 ? (
-        <section className="mx-auto max-w-[1600px] px-6 pb-10">
+        <section className="mx-auto max-w-[1600px] px-4 sm:px-6 pb-10">
           <div className="mb-3 font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
             <span aria-hidden className="text-accent">■</span> MYSTERY EVENT
           </div>
@@ -347,7 +347,7 @@ export default function DashboardPage() {
       ) : null}
 
       {/* ACTIVITY: full width */}
-      <section className="mx-auto max-w-[1600px] px-6 pb-10">
+      <section className="mx-auto max-w-[1600px] px-4 sm:px-6 pb-10">
         <div className="mb-3 flex items-center justify-between">
           <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
             <span aria-hidden className="text-accent">■</span> ACTIVITY
@@ -360,7 +360,7 @@ export default function DashboardPage() {
       </section>
 
       {/* QUICK ACTIONS */}
-      <section className="mx-auto max-w-[1600px] px-6 pb-16">
+      <section className="mx-auto max-w-[1600px] px-4 sm:px-6 pb-16">
         <div className="mb-3 font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
           <span aria-hidden className="text-accent">■</span> QUICK ACTIONS
         </div>
