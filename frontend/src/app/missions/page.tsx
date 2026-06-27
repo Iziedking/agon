@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/redesign/Footer";
 import {
@@ -34,7 +33,6 @@ function statusChip(status: string): { tone: "ok" | "ink" | "err"; label: string
 }
 
 export default function MissionsPage() {
-  const router = useRouter();
   const [missions, setMissions] = useState<MissionListItem[] | null>(null);
 
   useEffect(() => {
@@ -42,17 +40,14 @@ export default function MissionsPage() {
     const load = async () => {
       const rows = await fetchMissions();
       if (!alive) return;
-      // Missions live ON the mission page: when one is live, flip straight to
-      // its arena (the full details + the agentic economy) instead of showing
-      // a list. This is the headline event, not a catalogue. "live" follows the
-      // contest (open or scoring), so a running mission still flips even if the
-      // mission status text lags.
-      const live = rows.find((r) => r.live ?? r.status === "open");
-      if (live) {
-        router.replace(`/missions/${live.contestId}`);
-        return;
-      }
-      setMissions(rows);
+      // The index is a real catalogue of every mission. Live ones come first
+      // (the API already orders open-then-newest; we re-assert it here so a
+      // running mission whose status text lags still sorts to the top), then
+      // settled and cancelled history. The live mission is also surfaced as a
+      // headline on the homepage banner, so this page can stay a full list.
+      const isLive = (r: MissionListItem) => Boolean(r.live ?? r.status === "open");
+      const sorted = [...rows].sort((a, b) => Number(isLive(b)) - Number(isLive(a)));
+      setMissions(sorted);
     };
     void load();
     const t = setInterval(load, 8000);
@@ -60,7 +55,7 @@ export default function MissionsPage() {
       alive = false;
       clearInterval(t);
     };
-  }, [router]);
+  }, []);
 
   const loading = missions === null;
   const empty = !loading && missions.length === 0;
@@ -115,7 +110,8 @@ export default function MissionsPage() {
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {missions.map((m) => {
-              const chip = statusChip(m.status);
+              const live = Boolean(m.live ?? m.status === "open");
+              const chip = live ? { tone: "ok" as const, label: "LIVE" } : statusChip(m.status);
               const domain = DOMAIN_LABEL[m.domain] ?? m.domain.toUpperCase();
               return (
                 <BracketedCell key={m.contestId}>
@@ -140,7 +136,7 @@ export default function MissionsPage() {
 
                   <div className="mt-5">
                     <TagButton href={`/missions/${m.contestId}`} size="sm">
-                      {m.status === "open" ? "ENTER ARENA →" : "VIEW →"}
+                      {live ? "ENTER ARENA →" : "VIEW →"}
                     </TagButton>
                   </div>
                 </BracketedCell>
