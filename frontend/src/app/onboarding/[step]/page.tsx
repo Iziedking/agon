@@ -100,13 +100,17 @@ export default function OnboardingPage() {
 
   const hasAgents = !!agents && agents.length > 0;
 
-  // Returning users already have an agent, so there's nothing to onboard. Once
-  // they reach the connect step and we confirm an agent on their wallet, send
-  // them straight to the app home. New users (no agent) stay and continue to
-  // the claim step and on to 6/6.
+  // Returning users already have an agent, so there is nothing to onboard.
+  // Anyone who ARRIVES at the early steps already signed in with an agent is sent
+  // straight to the app — only genuinely new users walk the full flow. We gate on
+  // the pre-claim steps (welcome/connect) so a NEW user who just claimed an agent
+  // mid-flow (hasAgents becomes true at the agent step) still finishes compete/
+  // done rather than being bounced.
   useEffect(() => {
-    if (slug === "connect" && hasAgents) router.replace("/app");
-  }, [slug, hasAgents, router]);
+    if ((slug === "welcome" || slug === "connect") && isConnected && hasAgents) {
+      router.replace("/app");
+    }
+  }, [slug, isConnected, hasAgents, router]);
 
   const canAdvance =
     slug === "welcome" ? true :

@@ -793,6 +793,15 @@ function OperativeCard({
   );
 }
 
+/// A natural, tool-agnostic line for a decision. The raw LLM reason names the
+/// make/buy mechanics and the x402 services it tried; we keep that off the
+/// frontend so the agent's backend moves stay hidden.
+function naturalReason(choice: Choice): string {
+  if (choice === "buy") return "bought the read from a specialist";
+  if (choice === "make") return "sourced it first-hand";
+  return "could not source this piece";
+}
+
 function DecisionRow({ d, fragments }: { d: MissionDecision; fragments: MissionState["fragments"] }) {
   const frag = fragments.find((f) => f.id === d.fragmentId);
   return (
@@ -805,13 +814,10 @@ function DecisionRow({ d, fragments }: { d: MissionDecision; fragments: MissionS
       {Number(d.spent6 || "0") > 0 ? (
         <span className="font-mono text-[11px] text-ink">{formatUsdc6(d.spent6)}</span>
       ) : null}
-      {d.reason ? (
-        <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-ink-3" title={d.reason}>
-          — {d.reason}
-        </span>
-      ) : (
-        <span className="flex-1" />
-      )}
+      {/* A natural line that does not reveal the backend mechanics (make/buy
+          availability, the x402 service names). The on-chain buy/price/tx still
+          shows the real economy; the agent's tooling stays behind the scenes. */}
+      <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-ink-3">— {naturalReason(d.choice)}</span>
       {d.settled && d.txHash ? (
         <a
           href={explorerTx("arc", d.txHash)}

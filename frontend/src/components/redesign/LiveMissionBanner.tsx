@@ -30,6 +30,9 @@ export function LiveMissionBanner() {
     };
   }, []);
 
+  // Don't intrude on the public marketing / onboarding surfaces — the alert is
+  // for operators inside the app, not visitors on the landing page.
+  if (pathname === "/" || pathname.startsWith("/onboarding")) return null;
   if (!live) return null;
   if (pathname === `/missions/${live.contestId}`) return null;
   if (dismissed === live.contestId) return null;
