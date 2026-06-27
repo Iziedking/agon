@@ -194,26 +194,30 @@ function Arena({ state, mission }: { state: MissionState; mission: NonNullable<M
 
       {/* THE SUPPLY SIDE */}
       {specialists.length > 0 ? (
-        <div className="mt-10">
-          <div className="mb-3 font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
+        <div className="mt-12">
+          <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
             <span aria-hidden className="text-accent">■</span> THE SUPPLY SIDE · INTEL SPECIALISTS
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <p className="mt-2 mb-4 max-w-[64ch] font-mono text-[12px] leading-[1.7] text-ink-3">
+            scarce intel an agent can buy to complete the mission. the content stays sealed until the mission
+            resolves, so a seat is a bet on its own read.
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {specialists
               .filter((s) => !(s.owner === "platform" && s.claimed))
               .map((s) => {
               const frag = fragments.find((f) => f.id === s.fragmentId);
               return (
                 <BracketedCell key={`${s.agentId}-${s.fragmentId}`}>
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono text-[12px] uppercase tracking-[0.12em] text-ink">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate font-mono text-[12px] uppercase tracking-[0.12em] text-ink">
                       {s.owner === "operator" ? `SPECIALIST #${s.agentId}` : "ON THE SHELF"}
                     </span>
-                    <span className="font-mono text-[12px] text-accent">{formatUsdc6(s.price6)}</span>
+                    <span className="shrink-0 font-mono text-[13px] text-accent">{formatUsdc6(s.price6)}</span>
                   </div>
-                  <div className="mt-1.5">
+                  <div className="mt-2.5">
                     <span
-                      className={`inline-block border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em] ${
+                      className={`inline-block border px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.12em] ${
                         s.owner === "operator"
                           ? "border-accent text-accent"
                           : "border-[color:var(--ok)] text-[color:var(--ok)]"
@@ -222,10 +226,12 @@ function Arena({ state, mission }: { state: MissionState; mission: NonNullable<M
                       {s.owner === "operator" ? "RESALE" : "BUY FROM PLATFORM"}
                     </span>
                   </div>
-                  <div className="mt-2 font-mono text-[12px] leading-[1.6] text-ink-2">
+                  <div className="mt-3 font-mono text-[12px] leading-[1.7] text-ink-2">
                     {s.owner === "operator" ? "resells" : "sells"}{" "}
                     <span className="uppercase text-ink">{frag?.kind ?? s.fragmentId}</span>
-                    {resolved && frag ? ` — ${frag.ask}` : " — sealed until the mission resolves"}
+                  </div>
+                  <div className="mt-1 font-mono text-[11px] leading-[1.6] text-ink-3">
+                    {resolved && frag ? frag.ask : "sealed until the mission resolves"}
                   </div>
                 </BracketedCell>
               );
@@ -237,7 +243,7 @@ function Arena({ state, mission }: { state: MissionState; mission: NonNullable<M
       {/* BODY: operatives (left) + economy tape (right) */}
       <div className="mt-10 grid gap-8 lg:grid-cols-12">
         <div className="min-w-0 lg:col-span-7">
-          <div className="mb-3 flex items-center justify-between">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
             <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
               <span aria-hidden className="text-accent">■</span> OPERATIVES · THE DEMAND SIDE
             </span>
@@ -247,13 +253,13 @@ function Arena({ state, mission }: { state: MissionState; mission: NonNullable<M
           </div>
           {operatives.length === 0 ? (
             <BracketedCell>
-              <p className="font-mono text-sm text-ink-2">
-                no operatives have run yet. agents make their decisions and pay for their work when the mission
-                settles. check back when the window closes.
+              <p className="font-mono text-[13px] leading-[1.8] text-ink-2">
+                no operatives have run yet. each agent gathers what the brief needs and submits its read when the
+                window closes. check back then to see how they placed.
               </p>
             </BracketedCell>
           ) : (
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-5">
               {operatives.map((o, i) => (
                 <OperativeCard
                   key={o.agentId}
@@ -269,7 +275,7 @@ function Arena({ state, mission }: { state: MissionState; mission: NonNullable<M
         </div>
 
         <aside className="min-w-0 lg:col-span-5">
-          <div className="mb-3 font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
+          <div className="mb-4 font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
             <span aria-hidden className="text-accent">■</span> THE AGENT ECONOMY · LIVE TAPE
           </div>
           <BracketedCell>
@@ -692,9 +698,9 @@ function DeliverableBody({ text }: { text: string }) {
     .map((s) => s.trim())
     .filter(Boolean);
   return (
-    <div className="mt-2 space-y-2">
+    <div className="mt-2.5 space-y-2.5">
       {segments.map((seg, i) => (
-        <p key={i} className="font-mono text-[12px] leading-[1.7] text-ink-2">
+        <p key={i} className="font-mono text-[13px] leading-[1.8] text-ink-2">
           {renderInline(seg, `s${i}`)}
         </p>
       ))}
@@ -744,24 +750,24 @@ function OperativeCard({
   return (
     <BracketedCell>
       <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <AgentAvatar skin={skin ?? undefined} variant={robotVariantForId(op.agentId)} size={32} />
+        <div className="flex min-w-0 items-center gap-3">
+          <AgentAvatar skin={skin ?? undefined} variant={robotVariantForId(op.agentId)} size={36} />
           <div className="min-w-0">
-            <div className="truncate font-mono text-[12px] uppercase tracking-[0.12em] text-ink">
+            <div className="truncate font-mono text-[13px] uppercase tracking-[0.10em] text-ink">
               <span className="text-accent">#{rank}</span> · {name || `AGENT ${op.agentId}`}
             </div>
             <div className="mt-1 font-mono text-[11px] text-ink-3">{shortAddr(op.operator)}</div>
           </div>
         </div>
-        <div className="text-right">
-          <div className="font-stencil leading-none text-ink" style={{ fontSize: 28 }}>
+        <div className="shrink-0 text-right">
+          <div className="font-stencil leading-none text-ink" style={{ fontSize: 30 }}>
             {op.score}
           </div>
-          <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">SCORE</div>
+          <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.14em] text-ink-3">SCORE</div>
         </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 font-mono text-[11px] uppercase tracking-[0.10em] text-ink-2">
+      <div className="mt-4 flex flex-wrap gap-x-6 gap-y-1.5 border-t border-[color:var(--hairline)] pt-3.5 font-mono text-[11px] uppercase tracking-[0.10em] text-ink-3">
         <span>
           PAID FOR <span className="text-ink">{op.credited ?? 0}</span>/{op.total}
         </span>
@@ -775,20 +781,25 @@ function OperativeCard({
         </span>
       </div>
 
-      {/* DECISIONS */}
-      <div className="mt-4 flex flex-col divide-y divide-[color:var(--hairline)]">
-        {op.decisions.map((d) => (
-          <DecisionRow key={d.fragmentId} d={d} fragments={fragments} />
-        ))}
-      </div>
+      {/* HOW IT SOURCED EACH PIECE */}
+      {op.decisions.length > 0 ? (
+        <div className="mt-5">
+          <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-3">HOW IT SOURCED</div>
+          <div className="mt-1.5 flex flex-col divide-y divide-[color:var(--hairline)]">
+            {op.decisions.map((d) => (
+              <DecisionRow key={d.fragmentId} d={d} fragments={fragments} />
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {/* DELIVERABLE */}
       {op.deliverable ? (
-        <div className="mt-4 border-t border-[color:var(--hairline)] pt-3">
-          <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">DELIVERABLE</div>
+        <div className="mt-5 border-t border-[color:var(--hairline)] pt-4">
+          <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-3">DELIVERABLE</div>
           <DeliverableBody text={op.deliverable} />
           {op.verdict ? (
-            <div className="mt-3 border-l-2 border-[color:var(--hairline-strong)] pl-3 font-mono text-[11px] leading-[1.6] text-ink-3">
+            <div className="mt-3.5 border-l-2 border-[color:var(--hairline-strong)] bg-canvas-2 px-3.5 py-2.5 font-mono text-[11px] leading-[1.7] text-ink-3">
               <span className="uppercase tracking-[0.12em] text-ink-2">judge</span> — {op.verdict}
             </div>
           ) : null}
@@ -810,7 +821,7 @@ function naturalReason(choice: Choice): string {
 function DecisionRow({ d, fragments }: { d: MissionDecision; fragments: MissionState["fragments"] }) {
   const frag = fragments.find((f) => f.id === d.fragmentId);
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5">
       <ChoiceChip choice={d.choice} />
       <span className="font-mono text-[11px] uppercase tracking-[0.10em] text-ink-3">{frag?.kind ?? d.fragmentId}</span>
       {d.choice === "buy" && d.specialistAgentId != null ? (
