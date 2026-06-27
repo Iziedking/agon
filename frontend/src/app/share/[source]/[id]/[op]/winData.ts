@@ -8,7 +8,13 @@ const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL ?? "http://localhost:8082";
 export interface WinData {
   /// "contest" | "challenge", normalized.
   source: "contest" | "challenge";
-  kindLabel: string; // "contest" | "challenge" for prose
+  kindLabel: string; // "contest" | "challenge" | "mission" for prose
+  /// True when this "contest" is actually a mission (missions ride a contest, so
+  /// the share link still carries source=contest). Drives the MISSION label.
+  isMission: boolean;
+  /// Composed display label for the card and unfurl, e.g. "MISSION 021",
+  /// "CONTEST #123", "CHALLENGE #123". Missions use their display sequence.
+  eventLabel: string;
   id: string;
   rank: number | null;
   amount6: string | null; // USDC 6-dec as a string, null if not a winner
@@ -44,14 +50,31 @@ export async function loadWin(sourceRaw: string, id: string, op: string): Promis
 
   let rank: number | null = null;
   let amount6: string | null = null;
+  // A contest may actually be a mission (missions ride a solver contest). Probe
+  // the mission read CONCURRENTLY with results so the extra hop adds no latency
+  // to the crawler's fetch; on any miss we fall back to the plain contest label.
+  let isMission = false;
+  let missionSeq = 0;
   try {
-    const res = await fetch(`${AUTH_URL}/${kind}/${id}/results`, { cache: "no-store", signal: t() });
-    if (res.ok) {
-      const data = (await res.json()) as { winners?: Array<{ rank: number; operator: string; amount: string }> };
+    const [resultsRes, missionRes] = await Promise.all([
+      fetch(`${AUTH_URL}/${kind}/${id}/results`, { cache: "no-store", signal: t() }),
+      source === "contest"
+        ? fetch(`${AUTH_URL}/missions/${id}`, { cache: "no-store", signal: t() }).catch(() => null)
+        : Promise.resolve(null),
+    ]);
+    if (resultsRes.ok) {
+      const data = (await resultsRes.json()) as { winners?: Array<{ rank: number; operator: string; amount: string }> };
       const w = (data.winners ?? []).find((x) => x.operator.toLowerCase() === opLower);
       if (w) {
         rank = w.rank;
         amount6 = w.amount;
+      }
+    }
+    if (missionRes && missionRes.ok) {
+      const md = (await missionRes.json()) as { mission?: { seq?: number } | null };
+      if (md.mission) {
+        isMission = true;
+        missionSeq = Number(md.mission.seq) || 0;
       }
     }
   } catch {
@@ -87,9 +110,16 @@ export async function loadWin(sourceRaw: string, id: string, op: string): Promis
     /* draw placeholder */
   }
 
+  const kindLabel = source === "challenge" ? "challenge" : isMission ? "mission" : "contest";
+  const eventLabel = isMission
+    ? `MISSION ${String(missionSeq > 0 ? missionSeq : Number(id) || 0).padStart(3, "0")}`
+    : `${kindLabel.toUpperCase()} #${id}`;
+
   return {
     source,
-    kindLabel: source === "challenge" ? "challenge" : "contest",
+    kindLabel,
+    isMission,
+    eventLabel,
     id,
     rank,
     amount6,

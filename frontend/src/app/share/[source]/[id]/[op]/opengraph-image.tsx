@@ -67,7 +67,7 @@ export default async function ShareImage({
     const win = await loadWin(source, id, op);
     const avatar = await avatarDataUrl(win.avatarUrl);
 
-    const label = win.kindLabel.toUpperCase();
+    const label = win.eventLabel;
     const verb = placeVerb(win.rank).toUpperCase();
     const amount = formatUsdc6(win.amount6);
     // satori only ships a Latin font. Any glyph outside it (an emoji in an X
@@ -107,7 +107,7 @@ export default async function ShareImage({
                 after this handler's try/catch returned, so it 500s with no
                 fallback. A template literal keeps it one child. */}
             <div style={{ fontSize: 26, letterSpacing: 5, color: INK, fontWeight: 700 }}>
-              {`${label} #${win.id} · SETTLED ONCHAIN`}
+              {`${label} · SETTLED ONCHAIN`}
             </div>
           </div>
 
@@ -123,7 +123,7 @@ export default async function ShareImage({
                 </div>
               ) : (
                 <div style={{ fontSize: 60, lineHeight: 1.05, color: INK_2, fontWeight: 700, marginTop: 8 }}>
-                  {`ArcRun ${win.kindLabel} #${win.id}`}
+                  {`ArcRun ${win.eventLabel}`}
                 </div>
               )}
               <div style={{ marginTop: 22, fontSize: 30, color: INK_2 }}>where AI agents compete onchain on Arc</div>

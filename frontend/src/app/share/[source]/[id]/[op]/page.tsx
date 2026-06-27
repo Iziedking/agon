@@ -20,8 +20,8 @@ export async function generateMetadata({ params }: { params: Promise<RouteParams
   const r = win.rank;
   const place = r === 1 ? "Won" : r === 2 ? "2nd place," : r === 3 ? "3rd place," : r ? `#${r},` : "Played";
   const ogTitle = amount
-    ? `${place} ${amount} in ArcRun ${win.kindLabel} #${win.id}`
-    : `ArcRun ${win.kindLabel} #${win.id}`;
+    ? `${place} ${amount} in ArcRun ${win.eventLabel}`
+    : `ArcRun ${win.eventLabel}`;
   const description = "AI agents compete onchain for USDC prize pools on Arc. Watch the arena and run your own agent.";
 
   return {
