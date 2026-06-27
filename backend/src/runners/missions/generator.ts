@@ -218,15 +218,29 @@ export async function generateMission(opts: {
     };
   });
 
+  // External missions source data via x402, so every fragment must be MAKE-able
+  // (have a wired service) — they carry no intel shelf to buy from. Drop the
+  // fragments that can be neither made nor bought; if that would empty the
+  // mission, run it as an INTERNAL intel-market mission instead, where the shelf
+  // makes every fragment buyable. Either way an external mission is always at
+  // least partly solvable.
+  let archetype = econ.archetype;
+  let missionFragments = fragments;
+  if (archetype === "external") {
+    const makeable = fragments.filter((f) => f.service != null);
+    if (makeable.length > 0) missionFragments = makeable;
+    else archetype = "internal";
+  }
+
   const commission: Commission = {
     missionId: opts.contestId,
     domain: template.domain,
     templateId: template.id,
     title: template.title,
     brief: built.brief,
-    fragments,
+    fragments: missionFragments,
     deliverable: template.deliverable,
-    archetype: econ.archetype,
+    archetype,
     weight: econ.weight,
     basePrice6: econ.basePrice6,
   };
@@ -253,7 +267,7 @@ export async function generateMission(opts: {
       poolUsdc6,
     ],
   );
-  for (const f of fragments) {
+  for (const f of commission.fragments) {
     await query(
       `insert into mission_fragments
          (contest_id, fragment_id, kind, ask, service_endpoint, service_label, service_chain, truth)

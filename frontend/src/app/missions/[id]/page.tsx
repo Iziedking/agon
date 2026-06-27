@@ -152,18 +152,23 @@ function Arena({ state, mission }: { state: MissionState; mission: NonNullable<M
       >
         {mission.title}
       </h1>
-      <p className="mt-4 max-w-[80ch] font-mono text-[14px] leading-[1.75] text-ink-2">{mission.brief}</p>
+      <div className="mt-7 max-w-[78ch]">
+        <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">
+          <span aria-hidden className="text-accent">■</span> THE BRIEF
+        </div>
+        <p className="mt-3 font-mono text-[15px] leading-[1.85] text-ink-2">{mission.brief}</p>
+      </div>
 
-      <div className="mt-5 max-w-[80ch]">
+      <div className="mt-6 max-w-[78ch]">
         <BracketedCell>
-          <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3">DELIVERABLE REQUIRED</div>
-          <div className="mt-2 font-mono text-[14px] leading-[1.7] text-ink-2">{mission.deliverable}</div>
+          <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-ink-3">DELIVERABLE REQUIRED</div>
+          <div className="mt-2.5 font-mono text-[14px] leading-[1.85] text-ink-2">{mission.deliverable}</div>
         </BracketedCell>
       </div>
 
       {/* THE ECONOMY AT A GLANCE */}
       {state.join ? (
-        <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <EconStat label="PRIZE POOL" value={formatUsdc6(state.join.poolUsdc6)} />
           <EconStat
             label="OPERATIVE FEE"
@@ -269,8 +274,8 @@ function Arena({ state, mission }: { state: MissionState; mission: NonNullable<M
           </div>
           <BracketedCell>
             {tape.length === 0 ? (
-              <p className="font-mono text-sm text-ink-2">
-                no payments yet. every make pays a service and every buy pays another agent, on chain.
+              <p className="font-mono text-[13px] leading-[1.8] text-ink-2">
+                no payments yet. every piece an agent sources settles here in usdc, on chain, as it happens.
               </p>
             ) : (
               <div className="flex max-h-[640px] flex-col divide-y divide-[color:var(--hairline)] overflow-y-auto">
@@ -461,10 +466,10 @@ function MissionJoinPanel({
         {!isSignedIn ? (
           <p className="mt-4 font-mono text-[12px] text-ink-2">sign in to join this mission.</p>
         ) : role === "operative" ? (
-          <div className="mt-4 max-w-[60ch]">
-            <p className="font-mono text-[13px] leading-[1.7] text-ink-2">
-              the demand side: send your agent in to source each piece of work, decide make-or-buy, and submit the
-              deliverable. the top deliverables split the prize pool.
+          <div className="mt-4 max-w-[62ch]">
+            <p className="font-mono text-[13px] leading-[1.8] text-ink-2">
+              the demand side. send your agent in to gather everything the deliverable needs, then submit its
+              read. the strongest deliverables split the prize pool.
             </p>
             {join ? (
               <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3">
@@ -500,10 +505,10 @@ function MissionJoinPanel({
             </div>
           </div>
         ) : (
-          <div className="mt-4 flex max-w-[560px] flex-col gap-3">
-            <p className="font-mono text-[13px] leading-[1.7] text-ink-2">
-              the supply side: buy a scarce intel piece from the platform at its base price, then list it at your own
-              resale price. an operative who needs it buys it from you on chain.
+          <div className="mt-4 flex max-w-[560px] flex-col gap-3.5">
+            <p className="font-mono text-[13px] leading-[1.8] text-ink-2">
+              the supply side. claim a scarce intel piece from the platform at its base price, then list it at the
+              resale price you set. when an operative buys it, the usdc settles to your wallet on chain.
             </p>
             {join ? (
               <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3">
