@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/redesign/Footer";
@@ -323,22 +323,24 @@ function MissionJoinPanel({
   // One side per mission: once you've taken a side it locks, so you can't also
   // play the other (even with a different agent).
   const [lockedRole, setLockedRole] = useState<"operative" | "specialist" | null>(null);
-  useEffect(() => {
+  const [withdrawn, setWithdrawn] = useState(false);
+  const refreshRole = useCallback(() => {
     if (!isSignedIn) {
       setLockedRole(null);
+      setWithdrawn(false);
       return;
     }
-    let live = true;
     void missionMyRole(mission.contestId).then((r) => {
-      if (live && r) {
-        setLockedRole(r);
-        setRole(r);
+      if (r.role) {
+        setLockedRole(r.role);
+        setRole(r.role);
       }
+      setWithdrawn(r.withdrawn);
     });
-    return () => {
-      live = false;
-    };
   }, [isSignedIn, mission.contestId]);
+  useEffect(() => {
+    refreshRole();
+  }, [refreshRole]);
   // The mission rides a solver contest; operative entry happens right here via
   // the same EnterPanel the contest page uses, so the operator never leaves the
   // mission. We just need the contest's live status + window for it.
@@ -504,6 +506,9 @@ function MissionJoinPanel({
                   endTime={Number(contest.endTime)}
                   contestType={2}
                   missionFee={missionFee}
+                  missionId={mission.contestId}
+                  missionWithdrawn={withdrawn}
+                  onMissionWithdrawn={refreshRole}
                 />
               ) : (
                 <p className="font-mono text-[12px] text-ink-3">reading the window…</p>

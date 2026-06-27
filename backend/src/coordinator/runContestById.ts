@@ -85,8 +85,15 @@ function coordinatorWallet() {
 /// to a live read and backfill the row so the next tick uses the
 /// cached value.
 async function fetchField(contestId: number, cType: number): Promise<ContestEntryInput[]> {
+  // Exclude any operative who withdrew from this mission within the join window:
+  // they were refunded and must not be run or scored. No-op for ordinary
+  // contests (no withdrawal rows).
   const { rows } = await query<{ agent_id: string; operator: string; tier: number | null }>(
-    "select agent_id, operator, tier from entries where contest_id = $1 order by agent_id",
+    `select e.agent_id, e.operator, e.tier from entries e
+      where e.contest_id = $1
+        and not exists (select 1 from mission_withdrawals w
+                        where w.contest_id = e.contest_id and lower(w.operator) = lower(e.operator))
+      order by e.agent_id`,
     [contestId],
   );
   const field: ContestEntryInput[] = [];

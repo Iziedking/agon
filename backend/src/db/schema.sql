@@ -963,6 +963,24 @@ create table if not exists mission_intel_buys (
 create index if not exists mission_intel_buys_op_idx on mission_intel_buys(contest_id, operator);
 create index if not exists mission_specialists_contest_idx on mission_specialists(contest_id);
 
+-- An operative who entered a mission and changed their mind WITHIN the join
+-- window (mission still open) can withdraw. We cannot undo their on-chain
+-- registerEntry, so the withdrawal is recorded here and every read of the
+-- operative field — grading (fetchField), the concurrency guard, the my-role
+-- lock, and the operative seat count — excludes a withdrawn operator. The join
+-- fee (if any was paid) is returned from the treasury; fee_refund_tx records it.
+-- Keyed by (contest_id, operator); one withdrawal per operative per mission.
+create table if not exists mission_withdrawals (
+  contest_id    bigint not null,
+  operator      text not null,
+  agent_id      bigint,
+  fee_refunded  boolean not null default false,
+  fee_refund_tx text,
+  created_at    timestamptz not null default now(),
+  primary key (contest_id, operator)
+);
+create index if not exists mission_withdrawals_contest_idx on mission_withdrawals(contest_id);
+
 -- Agent-to-agent trades: the on-chain USDC payment from an operative (buyer) to a
 -- specialist (seller) for a fragment over the bounded handshake. This is the A2A
 -- rail's settlement record; tx_hash is the real USDC Transfer.

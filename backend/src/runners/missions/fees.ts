@@ -135,6 +135,7 @@ export async function clearMissionHistory(): Promise<string> {
   let total = np.rowCount ?? 0;
   const tables = [
     "a2a_trades",
+    "mission_withdrawals",
     "mission_intel_buys",
     "mission_operative_fees",
     "mission_decisions",

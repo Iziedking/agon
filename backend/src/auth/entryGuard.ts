@@ -25,6 +25,8 @@ async function agentBusy(agentId: number, operator: string, excludeContestId?: n
     `select 1 from entries e join contests ct on ct.id = e.contest_id
       where e.agent_id = $1 and ct.status in ('open','scoring')
         ${excludeContestId != null ? "and e.contest_id <> $2" : ""}
+        and not exists (select 1 from mission_withdrawals w
+                        where w.contest_id = e.contest_id and lower(w.operator) = lower(e.operator))
       limit 1`,
     excludeContestId != null ? [agentId, excludeContestId] : [agentId],
   );
@@ -50,7 +52,9 @@ async function operatorActiveEvents(operator: string): Promise<number> {
   const r = await query<{ n: string }>(
     `select (
        (select count(distinct e.contest_id) from entries e join contests ct on ct.id = e.contest_id
-         where lower(e.operator) = $1 and ct.status in ('open','scoring'))
+         where lower(e.operator) = $1 and ct.status in ('open','scoring')
+           and not exists (select 1 from mission_withdrawals w
+                           where w.contest_id = e.contest_id and lower(w.operator) = lower(e.operator)))
        + (select count(distinct ce.challenge_id) from challenge_entries ce join challenges chl on chl.id = ce.challenge_id
          where lower(ce.operator) = $1 and chl.status in ('open','locked'))
        + (select count(distinct b.contest_id) from mission_intel_buys b join missions m on m.contest_id = b.contest_id

@@ -141,19 +141,42 @@ export async function buyMissionIntel(
   }
 }
 
-/// Which side the signed-in operator has already taken in this mission, if any.
-/// Used to lock the opposite role (one side per mission).
-export async function missionMyRole(missionId: number): Promise<"operative" | "specialist" | null> {
+/// Which side the signed-in operator has already taken in this mission, if any,
+/// plus whether they have withdrawn (operative only). Used to lock the opposite
+/// role (one side per mission) and to show the terminal withdrawn state.
+export async function missionMyRole(
+  missionId: number,
+): Promise<{ role: "operative" | "specialist" | null; withdrawn: boolean }> {
   try {
     const res = await fetch(`${AUTH_URL}/missions/${missionId}/my-role`, {
       credentials: "include",
       cache: "no-store",
     });
-    if (!res.ok) return null;
-    const role = ((await res.json()) as { role?: string }).role;
-    return role === "operative" ? "operative" : role === "specialist" ? "specialist" : null;
+    if (!res.ok) return { role: null, withdrawn: false };
+    const data = (await res.json()) as { role?: string; withdrawn?: boolean };
+    const role = data.role === "operative" ? "operative" : data.role === "specialist" ? "specialist" : null;
+    return { role, withdrawn: Boolean(data.withdrawn) };
   } catch {
-    return null;
+    return { role: null, withdrawn: false };
+  }
+}
+
+/// Operative withdraws from a mission within the join window (changed their
+/// mind). The backend refunds any join fee from the treasury and excludes them
+/// from grading. Session-gated.
+export async function withdrawMission(
+  missionId: number,
+): Promise<{ ok: true; feeRefunded: boolean } | { ok: false; error: string }> {
+  try {
+    const res = await fetch(`${AUTH_URL}/missions/${missionId}/withdraw`, {
+      method: "POST",
+      credentials: "include",
+    });
+    const data = (await res.json().catch(() => ({}))) as { error?: string; feeRefunded?: boolean };
+    if (!res.ok) return { ok: false, error: data.error ?? "could not withdraw." };
+    return { ok: true, feeRefunded: Boolean(data.feeRefunded) };
+  } catch {
+    return { ok: false, error: "network error. try again." };
   }
 }
 

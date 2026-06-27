@@ -2111,6 +2111,93 @@ app.post("/missions/:id/join-fee", requireAuth, async (c) => {
   return c.json({ ok: true });
 });
 
+/// Operative WITHDRAWS from a mission within the join window (mission still
+/// open) because they changed their mind. We cannot reverse the on-chain
+/// registerEntry, so we record the withdrawal off-chain: from here on the
+/// operator is excluded from grading, the concurrency cap, the my-role lock, and
+/// the operative seat count. Any join fee they paid is returned from the
+/// treasury. Idempotent; session-gated; only while the mission is open.
+app.post("/missions/:id/withdraw", requireAuth, async (c) => {
+  const contestId = Number(c.req.param("id"));
+  if (!Number.isFinite(contestId)) return c.json({ error: "bad mission id" }, 400);
+  const operator = c.get("address").toLowerCase();
+
+  const m = await query<{ status: string }>("select status from missions where contest_id = $1", [contestId]);
+  if (!m.rows[0]) return c.json({ error: "not a mission" }, 404);
+  if (m.rows[0].status !== "open")
+    return c.json({ error: "the join window has closed — you can no longer withdraw from this mission" }, 409);
+
+  // Already withdrawn: idempotent success so a double-click is harmless.
+  const prior = await query("select 1 from mission_withdrawals where contest_id = $1 and lower(operator) = $2", [
+    contestId,
+    operator,
+  ]);
+  if (prior.rows.length > 0) return c.json({ ok: true, alreadyWithdrawn: true });
+
+  // Must actually be an operative: an on-chain entry (any agent) or a paid join
+  // fee. Specialists withdraw differently (they hold scarce intel) and aren't
+  // covered here.
+  const entryRow = await query<{ agent_id: string }>(
+    "select agent_id from entries where contest_id = $1 and lower(operator) = $2 order by agent_id limit 1",
+    [contestId, operator],
+  );
+  const feeRow = await query<{ amount_usdc_6: string; refunded: boolean }>(
+    "select amount_usdc_6, refunded from mission_operative_fees where contest_id = $1 and operator = $2",
+    [contestId, operator],
+  );
+  if (entryRow.rows.length === 0 && feeRow.rows.length === 0)
+    return c.json({ error: "you have no operative entry to withdraw from this mission" }, 409);
+  const agentId = entryRow.rows[0]?.agent_id ? Number(entryRow.rows[0].agent_id) : null;
+
+  // Refund a paid, not-yet-refunded join fee from the treasury before recording
+  // the withdrawal, so a failed transfer never leaves the operator out of pocket.
+  let feeRefunded = false;
+  let feeRefundTx: string | null = null;
+  const feeAmount = feeRow.rows[0] && !feeRow.rows[0].refunded ? BigInt(feeRow.rows[0].amount_usdc_6 || "0") : 0n;
+  if (feeAmount > 0n) {
+    const signer = treasurySigner();
+    if (!signer)
+      return c.json(
+        { error: "the treasury key is not configured, so the join fee cannot be refunded — withdrawal not processed" },
+        503,
+      );
+    try {
+      const hash = await signer.wallet.writeContract({
+        address: config.external.USDC,
+        abi: usdcMinimalAbi,
+        functionName: "transfer",
+        args: [operator as `0x${string}`, feeAmount],
+      });
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      if (receipt.status !== "success") throw new Error("refund tx reverted");
+      feeRefunded = true;
+      feeRefundTx = hash;
+      await query(
+        "update mission_operative_fees set refunded = true, refund_tx = $3 where contest_id = $1 and operator = $2",
+        [contestId, operator, hash],
+      );
+      void notify(operator, {
+        kind: "balance_credit",
+        title: "Join fee refunded",
+        body: `${usdc6(feeAmount)} USDC returned to your wallet — you withdrew from mission #${contestId} within the join window.`,
+        href: `/missions/${contestId}`,
+        context: { contestId, amount6: feeAmount.toString(), txHash: hash, kind: "withdraw_fee_refund" },
+      });
+    } catch (e) {
+      return c.json({ error: e instanceof Error ? e.message : "could not refund the join fee — withdrawal not processed" }, 500);
+    }
+  }
+
+  await query(
+    `insert into mission_withdrawals (contest_id, operator, agent_id, fee_refunded, fee_refund_tx)
+     values ($1, $2, $3, $4, $5)
+     on conflict (contest_id, operator) do nothing`,
+    [contestId, operator, agentId, feeRefunded, feeRefundTx],
+  );
+  void logEvent({ kind: "mission_withdraw", address: operator, context: { contestId, agentId, feeRefunded, feeRefundTx }, source: "auth" });
+  return c.json({ ok: true, feeRefunded, feeRefundTx });
+});
+
 /// Specialist BUYS a scarce intel piece from the platform shelf (v2). The
 /// operator pays the base price `b` to the treasury on chain, then posts the
 /// proof here. We claim the piece exclusively (one buyer per piece), carry the
@@ -2244,10 +2331,19 @@ app.get("/missions/:id/my-role", requireAuth, async (c) => {
      limit 1`,
     [contestId, operator],
   );
-  if (opv.rows.length > 0) return c.json({ role: "operative" });
+  if (opv.rows.length > 0) {
+    // The operative side stays "taken" even after a withdrawal (the on-chain
+    // entry can't be undone, so they can't flip to the specialist side), but the
+    // UI shows a terminal withdrawn state instead of the live "entered" panel.
+    const wd = await query("select 1 from mission_withdrawals where contest_id = $1 and lower(operator) = $2", [
+      contestId,
+      operator,
+    ]);
+    return c.json({ role: "operative", withdrawn: wd.rows.length > 0 });
+  }
   const spc = await query("select 1 from mission_intel_buys where contest_id = $1 and operator = $2", [contestId, operator]);
-  if (spc.rows.length > 0) return c.json({ role: "specialist" });
-  return c.json({ role: null });
+  if (spc.rows.length > 0) return c.json({ role: "specialist", withdrawn: false });
+  return c.json({ role: null, withdrawn: false });
 });
 
 /// Whether the signed-in operator has already paid this mission's join fee, so
@@ -2431,8 +2527,12 @@ app.get("/missions/:id", async (c) => {
   ].sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
 
   // v2 join economy: seats taken vs caps, and the operative join fee (% of pool).
+  // A withdrawn operative frees their seat, so exclude them from the count.
   const opSeats = await query<{ n: string }>(
-    "select count(*)::text as n from entries where contest_id = $1",
+    `select count(*)::text as n from entries e
+      where e.contest_id = $1
+        and not exists (select 1 from mission_withdrawals w
+                        where w.contest_id = e.contest_id and lower(w.operator) = lower(e.operator))`,
     [contestId],
   );
   const specSeats = await query<{ n: string }>(

@@ -5,7 +5,7 @@ import { erc20Abi } from "viem";
 import { useAuth, useOperatorAddress } from "@/hooks/useAuth";
 import { useArcWrite } from "@/hooks/useArcWrite";
 import { CONTRACTS, USDC, confirmTx } from "@/lib/arc";
-import { missionFeeStatus, recordMissionJoinFee } from "@/lib/missions";
+import { missionFeeStatus, recordMissionJoinFee, withdrawMission } from "@/lib/missions";
 import { checkEntry } from "@/lib/entry";
 import { contestEngineAbi, hasEntered, hasClaimed, fetchPayout, formatUsdc } from "@/lib/contests";
 import {
@@ -43,6 +43,9 @@ export function EnterPanel({
   endTime,
   contestType,
   missionFee,
+  missionId,
+  missionWithdrawn,
+  onMissionWithdrawn,
 }: {
   contestId: number;
   status: number;
@@ -51,6 +54,13 @@ export function EnterPanel({
   /// When this contest is a mission, the operative pays this fee to the treasury
   /// before entering (charged once). Omitted for ordinary contests.
   missionFee?: { fee6: string; recipient: string; missionId: number };
+  /// Set when this panel is the operative side of a mission. Enables the
+  /// "withdraw within the join window" flow (missions are reversible off-chain).
+  missionId?: number;
+  /// True when the operator has already withdrawn from this mission.
+  missionWithdrawn?: boolean;
+  /// Called after a successful withdrawal so the parent can refresh its role.
+  onMissionWithdrawn?: () => void;
 }) {
   const { address, isSignedIn: isConnected } = useOperatorAddress();
   const { me } = useAuth();
@@ -66,6 +76,8 @@ export function EnterPanel({
   const [opAlreadyIn, setOpAlreadyIn] = useState(false);
   const [outOfSwaps, setOutOfSwaps] = useState(false);
   const [gate, setGate] = useState<TierGate | null>(null);
+  const [withdrew, setWithdrew] = useState(false);
+  const isWithdrawn = Boolean(missionWithdrawn) || withdrew;
 
   // The agent family this contest scores on, for the gate's tier check.
   const family: ContestTypeName = contestType === 1 ? "analyst" : contestType === 2 ? "solver" : "scout";
@@ -205,6 +217,27 @@ export function EnterPanel({
     }
   }
 
+  async function withdraw() {
+    if (missionId == null) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await withdrawMission(missionId);
+      if (!res.ok) {
+        setError(res.error);
+        setBusy(false);
+        return;
+      }
+      setWithdrew(true);
+      reportEvent("mission_withdraw", { context: { contestId, feeRefunded: res.feeRefunded }, address });
+      onMissionWithdrawn?.();
+    } catch (e) {
+      setError(friendlyError(e, "could not withdraw."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function claim() {
     if (!address || !payout) return;
     setBusy(true);
@@ -280,6 +313,15 @@ export function EnterPanel({
           </>
         );
       }
+      // Mission operative who withdrew within the join window: terminal state.
+      if (missionId != null && isWithdrawn) {
+        return (
+          <p className="mt-3 text-sm text-ink-2">
+            you withdrew from this mission. your join fee was refunded to your wallet, and your agent is free for
+            another event.
+          </p>
+        );
+      }
       if (entered) {
         return (
           <>
@@ -288,6 +330,15 @@ export function EnterPanel({
             <a href={`/live/contest/${contestId}`} className={`mt-5 ${chunky}`}>
               watch live
             </a>
+            {missionId != null ? (
+              <button
+                onClick={withdraw}
+                disabled={busy}
+                className="mt-3 w-full border border-[color:var(--hairline-strong)] bg-canvas px-4 py-2.5 text-center font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 transition-colors hover:text-ink disabled:opacity-60"
+              >
+                {busy ? "withdrawing…" : "changed your mind? withdraw"}
+              </button>
+            ) : null}
           </>
         );
       }
