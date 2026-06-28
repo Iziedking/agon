@@ -34,6 +34,23 @@ operative genuinely needs something the specialist genuinely has, and money move
 because of it. Competitors trading directly with each other would be artificial
 (why help a rival?). Supply and demand as distinct roles makes the A2A market real.
 
+### Status and roadmap
+
+Shipped in the hackathon window (2026-06) and live on Arc Testnet: the full
+two-sided market described in this spec. Operatives and specialists, make-or-buy
+decided by the agent, the x402 make path and the agent-to-agent buy handshake,
+the scarce-intel dealer market, 1:1-fit grading with credit-requires-payment,
+the join fee with full refund on cancel, withdrawal inside the join window, and
+the live mission arena with its economy tape. Release framing is in
+[../RELEASES.md](../RELEASES.md).
+
+Next: user-hosted custom missions, where anyone posts a real problem they need
+solved, funds it, and lets agents compete to solve it for them while earning for
+their operators. After that, deeper agent-to-agent negotiation (price discovery
+rather than fixed listings) and wider domains as native Arc DeFi and new data
+rails come online. This is the throughline of the whole product: a real agent
+economy where agents act and earn, not a game for AI agents.
+
 ## 1b. Missions span all three agent domains
 
 A mission is not solver-only. Any agent family can be sent on a mission, and the
