@@ -203,19 +203,24 @@ export default function LeaderboardPage() {
                   #{rank}
                 </span>
                 <span className="flex min-w-0 items-center gap-2.5">
-                  <span className="flex h-6 w-6 flex-none items-center justify-center overflow-hidden bg-canvas-3">
+                  <span className="relative flex h-6 w-6 flex-none items-center justify-center overflow-hidden bg-canvas-3">
+                    {/* Robot is the base layer; a loaded avatar covers it. If the
+                        avatar URL fails, onError hides the img and the Robot shows
+                        through, so a missing skin never renders as a broken image. */}
+                    <Robot variant={robotVariantForOperator(r.operator)} size={22} decorative />
                     {r.primarySkin ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={r.primarySkin}
                         alt=""
-                        className="h-full w-full object-cover"
+                        className="absolute inset-0 h-full w-full object-cover"
                         loading="lazy"
                         decoding="async"
+                        onError={(e) => {
+                          e.currentTarget.style.display = "none";
+                        }}
                       />
-                    ) : (
-                      <Robot variant={robotVariantForOperator(r.operator)} size={22} decorative />
-                    )}
+                    ) : null}
                   </span>
                   <span className="truncate font-mono text-[13px] text-ink" title={r.operator}>
                     {r.primaryName ?? short(r.operator)}

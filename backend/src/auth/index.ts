@@ -2454,6 +2454,19 @@ app.get("/missions/:id", async (c) => {
     [contestId],
   );
 
+  // Naturalize the decision reason. The stored reason is the operative's raw
+  // internal note and can name backend services (e.g. a data vendor); the UI
+  // only shows the make/buy choice, so the public payload carries a clean,
+  // vendor-free gloss derived from the choice instead of the raw text.
+  const reasonFor = (choice: string): string =>
+    choice === "buy"
+      ? "Bought this piece from a specialist on the supply side."
+      : choice === "make"
+        ? "The operative gathered this piece itself."
+        : choice === "skip"
+          ? "Left this piece out of the deliverable."
+          : "";
+
   // Group decisions under each operative.
   const decByAgent = new Map<number, unknown[]>();
   for (const d of decisions.rows) {
@@ -2462,7 +2475,7 @@ app.get("/missions/:id", async (c) => {
     decByAgent.get(id)!.push({
       fragmentId: d.fragment_id,
       choice: d.choice,
-      reason: d.reason ?? "",
+      reason: reasonFor(d.choice),
       settled: d.settled,
       txHash: d.tx_hash,
       spent6: d.spent_usdc_6,
@@ -2724,6 +2737,36 @@ app.delete("/agents/:id/skin", requireAuth, async (c) => {
 
   await query("update agents set skin = null where id = $1", [agentId]);
   return c.json({ id: agentId, ok: true });
+});
+
+/// Serves an agent's custom skin (stored as a base64 data URL) as a real,
+/// cacheable image. Lists like the leaderboard link to this instead of inlining
+/// the base64 blob per row, which had pushed the leaderboard JSON to ~1 MB. The
+/// browser then caches and lazy-loads the image. 404 when the agent has no
+/// custom skin so the caller falls back to its placeholder. Public read: skins
+/// are already shown publicly, this only serves the same bytes more cheaply.
+app.get("/agents/:id/avatar", async (c) => {
+  const agentId = Number(c.req.param("id"));
+  if (!Number.isFinite(agentId) || agentId <= 0) return c.json({ error: "invalid agent id" }, 400);
+  const { rows } = await query<{ skin: string | null }>("select skin from agents where id = $1", [agentId]);
+  const skin = rows[0]?.skin ?? null;
+  const m = skin ? /^data:(image\/(?:png|jpeg|jpg|webp|gif));base64,(.+)$/i.exec(skin) : null;
+  const mimeRaw = m?.[1];
+  const b64 = m?.[2];
+  if (!mimeRaw || !b64) return c.json({ error: "no avatar" }, 404);
+  const mime = mimeRaw.toLowerCase() === "image/jpg" ? "image/jpeg" : mimeRaw.toLowerCase();
+  let buf: Buffer;
+  try {
+    buf = Buffer.from(b64, "base64");
+  } catch {
+    return c.json({ error: "bad avatar data" }, 404);
+  }
+  // Skins change rarely; a day of caching collapses the per-row image cost on a
+  // list to one request the browser then reuses across rows and polls.
+  return new Response(new Uint8Array(buf), {
+    status: 200,
+    headers: { "Content-Type": mime, "Cache-Control": "public, max-age=86400" },
+  });
 });
 
 // ----- Agent display identity -----
@@ -4310,6 +4353,11 @@ app.get("/leaderboard", async (c) => {
      limit $1`,
     [limit],
   );
+  // The public origin we were reached on, so an avatar URL we hand back loads
+  // cross-origin from the frontend. Honors the proxy's forwarded host/proto.
+  const fwdHost = c.req.header("x-forwarded-host") ?? c.req.header("host") ?? "";
+  const fwdProto = c.req.header("x-forwarded-proto") ?? "https";
+  const origin = fwdHost ? `${fwdProto}://${fwdHost}` : "";
   return c.json({
     leaders: rows.map((r) => {
       // The leaderboard row shows the operator's chosen identity, not the
@@ -4331,7 +4379,13 @@ app.get("/leaderboard", async (c) => {
         resolved = resolvers[key]?.() ?? null;
         if (resolved) break;
       }
-      const primarySkin: string | null = resolved?.skin ?? null;
+      // A custom skin is a base64 data URL; serving it inline per row is what
+      // bloated this payload, so hand back the cacheable avatar endpoint URL
+      // instead. URL-based identities (X/Discord avatars) pass through as-is.
+      let primarySkin: string | null = resolved?.skin ?? null;
+      if (primarySkin && primarySkin.startsWith("data:") && r.primary_agent_id && origin) {
+        primarySkin = `${origin}/agents/${r.primary_agent_id}/avatar`;
+      }
       const primaryName: string | null = resolved?.name ?? null;
       return {
         operator: r.operator,
