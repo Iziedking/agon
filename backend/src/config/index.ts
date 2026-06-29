@@ -77,7 +77,12 @@ const envSchema = z.object({
   // CONDUIT_BASE_URL are set it becomes the PRIMARY for every claude-* call and
   // ANTHROPIC_API_KEY is the fallback. CONDUIT_BASE_URL is the base only; the
   // SDK appends /v1/messages, so set it without that suffix.
+  // CONDUIT_API_KEY_2 / _3 are extra free-tier keys: when the key before is rate
+  // limited the next is tried, all on the same base URL, before Anthropic. This
+  // spreads load across keys and saves Anthropic credit.
   CONDUIT_API_KEY: z.string().optional(),
+  CONDUIT_API_KEY_2: z.string().optional(),
+  CONDUIT_API_KEY_3: z.string().optional(),
   CONDUIT_BASE_URL: z.string().optional(),
   LLM_DAILY_KILL_USD: z.coerce.number().nonnegative().default(5),
   // Default LLM model used by every LLM-enabled tier. Tier 0/1 don't call
@@ -567,7 +572,11 @@ export const config = {
   },
   llm: {
     anthropicApiKey: env.ANTHROPIC_API_KEY,
-    conduitApiKey: env.CONDUIT_API_KEY?.trim() || undefined,
+    // Conduit keys in priority order: primary, then the extra free-tier keys.
+    // Each is tried in turn when the one before is rate limited, before Anthropic.
+    conduitApiKeys: [env.CONDUIT_API_KEY, env.CONDUIT_API_KEY_2, env.CONDUIT_API_KEY_3]
+      .map((k) => k?.trim())
+      .filter((k): k is string => Boolean(k)),
     conduitBaseUrl: env.CONDUIT_BASE_URL?.trim() || undefined,
     openrouterApiKey: env.OPENROUTER_API_KEY?.trim() || undefined,
     dailyKillUsd: env.LLM_DAILY_KILL_USD,

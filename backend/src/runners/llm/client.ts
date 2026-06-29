@@ -60,7 +60,9 @@ interface Provider {
 let cachedProviders: Provider[] | null = null;
 
 export function llmConfigured(): boolean {
-  return Boolean(config.llm.conduitApiKey || config.llm.anthropicApiKey || config.llm.openrouterApiKey);
+  return Boolean(
+    config.llm.conduitApiKeys.length > 0 || config.llm.anthropicApiKey || config.llm.openrouterApiKey,
+  );
 }
 
 /// OpenRouter call for the non-Anthropic tier models (llama, gpt). One
@@ -113,9 +115,10 @@ async function callOpenRouter(params: CallParams): Promise<CallResult> {
 
 /// Anthropic-compatible providers in priority order. Conduit is a drop-in for
 /// the Messages API (same endpoint/auth/body/response), so we point the same SDK
-/// at its baseURL and try it FIRST; the Anthropic key is the fallback for when
-/// Conduit errors or runs out of credit. The SDK sends the key as `x-api-key`
-/// either way, which is exactly what both expect. Built once and cached.
+/// at its baseURL. Every configured Conduit key is tried in turn FIRST (so a
+/// rate-limited free-tier key falls through to the next), and the Anthropic key
+/// is the final fallback. The SDK sends the key as `x-api-key` either way, which
+/// is exactly what both expect. Built once and cached.
 function getProviders(): Provider[] {
   if (cachedProviders) return cachedProviders;
   // Bound every call so a hung provider can't hold a runner for the SDK's
@@ -125,15 +128,12 @@ function getProviders(): Provider[] {
   const timeout = Number(process.env.LLM_TIMEOUT_MS ?? "60000");
   const maxRetries = Number(process.env.LLM_MAX_RETRIES ?? "2");
   const providers: Provider[] = [];
-  if (config.llm.conduitApiKey && config.llm.conduitBaseUrl) {
-    providers.push({
-      name: "conduit",
-      client: new Anthropic({
-        apiKey: config.llm.conduitApiKey,
-        baseURL: config.llm.conduitBaseUrl,
-        timeout,
-        maxRetries,
-      }),
+  if (config.llm.conduitBaseUrl) {
+    config.llm.conduitApiKeys.forEach((apiKey, i) => {
+      providers.push({
+        name: i === 0 ? "conduit" : `conduit-${i + 1}`,
+        client: new Anthropic({ apiKey, baseURL: config.llm.conduitBaseUrl, timeout, maxRetries }),
+      });
     });
   }
   if (config.llm.anthropicApiKey) {
