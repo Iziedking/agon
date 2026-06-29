@@ -53,10 +53,14 @@ function normalizeAnthropicModel(model: string): string {
   return CLAUDE_ALIASES[model] ?? model;
 }
 
-let cachedClient: Anthropic | null = null;
+interface Provider {
+  name: string;
+  client: Anthropic;
+}
+let cachedProviders: Provider[] | null = null;
 
 export function llmConfigured(): boolean {
-  return Boolean(config.llm.anthropicApiKey || config.llm.openrouterApiKey);
+  return Boolean(config.llm.conduitApiKey || config.llm.anthropicApiKey || config.llm.openrouterApiKey);
 }
 
 /// OpenRouter call for the non-Anthropic tier models (llama, gpt). One
@@ -107,21 +111,44 @@ async function callOpenRouter(params: CallParams): Promise<CallResult> {
   };
 }
 
-function getClient(): Anthropic {
-  if (cachedClient) return cachedClient;
-  if (!config.llm.anthropicApiKey) {
-    throw new Error("ANTHROPIC_API_KEY is not set; the LLM runner cannot make real calls");
-  }
+/// Anthropic-compatible providers in priority order. Conduit is a drop-in for
+/// the Messages API (same endpoint/auth/body/response), so we point the same SDK
+/// at its baseURL and try it FIRST; the Anthropic key is the fallback for when
+/// Conduit errors or runs out of credit. The SDK sends the key as `x-api-key`
+/// either way, which is exactly what both expect. Built once and cached.
+function getProviders(): Provider[] {
+  if (cachedProviders) return cachedProviders;
   // Bound every call so a hung provider can't hold a runner for the SDK's
   // 10-minute default. 60s per call, 2 retries, both env-tunable. Combined with
   // the coordinator's per-run watchdog this keeps one stuck agent from stalling
   // a whole settlement.
-  cachedClient = new Anthropic({
-    apiKey: config.llm.anthropicApiKey,
-    timeout: Number(process.env.LLM_TIMEOUT_MS ?? "60000"),
-    maxRetries: Number(process.env.LLM_MAX_RETRIES ?? "2"),
-  });
-  return cachedClient;
+  const timeout = Number(process.env.LLM_TIMEOUT_MS ?? "60000");
+  const maxRetries = Number(process.env.LLM_MAX_RETRIES ?? "2");
+  const providers: Provider[] = [];
+  if (config.llm.conduitApiKey && config.llm.conduitBaseUrl) {
+    providers.push({
+      name: "conduit",
+      client: new Anthropic({
+        apiKey: config.llm.conduitApiKey,
+        baseURL: config.llm.conduitBaseUrl,
+        timeout,
+        maxRetries,
+      }),
+    });
+  }
+  if (config.llm.anthropicApiKey) {
+    providers.push({
+      name: "anthropic",
+      client: new Anthropic({ apiKey: config.llm.anthropicApiKey, timeout, maxRetries }),
+    });
+  }
+  if (providers.length === 0) {
+    throw new Error(
+      "no Anthropic-compatible LLM provider configured; set CONDUIT_API_KEY (with CONDUIT_BASE_URL) or ANTHROPIC_API_KEY",
+    );
+  }
+  cachedProviders = providers;
+  return providers;
 }
 
 /// Sum of cost_usd in llm_runs since UTC midnight. Cheap query on the
@@ -158,34 +185,49 @@ export async function callModel(params: CallParams): Promise<CallResult> {
     return callOpenRouter(params);
   }
 
-  const client = getClient();
+  const providers = getProviders();
   const model = normalizeAnthropicModel(params.model);
-  const t0 = Date.now();
-  // Server-side tools (code_execution, web_search) are typed loosely by
-  // the SDK's union shape. The runtime accepts the {type, name} object
-  // form directly; cast keeps the call site readable.
-  const response = await client.messages.create({
-    model,
-    max_tokens: params.maxTokens,
-    temperature: params.temperature,
-    system: params.systemPrompt,
-    messages: [{ role: "user", content: params.userPrompt }],
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ...(params.tools && params.tools.length > 0 ? { tools: params.tools as any } : {}),
-  });
-  const latencyMs = Date.now() - t0;
+  // Try each provider in priority order (Conduit, then Anthropic). On any error
+  // from one — including a credit-exhausted 4xx — log it and fall through to the
+  // next; only throw once every provider has failed.
+  let lastErr: unknown;
+  for (let i = 0; i < providers.length; i++) {
+    const provider = providers[i]!;
+    const t0 = Date.now();
+    try {
+      // Server-side tools (code_execution, web_search) are typed loosely by
+      // the SDK's union shape. The runtime accepts the {type, name} object
+      // form directly; cast keeps the call site readable.
+      const response = await provider.client.messages.create({
+        model,
+        max_tokens: params.maxTokens,
+        temperature: params.temperature,
+        system: params.systemPrompt,
+        messages: [{ role: "user", content: params.userPrompt }],
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ...(params.tools && params.tools.length > 0 ? { tools: params.tools as any } : {}),
+      });
+      const latencyMs = Date.now() - t0;
 
-  const text = response.content
-    .map((block) => (block.type === "text" ? block.text : ""))
-    .join("")
-    .trim();
+      const text = response.content
+        .map((block) => (block.type === "text" ? block.text : ""))
+        .join("")
+        .trim();
 
-  const inputTokens = response.usage.input_tokens;
-  const outputTokens = response.usage.output_tokens;
-  const r = rateFor(params.model);
-  const costUsd = (inputTokens * r.input + outputTokens * r.output) / 1_000_000;
+      const inputTokens = response.usage.input_tokens;
+      const outputTokens = response.usage.output_tokens;
+      const r = rateFor(params.model);
+      const costUsd = (inputTokens * r.input + outputTokens * r.output) / 1_000_000;
+      if (i > 0) console.warn(`llm: ${provider.name} served ${model} after the primary failed`);
 
-  return { text, inputTokens, outputTokens, costUsd, latencyMs, model: params.model };
+      return { text, inputTokens, outputTokens, costUsd, latencyMs, model: params.model };
+    } catch (err) {
+      lastErr = err;
+      const more = i < providers.length - 1 ? `; falling back to ${providers[i + 1]!.name}` : "";
+      console.warn(`llm: provider ${provider.name} failed for ${model}: ${err instanceof Error ? err.message : err}${more}`);
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error("all LLM providers failed");
 }
 
 export interface AuditRow {

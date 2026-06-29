@@ -72,6 +72,13 @@ const envSchema = z.object({
   // LLM spend; when exceeded, runners stop calling Anthropic mid-round and
   // surface a clear error.
   ANTHROPIC_API_KEY: z.string().optional(),
+  // Conduit is a drop-in for the Anthropic Messages API (same endpoint, auth,
+  // body, and response shape; keys are sk-cdt-…). When CONDUIT_API_KEY and
+  // CONDUIT_BASE_URL are set it becomes the PRIMARY for every claude-* call and
+  // ANTHROPIC_API_KEY is the fallback. CONDUIT_BASE_URL is the base only; the
+  // SDK appends /v1/messages, so set it without that suffix.
+  CONDUIT_API_KEY: z.string().optional(),
+  CONDUIT_BASE_URL: z.string().optional(),
   LLM_DAILY_KILL_USD: z.coerce.number().nonnegative().default(5),
   // Default LLM model used by every LLM-enabled tier. Tier 0/1 don't call
   // the LLM at all; tier 2 and up share this model. Defaults to Haiku 4.5
@@ -560,6 +567,8 @@ export const config = {
   },
   llm: {
     anthropicApiKey: env.ANTHROPIC_API_KEY,
+    conduitApiKey: env.CONDUIT_API_KEY?.trim() || undefined,
+    conduitBaseUrl: env.CONDUIT_BASE_URL?.trim() || undefined,
     openrouterApiKey: env.OPENROUTER_API_KEY?.trim() || undefined,
     dailyKillUsd: env.LLM_DAILY_KILL_USD,
     model: env.LLM_MODEL,
