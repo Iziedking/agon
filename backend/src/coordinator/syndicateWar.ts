@@ -213,9 +213,9 @@ async function syndicateRankMap(): Promise<Map<number, number>> {
   }
   const map = new Map<number, number>();
   // Prefer the most recently settled week. If nothing is settled yet
-  // (fresh deploy), fall back to ranking syndicates by
-  // their cumulative total_reputation so the multiplier is meaningful
-  // from the first contest.
+  // (fresh deploy), fall back to ranking syndicates by their RECENT (last 7
+  // days) contributions, not cumulative total_reputation — so the boost
+  // rewards recent weekly performance and never an all-time lead.
   const latest = await query<{ week_id: string }>(
     "select week_id from syndicate_war_results order by week_id desc limit 1",
   );
@@ -227,13 +227,17 @@ async function syndicateRankMap(): Promise<Map<number, number>> {
     );
     for (const r of rows) map.set(Number(r.syndicate_id), Number(r.rank));
   } else {
-    const { rows } = await query<{ id: string }>(
-      `select id::text from syndicates
-        where total_reputation > 0
-        order by total_reputation desc
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const { rows } = await query<{ syndicate_id: string }>(
+      `select syndicate_id::text as syndicate_id
+         from syndicate_contributions
+        where recorded_at >= $1
+        group by syndicate_id
+        order by sum(amount) desc
         limit 32`,
+      [since],
     );
-    rows.forEach((r, i) => map.set(Number(r.id), i + 1));
+    rows.forEach((r, i) => map.set(Number(r.syndicate_id), i + 1));
   }
   _cachedSyndicateRanks = { weekId, map };
   _cachedAt = now;

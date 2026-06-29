@@ -4926,29 +4926,48 @@ app.get("/syndicates/war/live", async (c) => {
   });
 });
 
-/// Lifetime syndicate leaderboard: every syndicate ranked by cumulative
-/// reputation contributed all-time (never resets, unlike the weekly war). Backs
-/// the SYNDICATES toggle on the leaderboard page.
+/// Weekly syndicate leaderboard: every syndicate ranked by the reputation its
+/// members earned THIS ISO-week. It resets every Monday 00:00 UTC, so no
+/// syndicate can ride an all-time lead forever; each week is a fresh race. The
+/// war boost (top-3 of last week) is unchanged and applies on top. Backs the
+/// SYNDICATES toggle on the leaderboard page.
 app.get("/syndicates/leaderboard", async (c) => {
-  // NB: the output column is aliased `reputation`, NOT `total_reputation`, on
-  // purpose. Postgres resolves ORDER BY to output aliases first, so aliasing the
-  // ::text cast as total_reputation would sort the TEXT lexically ("20000000" >
-  // "1760000000") instead of the numeric column. With a different alias, ORDER
-  // BY total_reputation binds to the real numeric column and sorts correctly.
+  // This week's Monday 00:00 UTC — the same window the live war board uses.
+  const now = new Date();
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  start.setUTCDate(start.getUTCDate() - ((start.getUTCDay() + 6) % 7));
+  // ISO-8601 week id for display ("2026-W26").
+  const t = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  t.setUTCDate(t.getUTCDate() - ((t.getUTCDay() + 6) % 7) + 3);
+  const firstThu = new Date(Date.UTC(t.getUTCFullYear(), 0, 4));
+  const week = 1 + Math.round(((t.getTime() - firstThu.getTime()) / 86_400_000 - 3 + ((firstThu.getUTCDay() + 6) % 7)) / 7);
+  const weekId = `${t.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
+
+  // Every syndicate with its this-week reputation (0 when it hasn't contributed
+  // yet), ordered by the weekly sum. Ordering on the numeric aggregate avoids the
+  // lexical-sort trap of casting to text before ORDER BY.
   const { rows } = await query<{
     id: string;
     name: string | null;
     reputation: string;
     member_count: number;
   }>(
-    `select id::text                            as id,
-            name,
-            coalesce(total_reputation, 0)::text as reputation,
-            coalesce(member_count, 0)::int      as member_count
-       from syndicates
-      order by total_reputation desc nulls last, member_count desc, id asc`,
+    `select s.id::text                       as id,
+            s.name                           as name,
+            coalesce(w.rep, 0)::text         as reputation,
+            coalesce(s.member_count, 0)::int as member_count
+       from syndicates s
+       left join (
+         select syndicate_id, sum(amount) as rep
+           from syndicate_contributions
+          where recorded_at >= $1
+          group by syndicate_id
+       ) w on w.syndicate_id = s.id
+      order by coalesce(w.rep, 0) desc, s.member_count desc nulls last, s.id asc`,
+    [start.toISOString()],
   );
   return c.json({
+    weekId,
     syndicates: rows.map((r, i) => ({
       rank: i + 1,
       syndicateId: Number(r.id),

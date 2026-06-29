@@ -112,13 +112,13 @@ export interface SyndicateLeaderRow {
   rank: number;
   syndicateId: number;
   name: string | null;
-  reputation: string; // 1e6-scaled cumulative reputation
+  reputation: string; // 1e6-scaled reputation earned this ISO-week
   memberCount: number;
 }
 
-/// Lifetime syndicate leaderboard from the indexer (cumulative reputation,
-/// never resets). Returns [] on any error so the page renders empty rather than
-/// throwing.
+/// Weekly syndicate leaderboard: reputation each syndicate's members earned this
+/// ISO-week, resetting every Monday so no syndicate keeps an all-time lead.
+/// Returns [] on any error so the page renders empty rather than throwing.
 export async function fetchSyndicateLeaderboard(): Promise<SyndicateLeaderRow[]> {
   try {
     const res = await fetch(`${AUTH_URL}/syndicates/leaderboard`, { cache: "no-store" });

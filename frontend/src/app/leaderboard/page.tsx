@@ -100,7 +100,7 @@ export default function LeaderboardPage() {
             view === "operators" ? (
               <>ranked by wins, then usdc earned.</>
             ) : (
-              <>syndicates ranked by lifetime reputation their members have earned.</>
+              <>syndicates ranked by the reputation their members earn this week. resets every week.</>
             )
           }
         />
@@ -302,8 +302,8 @@ function syndicateVariant(
   return robotVariantForId(syndicateId);
 }
 
-/// Lifetime syndicate board: each syndicate by cumulative reputation its members
-/// have contributed. Links to the syndicate page.
+/// Weekly syndicate board: each syndicate by the reputation its members earned
+/// this ISO-week. Resets every Monday. Links to the syndicate page.
 function SyndicateBoard({ rows }: { rows: SyndicateLeaderRow[] | null }) {
   const COLS = "grid-cols-[2.25rem_1fr_4rem_6rem] sm:grid-cols-[3rem_1fr_5rem_7rem]";
   return (
@@ -312,14 +312,14 @@ function SyndicateBoard({ rows }: { rows: SyndicateLeaderRow[] | null }) {
         <span>RANK</span>
         <span>SYNDICATE</span>
         <span className="text-right">MEMBERS</span>
-        <span className="text-right">REPUTATION</span>
+        <span className="text-right">THIS WEEK</span>
       </div>
 
       {rows === null ? (
         <p className="py-8 font-mono text-sm text-ink-2">loading syndicates…</p>
       ) : rows.length === 0 ? (
         <p className="py-8 font-mono text-sm text-ink-2">
-          no syndicate reputation yet. once members compete and contests settle, syndicates rank here.
+          no syndicate reputation this week yet. once members compete and contests settle, syndicates rank here.
         </p>
       ) : (
         rows.map((r, i) => {
