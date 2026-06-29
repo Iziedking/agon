@@ -54,6 +54,7 @@ todo.md
 deploy.md
 first_deploy.md
 docs/images
+progress.md
 # Operator/dev scripts: local-only by default (some may carry admin keys or
 # role grants), but commit the repo-safe, secret-free ones the box and the
 # ops runbook actually need. These read keys from env, never hardcode them.

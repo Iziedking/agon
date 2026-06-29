@@ -21,16 +21,31 @@ import { startAdminCommandWorker } from "./adminCommands.js";
 /// waits a gap, and opens the next one. The coordinator wallet funds each pool
 /// (and recovers it on cancel), so it needs USDC.
 ///
+/// Contests open on a fixed daily schedule, not a tight loop: at each time in
+/// AUTOPILOT_CONTEST_TIMES every category opens once, so a category appears only
+/// a few times a day. Missions open MISSION_PER_DAY times a day at random inside
+/// an active window. Both fire a Telegram alert so operators know a joinable
+/// event opened. The due-sweeper still settles everything regardless of cadence.
+///
 /// Env (all optional, sensible defaults):
 ///   AUTOPILOT=0                            turn it off even with a key set
-///   AUTOPILOT_TYPE=rotate                  solver | analyst | scout | rotate (default rotates across all three)
+///   AUTOPILOT_TYPE=rotate                  pin a single category (solver|analyst|scout) or leave to open all
+///   AUTOPILOT_CONTEST_TIMES=08:00,13:00,19:00   times of day each category opens (morning, noon, evening)
+///   AUTOPILOT_CONTEST_CATEGORIES=solver,analyst,scout   which categories open at each time
+///   AUTOPILOT_CONTEST_MIN_TIER=0           tier gate floor for scheduled contests
+///   AUTOPILOT_CONTEST_MAX_TIER=4           tier gate ceiling (default all-tier so anyone can join)
+///   AUTOPILOT_CONTEST_STAGGER_SECONDS=30   gap between the per-category opens at one window
+///   AUTOPILOT_OPEN_ON_BOOT=0               open one round immediately on start (off by default)
+///   SCHEDULE_TZ_OFFSET_HOURS=0             shift all schedule times off UTC (e.g. 1 for WAT)
 ///   AUTOPILOT_POOL_USDC_MIN=1              lower bound of the randomized pool, USDC
 ///   AUTOPILOT_POOL_USDC_MAX=10             upper bound of the randomized pool, USDC
 ///   AUTOPILOT_POOL_USDC=...                legacy single value; if set, used as both min and max
-///   AUTOPILOT_DURATION_SECONDS_MIN=180     lower bound of the join window, seconds (3 min default)
-///   AUTOPILOT_DURATION_SECONDS_MAX=1500    upper bound of the join window, seconds (25 min default)
+///   AUTOPILOT_DURATION_SECONDS_MIN=1200    lower bound of the join window, seconds (20 min default)
+///   AUTOPILOT_DURATION_SECONDS_MAX=2400    upper bound of the join window, seconds (40 min default)
 ///   AUTOPILOT_DURATION_SECONDS=...         legacy fixed window; if set, used as both min and max
-///   AUTOPILOT_GAP_SECONDS=360              pause between one contest settling and the next opening (6 min default)
+///   MISSION_PER_DAY=2                      missions a day at random (0 = use MISSION_CADENCE_SECONDS instead)
+///   MISSION_ACTIVE_HOURS=08:00-22:00       window the random mission times are drawn from
+///   MISSION_CADENCE_SECONDS=3600           legacy fixed mission interval, used only when MISSION_PER_DAY=0
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -43,14 +58,87 @@ function randInt(min: number, max: number): number {
   return lo + Math.floor(Math.random() * (hi - lo + 1));
 }
 
+// ===== Daily schedule helpers =====
+// The autopilot opens contests at fixed times of day and missions at random
+// times of day, instead of a tight interval loop that floods the arena with
+// events nobody can keep up with. All times are read against a UTC clock that
+// can be shifted by SCHEDULE_TZ_OFFSET_HOURS, so an operator targets their own
+// local time without a timezone library (e.g. set it to 1 for WAT).
+
+const SCHEDULE_OFFSET_HOURS = Number(process.env.SCHEDULE_TZ_OFFSET_HOURS ?? "0");
+const DAY_MS = 86_400_000;
+
+/// "HH:MM" -> minutes from midnight, or null if malformed.
+function parseHHMM(s: string): number | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(s.trim());
+  if (!m) return null;
+  const h = Number(m[1]);
+  const mi = Number(m[2]);
+  if (h < 0 || h > 23 || mi < 0 || mi > 59) return null;
+  return h * 60 + mi;
+}
+
+/// "08:00,13:00,19:00" -> [480, 780, 1140], sorted, malformed entries dropped.
+function parseTimesOfDay(spec: string, fallback: number[]): number[] {
+  const out = spec
+    .split(",")
+    .map((s) => parseHHMM(s))
+    .filter((n): n is number => n != null)
+    .sort((a, b) => a - b);
+  return out.length > 0 ? out : fallback;
+}
+
+/// "08:00-22:00" -> [480, 1320]. Falls back to the whole day on a bad value.
+function parseActiveWindow(spec: string): [number, number] {
+  const [a, b] = spec.split("-");
+  const lo = a ? parseHHMM(a) : null;
+  const hi = b ? parseHHMM(b) : null;
+  if (lo == null || hi == null || hi <= lo) return [0, 1439];
+  return [lo, hi];
+}
+
+/// ms from now until today's (offset) instant at `minuteOfDay`. Negative when
+/// that minute already passed today.
+function msUntilTodayMinute(minuteOfDay: number, offsetHours: number): number {
+  const now = Date.now();
+  const offMs = offsetHours * 3_600_000;
+  const shifted = new Date(now + offMs);
+  const midnight = Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate());
+  return midnight + minuteOfDay * 60_000 - offMs - now;
+}
+
+/// ms from now until the next FUTURE instant whose offset time-of-day is one of
+/// `minutesOfDay`. Checks today and tomorrow so it never returns a past time.
+function msUntilNextDaily(minutesOfDay: number[], offsetHours: number): number {
+  if (minutesOfDay.length === 0) return DAY_MS;
+  let best = Infinity;
+  for (let day = 0; day <= 1; day++) {
+    for (const mod of minutesOfDay) {
+      const delay = msUntilTodayMinute(mod, offsetHours) + day * DAY_MS;
+      if (delay > 1000 && delay < best) best = delay;
+    }
+  }
+  return best === Infinity ? DAY_MS : best;
+}
+
+/// Pick `n` random minutes-of-day spread across [lo, hi]: split the window into
+/// n bands and draw one minute per band, so the events are spaced out across
+/// the day rather than clustered. Sorted ascending.
+function pickSpreadMinutes(n: number, lo: number, hi: number): number[] {
+  const span = Math.max(1, hi - lo);
+  const out: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const bandLo = lo + Math.floor((span * i) / n);
+    const bandHi = lo + Math.floor((span * (i + 1)) / n) - 1;
+    out.push(randInt(bandLo, Math.max(bandLo, bandHi)));
+  }
+  return out.sort((a, b) => a - b);
+}
+
 const ROTATION = ["solver", "analyst", "scout"] as const;
 const TYPE_NAMES = ["scout", "analyst", "solver"]; // contract index to name
 
 type ContestKind = (typeof ROTATION)[number];
-function nextType(configured: string, cycle: number): ContestKind {
-  if (configured === "scout" || configured === "analyst" || configured === "solver") return configured;
-  return ROTATION[cycle % ROTATION.length]!;
-}
 
 /// Contests currently being run, so the main loop and the due-sweeper never act
 /// on the same contest at once. The check-and-add is synchronous (no await
@@ -326,7 +414,6 @@ async function startMissionLoop(broadcast: (message: unknown) => void): Promise<
     console.warn("autopilot: MISSION_ENABLED set but COORDINATOR_PRIVATE_KEY missing; skipping missions");
     return;
   }
-  const cadence = Number(process.env.MISSION_CADENCE_SECONDS ?? "3600");
   // Rotate the domain so missions vary and rarely repeat back-to-back. If
   // MISSION_DOMAIN is pinned we honour it; otherwise cycle the wired domains
   // (scout is not runnable yet). The LLM picks fresh subjects each time on top
@@ -341,8 +428,9 @@ async function startMissionLoop(broadcast: (message: unknown) => void): Promise<
   const WINDOWS = [300, 600, 900];
   const poolMin = Math.max(1, Number(process.env.MISSION_POOL_USDC_MIN ?? Math.max(100, config.mission.poolUsdc)));
   const poolMax = Math.max(poolMin, Number(process.env.MISSION_POOL_USDC_MAX ?? poolMin));
-  console.log(`autopilot: missions on (${pinned ?? "rotate solver/analyst"}), every ${cadence}s, pool ${poolMin}-${poolMax} USDC, window 5/10/15 min`);
-  for (;;) {
+
+  // Open exactly one mission now. Shared by both scheduling modes.
+  async function openOneMission(): Promise<void> {
     try {
       const domain = (pinned ?? DOMAINS[domainIdx++ % DOMAINS.length]!) as "solver" | "analyst" | "scout";
       const windowSecs = WINDOWS[Math.floor(Math.random() * WINDOWS.length)]!;
@@ -372,7 +460,38 @@ async function startMissionLoop(broadcast: (message: unknown) => void): Promise<
     } catch (err) {
       console.error("autopilot mission open failed:", err instanceof Error ? err.message : err);
     }
-    await sleep(cadence * 1000);
+  }
+
+  // Default cadence: MISSION_PER_DAY missions a day at random times inside the
+  // active window, so the arena gets a couple of real, well-attended missions
+  // instead of a steady drip. Set MISSION_PER_DAY=0 to fall back to the legacy
+  // fixed-interval cadence (MISSION_CADENCE_SECONDS).
+  const perDay = Number(process.env.MISSION_PER_DAY ?? "2");
+  if (perDay <= 0) {
+    const cadence = Number(process.env.MISSION_CADENCE_SECONDS ?? "3600");
+    console.log(`autopilot: missions on (${pinned ?? "rotate solver/analyst"}), every ${cadence}s, pool ${poolMin}-${poolMax} USDC`);
+    for (;;) {
+      await openOneMission();
+      await sleep(cadence * 1000);
+    }
+  }
+
+  const [activeLo, activeHi] = parseActiveWindow(process.env.MISSION_ACTIVE_HOURS ?? "08:00-22:00");
+  console.log(
+    `autopilot: missions on (${pinned ?? "rotate solver/analyst"}), ${perDay}/day at random in ${process.env.MISSION_ACTIVE_HOURS ?? "08:00-22:00"} (tz offset ${SCHEDULE_OFFSET_HOURS}h), pool ${poolMin}-${poolMax} USDC`,
+  );
+  for (;;) {
+    // Fresh random slots for the current day, spread across the active window.
+    const slots = pickSpreadMinutes(perDay, activeLo, activeHi);
+    for (const mod of slots) {
+      const wait = msUntilTodayMinute(mod, SCHEDULE_OFFSET_HOURS);
+      // A slot already past on the boot day is skipped; the rest still fire.
+      if (wait <= 0) continue;
+      await sleep(wait);
+      await openOneMission();
+    }
+    // Wait until the start of the next day's window, then draw fresh slots.
+    await sleep(msUntilNextDaily([activeLo], SCHEDULE_OFFSET_HOURS) + 1000);
   }
 }
 
@@ -458,16 +577,9 @@ export async function startAutopilot(broadcast: (message: unknown) => void): Pro
   // Join/run window per contest: random in [min, max]. Default 20-40 min.
   const durationMin = Number(process.env.AUTOPILOT_DURATION_SECONDS_MIN ?? legacyDuration ?? "1200");
   const durationMax = Number(process.env.AUTOPILOT_DURATION_SECONDS_MAX ?? legacyDuration ?? "2400");
-  // Cadence: target one new contest per this interval, measured from the
-  // start of each cycle. Default 1 hour. The loop sleeps whatever is left
-  // of the cadence after the contest's window elapses, so the window length
-  // does not change how often contests open. gapSeconds is the minimum gap
-  // when a contest runs nearly the whole cadence.
-  const cadenceSeconds = Number(process.env.AUTOPILOT_CADENCE_SECONDS ?? "3600");
-  const gapSeconds = Number(process.env.AUTOPILOT_GAP_SECONDS ?? "60");
 
   console.log(
-    `autopilot on: ${configured} contests, pool ${poolMin}-${poolMax} USDC, window ${durationMin}-${durationMax}s, cadence ${cadenceSeconds}s`,
+    `autopilot on: ${configured} contests, pool ${poolMin}-${poolMax} USDC, window ${durationMin}-${durationMax}s`,
   );
 
   // A Scout rotation needs the master mnemonic to fund hot wallets; warn once.
@@ -552,41 +664,81 @@ export async function startAutopilot(broadcast: (message: unknown) => void): Pro
       ...(arcanaMarkets ? { arcanaMarkets } : {}),
     });
 
+    // Telegram alert to opted-in operators, the same reach missions get. Sent
+    // for every autopilot contest so people who are away know a joinable event
+    // just opened. Best-effort; never blocks the open.
+    const tierLabel = gate.min === gate.max ? `tier ${gate.min}` : `tier ${gate.min}-${gate.max}`;
+    void broadcastTelegram({
+      title: `New ${type} contest live · ${poolUsdc} USDC pool`,
+      body: `${type.toUpperCase()} contest #${contestId} (${tierLabel}) is open for ${Math.round(durationSeconds / 60)} min. Send an agent in to compete for the pool.`,
+      href: `/contests/${contestId}`,
+    }).catch(() => {});
+
     void runOnce(contestId, broadcast)
       .then(() => console.log(`autopilot: contest ${contestId} complete`))
       .catch((err) => console.error(`autopilot: contest ${contestId} run failed:`, err instanceof Error ? err.message : err));
   }
 
-  // Two contests per cadence window: one gated to lower-tier agents (0-2) and
-  // one to higher tiers (3-4), opened 15 minutes apart so tier 0 agents have a
-  // pool of their own instead of standing no chance against a tier 4.
-  for (let cycle = 0; ; cycle++) {
-    const cycleStart = Date.now();
-    try {
-      await openGated(nextType(configured, cycle * 2), { min: 0, max: 2 });
-      await sleep(LOW_HIGH_GAP_MS);
-      await openGated(nextType(configured, cycle * 2 + 1), { min: 3, max: 4 });
-      // Roughly once an hour, at random, also open a campaign every tier can
-      // enter (0-4). It lets a well-trained, well-positioned lower tier take on
-      // the whole field, and the open arena keeps the lobby lively. Probability
-      // and timing are randomized so it isn't a predictable slot.
-      if (Math.random() < ALL_TIER_CHANCE) {
-        await sleep(Math.floor(Math.random() * LOW_HIGH_GAP_MS));
-        await openGated(nextType(configured, cycle * 2 + 2), { min: 0, max: 4 });
+  // Scheduled opens: at each time in AUTOPILOT_CONTEST_TIMES (default morning,
+  // noon, evening) open one contest per category, so each category appears a
+  // fixed, small number of times a day instead of the arena flooding with
+  // events nobody can keep up with. Times read against the SCHEDULE_TZ_OFFSET
+  // clock so an operator can target their own local time.
+  const contestTimes = parseTimesOfDay(
+    process.env.AUTOPILOT_CONTEST_TIMES ?? "08:00,13:00,19:00",
+    [480, 780, 1140],
+  );
+  // Which categories open at each window. A pinned AUTOPILOT_TYPE narrows it to
+  // one; otherwise the explicit AUTOPILOT_CONTEST_CATEGORIES list (default all).
+  const allCats: ContestKind[] = ["solver", "analyst", "scout"];
+  const categories: ContestKind[] =
+    configured === "scout" || configured === "analyst" || configured === "solver"
+      ? [configured]
+      : (process.env.AUTOPILOT_CONTEST_CATEGORIES ?? "solver,analyst,scout")
+          .split(",")
+          .map((s) => s.trim().toLowerCase())
+          .filter((s): s is ContestKind => (allCats as string[]).includes(s));
+  const cats = categories.length > 0 ? categories : allCats;
+  // Tier gate every scheduled contest opens with. Default all-tier (0-4) so
+  // anyone can join the few events that do open.
+  const contestGate = {
+    min: Number(process.env.AUTOPILOT_CONTEST_MIN_TIER ?? "0"),
+    max: Number(process.env.AUTOPILOT_CONTEST_MAX_TIER ?? "4"),
+  };
+  // Small stagger between the categories at one window so the open txs don't all
+  // contend for the coordinator nonce at once.
+  const staggerMs = Number(process.env.AUTOPILOT_CONTEST_STAGGER_SECONDS ?? "30") * 1000;
+
+  const fmtTimes = contestTimes.map(
+    (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`,
+  );
+  console.log(
+    `autopilot schedule: ${cats.join("/")} at ${fmtTimes.join(", ")} (tz offset ${SCHEDULE_OFFSET_HOURS}h), tier ${contestGate.min}-${contestGate.max}`,
+  );
+
+  // Open one full window's worth of contests (one per category, staggered).
+  async function openWindow(): Promise<void> {
+    for (const type of cats) {
+      try {
+        await openGated(type, contestGate);
+      } catch (err) {
+        console.error("autopilot window open failed:", err instanceof Error ? err.message : err);
       }
-    } catch (err) {
-      console.error("autopilot cycle failed:", err instanceof Error ? err.message : err);
+      await sleep(staggerMs);
     }
-    // Pace to the cadence so the pair repeats roughly once per cadence window.
-    const elapsedSeconds = (Date.now() - cycleStart) / 1000;
-    const remaining = Math.max(gapSeconds, cadenceSeconds - elapsedSeconds);
-    await sleep(remaining * 1000);
+  }
+
+  // Optional: open one round immediately on boot so a fresh deploy isn't a dead
+  // arena until the next window. Off by default to honour "no surprise opens".
+  if ((process.env.AUTOPILOT_OPEN_ON_BOOT ?? "0") === "1") {
+    await openWindow();
+  }
+
+  for (;;) {
+    await sleep(msUntilNextDaily(contestTimes, SCHEDULE_OFFSET_HOURS));
+    await openWindow();
+    // Step past the fired minute so the next msUntilNextDaily targets the next
+    // window, not this one again.
+    await sleep(90_000);
   }
 }
-
-/// Gap between the lower-tier and higher-tier contest in each pair.
-const LOW_HIGH_GAP_MS = Number(process.env.AUTOPILOT_TIER_PAIR_GAP_SECONDS ?? "900") * 1000;
-
-/// Per-cycle probability of also opening an all-tier (0-4) "open arena"
-/// campaign. 0 disables it, 1 makes it every cycle. Default ~half the cycles.
-const ALL_TIER_CHANCE = Number(process.env.AUTOPILOT_ALL_TIER_CHANCE ?? "0.5");
