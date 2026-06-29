@@ -3,9 +3,13 @@ import type { MissionTemplate } from "./templates.js";
 
 /// Live-data mission sources (v2 diversity). Each source pulls REAL current data
 /// so missions are grounded in the world, educative to watch, and never repeat:
-///   - Exa     -> recent web findings (research / solver subjects)
-///   - Firecrawl-> Polymarket scrape (prediction / analyst subjects)   [next]
-///   - Graph   -> on-chain stats (scout / analyst subjects)            [next]
+///   - Exa     -> recent web findings (research / solver subjects)   [free, primary]
+///   - Graph   -> on-chain stats (scout / analyst subjects)          [free, primary]
+///   - Firecrawl-> capture-anything web search                       [PAID, gated fallback]
+///
+/// Exa and The Graph lead; Firecrawl is the only paid source, so it is reached
+/// only when the free sources come up short and only on FIRECRAWL_FRACTION of
+/// missions (see firecrawlAllowed). Set FIRECRAWL_FRACTION=0 to disable it.
 ///
 /// A finding is a real subject + a real fact. The fact becomes the fragment's
 /// ground truth (what the grader scores a 1:1 fit against), so the answer is the
@@ -26,6 +30,21 @@ interface BuiltLive {
 }
 
 const TIMEOUT_MS = Number(process.env.LIVE_SOURCE_TIMEOUT_MS ?? "20000");
+
+/// Firecrawl is the only PAID live source (Exa and The Graph are effectively
+/// free here), so it is a last resort, not a rotated primary. It is attempted
+/// ONLY when the free sources came up short, and even then only on a fraction of
+/// missions. FIRECRAWL_FRACTION 0 disables it entirely; 1 always allows the
+/// fallback; FIRECRAWL_ENABLED=false also turns it off. The gate keys off the
+/// deterministic `rotate` (no Math.random) so a re-run is stable.
+const FIRECRAWL_ENABLED = (process.env.FIRECRAWL_ENABLED ?? "true").toLowerCase() !== "false";
+const FIRECRAWL_FRACTION = Math.max(0, Math.min(1, Number(process.env.FIRECRAWL_FRACTION ?? "0.2")));
+function firecrawlAllowed(rotate: number): boolean {
+  if (!config.liveData.firecrawlApiKey || !FIRECRAWL_ENABLED || FIRECRAWL_FRACTION <= 0) return false;
+  if (FIRECRAWL_FRACTION >= 1) return true;
+  const bucket = Math.max(1, Math.round(1 / FIRECRAWL_FRACTION));
+  return rotate % bucket === 0;
+}
 
 /// Rotating research angles so the Exa query itself varies run to run. Index is
 /// nudged by the avoid-list size so consecutive missions probe different ground.
@@ -177,22 +196,29 @@ async function findingsForDomain(
   rotate: number,
   minNeeded: number,
 ): Promise<{ findings: LiveFinding[]; source: string }> {
-  const sources: Array<{ name: string; fn: (a: string[], r: number) => Promise<LiveFinding[]> }> = [
+  // Free sources first, rotated for variety: Exa for everything, plus The Graph
+  // (on-chain ground truth) leading for scout/analyst. Firecrawl is paid, so it
+  // stays out of this primary list.
+  const free: Array<{ name: string; fn: (a: string[], r: number) => Promise<LiveFinding[]> }> = [
     { name: "exa", fn: exaFindings },
-    { name: "firecrawl", fn: firecrawlFindings },
   ];
-  // On-chain domains lead with The Graph, where the ground truth is on chain.
   if (domain === "scout" || domain === "analyst") {
-    sources.unshift({ name: "graph", fn: graphFindings });
+    free.unshift({ name: "graph", fn: graphFindings });
   }
-  // Rotate the start so consecutive missions favour different sources.
-  const off = rotate % sources.length;
-  const ordered = [...sources.slice(off), ...sources.slice(0, off)];
+  const off = rotate % free.length;
+  const ordered = [...free.slice(off), ...free.slice(0, off)];
   let best: { findings: LiveFinding[]; source: string } = { findings: [], source: "none" };
   for (const s of ordered) {
     const findings = await s.fn(avoid, rotate);
     if (findings.length >= minNeeded) return { findings, source: s.name };
     if (findings.length > best.findings.length) best = { findings, source: s.name };
+  }
+  // Paid fallback: only reached when the free sources came up short, and only on
+  // the allowed fraction of missions, so Firecrawl spend stays minimal.
+  if (firecrawlAllowed(rotate)) {
+    const findings = await firecrawlFindings(avoid, rotate);
+    if (findings.length >= minNeeded) return { findings, source: "firecrawl" };
+    if (findings.length > best.findings.length) best = { findings, source: "firecrawl" };
   }
   return best;
 }
