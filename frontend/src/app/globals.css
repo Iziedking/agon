@@ -497,6 +497,41 @@ footer {
   background: transparent;
 }
 
+/* Global thin, brand scrollbar. Every scrollable surface (the page, modals,
+   dropdowns, the wallet picker, any overflow panel) gets a thin ink-toned bar
+   instead of the chunky native OS scrollbar with its up/down arrow buttons.
+   Pink on hover keeps the accent as an interaction cue. Feed panels can still
+   opt into the louder pink-thumb `.scroll-brand` above (higher specificity, so
+   it wins). Colors are theme tokens, so this tracks light and dark. */
+* {
+  scrollbar-width: thin;                              /* Firefox */
+  scrollbar-color: var(--ink-3) transparent;          /* thumb / track (Firefox) */
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--ink-3);
+  border: 2px solid transparent;                      /* slim the visible thumb, sharp edges */
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-button {
+  display: none;                                      /* drop the native up/down arrows */
+  width: 0;
+  height: 0;
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 /* Mobile: never let a single stray-wide element (a long unbroken string, an
    un-clipped flex/grid row) make the document wider than the viewport, which
    makes mobile browsers zoom the whole page out to "PC mode". Internal
