@@ -131,12 +131,23 @@ export class MissionRunner implements Runner {
           console.warn(`[mission] make failed f=${opt.fragment.id}: ${err instanceof Error ? err.message : err}`);
           return null;
         });
+        // Real data gathered: always feed synthesis so the deliverable reflects
+        // the work the operative actually did, even when the payment leg could
+        // not settle on-chain. Without this the runner dropped fetched data on a
+        // no-tx make and the operative submitted the literal "(no fragments
+        // sourced)" — real research, blank output.
+        if (made && made.data != null) {
+          row.data = made.data;
+          fragmentData.push({ ask: opt.fragment.ask, data: made.data });
+        }
+        // On-chain settlement is the ONLY thing that marks the fragment credited
+        // and tapes a PAY event: the grader's credit-requires-payment gate proves
+        // against this tx, so data-without-payment stays uncredited (score 0) even
+        // though the deliverable is no longer empty.
         if (made && made.settled && made.txHash) {
           row.settled = true;
           row.txHash = made.txHash;
           row.spent6 = made.spent6;
-          row.data = made.data;
-          fragmentData.push({ ask: opt.fragment.ask, data: made.data });
           events.push(this.tape(entry.agentId, made.spent6, made.txHash, opt.fragment.service.chain, opt.fragment.service.label));
         }
       } else if (d.choice === "buy" && opt.buyPrice6) {
