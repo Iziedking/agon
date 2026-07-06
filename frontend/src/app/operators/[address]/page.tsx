@@ -643,7 +643,7 @@ function AgentCustomizeCard({ agent, isMe, xLinked, discordLinked }: { agent: Ag
         setTimeout(() => setSkinNote(null), 1500);
       } else setError(res.error);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "could not save image");
+      setError(friendlyError(e, "could not save image. try again."));
     } finally {
       setSkinBusy(false);
       if (fileInput.current) fileInput.current.value = "";

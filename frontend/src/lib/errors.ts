@@ -9,7 +9,16 @@
 /// the mapping. Always end branches with the friendly message; never
 /// fall through to the raw text.
 export function friendlyError(e: unknown, fallback = "something went wrong. try again."): string {
-  const msg = (e instanceof Error ? e.message : String(e ?? "")).toLowerCase();
+  // viem's BaseError carries a clean `shortMessage` ("User rejected the request.")
+  // alongside the verbose `.message` (the full request-arguments dump we must
+  // never show). Fold both into the matched text so mapping is robust, and so a
+  // wrapped error still resolves to friendly copy instead of the fallback.
+  const raw = e instanceof Error ? e.message : String(e ?? "");
+  const short =
+    e && typeof e === "object" && "shortMessage" in e && typeof (e as { shortMessage?: unknown }).shortMessage === "string"
+      ? (e as { shortMessage: string }).shortMessage
+      : "";
+  const msg = `${short} ${raw}`.toLowerCase();
 
   if (msg.includes("user rejected") || msg.includes("user denied") || msg.includes("rejected the request")) {
     return "you cancelled the request.";

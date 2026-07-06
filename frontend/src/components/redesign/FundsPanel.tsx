@@ -6,6 +6,7 @@ import { erc20Abi, formatUnits, isAddress, parseUnits } from "viem";
 
 import { BracketedCell, StatusChip, TagButton } from "@/components/redesign";
 import { EXPLORER } from "@/lib/arc";
+import { friendlyError as humanizeError } from "@/lib/errors";
 import { useAuth } from "@/hooks/useAuth";
 import type { config as wagmiConfig } from "@/lib/wagmi";
 import {
@@ -855,15 +856,15 @@ function stepsFromResult(steps: Array<{ name: string; state: string; txHash?: st
   return base;
 }
 
+// Bridge errors get one local case (a missing SDK is an operator/build issue,
+// not a user one); everything else routes through the shared humanizer, which
+// maps wallet/viem errors to friendly copy and NEVER returns a raw stack.
 function friendlyError(err: unknown, sourceLabel: string): string {
   const raw = err instanceof Error ? err.message : String(err);
   if (raw === "BRIDGE_SDK_MISSING" || raw.includes("Cannot find module")) {
-    return "Wallet bridge SDK isn't installed. Run `npm install @circle-fin/app-kit @circle-fin/adapter-viem-v2` in the frontend, then reload.";
+    return "the bridge isn't available right now. try again shortly.";
   }
-  if (/user rejected|user denied|reject/i.test(raw)) return "You declined the request in your wallet. Try again when ready.";
-  if (/insufficient funds|insufficient balance/i.test(raw)) return "Wallet doesn't have enough to cover the transaction. Top up gas or USDC and retry.";
-  if (/network/i.test(raw) && /switch/i.test(raw)) return `Your wallet is on the wrong network. Switch to ${sourceLabel} and retry.`;
-  return raw.length > 200 ? raw.slice(0, 200) + "…" : raw;
+  return humanizeError(err, `couldn't reach ${sourceLabel.toLowerCase()}. try again.`);
 }
 
 function initialSteps(): BridgeStepProgress[] {

@@ -5,6 +5,7 @@ import { useAccount, useChainId, useSignMessage, useSwitchChain } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { arcTestnet } from "@/lib/arc";
 import { loginWithSigner, signInWithEmail } from "@/lib/auth";
+import { friendlyError } from "@/lib/errors";
 import { useAuth } from "@/hooks/useAuth";
 
 export default function LoginPage() {
@@ -31,7 +32,7 @@ export default function LoginPage() {
       await loginWithSigner(address, (m) => signMessageAsync({ message: m }));
       await refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "sign in failed");
+      setError(friendlyError(e, "sign in failed. try again."));
     } finally {
       setBusy(false);
     }
@@ -49,7 +50,7 @@ export default function LoginPage() {
       await signInWithEmail(trimmed);
       await refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "email sign-in failed");
+      setError(friendlyError(e, "email sign-in failed. try again."));
     } finally {
       setCircleBusy(false);
     }
