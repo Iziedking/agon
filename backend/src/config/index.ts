@@ -350,9 +350,11 @@ const envSchema = z.object({
   // How many fragments a mission's brief asks for (single-source pieces the
   // operative must make or buy before synthesizing).
   MISSION_FRAGMENT_COUNT: z.coerce.number().int().positive().default(3),
-  // USDC float funded into each operative hot wallet before the run so it can
-  // BUY fragments from specialists. Swept back after settlement, so a higher
-  // number costs only gas, not principal.
+  // FLOOR on the USDC float funded into each operative hot wallet before the run
+  // so it can BUY fragments from specialists. The actual float is sized per
+  // mission to the sum of the intel prices it will be quoted (see
+  // operativeFloatUsdcFor); this is just the minimum. Swept back after
+  // settlement, so a higher number costs only gas, not principal.
   MISSION_OPERATIVE_FLOAT_USDC: z.coerce.number().nonnegative().default(2),
   // How many platform specialist (intel-seller) agents to seed per mission.
   MISSION_SPECIALIST_COUNT: z.coerce.number().int().positive().default(2),
@@ -362,10 +364,13 @@ const envSchema = z.object({
   // Base price (whole USDC, decimal) a specialist quotes for one fragment in the
   // A2A handshake. The specialist may scale this by fragment kind.
   MISSION_INTEL_PRICE_USDC: z.coerce.number().nonnegative().default(0.5),
-  // Safety ceiling on total per-round mission funding (operative floats +
-  // specialist gas), so a misconfigured float can't drain the coordinator before
-  // the post-settlement sweep returns the floats.
-  MISSION_FUND_MAX_USDC: z.coerce.number().nonnegative().default(50),
+  // PER-OPERATIVE ceiling on the mission float, so a runaway operator listing
+  // price can't front an absurd sum to one operative. The total the coordinator
+  // fronts scales with the field size (float is working capital, recovered by the
+  // post-run sweep), so this does NOT starve a large field the way a field-wide
+  // total cap did. Sized to cover a few fragments at real intel prices; raise it
+  // if the run logs "operative float capped".
+  MISSION_FUND_MAX_USDC: z.coerce.number().nonnegative().default(60),
   // Optional model override for the judge that grades deliverables. Falls back to
   // LLM_MODEL when unset. Pin it for determinism on the grading path.
   MISSION_JUDGE_MODEL: z.string().optional(),

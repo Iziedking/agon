@@ -9,6 +9,7 @@ import { AnalystRunner } from "../runners/analyst.js";
 import { ScoutRunner } from "../runners/scout.js";
 import { SolverRunner } from "../runners/solver.js";
 import { loadMission } from "../runners/missions/generator.js";
+import { getSpecialistForFragment } from "../runners/missions/specialists.js";
 import { refundMissionFees, refundMissionBuys, markMissionStatus } from "../runners/missions/fees.js";
 import { MissionRunner } from "../runners/missions/runner.js";
 import type { AgentResult, ContestEntryInput } from "../runners/types.js";
@@ -175,18 +176,47 @@ async function finalScores(
   return new SolverRunner(SOLVER_CONTEST_PUZZLES).run(contestId, field, ctx);
 }
 
-/// Funds each operative a small USDC float (so it can BUY intel from specialists
-/// over the A2A rail), runs the MissionRunner, then sweeps the leftover floats
-/// back. The float is bounded by MISSION_FUND_MAX_USDC across the field so a
-/// large field can't drain the coordinator. Falls through to an unfunded run
-/// (BUY paths just decline) when no master mnemonic is set.
+/// The USDC an operative needs to BUY every fragment on the A2A rail: the sum of
+/// the price it will actually be quoted per fragment (the same specialist
+/// getSpecialistForFragment picks — operator sellers preferred, else the platform
+/// shelf), plus a gas reserve per fragment (USDC is gas on Arc) and a margin.
+/// A FLAT float (the old default, 2 USDC) sits below the intel price band for any
+/// real pool, so every BUY was declined "buyer underfunded" and the mission
+/// cancelled with nobody credited — the recurring internal-mission cancel.
+async function operativeFloatUsdcFor(contestId: number): Promise<number> {
+  const mission = await loadMission(contestId);
+  if (!mission) return config.mission.operativeFloatUsdc;
+  const GAS_RESERVE6 = BigInt(Math.round(Number(process.env.MISSION_GAS_RESERVE_USDC ?? "0.05") * 1e6));
+  let total6 = 0n;
+  for (const f of mission.fragments) {
+    const spec = await getSpecialistForFragment(contestId, f.id).catch(() => null);
+    if (spec) total6 += BigInt(spec.price6) + GAS_RESERVE6;
+  }
+  if (total6 === 0n) return config.mission.operativeFloatUsdc;
+  // 15% margin so a small price move or a second-choice seller still clears.
+  const withMargin = Number((total6 * 115n) / 100n) / 1e6;
+  return Math.max(config.mission.operativeFloatUsdc, withMargin);
+}
+
+/// Funds each operative the USDC float it needs to BUY intel from specialists over
+/// the A2A rail (sized per mission, see operativeFloatUsdcFor), runs the
+/// MissionRunner, then sweeps the leftover floats back. The float is PER OPERATIVE,
+/// bounded by MISSION_FUND_MAX_USDC as a per-operative ceiling (a runaway operator
+/// price can't front an absurd sum). The total scales with the field, which is
+/// fine: the float is working capital recovered by the post-run sweep, so a big
+/// field is not starved the way a field-wide total cap starved it. A cap that
+/// bites is logged. Falls through to an unfunded run (BUY paths just decline) when
+/// no master mnemonic is set.
 async function runMission(contestId: number, field: ContestEntryInput[]): Promise<AgentResult[]> {
   const ids = field.map((e) => e.agentId);
-  const perOp = Math.min(
-    config.mission.operativeFloatUsdc,
-    config.mission.fundMaxUsdc / Math.max(ids.length, 1),
-  );
+  const need = await operativeFloatUsdcFor(contestId);
+  const perOp = Math.min(need, config.mission.fundMaxUsdc);
   if (perOp > 0 && config.scout.masterMnemonic) {
+    if (perOp < need) {
+      console.warn(
+        `[mission ${contestId}] operative float capped at ${perOp.toFixed(2)} USDC (need ${need.toFixed(2)}) by the per-operative ceiling MISSION_FUND_MAX_USDC=${config.mission.fundMaxUsdc}; some BUYs may decline. Raise MISSION_FUND_MAX_USDC.`,
+      );
+    }
     await fundHotWallets(ids, perOp).catch((err) =>
       console.warn(`[mission] fund failed: ${err instanceof Error ? err.message : err}`),
     );
