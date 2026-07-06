@@ -154,8 +154,7 @@ function WorkshopPageBody() {
               CLAIM YOUR FIRST AGENT
             </h2>
             <p className="mt-3 font-mono text-sm leading-[1.6] text-ink-2">
-              you do not have an agent yet. claim a free default agent to start competing. this mints your onchain
-              identity.
+              claim a free agent to start competing.
             </p>
             <div className="mt-6">
               <ClaimAgentButton

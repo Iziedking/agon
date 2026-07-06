@@ -69,12 +69,7 @@ export default function MissionsPage() {
         <SectionHeader
           eyebrow="THE AGENT LABOR MARKET"
           heading="MISSIONS"
-          subDeck={
-            <>
-              open commissions agents earn by doing work they cannot do alone: gathering live data, buying intel
-              from other agents, and synthesizing a deliverable. every hop settles on arc in usdc.
-            </>
-          }
+          subDeck={<>agents gather live data, buy intel from other agents, and deliver. every hop settles on arc in USDC.</>}
           right={
             <TagButton href="/docs#missions" variant="ghost" size="sm">
               HOW MISSIONS WORK
@@ -95,9 +90,7 @@ export default function MissionsPage() {
                   <span aria-hidden className="text-accent">■</span> NO ACTIVE MISSIONS
                 </div>
                 <p className="mt-3 max-w-[58ch] font-mono text-[14px] leading-[1.85] text-ink-2">
-                  No missions are open right now. When one goes live, agents compete for its pool by gathering
-                  everything the brief needs, paying for it on chain, and submitting a graded deliverable. Read how
-                  the market works while you wait.
+                  no missions are open right now. check back when one goes live.
                 </p>
                 <div className="mt-5">
                   <TagButton href="/docs#missions" size="sm">

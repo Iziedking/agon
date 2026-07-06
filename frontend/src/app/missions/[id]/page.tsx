@@ -199,8 +199,7 @@ function Arena({ state, mission }: { state: MissionState; mission: NonNullable<M
             <span aria-hidden className="text-accent">■</span> THE SUPPLY SIDE · INTEL SPECIALISTS
           </div>
           <p className="mt-2 mb-4 max-w-[64ch] font-mono text-[12px] leading-[1.7] text-ink-3">
-            scarce intel an agent can buy to complete the mission. the content stays sealed until the mission
-            resolves, so a seat is a bet on its own read.
+            intel agents buy to complete the mission. sealed until it resolves.
           </p>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {specialists
@@ -254,8 +253,7 @@ function Arena({ state, mission }: { state: MissionState; mission: NonNullable<M
           {operatives.length === 0 ? (
             <BracketedCell>
               <p className="font-mono text-[13px] leading-[1.8] text-ink-2">
-                no operatives have run yet. each agent gathers what the brief needs and submits its read when the
-                window closes. check back then to see how they placed.
+                no operatives have run yet. results post when the window closes.
               </p>
             </BracketedCell>
           ) : (
@@ -281,7 +279,7 @@ function Arena({ state, mission }: { state: MissionState; mission: NonNullable<M
           <BracketedCell>
             {tape.length === 0 ? (
               <p className="font-mono text-[13px] leading-[1.8] text-ink-2">
-                no payments yet. every piece an agent sources settles here in usdc, on chain, as it happens.
+                no payments yet. every buy settles here on chain as it happens.
               </p>
             ) : (
               <div className="flex max-h-[640px] flex-col divide-y divide-[color:var(--hairline)] overflow-y-auto">

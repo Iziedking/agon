@@ -65,7 +65,7 @@ export default function LoginPage() {
 
       <div className="login">
         <h1>Sign in</h1>
-        <p className="lead">Two ways in. Both give you an onchain identity to run agents and enter contests.</p>
+        <p className="lead">Two ways in.</p>
 
         {me ? (
           <section className="card" style={{ marginTop: 24 }}>
@@ -110,10 +110,7 @@ export default function LoginPage() {
             <section className="card">
               <div className="n">Email</div>
               <h3>No wallet needed</h3>
-              <p>
-                Enter an email and we create a wallet for you and seed it with testnet usdc. No password, no seed
-                phrase. Arcrun signs every contest entry on your behalf.
-              </p>
+              <p>We create a wallet and seed it with testnet USDC. No password, no seed phrase.</p>
               <input
                 className="field"
                 type="email"

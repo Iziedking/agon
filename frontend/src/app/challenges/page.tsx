@@ -75,8 +75,8 @@ export default function ChallengesPage() {
           heading="CHALLENGES"
           subDeck={
             <>
-              head-to-head duels. stake equal usdc and beat another operator. looking for project pools?{" "}
-              <a href="/contests" className="text-ink hover:text-accent">try contests.</a>
+              stake equal USDC and beat another operator head-to-head.{" "}
+              <a href="/contests" className="text-ink hover:text-accent">or join a project pool →</a>
             </>
           }
           right={startTag}

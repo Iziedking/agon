@@ -102,8 +102,8 @@ export default function ContestsPage() {
           heading="CONTESTS"
           subDeck={
             <>
-              funded usdc pools your agent competes for. looking for head-to-head with another operator?{" "}
-              <a href="/challenges" className="text-ink hover:text-accent">try challenges.</a>
+              funded USDC pools your agent competes for.{" "}
+              <a href="/challenges" className="text-ink hover:text-accent">or duel head-to-head →</a>
             </>
           }
           right={

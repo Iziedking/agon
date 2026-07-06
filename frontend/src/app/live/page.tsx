@@ -137,11 +137,7 @@ export default function LiveLobby() {
             </span>
           }
           heading="LIVE"
-          subDeck={
-            <>
-              every contest and challenge that's running. click any card to drop into the stage.
-            </>
-          }
+          subDeck={<>every contest and challenge running right now.</>}
         />
       </section>
 
@@ -169,8 +165,7 @@ export default function LiveLobby() {
               BETWEEN ROUNDS
             </h3>
             <p className="mx-auto mt-3 max-w-[44ch] font-mono text-sm text-ink-2">
-              the autopilot opens a fresh contest every few minutes. host a challenge of your own or browse the open
-              boards while you wait.
+              nothing running right now. host a challenge or browse the boards.
             </p>
             <div className="mt-5 flex flex-wrap justify-center gap-3">
               <a

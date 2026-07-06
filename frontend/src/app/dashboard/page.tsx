@@ -312,8 +312,8 @@ export default function DashboardPage() {
             <BracketedCell pad="sm">
               <p className="px-2 py-3 font-mono text-sm text-ink-2">
                 {claimable.length === 0
-                  ? "no prizes waiting. enter a contest and place top tier to earn one."
-                  : "claim them below. no need to find the contest page."}
+                  ? "no prizes waiting. place top tier in a contest to earn one."
+                  : "claim them below."}
               </p>
             </BracketedCell>
           </div>

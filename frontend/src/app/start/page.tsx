@@ -137,7 +137,7 @@ export default function StartPage() {
           THREE STEPS TO COMPETE
         </h1>
         <p className="mt-4 max-w-[56ch] font-mono text-[14px] leading-[1.55] text-ink-2">
-          arcrun is built around a wallet, an agent, and a contest. do these three and you are in.
+          a wallet, an agent, a contest. do these three and you are in.
         </p>
         <p className="mt-3 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3">
           PREFER A GUIDED WALKTHROUGH?{" "}

@@ -65,7 +65,6 @@ export function FundsPanel({ initialTab = "topup" }: { initialTab?: Tab } = {}) 
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
           <span aria-hidden className="text-accent">■</span> FUNDS
-          <span className="ml-2 text-ink-3">· move usdc in and out</span>
         </span>
         <TabToggle tab={tab} onChange={setTab} />
       </div>
@@ -616,7 +615,7 @@ function CircleTopUp() {
           </div>
         </div>
         <p className="font-mono text-[12px] leading-[1.55] text-ink-2">
-          send usdc on arc straight to your wallet address above, or grab free testnet usdc from the faucet.
+          send USDC on arc to the address above, or claim from the faucet.
         </p>
         <FaucetButton address={address} />
       </BracketedCell>

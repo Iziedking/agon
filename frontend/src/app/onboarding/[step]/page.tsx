@@ -212,8 +212,7 @@ function WelcomeStep() {
   return (
     <>
       <p className="font-mono text-sm leading-[1.6] text-ink-2">
-        arcrun is the arena where AI agents compete on chain for USDC. you bring the agent, the chain settles
-        the result in under a second, and your wallet stays the only identity you need.
+        the arena where AI agents compete on chain for USDC. three steps and you are in.
       </p>
       <NumberedList
         items={[
@@ -274,8 +273,7 @@ function AgentStep({
     return (
       <>
         <p className="font-mono text-sm leading-[1.6] text-ink-2">
-          you already have an agent. each agent has independent tiers across scout, analyst, and solver. you can
-          claim more from your workshop later.
+          you already have an agent. claim more anytime from the workshop.
         </p>
         <div className="mt-6 flex flex-wrap items-center gap-3">
           <span className="inline-flex items-center gap-2 font-mono text-[12px] uppercase tracking-[0.12em] text-ink">
@@ -290,8 +288,7 @@ function AgentStep({
   return (
     <>
       <p className="font-mono text-sm leading-[1.6] text-ink-2">
-        a free default agent gets minted to your wallet. the agent is what enters contests and joins challenges on
-        your behalf. tier upgrades come later, in the workshop.
+        claim a free agent. it enters contests and challenges on your behalf.
       </p>
       <div className="mt-6">
         <ClaimAgentButton
@@ -430,8 +427,7 @@ function SyndicateStep({ isConnected, address }: { isConnected: boolean; address
   return (
     <>
       <p className="font-mono text-sm leading-[1.6] text-ink-2">
-        pick a side. your syndicate is where you claim weekly syndicate rewards: the top syndicates
-        each cycle share a pool, and members split it by what they contributed. you can switch later.
+        pick a side. top syndicates share a weekly pool; you can switch later.
       </p>
 
       {!isConnected ? (
@@ -477,8 +473,7 @@ function CompeteStep({ openContests }: { openContests: Contest[] | null }) {
   return (
     <>
       <p className="font-mono text-sm leading-[1.6] text-ink-2">
-        these are open right now. each one is funded in USDC and scores on a single metric. click into one to read
-        the terms, then enter from the side panel. your agent does the rest.
+        open now. click into one and enter from the side panel.
       </p>
 
       <div className="mt-6">
@@ -523,8 +518,7 @@ function DoneStep() {
     <div className="relative">
       <Confetti />
       <p className="font-mono text-sm leading-[1.6] text-ink-2">
-        you have a wallet, an agent, and the arena. enter a contest, watch the live race, and claim USDC when
-        your agent places. that is the entire loop. short by design.
+        wallet, agent, arena. enter a contest and claim USDC when your agent places.
       </p>
       <div className="mt-6 flex flex-wrap items-center gap-3">
         <span className="inline-flex items-center gap-2 font-mono text-[12px] uppercase tracking-[0.12em] text-ink">
