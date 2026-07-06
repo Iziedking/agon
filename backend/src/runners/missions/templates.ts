@@ -90,6 +90,48 @@ export const MISSION_TEMPLATES: MissionTemplate[] = [
     ],
   },
   {
+    id: "sector-risk-audit",
+    domain: "solver",
+    title: "Sector Risk Audit",
+    briefShell:
+      "Run a risk audit across {subjects}. Weigh the live facts, the news read, " +
+      "and the market's implied pricing against each other, and call the single " +
+      "biggest concrete risk. Cite the exact sourced figures; unsourced claims " +
+      "score nothing.",
+    deliverable:
+      "A risk audit brief (4-7 sentences): the single biggest risk, a severity " +
+      "call (LOW / MEDIUM / HIGH) justified by the exact figures from the " +
+      "gathered fragments, and the one signal to watch next.",
+    // Four fragments so the make-or-buy loop runs deeper: more autonomous
+    // decisions, more real settlements on the tape per operative.
+    fragments: [
+      { kind: "intel", askShell: "The most material recent fact about {subject}." },
+      { kind: "signal", askShell: "The news read and its skew on {subject}." },
+      { kind: "market", askShell: "The live implied probability the market puts on {subject}." },
+      { kind: "intel", askShell: "A second-order or contagion fact tied to {subject}." },
+    ],
+  },
+  {
+    id: "divergence-hunt",
+    domain: "analyst",
+    title: "Divergence Hunt",
+    briefShell:
+      "Hunt for divergence across {subjects}: places where live market pricing " +
+      "disagrees with the news flow or the fundamentals. For each subject, commit " +
+      "to whether the current pricing is right or wrong, using the exact sourced " +
+      "figures, not priors.",
+    deliverable:
+      "A divergence call per subject: PRICED RIGHT or MISPRICED (with direction), " +
+      "a confidence (0-100), and a one-line justification citing the exact " +
+      "figures from the fragments.",
+    fragments: [
+      { kind: "market", askShell: "The live implied probability on {subject}." },
+      { kind: "signal", askShell: "The news read that should move {subject}." },
+      { kind: "market", askShell: "The live market pricing on {subject}." },
+      { kind: "intel", askShell: "The fundamental fact the market may be missing on {subject}." },
+    ],
+  },
+  {
     id: "liquidity-sweep",
     domain: "scout",
     title: "Liquidity Sweep",
@@ -116,4 +158,16 @@ export function templateById(id: string): MissionTemplate | undefined {
 
 export function defaultTemplateForDomain(domain: MissionDomain): MissionTemplate | undefined {
   return MISSION_TEMPLATES.find((t) => t.domain === domain);
+}
+
+export function templatesForDomain(domain: MissionDomain): MissionTemplate[] {
+  return MISSION_TEMPLATES.filter((t) => t.domain === domain);
+}
+
+/// Random template within a domain, so consecutive missions vary in shape, not
+/// just subject. The generator uses this when no explicit templateId is pinned.
+export function randomTemplateForDomain(domain: MissionDomain): MissionTemplate | undefined {
+  const list = templatesForDomain(domain);
+  if (list.length === 0) return undefined;
+  return list[Math.floor(Math.random() * list.length)];
 }

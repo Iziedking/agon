@@ -16,7 +16,7 @@ import { computeMissionEconomics } from "./economics.js";
 import { seedSpecialists } from "./specialists.js";
 import { buildLiveMission } from "./liveSources.js";
 import {
-  defaultTemplateForDomain,
+  randomTemplateForDomain,
   templateById,
   SERVICE_CATALOG,
   type MissionTemplate,
@@ -186,10 +186,13 @@ export async function generateMission(opts: {
   templateId?: string;
   poolUsdc?: number;
 }): Promise<Commission> {
+  // Explicit templateId wins; otherwise rotate randomly within the domain so
+  // consecutive missions vary in shape (fragment count, deliverable), not just
+  // subject.
   const template =
     (opts.templateId ? templateById(opts.templateId) : undefined) ??
-    (opts.domain ? defaultTemplateForDomain(opts.domain) : undefined) ??
-    defaultTemplateForDomain("solver")!;
+    (opts.domain ? randomTemplateForDomain(opts.domain) : undefined) ??
+    randomTemplateForDomain("solver")!;
 
   // v2 economy: roll the archetype + weight, which set the base intel price.
   const econ = computeMissionEconomics(opts.poolUsdc ?? 100);

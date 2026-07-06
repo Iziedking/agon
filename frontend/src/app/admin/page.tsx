@@ -843,8 +843,22 @@ function CancelCard({ token, onDone }: { token: string; onDone: () => void }) {
 /// commission + specialists), so you can dry-run the live economy anytime and
 /// build real settled volume before recording. Seat counts and the internal/
 /// external mix come from the mission env; here you pick domain, pool, and window.
+const MISSION_TEMPLATES: Record<"solver" | "analyst", Array<{ id: string; label: string }>> = {
+  solver: [
+    { id: "", label: "RANDOM" },
+    { id: "synthesis-intel-brief", label: "SIGNAL SYNTHESIS" },
+    { id: "sector-risk-audit", label: "RISK AUDIT" },
+  ],
+  analyst: [
+    { id: "", label: "RANDOM" },
+    { id: "prediction-read", label: "MARKET READ" },
+    { id: "divergence-hunt", label: "DIVERGENCE HUNT" },
+  ],
+};
+
 function MissionOpenCard({ token }: { token: string }) {
   const [domain, setDomain] = useState<"solver" | "analyst">("solver");
+  const [templateId, setTemplateId] = useState("");
   const [pool, setPool] = useState("250");
   const [windowMin, setWindowMin] = useState("10");
   const [busy, setBusy] = useState(false);
@@ -862,6 +876,7 @@ function MissionOpenCard({ token }: { token: string }) {
           targetId: 0,
           params: {
             domain,
+            ...(templateId ? { templateId } : {}),
             poolUsdc: Number(pool) || 250,
             windowSeconds: Math.max(60, (Number(windowMin) || 10) * 60),
           },
@@ -882,9 +897,21 @@ function MissionOpenCard({ token }: { token: string }) {
       <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">OPEN A MISSION NOW</div>
       <div className="mt-1 font-mono text-[10px] text-ink-3">real mission, live on demand · dry-run the economy anytime</div>
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <select value={domain} onChange={(e) => setDomain(e.target.value as "solver" | "analyst")} className={field}>
+        <select
+          value={domain}
+          onChange={(e) => {
+            setDomain(e.target.value as "solver" | "analyst");
+            setTemplateId("");
+          }}
+          className={field}
+        >
           <option value="solver">SOLVER</option>
           <option value="analyst">ANALYST</option>
+        </select>
+        <select value={templateId} onChange={(e) => setTemplateId(e.target.value)} className={field}>
+          {MISSION_TEMPLATES[domain].map((t) => (
+            <option key={t.id || "random"} value={t.id}>{t.label}</option>
+          ))}
         </select>
         <input value={pool} onChange={(e) => setPool(e.target.value.replace(/[^0-9]/g, ""))} placeholder="pool USDC" inputMode="numeric" className={`w-28 ${field}`} />
         <input value={windowMin} onChange={(e) => setWindowMin(e.target.value.replace(/[^0-9]/g, ""))} placeholder="min" inputMode="numeric" className={`w-20 ${field}`} />

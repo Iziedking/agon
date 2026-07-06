@@ -90,11 +90,14 @@ async function openMissionNow(
   const poolFromEnv = Number(process.env.MISSION_POOL_USDC_MIN ?? "0");
   const poolUsdc = Number(p.poolUsdc) > 0 ? Number(p.poolUsdc) : poolFromEnv > 0 ? poolFromEnv : 200;
   const windowSeconds = Number(p.windowSeconds) > 0 ? Math.floor(Number(p.windowSeconds)) : 600;
+  // Optional explicit template (e.g. "sector-risk-audit"); blank = rotate.
+  const templateId = typeof p.templateId === "string" && p.templateId.trim() ? p.templateId.trim() : undefined;
 
   const contestId = await openMission({
     poolUsdc,
     durationSeconds: windowSeconds,
     domain,
+    templateId,
     minTier: config.mission.minTier,
   });
   await setTierGate("contest", contestId, config.mission.minTier, 4).catch(() => {});
