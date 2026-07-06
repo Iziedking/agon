@@ -11,8 +11,9 @@ import { fetchMissions, type MissionListItem } from "@/lib/missions";
 /// haven't shown before, a brand popup slides in with an animated circular
 /// emblem (concentric pink rings pulsing out of the Robot). Remembers what it
 /// has shown in localStorage so it never re-pops the same mission across
-/// reloads. Stays silent while missions are gated off (the index is empty) and
-/// on the missions pages themselves (you're already there).
+/// reloads. Stays silent while missions are gated off (the index is empty), on
+/// the landing page (a toast over the hero is a poor first impression), and on
+/// the missions pages themselves (you're already there).
 
 const SEEN_KEY = "arcrun.missions.alerted.v1";
 const POLL_MS = 20_000;
@@ -81,8 +82,11 @@ export function MissionAlert() {
     return () => clearTimeout(t);
   }, [active]);
 
-  const onMissionPage = pathname.startsWith("/missions");
-  const show = !!active && !onMissionPage;
+  // Stay silent on the landing page (a toast over the hero is the first thing a
+  // visitor / judge sees and reads as unpolished) and on the missions pages
+  // themselves (you're already there).
+  const suppressed = pathname === "/" || pathname.startsWith("/missions");
+  const show = !!active && !suppressed;
   const domain = active ? DOMAIN_LABEL[active.domain] ?? active.domain.toUpperCase() : "";
 
   return (
