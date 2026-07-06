@@ -93,17 +93,69 @@ export async function verifyCredit(
   return { credited, total: rows.length, spent6 };
 }
 
-/// The quality judge: an agent scoring an agent's deliverable. Pinned to
-/// temperature 0 for determinism. Returns 0 for an empty deliverable and a
-/// neutral 0.5 when no model is available, so the credit gate still drives
-/// ranking in a keyless dev environment.
+// Common words carry no signal, so they're excluded when measuring how much of
+// the ground truth a deliverable actually reflects.
+const STOP = new Set([
+  "the", "and", "that", "with", "from", "this", "have", "has", "are", "was", "were", "will",
+  "for", "its", "into", "over", "than", "then", "they", "their", "them", "your", "you", "our",
+  "not", "but", "all", "any", "one", "two", "more", "most", "some", "such", "only", "also",
+  "about", "around", "which", "what", "when", "where", "while", "been", "being", "these", "those",
+  "recent", "market", "news", "read", "live", "value", "fact", "signal", "brief", "data",
+]);
+
+/// Salient terms of a ground-truth string: numbers/money/percentages (the
+/// strongest signal) plus content words of 4+ letters, deduped. Used by the
+/// deterministic scorer to measure factual overlap without an LLM.
+function salientTerms(s: string): string[] {
+  const lower = s.toLowerCase();
+  const nums = lower.match(/\$?\d[\d,.]*%?/g) ?? [];
+  const words = (lower.match(/[a-z]{4,}/g) ?? []).filter((w) => !STOP.has(w));
+  return [...new Set([...nums, ...words])];
+}
+
+/// The deterministic judge: scores how much of the KNOWN ground-truth intel the
+/// deliverable reflects, with no LLM at all. This is the on-stage safety net —
+/// the grader already holds every answer (f.truth), so it can always produce a
+/// real quality instead of a "judge error". Score = share of salient
+/// ground-truth terms that appear in the deliverable, floored at 0.2 so a
+/// genuinely paid-for submission is never zeroed by the fallback alone.
+function deterministicQuality(mission: Commission, deliverable: string): { quality: number; verdict: string } {
+  const truths = mission.fragments
+    .filter((f) => f.truth != null)
+    .map((f) => (typeof f.truth === "string" ? f.truth : JSON.stringify(f.truth)));
+  const hay = deliverable.toLowerCase();
+  if (truths.length === 0) {
+    // No ground truth to match: score on substance (word count) as a floor.
+    const words = deliverable.trim().split(/\s+/).filter(Boolean).length;
+    return { quality: clamp01(0.4 + words / 150), verdict: "graded offline · brief substance" };
+  }
+  let sum = 0;
+  let counted = 0;
+  for (const t of truths) {
+    const terms = salientTerms(t);
+    if (terms.length === 0) continue;
+    const hit = terms.filter((term) => hay.includes(term)).length;
+    sum += hit / terms.length;
+    counted += 1;
+  }
+  const frac = counted > 0 ? sum / counted : 0.5;
+  const quality = clamp01(0.2 + 0.8 * frac);
+  return { quality, verdict: `graded offline · ${Math.round(frac * 100)}% ground-truth match` };
+}
+
+/// The quality judge. Tries the LLM (primary Anthropic/Conduit model, then an
+/// OpenRouter fallback when the primary is Anthropic and a key is set), and if
+/// every model fails it grades DETERMINISTICALLY against the known ground truth.
+/// So the judge NEVER shows an error on stage: an empty deliverable scores 0,
+/// everything else gets a real quality — LLM-judged when available, offline
+/// ground-truth match otherwise.
 export async function judgeDeliverable(
   mission: Commission,
   deliverable: string,
 ): Promise<{ quality: number; verdict: string }> {
   const empty = !deliverable || deliverable.startsWith("(no fragments");
   if (empty) return { quality: 0, verdict: "empty deliverable" };
-  if (!llmConfigured()) return { quality: 0.5, verdict: "ungraded (no judge model)" };
+  if (!llmConfigured()) return deterministicQuality(mission, deliverable);
 
   // Ground-truth intel the deliverable was supposed to reflect — the same pieces
   // the platform holds and specialists sell. Grading is a 1:1 FIT to this: a
@@ -119,36 +171,50 @@ export async function judgeDeliverable(
     .join("\n");
   const hasIntel = intel.length > 0;
 
-  const model = config.mission.judgeModel ?? config.llm.model;
-  try {
-    const res = await callModel({
-      model,
-      systemPrompt: hasIntel
-        ? "You are a strict judge scoring how faithfully an intelligence deliverable reflects the " +
-          "GROUND-TRUTH intel it had to use. A 1:1 fit — every ground-truth fact used accurately — scores " +
-          "90-100. Each missing, contradicted, vague, or invented/unsourced claim lowers the score sharply. " +
-          'Return ONLY JSON: {"score":0-100,"verdict":"one line"}.'
-        : "You are a strict judge scoring an intelligence deliverable against its brief. " +
-          'Return ONLY JSON: {"score":0-100,"verdict":"one line"}. Score on coherence, ' +
-          "specificity, and faithfulness to the brief. Penalize vagueness and padding.",
-      userPrompt: hasIntel
-        ? `Brief: ${mission.brief}\nRequired deliverable: ${mission.deliverable}\n\n` +
-          `GROUND-TRUTH INTEL (what a correct deliverable must reflect, 1:1):\n${intel}\n\n` +
-          `Submitted deliverable:\n${deliverable}`
-        : `Brief: ${mission.brief}\nRequired deliverable: ${mission.deliverable}\n\n` +
-          `Submitted deliverable:\n${deliverable}`,
-      maxTokens: 200,
-      temperature: 0,
-    });
-    const m = res.text.match(/\{[\s\S]*\}/);
-    if (!m) return { quality: 0.5, verdict: "unparsed judge output" };
-    const parsed = JSON.parse(m[0]) as { score?: unknown; verdict?: unknown };
-    const score = Number(parsed.score);
-    const quality = Number.isFinite(score) ? clamp01(score / 100) : 0.5;
-    return { quality, verdict: String(parsed.verdict ?? "") };
-  } catch {
-    return { quality: 0.5, verdict: "judge error" };
+  // Primary judge (Anthropic/Conduit), then an OpenRouter model when the primary
+  // is an Anthropic id and a key is configured, so an Anthropic outage falls to
+  // a different provider before the offline scorer.
+  const primary = config.mission.judgeModel ?? config.llm.model;
+  const models = [primary];
+  if (!primary.includes("/") && config.llm.openrouterApiKey && config.mission.judgeFallbackModel) {
+    models.push(config.mission.judgeFallbackModel);
   }
+
+  for (const model of models) {
+    try {
+      const res = await callModel({
+        model,
+        systemPrompt: hasIntel
+          ? "You are a strict judge scoring how faithfully an intelligence deliverable reflects the " +
+            "GROUND-TRUTH intel it had to use. A 1:1 fit — every ground-truth fact used accurately — scores " +
+            "90-100. Each missing, contradicted, vague, or invented/unsourced claim lowers the score sharply. " +
+            'Return ONLY JSON: {"score":0-100,"verdict":"one line"}.'
+          : "You are a strict judge scoring an intelligence deliverable against its brief. " +
+            'Return ONLY JSON: {"score":0-100,"verdict":"one line"}. Score on coherence, ' +
+            "specificity, and faithfulness to the brief. Penalize vagueness and padding.",
+        userPrompt: hasIntel
+          ? `Brief: ${mission.brief}\nRequired deliverable: ${mission.deliverable}\n\n` +
+            `GROUND-TRUTH INTEL (what a correct deliverable must reflect, 1:1):\n${intel}\n\n` +
+            `Submitted deliverable:\n${deliverable}`
+          : `Brief: ${mission.brief}\nRequired deliverable: ${mission.deliverable}\n\n` +
+            `Submitted deliverable:\n${deliverable}`,
+        maxTokens: 200,
+        temperature: 0,
+      });
+      const m = res.text.match(/\{[\s\S]*\}/);
+      if (!m) continue; // unparsed; try the next model, else fall to deterministic
+      const parsed = JSON.parse(m[0]) as { score?: unknown; verdict?: unknown };
+      const score = Number(parsed.score);
+      if (!Number.isFinite(score)) continue;
+      return { quality: clamp01(score / 100), verdict: String(parsed.verdict ?? "") };
+    } catch {
+      // this model failed; try the next, else the deterministic scorer below
+    }
+  }
+
+  // Every LLM judge failed — grade against the known answers so the stage shows
+  // a real quality, never "judge error".
+  return deterministicQuality(mission, deliverable);
 }
 
 /// Grades one operative's submission: verified credit x judged quality, with a

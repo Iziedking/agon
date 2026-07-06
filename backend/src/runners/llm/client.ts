@@ -17,6 +17,11 @@ export interface CallParams {
   /// for tier 2; populated for tier 3/4. Anthropic handles execution; we
   /// just receive the assembled response.
   tools?: Array<{ type: string; name: string }>;
+  /// Per-call fallback model, tried when `model` fails across every provider.
+  /// The mission runner passes the RANKED per-tier fallback here (see
+  /// fallbackModelForTier) so a higher-tier agent falls back to a stronger
+  /// model. When unset, callModel uses the global LLM_FALLBACK_MODEL.
+  fallbackModel?: string;
 }
 
 export interface CallResult {
@@ -221,6 +226,30 @@ export async function callModel(params: CallParams): Promise<CallResult> {
     if (spent >= cap) throw new DailyKillError(spent, cap);
   }
 
+  try {
+    return await callModelOnce(params);
+  } catch (err) {
+    // Model-level fallback: when the requested model fails across every provider
+    // (e.g. a tier-4 Haiku that Conduit won't serve and Anthropic can't cover),
+    // retry ONCE with the capable LLM_FALLBACK_MODEL rather than letting the
+    // caller drop to its heuristic. The DailyKillError is not recoverable, so it
+    // is never retried. The fallback runs its own provider/breaker path, so a
+    // different family (OpenRouter) can pick it up when Anthropic is down.
+    // Prefer the caller's ranked per-tier fallback; else the global default.
+    const fb = params.fallbackModel || config.llm.fallbackModel;
+    if (err instanceof DailyKillError || !fb || fb === params.model) throw err;
+    console.warn(
+      `llm: model ${params.model} failed everywhere (${err instanceof Error ? err.message : err}); retrying with fallback ${fb}`,
+    );
+    return await callModelOnce({ ...params, model: fb });
+  }
+}
+
+/// One attempt for a specific model: OpenRouter for slug ids, the Anthropic-
+/// compatible provider loop (Conduit -> Anthropic) for bare claude-* ids, each
+/// guarded by its circuit breaker. Throws when that model can't be served;
+/// callModel decides whether to retry with the fallback model.
+async function callModelOnce(params: CallParams): Promise<CallResult> {
   // Slug models (provider/model) go through OpenRouter; bare claude-* ids use
   // the Anthropic SDK below.
   if (params.model.includes("/")) {

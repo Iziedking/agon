@@ -1576,6 +1576,34 @@ app.get("/admin/settlements", async (c) => {
   });
 });
 
+// The mission economics an admin can tune, each with its current effective
+// value and the env var that sets it — so the whole fee/price model is visible
+// and clearly stated in one place. Read-gated. Set via .env (global) or per
+// mission on the OPEN A MISSION NOW card.
+app.get("/admin/mission-config", async (c) => {
+  if (!config.adminToken) return c.json({ error: "admin disabled (set ADMIN_TOKEN)" }, 503);
+  if (!readAuthed(c)) return c.json({ error: "unauthorized" }, 401);
+  const m = config.mission;
+  return c.json({
+    economics: [
+      { key: "MISSION_OPERATIVE_FEE_BPS", label: "Operative join fee", value: `${(m.operativeFeeBps / 100).toFixed(2)}%`, note: "charged to the treasury on entry, refunded if the mission cancels" },
+      { key: "MISSION_BASE_PRICE_MIN_USDC", label: "Platform intel min", value: `${m.basePriceMinUsdc} USDC`, note: "cheapest platform shelf price" },
+      { key: "MISSION_BASE_PRICE_MAX_USDC", label: "Platform intel max", value: `${m.basePriceMaxUsdc} USDC`, note: "priciest platform shelf price (at max weight)" },
+      { key: "MISSION_LISTING_PRICE_MAX_USDC", label: "Agent listing cap", value: `${m.listingPriceMaxUsdc} USDC`, note: "most an operator specialist may charge per piece" },
+      { key: "MISSION_OPERATIVE_FLOAT_USDC", label: "Operative float floor", value: `${m.operativeFloatUsdc} USDC`, note: "min USDC funded to each operative to buy intel (auto-sized up to the intel cost)" },
+      { key: "MISSION_FUND_MAX_USDC", label: "Per-operative float cap", value: `${m.fundMaxUsdc} USDC`, note: "ceiling on the float fronted per operative" },
+      { key: "MISSION_MIN_SCORE", label: "Settlement bar", value: String(m.minScore), note: "if no operative clears this, the mission cancels and refunds" },
+      { key: "MISSION_EXTERNAL_FRACTION", label: "External (x402) fraction", value: m.externalFraction.toFixed(2), note: "0 = always internal A2A market, 1 = always external x402" },
+      { key: "MISSION_SPECIALIST_SEATS", label: "Specialist seats", value: String(m.specialistSeats), note: "supply-side seats (intel sellers)" },
+      { key: "MISSION_OPERATIVE_SEATS", label: "Operative seats", value: String(m.operativeSeats), note: "competitor field size" },
+      { key: "MISSION_INTEL_PIECES", label: "Intel pieces", value: String(m.intelPieces), note: "fragments minted per mission" },
+      { key: "MISSION_PER_DAY", label: "Missions per day", value: process.env.MISSION_PER_DAY ?? "2", note: "autopilot cadence" },
+      { key: "MISSION_JUDGE_MODEL", label: "Judge model", value: m.judgeModel ?? config.llm.model, note: "grades deliverable quality (Conduit → Anthropic)" },
+      { key: "MISSION_JUDGE_FALLBACK_MODEL", label: "Judge fallback", value: config.llm.openrouterApiKey ? m.judgeFallbackModel : "(no OpenRouter key)", note: "OpenRouter model tried if the primary judge fails, then an offline ground-truth scorer" },
+    ],
+  });
+});
+
 // ----- Weekly syndicate reward pool -----
 //
 // The coordinator splits a config-funded pool across syndicate members each
@@ -2136,8 +2164,9 @@ app.post("/missions/:id/specialist", requireAuth, async (c) => {
   const intel = String(body.intel ?? "").trim();
   if (!Number.isFinite(agentId) || agentId <= 0) return c.json({ error: "pick an agent" }, 400);
   if (!fragmentId) return c.json({ error: "pick a fragment to supply" }, 400);
-  if (!Number.isFinite(priceUsdc) || priceUsdc <= 0 || priceUsdc > 50)
-    return c.json({ error: "price must be between 0 and 50 USDC" }, 400);
+  const listingMax = config.mission.listingPriceMaxUsdc;
+  if (!Number.isFinite(priceUsdc) || priceUsdc <= 0 || priceUsdc > listingMax)
+    return c.json({ error: `price must be between 0 and ${listingMax} USDC` }, 400);
   if (intel.length < 10) return c.json({ error: "describe the intel you are selling (a sentence or two)" }, 400);
 
   const m = await query<{ status: string }>("select status from missions where contest_id = $1", [contestId]);
@@ -2330,8 +2359,9 @@ app.post("/missions/:id/buy-intel", requireAuth, async (c) => {
   const txHash = (body.txHash ?? "").trim() || null;
   if (!fragmentId) return c.json({ error: "pick a piece to buy" }, 400);
   if (!Number.isFinite(agentId) || agentId <= 0) return c.json({ error: "pick an agent" }, 400);
-  if (!Number.isFinite(resalePriceUsdc) || resalePriceUsdc <= 0 || resalePriceUsdc > 100)
-    return c.json({ error: "set a resale price between 0 and 100 USDC" }, 400);
+  const resaleMax = config.mission.listingPriceMaxUsdc;
+  if (!Number.isFinite(resalePriceUsdc) || resalePriceUsdc <= 0 || resalePriceUsdc > resaleMax)
+    return c.json({ error: `set a resale price between 0 and ${resaleMax} USDC` }, 400);
 
   const mm = await query<{ status: string }>("select status from missions where contest_id = $1", [contestId]);
   if (!mm.rows[0]) return c.json({ error: "not a mission" }, 404);
@@ -2487,8 +2517,9 @@ app.get("/missions/:id", async (c) => {
     seq: string;
     operative_seats: number | null;
     specialist_seats: number | null;
+    operative_fee_bps: number | null;
   }>(
-    "select domain, template_id, title, brief, deliverable, status, archetype, weight, base_price_usdc_6, pool_usdc_6, seq, operative_seats, specialist_seats from missions where contest_id = $1",
+    "select domain, template_id, title, brief, deliverable, status, archetype, weight, base_price_usdc_6, pool_usdc_6, seq, operative_seats, specialist_seats, operative_fee_bps from missions where contest_id = $1",
     [contestId],
   );
   const mission = m.rows[0];
@@ -2668,7 +2699,8 @@ app.get("/missions/:id", async (c) => {
   // The fee is only live when there is a treasury to receive (and later refund)
   // it. Without a treasury key the join is free.
   const feeRecipient = config.treasury.address;
-  const operativeFee6 = feeRecipient ? (poolUsdc6 * BigInt(config.mission.operativeFeeBps)) / 10_000n : 0n;
+  const feeBps = mission.operative_fee_bps ?? config.mission.operativeFeeBps;
+  const operativeFee6 = feeRecipient ? (poolUsdc6 * BigInt(feeBps)) / 10_000n : 0n;
   const feePaid = await query<{ n: string }>(
     "select count(*)::text as n from mission_operative_fees where contest_id = $1",
     [contestId],
@@ -2691,7 +2723,7 @@ app.get("/missions/:id", async (c) => {
     join: {
       poolUsdc6: poolUsdc6.toString(),
       operativeFee6: operativeFee6.toString(),
-      feeBps: feeRecipient ? config.mission.operativeFeeBps : 0,
+      feeBps: feeRecipient ? feeBps : 0,
       feeRecipient,
       feesPaid: Number(feePaid.rows[0]?.n ?? 0),
       specialistSeats: { total: mission.specialist_seats ?? config.mission.specialistSeats, taken: Number(specSeats.rows[0]?.n ?? 0) },

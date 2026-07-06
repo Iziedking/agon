@@ -104,6 +104,20 @@ const envSchema = z.object({
   TIER2_MODEL: z.string().default("meta-llama/llama-3.1-8b-instruct"),
   TIER3_MODEL: z.string().default("openai/gpt-4o-mini"),
   TIER4_MODEL: z.string().default("claude-haiku-4-5-20251001"),
+  // Fallback model used when a call has no tier context (the judge, the mission
+  // generator). Cheap but capable; the tier-aware ladder below covers the runner.
+  LLM_FALLBACK_MODEL: z.string().default("meta-llama/llama-3.3-70b-instruct"),
+  // RANKED per-tier fallback ladder (index = tier 0..4), tried when a tier's
+  // primary model fails across every provider. All cheap OpenRouter models, but
+  // ASCENDING in capability so a higher-tier agent still falls back to a stronger
+  // model than a lower-tier one — the tier advantage survives an outage. Runs
+  // ~cents per Mtok, far below gpt-4o / sonnet. Needs OPENROUTER_API_KEY.
+  //   0-1: llama 3.1 8B · 2-3: llama 3.3 70B · 4: deepseek v3 (strongest cheap)
+  LLM_FALLBACK_MODELS: z
+    .string()
+    .default(
+      "meta-llama/llama-3.1-8b-instruct,meta-llama/llama-3.1-8b-instruct,meta-llama/llama-3.3-70b-instruct,meta-llama/llama-3.3-70b-instruct,deepseek/deepseek-chat",
+    ),
   // Live-data mission sources (v2 diversity). Each is optional; the generator
   // uses whichever are set and falls back to LLM/canned otherwise.
   EXA_API_KEY: z.string().optional(),
@@ -374,6 +388,10 @@ const envSchema = z.object({
   // Optional model override for the judge that grades deliverables. Falls back to
   // LLM_MODEL when unset. Pin it for determinism on the grading path.
   MISSION_JUDGE_MODEL: z.string().optional(),
+  // Second-choice judge model, an OpenRouter slug, tried when the primary
+  // (Anthropic/Conduit) judge fails — so an Anthropic outage doesn't drop the
+  // judge to the offline scorer. Only used when OPENROUTER_API_KEY is set.
+  MISSION_JUDGE_FALLBACK_MODEL: z.string().default("openai/gpt-4o-mini"),
   // The bar a mission must clear: if no operative's graded deliverable scores at
   // least this, NOBODY is paid — the pool is cancelled and refunded to the
   // sponsor with "no agent could fulfill it within the window". Keeps missions
@@ -384,13 +402,19 @@ const envSchema = z.object({
   // Probability a mission is the EXTERNAL (x402) archetype rather than INTERNAL
   // (the scarce-intel market). 0 = always internal, 1 = always external.
   MISSION_EXTERNAL_FRACTION: z.coerce.number().min(0).max(1).default(0.4),
-  // Base intel price band (whole USDC). The mission's weight (pool x difficulty
-  // x subject) lerps between these for the platform's base price `b`.
-  MISSION_BASE_PRICE_MIN_USDC: z.coerce.number().nonnegative().default(0.5),
-  MISSION_BASE_PRICE_MAX_USDC: z.coerce.number().nonnegative().default(5),
-  // Operative join fee, basis points of the pool (500 = 5%). Platform-funded
+  // Platform intel base price band (whole USDC). The mission's weight (pool x
+  // difficulty x subject) lerps between these for the platform shelf price `b`.
+  // Deliberately a FRACTION of a dollar: platform intel is the cheap floor, so a
+  // losing operative's outlay stays tiny relative to the pool.
+  MISSION_BASE_PRICE_MIN_USDC: z.coerce.number().nonnegative().default(0.1),
+  MISSION_BASE_PRICE_MAX_USDC: z.coerce.number().nonnegative().default(0.5),
+  // Operator listing price cap (whole USDC): the most an operator specialist may
+  // charge for one intel piece. Keeps a single seller from pricing the mission
+  // out of reach and blowing up the total spend.
+  MISSION_LISTING_PRICE_MAX_USDC: z.coerce.number().positive().default(5),
+  // Operative join fee, basis points of the pool (350 = 3.5%). Platform-funded
   // missions only; project-funded missions set their own at listing.
-  MISSION_OPERATIVE_FEE_BPS: z.coerce.number().int().min(0).max(10_000).default(500),
+  MISSION_OPERATIVE_FEE_BPS: z.coerce.number().int().min(0).max(10_000).default(350),
   // Scarce-intel market caps. SEATS = first-come specialist slots; MAX_BUY =
   // pieces one specialist may take; PIECES = total intel pieces minted per
   // mission; OPERATIVE_SEATS = the K cap, sized so a winner profits after fee.
@@ -591,6 +615,9 @@ export const config = {
     // through OpenRouter; bare claude-* ids use the Anthropic key. Drives the
     // mission runner's make-vs-buy reasoning, so tier differentiates capability.
     tierModels: [env.TIER0_MODEL, env.TIER1_MODEL, env.TIER2_MODEL, env.TIER3_MODEL, env.TIER4_MODEL],
+    fallbackModel: env.LLM_FALLBACK_MODEL?.trim() || undefined,
+    // Per-tier ranked fallback ladder (index = tier). Padded/clamped at read time.
+    fallbackModels: env.LLM_FALLBACK_MODELS.split(",").map((s) => s.trim()).filter(Boolean),
     testing: env.LLM_TESTING,
   },
   arcana: {
@@ -651,11 +678,13 @@ export const config = {
     intelPriceUsdc: env.MISSION_INTEL_PRICE_USDC,
     fundMaxUsdc: env.MISSION_FUND_MAX_USDC,
     judgeModel: env.MISSION_JUDGE_MODEL,
+    judgeFallbackModel: env.MISSION_JUDGE_FALLBACK_MODEL,
     minScore: env.MISSION_MIN_SCORE,
     // v2 economy
     externalFraction: env.MISSION_EXTERNAL_FRACTION,
     basePriceMinUsdc: env.MISSION_BASE_PRICE_MIN_USDC,
     basePriceMaxUsdc: env.MISSION_BASE_PRICE_MAX_USDC,
+    listingPriceMaxUsdc: env.MISSION_LISTING_PRICE_MAX_USDC,
     operativeFeeBps: env.MISSION_OPERATIVE_FEE_BPS,
     specialistSeats: env.MISSION_SPECIALIST_SEATS,
     specialistMaxBuy: env.MISSION_SPECIALIST_MAX_BUY,

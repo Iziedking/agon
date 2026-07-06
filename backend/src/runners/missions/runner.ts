@@ -12,7 +12,7 @@
 import { config } from "../../config/index.js";
 import { query } from "../../db/pool.js";
 import { callModel, llmConfigured } from "./../llm/client.js";
-import { modelForTier } from "./../llm/tierConfig.js";
+import { fallbackModelForTier, modelForTier } from "./../llm/tierConfig.js";
 import { deriveHotWallet } from "../scout.js";
 import { payX402 } from "../../nanopayments/index.js";
 import type {
@@ -271,6 +271,7 @@ export class MissionRunner implements Runner {
     try {
       const res = await callModel({
         model: modelForTier(tier),
+        fallbackModel: fallbackModelForTier(tier),
         systemPrompt: system,
         userPrompt: user,
         maxTokens: 500,
@@ -353,6 +354,7 @@ export class MissionRunner implements Runner {
     try {
       const res = await callModel({
         model: modelForTier(tier),
+        fallbackModel: fallbackModelForTier(tier),
         systemPrompt:
           "You are an operative agent producing the mission deliverable. Synthesize the " +
           "gathered fragments into the required deliverable. Be concise and concrete; use " +

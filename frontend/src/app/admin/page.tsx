@@ -153,6 +153,7 @@ export default function AdminPage() {
               </div>
               <div className="grid gap-6 lg:grid-cols-2">
                 <MissionOpenCard token={token} />
+                <MissionEconomicsPanel token={token} />
               </div>
               <div className="grid gap-6">
                 <CommandsLog token={token} />
@@ -874,6 +875,8 @@ function MissionOpenCard({ token }: { token: string }) {
   const [windowMin, setWindowMin] = useState("10");
   const [operatives, setOperatives] = useState("");
   const [specialists, setSpecialists] = useState("");
+  const [feePct, setFeePct] = useState("");
+  const [basePrice, setBasePrice] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -892,9 +895,11 @@ function MissionOpenCard({ token }: { token: string }) {
             ...(templateId ? { templateId } : {}),
             poolUsdc: Number(pool) || 250,
             windowSeconds: Math.max(60, (Number(windowMin) || 10) * 60),
-            // Blank = fall back to the global MISSION_*_SEATS env.
+            // Blank = fall back to the global env for each.
             ...(Number(operatives) > 0 ? { operativeSeats: Number(operatives) } : {}),
             ...(Number(specialists) > 0 ? { specialistSeats: Number(specialists) } : {}),
+            ...(feePct !== "" && Number(feePct) >= 0 ? { feePct: Number(feePct) } : {}),
+            ...(Number(basePrice) > 0 ? { basePriceUsdc: Number(basePrice) } : {}),
           },
         }),
       });
@@ -945,17 +950,68 @@ function MissionOpenCard({ token }: { token: string }) {
         <Labeled label="SPECIALISTS">
           <input value={specialists} onChange={(e) => setSpecialists(e.target.value.replace(/[^0-9]/g, ""))} placeholder="env" inputMode="numeric" className={`w-24 ${field}`} />
         </Labeled>
+        <Labeled label="FEE %">
+          <input value={feePct} onChange={(e) => setFeePct(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="env" inputMode="decimal" className={`w-20 ${field}`} />
+        </Labeled>
+        <Labeled label="INTEL $">
+          <input value={basePrice} onChange={(e) => setBasePrice(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="env" inputMode="decimal" className={`w-20 ${field}`} />
+        </Labeled>
         <button onClick={submit} disabled={busy}
           className="bg-accent px-4 py-2 font-mono text-[12px] uppercase tracking-[0.12em] text-accent-ink hover:bg-accent-press disabled:opacity-50">
           {busy ? "QUEUEING…" : "OPEN →"}
         </button>
       </div>
       <div className="mt-2 font-mono text-[10px] text-ink-3">
-        operatives = competitors, specialists = intel sellers · blank = use the global env seat counts
+        operatives = competitors · specialists = intel sellers · FEE % = operative join fee · INTEL $ = platform shelf price · blank = use the global env
       </div>
       {result ? (
         <p className={`mt-2 font-mono text-[10px] ${result.ok ? "text-[color:var(--ok)]" : "text-[color:var(--err)]"}`}>{result.text}</p>
       ) : null}
+    </BracketedCell>
+  );
+}
+
+interface EconRow { key: string; label: string; value: string; note: string }
+
+/// The mission economics, clearly stated: every tunable knob with its current
+/// effective value, the env var that sets it, and what it does. Read-only
+/// reference so you can see the whole fee/price model at a glance; change these
+/// globally in .env, or per mission on the OPEN A MISSION NOW card above.
+function MissionEconomicsPanel({ token }: { token: string }) {
+  const [rows, setRows] = useState<EconRow[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    void fetch(`${AUTH_URL}/admin/mission-config`, { headers: { "x-admin-token": token } })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`http ${r.status}`))))
+      .then((d: { economics: EconRow[] }) => { if (live) setRows(d.economics ?? []); })
+      .catch((e) => { if (live) setErr(e instanceof Error ? e.message : "load failed"); });
+    return () => { live = false; };
+  }, [token]);
+
+  return (
+    <BracketedCell pad="sm">
+      <div className="mb-1 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">
+        <span aria-hidden className="text-accent">■</span> MISSION ECONOMICS
+      </div>
+      <div className="mb-3 font-mono text-[10px] text-ink-3">current values · set globally in .env, or per mission above</div>
+      {err ? <p className="font-mono text-[10px] text-[color:var(--err)]">{err}</p> : null}
+      <div className="flex flex-col">
+        {(rows ?? []).map((r) => (
+          <div key={r.key} className="flex flex-wrap items-baseline justify-between gap-2 border-b border-[color:var(--hairline)] py-2 last:border-0">
+            <div className="min-w-0">
+              <div className="font-mono text-[12px] text-ink">{r.label}</div>
+              <div className="font-mono text-[10px] text-ink-3">{r.note}</div>
+            </div>
+            <div className="text-right">
+              <div className="font-stencil text-[18px] leading-none text-ink">{r.value}</div>
+              <div className="font-mono text-[9px] uppercase tracking-[0.1em] text-ink-3">{r.key}</div>
+            </div>
+          </div>
+        ))}
+        {rows && rows.length === 0 ? <p className="py-2 font-mono text-[11px] text-ink-3">no config</p> : null}
+      </div>
     </BracketedCell>
   );
 }

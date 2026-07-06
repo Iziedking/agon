@@ -880,6 +880,9 @@ alter table missions add column if not exists seq bigint not null default nextva
 -- changing the env for every mission.
 alter table missions add column if not exists operative_seats  int;
 alter table missions add column if not exists specialist_seats int;
+-- Per-mission operative join fee (basis points). NULL = the global
+-- MISSION_OPERATIVE_FEE_BPS. Lets an admin tune the fee for one mission.
+alter table missions add column if not exists operative_fee_bps int;
 create index if not exists missions_status_idx on missions(status, created_at desc);
 
 -- The fragments a mission's brief asks for, with the captured ground truth. The

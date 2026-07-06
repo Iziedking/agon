@@ -95,6 +95,11 @@ async function openMissionNow(
   // Optional per-mission seat caps; undefined falls back to the global config.
   const operativeSeats = Number(p.operativeSeats) > 0 ? Math.floor(Number(p.operativeSeats)) : undefined;
   const specialistSeats = Number(p.specialistSeats) > 0 ? Math.floor(Number(p.specialistSeats)) : undefined;
+  // Optional per-mission economics; undefined falls back to the global config.
+  const operativeFeeBps = Number(p.feePct) >= 0 && p.feePct !== undefined && p.feePct !== null
+    ? Math.round(Number(p.feePct) * 100)
+    : undefined;
+  const basePriceUsdc = Number(p.basePriceUsdc) > 0 ? Number(p.basePriceUsdc) : undefined;
 
   const contestId = await openMission({
     poolUsdc,
@@ -103,6 +108,8 @@ async function openMissionNow(
     templateId,
     operativeSeats,
     specialistSeats,
+    operativeFeeBps,
+    basePriceUsdc,
     minTier: config.mission.minTier,
   });
   await setTierGate("contest", contestId, config.mission.minTier, 4).catch(() => {});

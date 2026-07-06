@@ -98,6 +98,17 @@ export function modelForTier(tier: number): string {
   return config.llm.tierModels[t] ?? config.llm.model;
 }
 
+/// The RANKED fallback model for a tier, tried when this tier's primary model
+/// fails across every provider. Higher tiers map to stronger (but still cheap)
+/// models, so a tier-4 agent that loses its primary still out-reasons a tier-1
+/// one — the tier advantage survives an outage. Falls back to the single global
+/// fallback, then empty (no fallback) if none configured.
+export function fallbackModelForTier(tier: number): string {
+  const t = Math.max(0, Math.min(4, Math.floor(tier)));
+  const ladder = config.llm.fallbackModels;
+  return ladder[t] ?? ladder[ladder.length - 1] ?? config.llm.fallbackModel ?? "";
+}
+
 export async function resolveRuntimeParams(agentId: number, tier: number): Promise<RuntimeParams> {
   const base = tierToCapabilities(tier);
   const stats = await readAgentStats(agentId);

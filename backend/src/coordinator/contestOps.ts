@@ -114,6 +114,9 @@ export interface OpenMissionOpts {
   /// Per-mission seat caps; undefined falls back to the global config.
   operativeSeats?: number;
   specialistSeats?: number;
+  /// Per-mission economics; undefined falls back to the global config.
+  operativeFeeBps?: number;
+  basePriceUsdc?: number;
 }
 
 /// Open a mission: list a SOLVER-type contest on-chain (cType 2), then generate
@@ -144,6 +147,8 @@ export async function openMission(opts: OpenMissionOpts): Promise<number> {
       poolUsdc: opts.poolUsdc,
       operativeSeats: opts.operativeSeats,
       specialistSeats: opts.specialistSeats,
+      operativeFeeBps: opts.operativeFeeBps,
+      basePriceUsdc: opts.basePriceUsdc,
     });
   } catch (e) {
     throw new Error(
