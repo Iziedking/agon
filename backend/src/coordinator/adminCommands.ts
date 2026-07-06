@@ -3,8 +3,10 @@ import { parseAbi } from "viem";
 import { publicClient } from "../chain/arc.js";
 import { config } from "../config/index.js";
 import { query } from "../db/pool.js";
-import { coordinatorWallet } from "./contestOps.js";
+import { coordinatorWallet, openMission } from "./contestOps.js";
 import { settleContestToCompletion, resolveChallengeToCompletion } from "./autopilot.js";
+import { setTierGate } from "../lib/tierGate.js";
+import { broadcastTelegram } from "../notifications/index.js";
 import {
   refundMissionFees,
   refundMissionBuys,
@@ -31,22 +33,23 @@ interface Command {
   id: string;
   kind: string;
   targetId: string;
+  params: Record<string, unknown> | null;
 }
 
 /// Atomically claim the oldest pending command (single consumer, but
 /// FOR UPDATE SKIP LOCKED keeps it safe if a second coordinator ever runs).
 async function claimNext(): Promise<Command | null> {
-  const { rows } = await query<{ id: string; kind: string; target_id: string }>(
+  const { rows } = await query<{ id: string; kind: string; target_id: string; params: Record<string, unknown> | null }>(
     `update admin_commands set status = 'running', updated_at = now()
        where id = (
          select id from admin_commands where status = 'pending'
          order by id limit 1 for update skip locked
        )
-     returning id, kind, target_id::text as target_id`,
+     returning id, kind, target_id::text as target_id, params`,
   );
   const r = rows[0];
   if (!r) return null;
-  return { id: r.id, kind: r.kind, targetId: r.target_id };
+  return { id: r.id, kind: r.kind, targetId: r.target_id, params: r.params ?? null };
 }
 
 async function finish(id: string, status: "done" | "error", result: string): Promise<void> {
@@ -69,6 +72,44 @@ async function cancelOnChain(kind: "cancel_contest" | "cancel_challenge", target
   } as never);
   await publicClient.waitForTransactionReceipt({ hash, timeout: RECEIPT_TIMEOUT_MS });
   return hash;
+}
+
+/// Open a mission on demand from the admin console. Uses the SAME openMission
+/// path the autopilot uses (real on-chain solver contest + generateMission +
+/// seedSpecialists), so an admin-opened mission is real agent work, not a stub.
+/// Params are all optional: domain (solver|analyst, default solver), poolUsdc
+/// (default MISSION_POOL_USDC_MIN or 200), windowSeconds (default 600). Seat
+/// counts and the internal/external mix come from the mission env, unchanged.
+async function openMissionNow(
+  params: Record<string, unknown> | null,
+  broadcast: (message: unknown) => void,
+): Promise<string> {
+  const p = params ?? {};
+  const domainRaw = String(p.domain ?? "solver").toLowerCase();
+  const domain: "solver" | "analyst" = domainRaw === "analyst" ? "analyst" : "solver";
+  const poolFromEnv = Number(process.env.MISSION_POOL_USDC_MIN ?? "0");
+  const poolUsdc = Number(p.poolUsdc) > 0 ? Number(p.poolUsdc) : poolFromEnv > 0 ? poolFromEnv : 200;
+  const windowSeconds = Number(p.windowSeconds) > 0 ? Math.floor(Number(p.windowSeconds)) : 600;
+
+  const contestId = await openMission({
+    poolUsdc,
+    durationSeconds: windowSeconds,
+    domain,
+    minTier: config.mission.minTier,
+  });
+  await setTierGate("contest", contestId, config.mission.minTier, 4).catch(() => {});
+  broadcast({
+    type: "contest_open",
+    contestId,
+    contestType: "mission",
+    endsAt: Date.now() + windowSeconds * 1000,
+  });
+  void broadcastTelegram({
+    title: `New mission live · ${poolUsdc} USDC pool`,
+    body: `${domain.toUpperCase()} mission #${contestId} is open for ${Math.round(windowSeconds / 60)} min. Enter as an operative or grab a specialist seat.`,
+    href: `/missions/${contestId}`,
+  }).catch(() => {});
+  return `mission ${contestId} opened (${domain}, ${poolUsdc} USDC, ${windowSeconds}s window)`;
 }
 
 async function execute(cmd: Command, broadcast: (message: unknown) => void): Promise<string> {
@@ -102,6 +143,8 @@ async function execute(cmd: Command, broadcast: (message: unknown) => void): Pro
       return await refundAllCancelledMissions(id > 0 ? id : undefined);
     case "clear_missions":
       return await clearMissionHistory();
+    case "open_mission":
+      return await openMissionNow(cmd.params, broadcast);
     default:
       throw new Error(`unknown command kind ${cmd.kind}`);
   }

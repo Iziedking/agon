@@ -3,7 +3,7 @@
 import { BracketedCell } from "@/components/redesign";
 import { nameFor, useAgentNames } from "@/hooks/useAgentNames";
 import type { TapeEvent } from "@/lib/live";
-import { explorerTxUrl, usdc6, VERB_COLOR, VERB_LABEL } from "@/lib/economyTape";
+import { explorerTxUrl, usd6, usdc6, VERB_COLOR, VERB_LABEL } from "@/lib/economyTape";
 
 /// The live ledger every agent action streams into: a swap, an x402 payment, a
 /// prediction trade, each as one row with the USDC amount and an on-chain link.
@@ -14,6 +14,43 @@ const MAX_ROWS = 24;
 
 function shortHash(h: string): string {
   return `${h.slice(0, 10)}…${h.slice(-6)}`;
+}
+
+/// Sub-cent x402 nanopayments round to 0.00 at two decimals, so show four for
+/// small amounts ($0.0136) and the plain "1.23 USDC" for dollar-scale A2A buys.
+function amountLabel(amount6: string): string {
+  return Number(amount6 || "0") / 1e6 >= 0.01 ? usdc6(amount6) : usd6(amount6);
+}
+
+/// A real settled payment, pinned above the scrolling tape so a receipt with its
+/// on-chain tx is ALWAYS on screen during a live mission, never scrolled away.
+/// It is the newest tape row that carries a tx hash and a non-zero amount, so it
+/// is proof, not intent. Clickable straight to the explorer.
+function PinnedReceipt({ ev, name }: { ev: TapeEvent; name: string }) {
+  const color = VERB_COLOR[ev.verb] ?? "#847C70";
+  return (
+    <a
+      href={explorerTxUrl(ev.chain, ev.txHash)}
+      target="_blank"
+      rel="noreferrer"
+      className="mb-3 flex items-center gap-3 border border-[color:var(--accent)] bg-canvas-2 px-3 py-2.5 hover:bg-canvas"
+      title={`${VERB_LABEL[ev.verb]} · ${ev.label} · ${ev.chain}`}
+    >
+      <span className="flex h-6 w-6 flex-none items-center justify-center" style={{ background: color }} aria-hidden>
+        <span className="font-mono text-[9px] text-white">{VERB_LABEL[ev.verb].slice(0, 1)}</span>
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block font-mono text-[9px] uppercase tracking-[0.16em] text-ink-3">LATEST RECEIPT</span>
+        <span className="block truncate font-mono text-[12px] text-ink">
+          {name} <span className="text-ink-3">· {VERB_LABEL[ev.verb]} · {shortHash(ev.txHash)}</span>
+        </span>
+      </span>
+      <span className="whitespace-nowrap text-right">
+        <span className="font-mono text-[14px] text-ink">{amountLabel(ev.amount6)}</span>
+        <span className="ml-1 text-ink-3" aria-hidden>↗</span>
+      </span>
+    </a>
+  );
 }
 
 function TapeRow({ ev, name }: { ev: TapeEvent; name: string }) {
@@ -66,6 +103,9 @@ function TapeRow({ ev, name }: { ev: TapeEvent; name: string }) {
 export function EconomyTape({ rows }: { rows: TapeEvent[] }) {
   const names = useAgentNames(rows.map((r) => r.agentId));
   const shown = rows.slice(0, MAX_ROWS);
+  // Newest real settled payment (has a tx hash + non-zero amount), pinned so a
+  // receipt is always on screen even as the tape scrolls.
+  const latestReceipt = rows.find((r) => r.txHash && r.amount6 && r.amount6 !== "0");
 
   return (
     <div className="mt-4">
@@ -76,6 +116,9 @@ export function EconomyTape({ rows }: { rows: TapeEvent[] }) {
         LIVE TAPE
         <span className="ml-2 text-ink-3">· {rows.length} ACTIONS</span>
       </div>
+      {latestReceipt ? (
+        <PinnedReceipt ev={latestReceipt} name={nameFor(names, latestReceipt.agentId)} />
+      ) : null}
       <BracketedCell pad="sm">
         <div className="scroll-brand max-h-[360px] overflow-y-auto pr-1">
           {shown.length === 0 ? (

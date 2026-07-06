@@ -29,6 +29,15 @@ interface Overview {
 
 const short = (a: string) => `${a.slice(0, 8)}…${a.slice(-6)}`;
 
+// A2A settles on Arc; x402 makes settle on the seller chain (Base by default).
+// Point NEXT_PUBLIC_BASE_EXPLORER at mainnet basescan if you run Base mainnet.
+const BASE_EXPLORER = process.env.NEXT_PUBLIC_BASE_EXPLORER ?? "https://sepolia.basescan.org";
+function txUrl(chain: string, hash: string): string {
+  const c = (chain || "").toLowerCase();
+  if (c.includes("base")) return `${BASE_EXPLORER}/tx/${hash}`;
+  return `${EXPLORER}/tx/${hash}`;
+}
+
 export default function AdminPage() {
   const [token, setToken] = useState<string | null>(null);
   const [draftToken, setDraftToken] = useState("");
@@ -130,6 +139,7 @@ export default function AdminPage() {
           <MembersSection token={token} />
           <WalletsRow data={data} />
           <ContractsTable contracts={data.contracts} />
+          <SettlementsSection token={token} />
           <AuditSection token={token} />
           {level === "admin" ? (
             <>
@@ -140,6 +150,9 @@ export default function AdminPage() {
               <div className="grid gap-6 lg:grid-cols-2">
                 <ForceSettleCard token={token} />
                 <MissionOpsCard token={token} />
+              </div>
+              <div className="grid gap-6 lg:grid-cols-2">
+                <MissionOpenCard token={token} />
               </div>
               <div className="grid gap-6">
                 <CommandsLog token={token} />
@@ -821,6 +834,178 @@ function CancelCard({ token, onDone }: { token: string; onDone: () => void }) {
           <p className="mt-2 font-mono text-[10px] text-[color:var(--err)]">{result.text}</p>
         )
       ) : null}
+    </BracketedCell>
+  );
+}
+
+/// Open a mission on demand, queued to the coordinator (same pipeline as
+/// force-settle). It seeds a REAL mission (on-chain solver contest + generated
+/// commission + specialists), so you can dry-run the live economy anytime and
+/// build real settled volume before recording. Seat counts and the internal/
+/// external mix come from the mission env; here you pick domain, pool, and window.
+function MissionOpenCard({ token }: { token: string }) {
+  const [domain, setDomain] = useState<"solver" | "analyst">("solver");
+  const [pool, setPool] = useState("250");
+  const [windowMin, setWindowMin] = useState("10");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
+
+  async function submit() {
+    setBusy(true);
+    setResult(null);
+    try {
+      const res = await fetch(`${AUTH_URL}/admin/commands`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-admin-token": token },
+        body: JSON.stringify({
+          kind: "open_mission",
+          targetId: 0,
+          params: {
+            domain,
+            poolUsdc: Number(pool) || 250,
+            windowSeconds: Math.max(60, (Number(windowMin) || 10) * 60),
+          },
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((data as { error?: string }).error ?? `http ${res.status}`);
+      setResult({ ok: true, text: `queued #${(data as { id?: string }).id ?? "?"} — goes live in a few seconds, watch the command log` });
+    } catch (e) {
+      setResult({ ok: false, text: e instanceof Error ? e.message : "failed" });
+    }
+    setBusy(false);
+  }
+
+  const field = "border border-[color:var(--hairline-strong)] bg-canvas px-3 py-2 font-mono text-sm text-ink outline-none focus:border-ink";
+  return (
+    <BracketedCell pad="sm">
+      <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">OPEN A MISSION NOW</div>
+      <div className="mt-1 font-mono text-[10px] text-ink-3">real mission, live on demand · dry-run the economy anytime</div>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <select value={domain} onChange={(e) => setDomain(e.target.value as "solver" | "analyst")} className={field}>
+          <option value="solver">SOLVER</option>
+          <option value="analyst">ANALYST</option>
+        </select>
+        <input value={pool} onChange={(e) => setPool(e.target.value.replace(/[^0-9]/g, ""))} placeholder="pool USDC" inputMode="numeric" className={`w-28 ${field}`} />
+        <input value={windowMin} onChange={(e) => setWindowMin(e.target.value.replace(/[^0-9]/g, ""))} placeholder="min" inputMode="numeric" className={`w-20 ${field}`} />
+        <button onClick={submit} disabled={busy}
+          className="bg-accent px-4 py-2 font-mono text-[12px] uppercase tracking-[0.12em] text-accent-ink hover:bg-accent-press disabled:opacity-50">
+          {busy ? "QUEUEING…" : "OPEN →"}
+        </button>
+      </div>
+      {result ? (
+        <p className={`mt-2 font-mono text-[10px] ${result.ok ? "text-[color:var(--ok)]" : "text-[color:var(--err)]"}`}>{result.text}</p>
+      ) : null}
+    </BracketedCell>
+  );
+}
+
+interface SettlementRow {
+  rail: "a2a" | "x402";
+  contestId: string;
+  payer: string;
+  payee: string;
+  label: string;
+  amountUsdc: string;
+  chain: string;
+  txHash: string;
+  ts: string;
+}
+interface SettlementsData {
+  totals: {
+    a2aCount: number; a2aUsdc: string; x402Count: number; x402Usdc: string;
+    totalCount: number; totalUsdc: string;
+  };
+  rows: SettlementRow[];
+}
+
+/// The settlement ledger to show judges: every real, settled on-chain payment the
+/// agent economy produced, both rails, with clickable tx (Arc for A2A, Base for
+/// x402). The headline totals are the quotable traction number. Polls every 5s so
+/// a live dry run fills it in front of you.
+function SettlementsSection({ token }: { token: string }) {
+  const [data, setData] = useState<SettlementsData | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch(`${AUTH_URL}/admin/settlements`, { headers: { "x-admin-token": token } });
+      if (!res.ok) throw new Error(`http ${res.status}`);
+      setData((await res.json()) as SettlementsData);
+      setErr(null);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "load failed");
+    }
+  }, [token]);
+
+  useEffect(() => {
+    void load();
+    const t = setInterval(() => void load(), 5000);
+    return () => clearInterval(t);
+  }, [load]);
+
+  const t = data?.totals;
+  const cells = t
+    ? [
+        { label: "TOTAL PAYMENTS", value: String(t.totalCount) },
+        { label: "TOTAL USDC", value: t.totalUsdc },
+        { label: "A2A PAYMENTS", value: String(t.a2aCount) },
+        { label: "A2A USDC", value: t.a2aUsdc },
+        { label: "x402 PAYMENTS", value: String(t.x402Count) },
+        { label: "x402 USDC", value: t.x402Usdc },
+      ]
+    : [];
+
+  return (
+    <BracketedCell pad="sm">
+      <div className="mb-3 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">
+        <span aria-hidden className="text-accent">■</span> SETTLEMENTS · A2A + x402 · REAL ON-CHAIN
+      </div>
+      {cells.length > 0 ? (
+        <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
+          {cells.map((cell) => (
+            <div key={cell.label} className="border border-[color:var(--hairline)] bg-canvas-2 px-2 py-2">
+              <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-ink-3">{cell.label}</div>
+              <div className="mt-0.5 font-stencil text-[20px] leading-none text-ink">{cell.value}</div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {err ? <p className="mb-2 font-mono text-[10px] text-[color:var(--err)]">{err}</p> : null}
+      <div className="max-h-[420px] overflow-y-auto">
+        <div className="flex flex-col">
+          {(data?.rows ?? []).map((r, i) => (
+            <div key={`${r.txHash}-${i}`} className="flex flex-wrap items-center justify-between gap-2 border-b border-[color:var(--hairline)] py-2 last:border-0">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span
+                    className="border px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em]"
+                    style={{
+                      color: r.rail === "a2a" ? "var(--accent)" : "var(--ink-2)",
+                      borderColor: "var(--hairline-strong)",
+                    }}
+                  >
+                    {r.rail === "a2a" ? "A2A" : "x402"}
+                  </span>
+                  <span className="font-mono text-[12px] text-ink">{r.payer} → {r.payee}</span>
+                </div>
+                <div className="mt-0.5 font-mono text-[10px] text-ink-3">
+                  {r.label}{r.contestId ? ` · mission #${r.contestId}` : ""}
+                </div>
+              </div>
+              <div className="flex items-center gap-4">
+                <span className="font-stencil text-[16px] text-ink">{r.amountUsdc} <span className="font-mono text-[10px] text-ink-3">USDC</span></span>
+                <a href={txUrl(r.chain, r.txHash)} target="_blank" rel="noreferrer" className="font-mono text-[10px] text-ink-3 hover:text-accent" title={r.txHash}>
+                  {short(r.txHash)} ↗
+                </a>
+              </div>
+            </div>
+          ))}
+          {(data?.rows ?? []).length === 0 ? (
+            <p className="py-3 font-mono text-[11px] text-ink-3">no settled payments yet</p>
+          ) : null}
+        </div>
+      </div>
     </BracketedCell>
   );
 }

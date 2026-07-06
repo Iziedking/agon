@@ -70,6 +70,9 @@ contracts/scripts/*
 # Local-only run guide (contains operational tips, not for distribution)
 docs/run_guide.md
 
+# Lepton hackathon demo runbook (script, setup, dry-run). Local only.
+lepton.md
+
 # Internal service docs. ArcRun ships as a product, not a clone-and-run
 # template; setup and operations notes stay local.
 backend/README.md

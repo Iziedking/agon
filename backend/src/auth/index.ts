@@ -1431,19 +1431,27 @@ const ADMIN_COMMAND_KINDS = new Set([
   // Mission ops (targetId optional: 0 = all, or a specific mission id).
   "refund_missions",
   "clear_missions",
+  // Open a mission on demand (targetId ignored; params carry the shape).
+  "open_mission",
 ]);
 
 app.post("/admin/commands", async (c) => {
   if (!config.adminToken) return c.json({ error: "admin disabled (set ADMIN_TOKEN)" }, 503);
   if (!adminAuthed(c)) return c.json({ error: "unauthorized" }, 401);
-  const body = (await c.req.json().catch(() => ({}))) as { kind?: string; targetId?: number | string };
+  const body = (await c.req.json().catch(() => ({}))) as {
+    kind?: string;
+    targetId?: number | string;
+    params?: Record<string, unknown>;
+  };
   const kind = String(body.kind ?? "");
-  const targetId = Number(body.targetId);
+  // open_mission ignores targetId; default it to 0 so the shared validation passes.
+  const targetId = kind === "open_mission" ? 0 : Number(body.targetId);
   if (!ADMIN_COMMAND_KINDS.has(kind)) return c.json({ error: "bad kind" }, 400);
   if (!Number.isFinite(targetId) || targetId < 0) return c.json({ error: "bad targetId" }, 400);
+  const params = body.params && typeof body.params === "object" ? body.params : null;
   const { rows } = await query<{ id: string }>(
-    "insert into admin_commands (kind, target_id, requested_by) values ($1, $2, $3) returning id::text as id",
-    [kind, targetId, "admin-console"],
+    "insert into admin_commands (kind, target_id, requested_by, params) values ($1, $2, $3, $4) returning id::text as id",
+    [kind, targetId, "admin-console", params ? JSON.stringify(params) : null],
   );
   await logEvent({
     level: "warn",
@@ -1480,6 +1488,91 @@ app.get("/admin/commands", async (c) => {
       createdAt: r.created_at,
       updatedAt: r.updated_at,
     })),
+  });
+});
+
+// The settlement ledger judges can read: every REAL on-chain payment the agent
+// economy produced, both rails. A2A = agent-to-agent intel buys (USDC on Arc);
+// x402 = operatives paying external data services (USDC on the seller chain,
+// e.g. Base). Only settled rows with a tx hash count, so this is proof, not
+// intent. The headline totals are the quotable traction number. Read-gated.
+app.get("/admin/settlements", async (c) => {
+  if (!config.adminToken) return c.json({ error: "admin disabled (set ADMIN_TOKEN)" }, 503);
+  if (!readAuthed(c)) return c.json({ error: "unauthorized" }, 401);
+  const limit = Math.min(200, Math.max(10, Number(c.req.query("limit") ?? "100")));
+
+  const usdc = (v: string | null) => (Number(v ?? "0") / 1e6).toFixed(4);
+
+  const [a2a, x402, totals] = await Promise.all([
+    query<{
+      contest_id: string; buyer_agent_id: string; seller_agent_id: string;
+      fragment_id: string; price_usdc_6: string; tx_hash: string; created_at: string;
+    }>(
+      `select contest_id::text, buyer_agent_id::text, seller_agent_id::text,
+              fragment_id, price_usdc_6, tx_hash, created_at
+         from a2a_trades
+        where status = 'settled' and tx_hash is not null
+        order by created_at desc limit $1`,
+      [limit],
+    ),
+    query<{
+      contest_id: string | null; agent_id: string; endpoint_label: string | null;
+      usdc_amount_6: string; chain: string; tx_hash: string; created_at: string;
+    }>(
+      `select contest_id::text, agent_id::text, endpoint_label,
+              usdc_amount_6, chain, tx_hash, created_at
+         from nanopayments
+        where status = 'settled' and tx_hash is not null
+        order by created_at desc limit $1`,
+      [limit],
+    ),
+    query<{ a2a_n: string; a2a_sum: string; x402_n: string; x402_sum: string }>(
+      `select
+         (select count(*) from a2a_trades where status='settled' and tx_hash is not null) as a2a_n,
+         (select coalesce(sum(price_usdc_6::numeric),0) from a2a_trades where status='settled' and tx_hash is not null) as a2a_sum,
+         (select count(*) from nanopayments where status='settled' and tx_hash is not null) as x402_n,
+         (select coalesce(sum(usdc_amount_6::numeric),0) from nanopayments where status='settled' and tx_hash is not null) as x402_sum`,
+    ),
+  ]);
+
+  const rows = [
+    ...a2a.rows.map((r) => ({
+      rail: "a2a" as const,
+      contestId: r.contest_id,
+      payer: `agent ${r.buyer_agent_id}`,
+      payee: `agent ${r.seller_agent_id}`,
+      label: `intel ${r.fragment_id}`,
+      amountUsdc: usdc(r.price_usdc_6),
+      chain: "arc",
+      txHash: r.tx_hash,
+      ts: r.created_at,
+    })),
+    ...x402.rows.map((r) => ({
+      rail: "x402" as const,
+      contestId: r.contest_id ?? "",
+      payer: `agent ${r.agent_id}`,
+      payee: r.endpoint_label ?? "data service",
+      label: r.endpoint_label ?? "x402 call",
+      amountUsdc: usdc(r.usdc_amount_6),
+      chain: (r.chain ?? "base").toLowerCase(),
+      txHash: r.tx_hash,
+      ts: r.created_at,
+    })),
+  ].sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
+
+  const t = totals.rows[0];
+  const a2aSum = Number(t?.a2a_sum ?? "0") / 1e6;
+  const x402Sum = Number(t?.x402_sum ?? "0") / 1e6;
+  return c.json({
+    totals: {
+      a2aCount: Number(t?.a2a_n ?? "0"),
+      a2aUsdc: a2aSum.toFixed(4),
+      x402Count: Number(t?.x402_n ?? "0"),
+      x402Usdc: x402Sum.toFixed(4),
+      totalCount: Number(t?.a2a_n ?? "0") + Number(t?.x402_n ?? "0"),
+      totalUsdc: (a2aSum + x402Sum).toFixed(4),
+    },
+    rows,
   });
 });
 

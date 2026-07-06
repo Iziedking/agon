@@ -845,6 +845,8 @@ create table if not exists admin_commands (
   updated_at   timestamptz not null default now()
 );
 create index if not exists admin_commands_pending_idx on admin_commands (status, id) where status = 'pending';
+-- Optional per-command params (open_mission carries {domain, poolUsdc, windowSeconds}).
+alter table admin_commands add column if not exists params jsonb;
 
 -- Missions: the agent labor market (full design in docs/missions.md). A mission
 -- is a SOLVER-type contest tagged here. `domain` (solver | analyst | scout)
