@@ -11,6 +11,7 @@ import { EnterPanel } from "@/components/pengu/EnterPanel";
 import { fetchContest, type Contest } from "@/lib/contests";
 import { USDC, confirmTx } from "@/lib/arc";
 import { checkEntry } from "@/lib/entry";
+import { friendlyError } from "@/lib/errors";
 import { useOperatorAddress } from "@/hooks/useAuth";
 import { useArcWrite } from "@/hooks/useArcWrite";
 import {
@@ -119,7 +120,10 @@ function Arena({ state, mission }: { state: MissionState; mission: NonNullable<M
   const resolved = mission.status === "settled" || mission.status === "cancelled";
   // Resolve each operative's agent name + pfp (skin), the same way the live
   // stages and leaderboard do, so a card reads as the operator, not "AGENT N".
-  const names = useAgentNames(operatives.map((o) => o.agentId));
+  // Include the tape's buyers AND sellers (specialists aren't operatives) so
+  // every row on the ledger reads as the operator's named agent at a glance.
+  const tapeAgentIds = tape.flatMap((r) => [r.fromAgentId, r.toAgentId]).filter((x): x is number => typeof x === "number");
+  const names = useAgentNames([...operatives.map((o) => o.agentId), ...tapeAgentIds]);
   const skins = useAgentSkins(operatives.map((o) => o.agentId));
   const settled = operatives.reduce((n, o) => n + (o.credited ?? 0), 0);
 
@@ -266,6 +270,7 @@ function Arena({ state, mission }: { state: MissionState; mission: NonNullable<M
                   fragments={fragments}
                   name={nameFor(names, o.agentId)}
                   skin={skinFor(skins, o.agentId)}
+                  names={names}
                 />
               ))}
             </div>
@@ -284,7 +289,7 @@ function Arena({ state, mission }: { state: MissionState; mission: NonNullable<M
             ) : (
               <div className="flex max-h-[640px] flex-col divide-y divide-[color:var(--hairline)] overflow-y-auto">
                 {tape.map((row, i) => (
-                  <TapeRowView key={i} row={row} />
+                  <TapeRowView key={i} row={row} names={names} />
                 ))}
               </div>
             )}
@@ -421,7 +426,7 @@ function MissionJoinPanel({
       setMsg("you own this piece. it is listed for resale; an operative buys it from you on chain.");
       setBusy(false);
     } catch (e) {
-      setErr(e instanceof Error ? e.message.toLowerCase() : "could not buy the piece.");
+      setErr(friendlyError(e, "could not buy the piece."));
       setBusy(false);
     }
   }
@@ -743,12 +748,14 @@ function OperativeCard({
   fragments,
   name,
   skin,
+  names,
 }: {
   op: MissionOperative;
   rank: number;
   fragments: MissionState["fragments"];
   name?: string | null;
   skin?: string | null;
+  names: Map<number, string>;
 }) {
   return (
     <BracketedCell>
@@ -790,7 +797,7 @@ function OperativeCard({
           <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-3">HOW IT SOURCED</div>
           <div className="mt-1.5 flex flex-col divide-y divide-[color:var(--hairline)]">
             {op.decisions.map((d) => (
-              <DecisionRow key={d.fragmentId} d={d} fragments={fragments} />
+              <DecisionRow key={d.fragmentId} d={d} fragments={fragments} names={names} />
             ))}
           </div>
         </div>
@@ -821,14 +828,14 @@ function naturalReason(choice: Choice): string {
   return "could not source this piece";
 }
 
-function DecisionRow({ d, fragments }: { d: MissionDecision; fragments: MissionState["fragments"] }) {
+function DecisionRow({ d, fragments, names }: { d: MissionDecision; fragments: MissionState["fragments"]; names: Map<number, string> }) {
   const frag = fragments.find((f) => f.id === d.fragmentId);
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5">
       <ChoiceChip choice={d.choice} />
       <span className="font-mono text-[11px] uppercase tracking-[0.10em] text-ink-3">{frag?.kind ?? d.fragmentId}</span>
       {d.choice === "buy" && d.specialistAgentId != null ? (
-        <span className="font-mono text-[11px] text-ink-2">from agent {d.specialistAgentId}</span>
+        <span className="font-mono text-[11px] text-ink-2">from {nameFor(names, d.specialistAgentId)}</span>
       ) : null}
       {Number(d.spent6 || "0") > 0 ? (
         <span className="font-mono text-[11px] text-ink">{formatUsdc6(d.spent6)}</span>
@@ -851,9 +858,13 @@ function DecisionRow({ d, fragments }: { d: MissionDecision; fragments: MissionS
   );
 }
 
-function TapeRowView({ row }: { row: TapeRow }) {
+function TapeRowView({ row, names }: { row: TapeRow; names: Map<number, string> }) {
   const color = row.kind === "a2a" ? "var(--accent)" : row.kind === "shelf" ? "var(--warn)" : "var(--ok)";
   const label = row.kind === "a2a" ? "A2A · RESALE" : row.kind === "shelf" ? "SHELF · BOUGHT INTEL" : "X402 · DATA";
+  // The buyer is always an agent; the recipient is an agent for A2A resales and a
+  // service/shelf label otherwise. Show the operator's chosen name on each side.
+  const from = nameFor(names, row.fromAgentId);
+  const to = row.toAgentId != null ? nameFor(names, row.toAgentId) : row.toLabel;
   return (
     <div className="flex items-center gap-3 py-2.5">
       <span aria-hidden style={{ color }}>
@@ -861,7 +872,7 @@ function TapeRowView({ row }: { row: TapeRow }) {
       </span>
       <div className="min-w-0 flex-1">
         <div className="font-mono text-[12px] text-ink">
-          agent {row.fromAgentId} <span className="text-ink-3">→</span> {row.toLabel}
+          {from} <span className="text-ink-3">→</span> {to}
         </div>
         <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">{label}</div>
       </div>
