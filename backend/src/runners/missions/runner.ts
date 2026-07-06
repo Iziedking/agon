@@ -163,6 +163,26 @@ export class MissionRunner implements Runner {
           row.specialistAgentId = bought.sellerAgentId;
           fragmentData.push({ ask: opt.fragment.ask, data: bought.intel });
           events.push(this.tape(entry.agentId, bought.price6 ?? "0", bought.txHash, "arc", `intel from agent ${bought.sellerAgentId}`));
+        } else if (opt.canMake && opt.fragment.service) {
+          // Affordability fallback: the buy could not settle (no seller within
+          // this operative's budget). Rather than come up empty, source the
+          // fragment via MAKE. The decision flips to 'make' so the grader's
+          // credit gate verifies the x402 nanopayment proof, not an a2a trade.
+          row.choice = "make";
+          const made = await this.make(mission, opt, entry).catch((err) => {
+            console.warn(`[mission] buy->make fallback failed f=${opt.fragment.id}: ${err instanceof Error ? err.message : err}`);
+            return null;
+          });
+          if (made && made.data != null) {
+            row.data = made.data;
+            fragmentData.push({ ask: opt.fragment.ask, data: made.data });
+          }
+          if (made && made.settled && made.txHash) {
+            row.settled = true;
+            row.txHash = made.txHash;
+            row.spent6 = made.spent6;
+            events.push(this.tape(entry.agentId, made.spent6, made.txHash, opt.fragment.service.chain, opt.fragment.service.label));
+          }
         }
       }
       // 'skip' (or a failed make/buy) leaves the row unsettled.

@@ -14,7 +14,7 @@ import { arcTestnet, publicClient } from "../../chain/arc.js";
 import { config } from "../../config/index.js";
 import { query } from "../../db/pool.js";
 import { deriveHotWallet } from "../scout.js";
-import { getSpecialistForFragment } from "./specialists.js";
+import { listSpecialistsForFragment } from "./specialists.js";
 
 const USDC_ABI = parseAbi([
   "function transfer(address to, uint256 amount) returns (bool)",
@@ -60,12 +60,34 @@ export async function buyIntel(opts: {
 
   // request
   transcript.push({ step: "request", detail: `agent ${buyerAgentId} requests ${fragmentId}` });
-  const specialist = await getSpecialistForFragment(missionId, fragmentId);
-  if (!specialist) {
+  const sellers = (await listSpecialistsForFragment(missionId, fragmentId)).filter(
+    (s) => s.agentId !== buyerAgentId, // an operative cannot buy from itself
+  );
+  if (sellers.length === 0) {
     return { ok: false, reason: "no specialist holds this fragment", transcript };
   }
-  if (specialist.agentId === buyerAgentId) {
-    return { ok: false, reason: "operative cannot buy from itself", transcript };
+
+  // The buyer needs the price plus a gas reserve (USDC is gas on Arc). Read the
+  // balance once, then take the FIRST affordable seller from the preference-
+  // ordered list (operators first, then cheapest). This is the affordability
+  // fallback: when the preferred operator listing is out of this operative's
+  // budget, it buys a cheaper platform seller instead of failing the buy — so an
+  // overpriced seller no longer starves the fragment and cancels the mission.
+  const buyer = deriveHotWallet(buyerAgentId);
+  const balance = await publicClient.readContract({
+    address: config.external.USDC,
+    abi: USDC_ABI,
+    functionName: "balanceOf",
+    args: [buyer.address],
+  });
+  const canAfford = (s: (typeof sellers)[number]) => balance >= BigInt(s.price6) + GAS_RESERVE6;
+  const specialist = sellers.find(canAfford);
+  if (!specialist) {
+    // Nobody is affordable. Report the cheapest seller for context.
+    const cheapest = sellers.reduce((a, b) => (BigInt(a.price6) <= BigInt(b.price6) ? a : b));
+    transcript.push({ step: "offer", detail: `cheapest seller ${cheapest.agentId} at ${cheapest.price6}` });
+    transcript.push({ step: "accept", detail: "declined: operative underfunded for every seller" });
+    return { ok: false, reason: "buyer underfunded", sellerAgentId: cheapest.agentId, price6: cheapest.price6, transcript };
   }
 
   // offer
@@ -74,25 +96,6 @@ export async function buyIntel(opts: {
     step: "offer",
     detail: `specialist ${specialist.agentId} offers ${fragmentId} for ${specialist.price6}`,
   });
-
-  // The buyer needs the price plus a gas reserve (USDC is gas on Arc).
-  const buyer = deriveHotWallet(buyerAgentId);
-  const balance = await publicClient.readContract({
-    address: config.external.USDC,
-    abi: USDC_ABI,
-    functionName: "balanceOf",
-    args: [buyer.address],
-  });
-  if (balance < price6 + GAS_RESERVE6) {
-    transcript.push({ step: "accept", detail: "declined: operative underfunded" });
-    return {
-      ok: false,
-      reason: "buyer underfunded",
-      sellerAgentId: specialist.agentId,
-      price6: specialist.price6,
-      transcript,
-    };
-  }
 
   // accept: record the intent BEFORE paying so a crash leaves an auditable row.
   transcript.push({ step: "accept", detail: `agent ${buyerAgentId} accepts` });

@@ -75,14 +75,16 @@ export async function seedSpecialists(mission: Commission): Promise<Specialist[]
   return seeded;
 }
 
-/// The specialist holding a given fragment for a mission, or null when none does
-/// (e.g. an action fragment, or the mission was not seeded). When a real operator
-/// has joined the supply side for this fragment, prefer them — their A2A sale is
-/// the point of the two-sided market — then the cheapest, then a stable agentId.
-export async function getSpecialistForFragment(
+/// Every specialist that can sell a given fragment, ordered the way the buyer
+/// should prefer them: real operators first (their A2A sale is the point of the
+/// two-sided market), then cheapest, then a stable agentId. The A2A buy walks
+/// this list and takes the first seller the operative can actually afford, so an
+/// overpriced operator listing degrades to a cheaper platform seller instead of
+/// failing the buy and cancelling the mission.
+export async function listSpecialistsForFragment(
   missionId: number,
   fragmentId: string,
-): Promise<Specialist | null> {
+): Promise<Specialist[]> {
   const { rows } = await query<{
     agent_id: string;
     address: string;
@@ -93,18 +95,26 @@ export async function getSpecialistForFragment(
        from mission_specialists
       where contest_id = $1 and fragment_id = $2
         and (owner = 'operator' or claimed_by is null)
-      order by (owner = 'operator') desc, price_usdc_6::numeric asc, agent_id asc
-      limit 1`,
+      order by (owner = 'operator') desc, price_usdc_6::numeric asc, agent_id asc`,
     [missionId, fragmentId],
   );
-  const r = rows[0];
-  if (!r) return null;
-  return {
+  return rows.map((r) => ({
     agentId: Number(r.agent_id),
     address: r.address as `0x${string}`,
     missionId,
     fragmentId,
     price6: r.price_usdc_6,
     intel: r.intel,
-  };
+  }));
+}
+
+/// The single best specialist for a fragment (first of listSpecialistsForFragment),
+/// or null when none exists. Used where only the headline price/availability
+/// matters (mission listing, float sizing); the buy path uses the full list.
+export async function getSpecialistForFragment(
+  missionId: number,
+  fragmentId: string,
+): Promise<Specialist | null> {
+  const all = await listSpecialistsForFragment(missionId, fragmentId);
+  return all[0] ?? null;
 }
