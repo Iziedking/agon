@@ -843,6 +843,17 @@ function CancelCard({ token, onDone }: { token: string; onDone: () => void }) {
 /// commission + specialists), so you can dry-run the live economy anytime and
 /// build real settled volume before recording. Seat counts and the internal/
 /// external mix come from the mission env; here you pick domain, pool, and window.
+/// Small labelled wrapper so each mission-open control names itself (the bare
+/// placeholders were ambiguous — "5" read as agents when it was the window).
+function Labeled({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-ink-3">{label}</span>
+      {children}
+    </label>
+  );
+}
+
 const MISSION_TEMPLATES: Record<"solver" | "analyst", Array<{ id: string; label: string }>> = {
   solver: [
     { id: "", label: "RANDOM" },
@@ -861,6 +872,8 @@ function MissionOpenCard({ token }: { token: string }) {
   const [templateId, setTemplateId] = useState("");
   const [pool, setPool] = useState("250");
   const [windowMin, setWindowMin] = useState("10");
+  const [operatives, setOperatives] = useState("");
+  const [specialists, setSpecialists] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -879,6 +892,9 @@ function MissionOpenCard({ token }: { token: string }) {
             ...(templateId ? { templateId } : {}),
             poolUsdc: Number(pool) || 250,
             windowSeconds: Math.max(60, (Number(windowMin) || 10) * 60),
+            // Blank = fall back to the global MISSION_*_SEATS env.
+            ...(Number(operatives) > 0 ? { operativeSeats: Number(operatives) } : {}),
+            ...(Number(specialists) > 0 ? { specialistSeats: Number(specialists) } : {}),
           },
         }),
       });
@@ -896,29 +912,46 @@ function MissionOpenCard({ token }: { token: string }) {
     <BracketedCell pad="sm">
       <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">OPEN A MISSION NOW</div>
       <div className="mt-1 font-mono text-[10px] text-ink-3">real mission, live on demand · dry-run the economy anytime</div>
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <select
-          value={domain}
-          onChange={(e) => {
-            setDomain(e.target.value as "solver" | "analyst");
-            setTemplateId("");
-          }}
-          className={field}
-        >
-          <option value="solver">SOLVER</option>
-          <option value="analyst">ANALYST</option>
-        </select>
-        <select value={templateId} onChange={(e) => setTemplateId(e.target.value)} className={field}>
-          {MISSION_TEMPLATES[domain].map((t) => (
-            <option key={t.id || "random"} value={t.id}>{t.label}</option>
-          ))}
-        </select>
-        <input value={pool} onChange={(e) => setPool(e.target.value.replace(/[^0-9]/g, ""))} placeholder="pool USDC" inputMode="numeric" className={`w-28 ${field}`} />
-        <input value={windowMin} onChange={(e) => setWindowMin(e.target.value.replace(/[^0-9]/g, ""))} placeholder="min" inputMode="numeric" className={`w-20 ${field}`} />
+      <div className="mt-3 flex flex-wrap items-end gap-2">
+        <Labeled label="DOMAIN">
+          <select
+            value={domain}
+            onChange={(e) => {
+              setDomain(e.target.value as "solver" | "analyst");
+              setTemplateId("");
+            }}
+            className={field}
+          >
+            <option value="solver">SOLVER</option>
+            <option value="analyst">ANALYST</option>
+          </select>
+        </Labeled>
+        <Labeled label="TEMPLATE">
+          <select value={templateId} onChange={(e) => setTemplateId(e.target.value)} className={field}>
+            {MISSION_TEMPLATES[domain].map((t) => (
+              <option key={t.id || "random"} value={t.id}>{t.label}</option>
+            ))}
+          </select>
+        </Labeled>
+        <Labeled label="POOL USDC">
+          <input value={pool} onChange={(e) => setPool(e.target.value.replace(/[^0-9]/g, ""))} placeholder="250" inputMode="numeric" className={`w-24 ${field}`} />
+        </Labeled>
+        <Labeled label="WINDOW MIN">
+          <input value={windowMin} onChange={(e) => setWindowMin(e.target.value.replace(/[^0-9]/g, ""))} placeholder="10" inputMode="numeric" className={`w-20 ${field}`} />
+        </Labeled>
+        <Labeled label="OPERATIVES">
+          <input value={operatives} onChange={(e) => setOperatives(e.target.value.replace(/[^0-9]/g, ""))} placeholder="env" inputMode="numeric" className={`w-24 ${field}`} />
+        </Labeled>
+        <Labeled label="SPECIALISTS">
+          <input value={specialists} onChange={(e) => setSpecialists(e.target.value.replace(/[^0-9]/g, ""))} placeholder="env" inputMode="numeric" className={`w-24 ${field}`} />
+        </Labeled>
         <button onClick={submit} disabled={busy}
           className="bg-accent px-4 py-2 font-mono text-[12px] uppercase tracking-[0.12em] text-accent-ink hover:bg-accent-press disabled:opacity-50">
           {busy ? "QUEUEING…" : "OPEN →"}
         </button>
+      </div>
+      <div className="mt-2 font-mono text-[10px] text-ink-3">
+        operatives = competitors, specialists = intel sellers · blank = use the global env seat counts
       </div>
       {result ? (
         <p className={`mt-2 font-mono text-[10px] ${result.ok ? "text-[color:var(--ok)]" : "text-[color:var(--err)]"}`}>{result.text}</p>

@@ -2100,6 +2100,21 @@ app.get("/missions", async (c) => {
   });
 });
 
+/// A mission's seat caps: the per-mission overrides if set, else the global
+/// MISSION_*_SEATS config. So an admin can open a bigger or smaller field for a
+/// single mission and the enforcement + display both honour it.
+async function missionSeatCaps(contestId: number): Promise<{ operativeSeats: number; specialistSeats: number }> {
+  const r = await query<{ operative_seats: number | null; specialist_seats: number | null }>(
+    "select operative_seats, specialist_seats from missions where contest_id = $1",
+    [contestId],
+  );
+  const row = r.rows[0];
+  return {
+    operativeSeats: row?.operative_seats ?? config.mission.operativeSeats,
+    specialistSeats: row?.specialist_seats ?? config.mission.specialistSeats,
+  };
+}
+
 /// Operator joins a mission on the SUPPLY side: registers one of their agents as
 /// an intel specialist for a fragment at their own price. Operatives can then
 /// buy that intel agent-to-agent, and the USDC lands in the operator's wallet.
@@ -2145,8 +2160,9 @@ app.post("/missions/:id/specialist", requireAuth, async (c) => {
   );
   const seatsTaken = seatRows.rows.length;
   const alreadyIn = seatRows.rows.some((r) => (r.operator ?? "").toLowerCase() === operator);
-  if (!alreadyIn && seatsTaken >= config.mission.specialistSeats) {
-    return c.json({ error: `specialist seats are full (${config.mission.specialistSeats} max, first come first served)` }, 409);
+  const { specialistSeats: specialistCap } = await missionSeatCaps(contestId);
+  if (!alreadyIn && seatsTaken >= specialistCap) {
+    return c.json({ error: `specialist seats are full (${specialistCap} max, first come first served)` }, 409);
   }
 
   // The A2A payment lands in the operator's own wallet (address = operator), so
@@ -2374,8 +2390,9 @@ app.post("/missions/:id/buy-intel", requireAuth, async (c) => {
   );
   const distinctOps = new Set(buyRows.rows.map((r) => (r.operator ?? "").toLowerCase()));
   const myCount = buyRows.rows.filter((r) => (r.operator ?? "").toLowerCase() === operator).length;
-  if (!distinctOps.has(operator) && distinctOps.size >= config.mission.specialistSeats) {
-    return c.json({ error: `specialist seats are full (${config.mission.specialistSeats} max)` }, 409);
+  const { specialistSeats: specialistCap } = await missionSeatCaps(contestId);
+  if (!distinctOps.has(operator) && distinctOps.size >= specialistCap) {
+    return c.json({ error: `specialist seats are full (${specialistCap} max)` }, 409);
   }
   if (myCount >= config.mission.specialistMaxBuy) {
     return c.json({ error: `you already hold the max ${config.mission.specialistMaxBuy} pieces` }, 409);
@@ -2468,8 +2485,10 @@ app.get("/missions/:id", async (c) => {
     base_price_usdc_6: string;
     pool_usdc_6: string;
     seq: string;
+    operative_seats: number | null;
+    specialist_seats: number | null;
   }>(
-    "select domain, template_id, title, brief, deliverable, status, archetype, weight, base_price_usdc_6, pool_usdc_6, seq from missions where contest_id = $1",
+    "select domain, template_id, title, brief, deliverable, status, archetype, weight, base_price_usdc_6, pool_usdc_6, seq, operative_seats, specialist_seats from missions where contest_id = $1",
     [contestId],
   );
   const mission = m.rows[0];
@@ -2675,8 +2694,8 @@ app.get("/missions/:id", async (c) => {
       feeBps: feeRecipient ? config.mission.operativeFeeBps : 0,
       feeRecipient,
       feesPaid: Number(feePaid.rows[0]?.n ?? 0),
-      specialistSeats: { total: config.mission.specialistSeats, taken: Number(specSeats.rows[0]?.n ?? 0) },
-      operativeSeats: { total: config.mission.operativeSeats, taken: Number(opSeats.rows[0]?.n ?? 0) },
+      specialistSeats: { total: mission.specialist_seats ?? config.mission.specialistSeats, taken: Number(specSeats.rows[0]?.n ?? 0) },
+      operativeSeats: { total: mission.operative_seats ?? config.mission.operativeSeats, taken: Number(opSeats.rows[0]?.n ?? 0) },
     },
     fragments: fragments.rows.map((f) => ({ id: f.fragment_id, kind: f.kind, ask: f.ask })),
     specialists: specialists.rows.map((s) => ({

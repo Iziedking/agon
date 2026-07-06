@@ -111,6 +111,9 @@ export interface OpenMissionOpts {
   templateId?: string;
   minTier?: number;
   maxTier?: number;
+  /// Per-mission seat caps; undefined falls back to the global config.
+  operativeSeats?: number;
+  specialistSeats?: number;
 }
 
 /// Open a mission: list a SOLVER-type contest on-chain (cType 2), then generate
@@ -134,7 +137,14 @@ export async function openMission(opts: OpenMissionOpts): Promise<number> {
     throw new Error(`openMission: openContest failed: ${e instanceof Error ? e.stack ?? e.message : String(e)}`);
   }
   try {
-    await generateMission({ contestId, domain: opts.domain, templateId: opts.templateId, poolUsdc: opts.poolUsdc });
+    await generateMission({
+      contestId,
+      domain: opts.domain,
+      templateId: opts.templateId,
+      poolUsdc: opts.poolUsdc,
+      operativeSeats: opts.operativeSeats,
+      specialistSeats: opts.specialistSeats,
+    });
   } catch (e) {
     throw new Error(
       `openMission: generateMission failed (solver contest ${contestId} created): ${e instanceof Error ? e.stack ?? e.message : String(e)}`,

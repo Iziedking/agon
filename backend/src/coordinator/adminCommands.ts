@@ -92,12 +92,17 @@ async function openMissionNow(
   const windowSeconds = Number(p.windowSeconds) > 0 ? Math.floor(Number(p.windowSeconds)) : 600;
   // Optional explicit template (e.g. "sector-risk-audit"); blank = rotate.
   const templateId = typeof p.templateId === "string" && p.templateId.trim() ? p.templateId.trim() : undefined;
+  // Optional per-mission seat caps; undefined falls back to the global config.
+  const operativeSeats = Number(p.operativeSeats) > 0 ? Math.floor(Number(p.operativeSeats)) : undefined;
+  const specialistSeats = Number(p.specialistSeats) > 0 ? Math.floor(Number(p.specialistSeats)) : undefined;
 
   const contestId = await openMission({
     poolUsdc,
     durationSeconds: windowSeconds,
     domain,
     templateId,
+    operativeSeats,
+    specialistSeats,
     minTier: config.mission.minTier,
   });
   await setTierGate("contest", contestId, config.mission.minTier, 4).catch(() => {});
@@ -112,7 +117,10 @@ async function openMissionNow(
     body: `${domain.toUpperCase()} mission #${contestId} is open for ${Math.round(windowSeconds / 60)} min. Enter as an operative or grab a specialist seat.`,
     href: `/missions/${contestId}`,
   }).catch(() => {});
-  return `mission ${contestId} opened (${domain}, ${poolUsdc} USDC, ${windowSeconds}s window)`;
+  const seatNote = operativeSeats || specialistSeats
+    ? `, seats ${operativeSeats ?? config.mission.operativeSeats} op / ${specialistSeats ?? config.mission.specialistSeats} spec`
+    : "";
+  return `mission ${contestId} opened (${domain}, ${poolUsdc} USDC, ${windowSeconds}s window${seatNote})`;
 }
 
 async function execute(cmd: Command, broadcast: (message: unknown) => void): Promise<string> {

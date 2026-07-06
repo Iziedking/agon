@@ -875,6 +875,11 @@ alter table missions add column if not exists pool_usdc_6       text    not null
 -- contest id (one counter across all contests). The URL still uses contest_id.
 create sequence if not exists mission_display_seq;
 alter table missions add column if not exists seq bigint not null default nextval('mission_display_seq');
+-- Per-mission seat caps. NULL falls back to the global MISSION_*_SEATS config,
+-- so an admin can open a bigger or smaller field for one mission without
+-- changing the env for every mission.
+alter table missions add column if not exists operative_seats  int;
+alter table missions add column if not exists specialist_seats int;
 create index if not exists missions_status_idx on missions(status, created_at desc);
 
 -- The fragments a mission's brief asks for, with the captured ground truth. The
