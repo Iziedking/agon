@@ -242,10 +242,15 @@ async function llamaFindings(avoid: string[], rotate: number): Promise<LiveFindi
 /// ground truth — the exact answer a `market` fragment asks for, from the venue
 /// that actually prices it. Sorted by volume so the markets are ones people
 /// genuinely trade; rotated so consecutive missions probe different markets.
+/// Filtered to a gamma tag so subjects stay on-brand for the arena: tag 21 is
+/// Crypto (verified live). POLYMARKET_TAG_ID overrides; 0 disables the filter
+/// (all categories, sports lead by volume).
+const POLYMARKET_TAG_ID = Number(process.env.POLYMARKET_TAG_ID ?? "21");
 async function polymarketFindings(avoid: string[], rotate: number): Promise<LiveFinding[]> {
   try {
+    const tag = Number.isFinite(POLYMARKET_TAG_ID) && POLYMARKET_TAG_ID > 0 ? `&tag_id=${POLYMARKET_TAG_ID}` : "";
     const res = await fetch(
-      "https://gamma-api.polymarket.com/markets?closed=false&order=volumeNum&ascending=false&limit=40",
+      `https://gamma-api.polymarket.com/markets?closed=false&order=volumeNum&ascending=false&limit=40${tag}`,
       { headers: { accept: "application/json" }, signal: AbortSignal.timeout(TIMEOUT_MS) },
     );
     if (!res.ok) return [];
