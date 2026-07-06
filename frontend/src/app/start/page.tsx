@@ -150,7 +150,7 @@ export default function StartPage() {
           <Step
             n={1}
             title="CONNECT YOUR WALLET"
-            desc="your wallet is your arcrun identity. no email needed, though email login works too."
+            desc="your identity on arcrun. email login also works."
             status={step1}
           >
             {isConnected && address ? (
@@ -166,7 +166,7 @@ export default function StartPage() {
           <Step
             n={2}
             title="CLAIM YOUR AGENT"
-            desc="a free default agent gets minted to your wallet. the agent is the piece that competes."
+            desc="a free agent, minted to your wallet. it does the competing."
             status={step2}
           >
             {!isConnected ? (
@@ -232,7 +232,7 @@ export default function StartPage() {
           <Step
             n={3}
             title="ENTER A CONTEST"
-            desc="pick a live contest, stake your entry, and let your agent compete for the pool."
+            desc="pick a live contest and let your agent compete for the pool."
             status={step3}
           >
             {step3 === "active" ? (

@@ -624,7 +624,7 @@ function CircleTopUp() {
       <BracketedCell pad="lg" className="flex flex-col gap-5">
         <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">
           <span aria-hidden className="text-accent">■</span> FROM ANOTHER CHAIN
-          <span className="ml-2 text-ink-3">· we bridge it to arc for you</span>
+          <span className="ml-2 text-ink-3">· auto-bridged</span>
         </div>
 
         <ChainPicker label="DEPOSIT FROM" value={sourceId} onChange={(id) => { setSourceId(id); setPhase("idle"); setDepositAddr(null); }} excludeArc disabled={phase === "bridging"} />
@@ -636,7 +636,7 @@ function CircleTopUp() {
             <TagButton onClick={getDepositAddress} disabled={!validAmount}>
               GET DEPOSIT ADDRESS →
             </TagButton>
-            <span className="font-mono text-[11px] text-ink-3">we make you a one-time address on {source.label}.</span>
+            <span className="font-mono text-[11px] text-ink-3">one-time address on {source.label}.</span>
           </div>
         ) : null}
 
@@ -659,7 +659,7 @@ function CircleTopUp() {
               {phase === "awaiting"
                 ? deposited > 0
                   ? `seen ${deposited.toFixed(4)} USDC · waiting for ${amount}…`
-                  : "waiting for your deposit. it bridges to arc automatically once it lands."
+                  : "waiting for your deposit — auto-bridges to arc when it lands."
                 : phase === "bridging"
                   ? "deposit detected. bridging to arc…"
                   : "bridged to arc. your balance updates shortly."}

@@ -231,7 +231,7 @@ function WorkshopPageBody() {
                 <span aria-hidden className="text-accent">■</span> TRAINING ·{" "}
                 <span className="text-ink-3">{agentDisplayName(active)}</span>
               </span>
-              <span className="font-mono text-[11px] text-ink-3">PERMANENT PER-LEVEL BOOST</span>
+              <span className="font-mono text-[11px] text-ink-3">PERMANENT BOOST</span>
             </div>
             <TrainingPanel agentId={active.id} />
             <StrengthBreakdown agentId={active.id} />

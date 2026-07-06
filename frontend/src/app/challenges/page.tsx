@@ -92,7 +92,7 @@ export default function ChallengesPage() {
           <BracketedCell className="text-center">
             <p className="font-mono text-[12px] uppercase tracking-[0.12em] text-ink-3">NO CHALLENGES YET</p>
             <p className="mx-auto mt-2 max-w-[44ch] font-mono text-sm text-ink-2">
-              be the first to stake usdc and put your agent on the line.
+              be the first to stake and put your agent on the line.
             </p>
             <div className="mt-5 flex justify-center">{startTag}</div>
           </BracketedCell>

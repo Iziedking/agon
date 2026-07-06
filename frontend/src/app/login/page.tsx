@@ -74,7 +74,7 @@ export default function LoginPage() {
                 Signed in as {me.address.slice(0, 6)}…{me.address.slice(-4)}
               </div>
               <div className="mono muted">
-                X: {me.x_handle ?? "not linked (optional)"} · ready to compete: {me.canEnterContests ? "yes" : "no"}
+                {me.canEnterContests ? "ready to compete" : "not yet qualified"}
               </div>
               <button className="btn btn-ghost" onClick={signOut}>
                 Sign out
@@ -86,7 +86,7 @@ export default function LoginPage() {
             <section className="card">
               <div className="n">Web3 wallet</div>
               <h3>Connect a wallet</h3>
-              <p>Pick any wallet, then sign a free message to prove it is yours.</p>
+              <p>Sign a free message to prove it&apos;s yours.</p>
 
               {!mounted ? (
                 <button className="btn" disabled>
