@@ -151,6 +151,48 @@ function getProviders(): Provider[] {
   return providers;
 }
 
+/// Fast-fail circuit breaker, per provider family (anthropic-compatible vs
+/// openrouter). When the LLM is genuinely down, every call would otherwise walk
+/// the full provider loop (N providers x retries x a 60s timeout), so a single
+/// mission with ~21 calls hangs for many minutes and looks stuck. After
+/// LLM_BREAKER_FAILS consecutive total failures the breaker OPENS for
+/// LLM_BREAKER_COOLDOWN_MS: calls throw immediately so callers use their
+/// fallbacks (heuristic decide, concat synthesize, "judge error") and the
+/// mission settles in seconds. The first call after the cooldown is a probe that
+/// closes the breaker on success. Any success resets it. Process-global and
+/// best-effort; the tradeoff is up to one cooldown window of fallback output in
+/// exchange for never hanging a settlement.
+interface Breaker {
+  fails: number;
+  openUntil: number;
+}
+const breakers: Record<"anthropic" | "openrouter", Breaker> = {
+  anthropic: { fails: 0, openUntil: 0 },
+  openrouter: { fails: 0, openUntil: 0 },
+};
+const BREAKER_FAILS = Number(process.env.LLM_BREAKER_FAILS ?? "3");
+const BREAKER_COOLDOWN_MS = Number(process.env.LLM_BREAKER_COOLDOWN_MS ?? "60000");
+
+function breakerOpen(family: "anthropic" | "openrouter"): boolean {
+  return breakers[family].openUntil > Date.now();
+}
+function breakerRecord(family: "anthropic" | "openrouter", ok: boolean): void {
+  const b = breakers[family];
+  if (ok) {
+    b.fails = 0;
+    b.openUntil = 0;
+    return;
+  }
+  b.fails += 1;
+  if (b.fails >= BREAKER_FAILS) {
+    b.openUntil = Date.now() + BREAKER_COOLDOWN_MS;
+    b.fails = 0; // after the cooldown, one probe call runs before re-opening
+    console.warn(
+      `llm: ${family} breaker OPEN for ${Math.round(BREAKER_COOLDOWN_MS / 1000)}s after ${BREAKER_FAILS} consecutive failures; calls fast-fail to fallbacks until it recovers`,
+    );
+  }
+}
+
 /// Sum of cost_usd in llm_runs since UTC midnight. Cheap query on the
 /// llm_runs_created_idx, called before every LLM call to enforce the kill
 /// switch.
@@ -182,9 +224,18 @@ export async function callModel(params: CallParams): Promise<CallResult> {
   // Slug models (provider/model) go through OpenRouter; bare claude-* ids use
   // the Anthropic SDK below.
   if (params.model.includes("/")) {
-    return callOpenRouter(params);
+    if (breakerOpen("openrouter")) throw new Error("llm openrouter unavailable (breaker open)");
+    try {
+      const r = await callOpenRouter(params);
+      breakerRecord("openrouter", true);
+      return r;
+    } catch (err) {
+      breakerRecord("openrouter", false);
+      throw err;
+    }
   }
 
+  if (breakerOpen("anthropic")) throw new Error("llm providers unavailable (breaker open)");
   const providers = getProviders();
   const model = normalizeAnthropicModel(params.model);
   // Try each provider in priority order (Conduit, then Anthropic). On any error
@@ -220,6 +271,7 @@ export async function callModel(params: CallParams): Promise<CallResult> {
       const costUsd = (inputTokens * r.input + outputTokens * r.output) / 1_000_000;
       if (i > 0) console.warn(`llm: ${provider.name} served ${model} after the primary failed`);
 
+      breakerRecord("anthropic", true);
       return { text, inputTokens, outputTokens, costUsd, latencyMs, model: params.model };
     } catch (err) {
       lastErr = err;
@@ -227,6 +279,9 @@ export async function callModel(params: CallParams): Promise<CallResult> {
       console.warn(`llm: provider ${provider.name} failed for ${model}: ${err instanceof Error ? err.message : err}${more}`);
     }
   }
+  // Every provider failed for this call: count it against the breaker so a
+  // sustained outage stops dragging each subsequent call through the full loop.
+  breakerRecord("anthropic", false);
   throw lastErr instanceof Error ? lastErr : new Error("all LLM providers failed");
 }
 
