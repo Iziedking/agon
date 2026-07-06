@@ -50,9 +50,15 @@ function TxLink({ hash }: { hash: string }) {
 type Tab = "topup" | "withdraw";
 
 export function FundsPanel({ initialTab = "topup" }: { initialTab?: Tab } = {}) {
-  const { me } = useAuth();
+  const { me, settling } = useAuth();
   const isCircle = me?.walletKind === "circle";
   const [tab, setTab] = useState<Tab>(initialTab);
+
+  // Hold the panel while auth resolves (cookie check + wallet reconnect + any
+  // automatic SIWE). Without this, a Circle user flashes the wallet panel and a
+  // wallet user flashes a blank balance before the session lands — the exact
+  // "sign out and reconnect to see my balance" symptom.
+  const resolving = settling && !me;
 
   return (
     <div>
@@ -63,7 +69,17 @@ export function FundsPanel({ initialTab = "topup" }: { initialTab?: Tab } = {}) 
         </span>
         <TabToggle tab={tab} onChange={setTab} />
       </div>
-      {isCircle ? <CircleFunds tab={tab} /> : <WagmiFunds tab={tab} />}
+      {resolving ? (
+        <BracketedCell pad="lg">
+          <p className="font-mono text-[12px] uppercase tracking-[0.12em] text-ink-3">
+            resolving your session…
+          </p>
+        </BracketedCell>
+      ) : isCircle ? (
+        <CircleFunds tab={tab} />
+      ) : (
+        <WagmiFunds tab={tab} />
+      )}
     </div>
   );
 }
@@ -99,8 +115,14 @@ function TabToggle({ tab, onChange }: { tab: Tab; onChange: (t: Tab) => void }) 
 /// ---------------------------------------------------------------------------
 function WagmiFunds({ tab }: { tab: Tab }) {
   const { address: account, isConnected, chainId: walletChainId } = useAccount();
+  const { me } = useAuth();
   const { switchChainAsync } = useSwitchChain();
   const { data: walletClient } = useWalletClient();
+  // Balance reads are RPC calls keyed by address, not the live wallet, so a
+  // signed-in user sees their balance from the session address even if wagmi
+  // has not restored the connection yet. Signing (bridge/transfer) still needs
+  // the live connection, gated separately below.
+  const balanceAddress = (account ?? (me?.address as `0x${string}` | undefined));
 
   const isTopUp = tab === "topup";
   // Withdraw can be same-chain (Arc -> another Arc wallet, a plain USDC transfer)
@@ -125,9 +147,9 @@ function WagmiFunds({ tab }: { tab: Tab }) {
     abi: erc20Abi,
     address: source.usdcAddress,
     functionName: "balanceOf",
-    args: account ? [account] : undefined,
+    args: balanceAddress ? [balanceAddress] : undefined,
     chainId: source.id as never,
-    query: { enabled: Boolean(account), refetchInterval: 12_000 },
+    query: { enabled: Boolean(balanceAddress), refetchInterval: 12_000 },
   });
   const balance = useMemo(
     () => (typeof balanceWei === "bigint" ? Number(formatUnits(balanceWei, 6)) : null),
@@ -336,9 +358,14 @@ function WagmiFunds({ tab }: { tab: Tab }) {
 /// wallet in one transfer. No bridge, no minimum. The user signs on Arc.
 function WagmiArcSend() {
   const { address, isConnected, chainId } = useAccount();
+  const { me } = useAuth();
   const { switchChainAsync } = useSwitchChain();
   const { writeContractAsync } = useWriteContract();
-  const arcBalance = useArcBalance(address);
+  // Show the balance from the session address so a signed-in user sees it even
+  // before the live wallet reconnects; the send itself still needs the live
+  // connection (gated on isConnected below).
+  const displayAddress = (address ?? (me?.address as `0x${string}` | undefined));
+  const arcBalance = useArcBalance(displayAddress);
 
   const [amount, setAmount] = useState("1.00");
   const [recipient, setRecipient] = useState("");
@@ -399,7 +426,7 @@ function WagmiArcSend() {
       <div className="grid gap-6 sm:grid-cols-2">
         <div className="min-w-0">
           <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">YOUR ARC WALLET</div>
-          <div className="mt-1 break-all font-mono text-[13px] text-ink">{address ?? "connect a wallet"}</div>
+          <div className="mt-1 break-all font-mono text-[13px] text-ink">{displayAddress ?? "connect a wallet"}</div>
         </div>
         <div>
           <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">USDC ON ARC</div>

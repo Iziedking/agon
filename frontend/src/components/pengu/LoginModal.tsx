@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useAccount, useChainId, useDisconnect, useSignMessage, useSwitchChain } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
@@ -172,25 +172,12 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  // Auto-prompt the SIWE signature once a wallet is connected on Arc with no
-  // session yet, so connecting flows straight into the signature instead of
-  // making the user click "SIGN IN WITH WALLET". Fires once per connection; on a
-  // failure (or disconnect) it does not loop — the manual button is the retry.
-  const autoSignFired = useRef(false);
-  useEffect(() => {
-    if (!isConnected) {
-      autoSignFired.current = false;
-      return;
-    }
-    if (!open || !mounted || me || busy) return;
-    if (chainId !== arcTestnet.id) return;
-    if (autoSignFired.current) return;
-    autoSignFired.current = true;
-    void signInWeb3();
-    // signInWeb3 is a stable hoisted declaration; deps intentionally minimal.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isConnected, open, mounted, me, busy, chainId]);
-
+  // Auto-SIWE now lives globally in AuthProvider: the moment a wallet connects
+  // on Arc with no session, the signature is requested there, whether or not
+  // this modal is open. That is what makes "connect wallet -> signed in"
+  // reliable instead of only firing when the modal happened to be open. This
+  // component keeps the MANUAL "SIGN IN WITH WALLET" button below as the retry
+  // path (e.g. after a rejection).
   async function signInWeb3() {
     if (!address) return;
     setBusy(true);

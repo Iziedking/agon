@@ -9,8 +9,9 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useAccount, useReconnect } from "wagmi";
-import { fetchMe, logout, purgeLegacyToken, type Me } from "@/lib/auth";
+import { useAccount, useChainId, useReconnect, useSignMessage } from "wagmi";
+import { fetchMe, loginWithSigner, logout, purgeLegacyToken, type Me } from "@/lib/auth";
+import { arcTestnet } from "@/lib/arc";
 
 /// Tracks the current ArcRun session. The session itself lives in an httpOnly
 /// cookie set by the backend, so this hook never touches localStorage. On
@@ -48,6 +49,10 @@ interface AuthContextValue {
   /// of silently returning to the logged-out state.
   sessionEndedReason: string | null;
   clearSessionEndedReason: () => void;
+  /// True while the automatic SIWE signature is being requested after a wallet
+  /// connects with no session yet. UI can show "signing you in…" instead of a
+  /// flash of the signed-out state.
+  siwePrompting: boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -65,8 +70,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // long enough for `me` to arrive first.
   const [walletSettled, setWalletSettled] = useState(false);
   const { address: wallet, status } = useAccount();
+  const chainId = useChainId();
+  const { signMessageAsync } = useSignMessage();
   const { reconnectAsync } = useReconnect();
   const reconnectKicked = useRef(false);
+  // The address we have already attempted an automatic SIWE for, so the auto
+  // sign-in fires at most once per connected account and a rejection does not
+  // loop. Cleared on sign-in (re-armed for a future sign-out) and on a wallet
+  // change/disconnect.
+  const autoSiweFor = useRef<string | null>(null);
+  const [siwePrompting, setSiwePrompting] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -132,14 +145,66 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [me, wallet, status, signOut, walletSettled]);
 
+  // Automatic SIWE.
+  //
+  // The single guarantee the product wants: connecting a wallet flows straight
+  // into a complete sign-in. So whenever a wallet is connected on Arc with no
+  // session, we run the SIWE signature here — globally, not gated on any modal
+  // being open. This is what fixes "connected but not signed in" limbo, where
+  // the wallet is live (a client-signed transfer works) but there is no session
+  // (so the balance panel and every backend-authenticated action are dead until
+  // a manual sign-out + reconnect).
+  //
+  // Guards: wait for the boot reconnect to settle and the cookie check to finish
+  // so we do not race a session that is about to load; fire at most once per
+  // connected address (a rejection leaves the user connected-without-session and
+  // the LOGIN button is the retry, no loop); and because we only fire when `me`
+  // is null, a signed-in user reloading the page never sees a prompt — their
+  // cookie session loads and this effect no-ops.
+  useEffect(() => {
+    if (loading || !walletSettled) return;
+    if (me) {
+      // Signed in: re-arm so a later sign-out can trigger a fresh auto sign-in.
+      autoSiweFor.current = null;
+      return;
+    }
+    if (!wallet || status !== "connected") return;
+    if (chainId !== arcTestnet.id) return; // SIWE is chain-scoped; wait for Arc
+    const key = wallet.toLowerCase();
+    if (autoSiweFor.current === key) return;
+    autoSiweFor.current = key;
+
+    let cancelled = false;
+    setSiwePrompting(true);
+    void (async () => {
+      try {
+        await loginWithSigner(wallet, (m) => signMessageAsync({ message: m }));
+        if (!cancelled) await refresh();
+      } catch {
+        // Rejected or failed (bad nonce, wrong domain, user cancelled): stay
+        // connected-without-session. The LOGIN button re-runs this manually.
+      } finally {
+        if (!cancelled) setSiwePrompting(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loading, walletSettled, me, wallet, status, chainId, signMessageAsync, refresh]);
+
+  // A disconnect must re-arm the auto sign-in for the next connect.
+  useEffect(() => {
+    if (!wallet) autoSiweFor.current = null;
+  }, [wallet]);
+
   const settling =
-    !walletSettled || status === "connecting" || status === "reconnecting" || loading;
+    !walletSettled || status === "connecting" || status === "reconnecting" || loading || siwePrompting;
 
   const clearSessionEndedReason = useCallback(() => setSessionEndedReason(null), []);
 
   return (
     <AuthContext.Provider
-      value={{ me, loading, settling, refresh, signOut, sessionEndedReason, clearSessionEndedReason }}
+      value={{ me, loading, settling, refresh, signOut, sessionEndedReason, clearSessionEndedReason, siwePrompting }}
     >
       {children}
     </AuthContext.Provider>
