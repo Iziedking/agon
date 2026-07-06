@@ -124,6 +124,14 @@ async function openMissionNow(
     body: `${domain.toUpperCase()} mission #${contestId} is open for ${Math.round(windowSeconds / 60)} min. Enter as an operative or grab a specialist seat.`,
     href: `/missions/${contestId}`,
   }).catch(() => {});
+  // Kick the streaming run in the BACKGROUND (do not await — it spans the whole
+  // join window). runContestById streams the lineup during the window and
+  // settles the instant it closes, so the mission never waits on the 30s
+  // due-sweeper. The in-flight guard blocks a double-run; the sweeper is the
+  // fallback if this run is lost.
+  void settleContestToCompletion(contestId, broadcast).catch((err) =>
+    console.error(`admin open_mission ${contestId} run failed:`, err instanceof Error ? err.message : err),
+  );
   const seatNote = operativeSeats || specialistSeats
     ? `, seats ${operativeSeats ?? config.mission.operativeSeats} op / ${specialistSeats ?? config.mission.specialistSeats} spec`
     : "";

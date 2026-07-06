@@ -457,6 +457,14 @@ async function startMissionLoop(broadcast: (message: unknown) => void): Promise<
         href: `/missions/${contestId}`,
       }).catch(() => {});
       console.log(`autopilot: opened mission ${contestId} (${domain}), ${poolUsdc} USDC, ${windowSecs}s window`);
+      // Kick the streaming run now, like contests do at open: runContestById
+      // streams the lineup during the join window and settles the instant it
+      // closes, instead of leaving the mission for the 30s due-sweeper. The
+      // in-flight guard stops the sweeper from double-running it; if this run is
+      // lost (a coordinator restart), the sweeper still settles it after close.
+      void runOnce(contestId, broadcast)
+        .then(() => console.log(`autopilot: mission ${contestId} complete`))
+        .catch((err) => console.error(`autopilot: mission ${contestId} run failed:`, err instanceof Error ? err.message : err));
     } catch (err) {
       console.error("autopilot mission open failed:", err instanceof Error ? err.message : err);
     }

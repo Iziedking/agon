@@ -77,26 +77,34 @@ export class MissionRunner implements Runner {
     }
 
     const perOpMs = Number(process.env.MISSION_OPERATIVE_TIMEOUT_MS ?? "120000");
-    const results: AgentResult[] = [];
-    for (const entry of entries) {
-      try {
-        const r = await withTimeout(
-          this.runOperative(mission, options, entry),
-          perOpMs,
-          `operative ${entry.agentId}`,
-        );
-        results.push(r);
-      } catch (err) {
-        // A failed operative scores zero but never blocks the rest of the field.
-        console.warn(`[mission] operative ${entry.agentId} failed: ${err instanceof Error ? err.message : err}`);
-        results.push({
-          agentId: entry.agentId,
-          operator: entry.operator,
-          score: 0,
-          detail: { domain: mission.domain, error: String(err instanceof Error ? err.message : err), fragmentsCredited: 0 },
-        });
+    // Score operatives with BOUNDED CONCURRENCY instead of one at a time, so a
+    // full field settles in roughly one operative's time, not the sum. Each
+    // operative pays from its OWN derived hot wallet for A2A buys, so parallel
+    // sends never share a nonce; the cap limits contention on the shared x402
+    // wallet used by external `make` fragments. Order is preserved via the index.
+    const concurrency = Math.max(1, Math.floor(Number(process.env.MISSION_OPERATIVE_CONCURRENCY ?? "4")));
+    const results: AgentResult[] = new Array(entries.length);
+    let cursor = 0;
+    const worker = async (): Promise<void> => {
+      for (;;) {
+        const i = cursor++;
+        if (i >= entries.length) return;
+        const entry = entries[i]!;
+        try {
+          results[i] = await withTimeout(this.runOperative(mission, options, entry), perOpMs, `operative ${entry.agentId}`);
+        } catch (err) {
+          // A failed operative scores zero but never blocks the rest of the field.
+          console.warn(`[mission] operative ${entry.agentId} failed: ${err instanceof Error ? err.message : err}`);
+          results[i] = {
+            agentId: entry.agentId,
+            operator: entry.operator,
+            score: 0,
+            detail: { domain: mission.domain, error: String(err instanceof Error ? err.message : err), fragmentsCredited: 0 },
+          };
+        }
       }
-    }
+    };
+    await Promise.all(Array.from({ length: Math.min(concurrency, entries.length) }, () => worker()));
     return results;
   }
 

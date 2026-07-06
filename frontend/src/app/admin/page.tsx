@@ -38,6 +38,19 @@ function txUrl(chain: string, hash: string): string {
   return `${EXPLORER}/tx/${hash}`;
 }
 
+// The console grouped into tabs instead of one long scroll. `admin` tabs carry
+// write actions and are hidden from a support-tier token.
+type TabId = "overview" | "members" | "settlements" | "missions" | "events" | "treasury" | "activity";
+const TABS: Array<{ id: TabId; label: string; admin?: boolean }> = [
+  { id: "overview", label: "OVERVIEW" },
+  { id: "members", label: "MEMBERS" },
+  { id: "settlements", label: "SETTLEMENTS" },
+  { id: "missions", label: "MISSIONS", admin: true },
+  { id: "events", label: "EVENTS", admin: true },
+  { id: "treasury", label: "TREASURY", admin: true },
+  { id: "activity", label: "ACTIVITY" },
+];
+
 export default function AdminPage() {
   const [token, setToken] = useState<string | null>(null);
   const [draftToken, setDraftToken] = useState("");
@@ -45,6 +58,7 @@ export default function AdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [level, setLevel] = useState<"admin" | "support">("admin");
+  const [tab, setTab] = useState<TabId>("overview");
 
   // No restore-from-storage: the token lives only in React state, so each tab
   // starts locked and a refresh requires re-entry. That is the per-tab,
@@ -110,67 +124,93 @@ export default function AdminPage() {
     );
   }
 
+  const visibleTabs = TABS.filter((t) => level === "admin" || !t.admin);
+  const activeTab: TabId = visibleTabs.some((t) => t.id === tab) ? tab : "overview";
+
   return (
     <Shell>
-      <div className="mb-6 flex items-center justify-between">
-        <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">
-          {data ? `CHAIN ${data.chainId}` : ""}
+      {/* Tab bar: grouped sections instead of one long scroll. */}
+      <nav className="mb-8 flex flex-wrap items-center gap-x-1 gap-y-2 border-b border-[color:var(--hairline-strong)] pb-3">
+        {visibleTabs.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={
+              activeTab === t.id
+                ? "bg-ink px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-canvas"
+                : "px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-ink-3 transition-colors hover:text-ink"
+            }
+          >
+            {t.label}
+          </button>
+        ))}
+        <div className="ml-auto flex items-center gap-4 pl-4">
+          {data ? (
+            <span className="hidden font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3 sm:inline">CHAIN {data.chainId}</span>
+          ) : null}
           {level === "support" ? (
-            <span className="ml-3 border border-[color:var(--hairline-strong)] px-2 py-0.5 text-[color:var(--warn)]">
-              SUPPORT · READ ONLY
+            <span className="border border-[color:var(--hairline-strong)] px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-[color:var(--warn)]">
+              SUPPORT
             </span>
           ) : null}
-        </span>
-        <div className="flex items-center gap-4">
           <button onClick={() => token && void load(token)} className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:text-ink">
-            {loading ? "REFRESHING…" : "REFRESH"}
+            {loading ? "…" : "REFRESH"}
           </button>
           <button onClick={lock} className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:text-ink">
             LOCK
           </button>
         </div>
-      </div>
+      </nav>
 
       {error ? <p className="mb-4 font-mono text-[12px] text-[color:var(--err)]">{error}</p> : null}
 
-      {data ? (
+      {!data ? (
+        !error ? <p className="font-mono text-sm text-ink-2">loading…</p> : null
+      ) : (
         <div className="flex flex-col gap-6">
-          <CountsRow counts={data.counts} />
-          <MembersSection token={token} />
-          <WalletsRow data={data} />
-          <ContractsTable contracts={data.contracts} />
-          <SettlementsSection token={token} />
-          <AuditSection token={token} />
-          {level === "admin" ? (
+          {activeTab === "overview" ? (
             <>
-              <div className="grid gap-6 lg:grid-cols-2">
-                <WithdrawCard token={token} treasuryUsdc={data.treasury?.usdc ?? data.coordinator?.usdc ?? "0.00"} onDone={() => void load(token)} />
-                <CancelCard token={token} onDone={() => void load(token)} />
-              </div>
-              <div className="grid gap-6 lg:grid-cols-2">
-                <ForceSettleCard token={token} />
-                <MissionOpsCard token={token} />
-              </div>
+              <CountsRow counts={data.counts} />
+              <WalletsRow data={data} />
+            </>
+          ) : null}
+
+          {activeTab === "members" ? <MembersSection token={token} /> : null}
+
+          {activeTab === "settlements" ? (
+            <>
+              <SettlementsSection token={token} />
+              <AuditSection token={token} />
+            </>
+          ) : null}
+
+          {activeTab === "missions" ? (
+            <>
               <div className="grid gap-6 lg:grid-cols-2">
                 <MissionOpenCard token={token} />
                 <MissionEconomicsPanel token={token} />
               </div>
-              <div className="grid gap-6">
-                <CommandsLog token={token} />
-              </div>
+              <MissionOpsCard token={token} />
             </>
-          ) : (
+          ) : null}
+
+          {activeTab === "events" ? (
+            <div className="grid gap-6 lg:grid-cols-2">
+              <ForceSettleCard token={token} />
+              <CancelCard token={token} onDone={() => void load(token)} />
+            </div>
+          ) : null}
+
+          {activeTab === "treasury" ? (
             <>
-              <CommandsLog token={token} />
-              <p className="font-mono text-[11px] text-ink-3">
-                support tier: the money actions (withdraw, cancel, force-settle) are hidden. Ask an admin for the full token to run them.
-              </p>
+              <ContractsTable contracts={data.contracts} />
+              <WithdrawCard token={token} treasuryUsdc={data.treasury?.usdc ?? data.coordinator?.usdc ?? "0.00"} onDone={() => void load(token)} />
             </>
-          )}
+          ) : null}
+
+          {activeTab === "activity" ? <CommandsLog token={token} /> : null}
         </div>
-      ) : !error ? (
-        <p className="font-mono text-sm text-ink-2">loading…</p>
-      ) : null}
+      )}
     </Shell>
   );
 }
