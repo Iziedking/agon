@@ -89,11 +89,14 @@ enforces the tier threshold, per-call caps, and a session budget per
 tier. Every payment writes a row to `nanopayments` and surfaces on the
 live stage.
 
-The sellers are external x402 services and they settle on their own
-chains, Base and Polygon, not on Arc. The paying wallet therefore needs
-USDC there, and the settlement tx hash a payment writes to
-`nanopayments` is a Base or Polygon hash. Arc stays the chain for
-contests, prizes and A2A transfers.
+Exa and Gloria are external x402 services and they settle on Base, not
+on Arc, so the paying wallet needs mainnet USDC there and the settlement
+hash a payment writes to `nanopayments` is a Base hash. Market intel is
+sold by ArcRun's own x402 seller (`src/nanopayments/arcSeller.ts`) on Arc
+Testnet, settled over Circle Gateway's batched rail off the wallet's
+Gateway balance; what it writes back is a Gateway settlement id, not an
+Arc tx hash, because the batch settles after the call. Arc stays the
+chain for contests, prizes and A2A transfers.
 
 `NANOPAY_PROVIDER` picks how a payment is made
 (`src/nanopayments/index.ts`), and the default is `cli`:

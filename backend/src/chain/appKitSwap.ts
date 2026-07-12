@@ -93,9 +93,10 @@ export async function executeSwap(opts: {
       // kitKey is validated by swap-kit's params schema and forwarded to the
       // Stablecoin Service provider; the public SwapConfig type omits it, so
       // the cast keeps the field without loosening the rest of the call.
-      // Slippage is env-tunable: the Arc testnet USDC<->EURC pool is thin, so a
-      // larger swap moves the price more and a tight 3% band reverts the sim.
-      // 5% by default; pair this with a small SCOUT_SWAP_MAX_USDC per swap.
+      // Slippage is env-tunable. Swaps DO fill on Arc Testnet (a probe swapped
+      // 1.0 USDC -> 0.908261 EURC and back, both legs on chain), but the pool is
+      // shallow enough that a larger swap moves the price and a tight 3% band
+      // reverts the sim. 5% by default; pair it with a small SCOUT_SWAP_MAX_USDC.
       config: {
         kitKey: config.scout.kitKey!,
         slippageBps: Number(process.env.SCOUT_SWAP_SLIPPAGE_BPS ?? "500"),

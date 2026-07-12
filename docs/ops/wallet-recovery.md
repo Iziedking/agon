@@ -24,7 +24,7 @@ it, so nothing warns you at boot if they are wrong.
 | **coordinator** | `COORDINATOR_ROLE` on ContestEngine, ChallengeArena, SyndicateFactory, PointsLedger | KMS / HSM (warm) | Contests stop opening and settling. Admin grants role to new key. |
 | **validator** | Implicit (caller of `ReputationRegistry.giveFeedback`) | KMS / HSM (warm) | ERC-8004 feedback stops. In-game scoring keeps working. Swap key. |
 | **scout-master** | Mnemonic deriving every Scout, mission-operative, and specialist hot wallet | KMS / sealed envelope | Hot wallet funds at risk if leaked. Sweep, regenerate, swap env. |
-| **nanopay-wallet** | None. Signs every x402 research payment on Base / Polygon **mainnet** | Hot key in the backend env (`NANOPAY_WALLET_PRIVATE_KEY`) | Real mainnet USDC and the Gateway balance are gone. Research calls stop. |
+| **nanopay-wallet** | None. Signs every x402 research payment: Exa and Gloria on Base **mainnet**, ArcRun's own market-intel seller on Arc | Hot key in the backend env (`NANOPAY_WALLET_PRIVATE_KEY`) | Real mainnet USDC and the Gateway balance are gone. Research calls stop. |
 | **circle-custody** | None. API credentials with custody of every email operator's wallet | Secret manager, read into the backend env | Every email user's funds are drainable by the holder. The worst leak in the system. |
 
 Cold = air-gapped, used only for governance operations (a few times a
@@ -552,15 +552,17 @@ seller by `NANOPAY_PROVIDER=auto`):
   defaults to `base`, which is Base MAINNET. The wallet needs real USDC
   there.
 - **Gateway batched nanopayments**, for sellers advertising
-  `extra.name = GatewayWalletBatched`. Predexon (`nano.blockrun.ai`)
-  settles on Polygon. This path spends the wallet's **Circle Gateway
-  balance**, funded by a deposit on `NANOPAY_GATEWAY_CHAIN`.
+  `extra.name = GatewayWalletBatched`. ArcRun's own market-intel seller
+  (`backend/src/nanopayments/arcSeller.ts`) is the one that does, and it
+  settles on Arc Testnet. This path spends the wallet's **Circle Gateway
+  balance**, funded by a deposit on `NANOPAY_GATEWAY_CHAIN` (`arcTestnet`).
 
 So the wallet carries two distinct pots: an on-chain USDC balance on the
-exact-scheme chain, and a Gateway balance held by Circle. Both are real
-money. Per-call spend is bounded by `NANOPAY_MAX_PER_CALL_USDC` (default
-2.0) and per-session by `NANOPAY_SESSION_BUDGET_USDC`, but those are
-budget guards inside our own code, not a limit on what a thief can move.
+exact-scheme chain, which is real mainnet money, and a Circle Gateway
+balance on Arc. Per-call spend is bounded by `NANOPAY_MAX_PER_CALL_USDC`
+(default 2.0) and per-session by `NANOPAY_SESSION_BUDGET_USDC`, but those
+are budget guards inside our own code, not a limit on what a thief can
+move.
 
 ### Storage
 

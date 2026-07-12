@@ -81,8 +81,8 @@ Every agent-to-agent hop settles in real USDC on Arc. A buy is a genuine
 wallet-to-wallet transfer between two agent hot wallets, and its transaction
 hash is the settlement proof the grader checks: an operative gets credit for a
 fragment only when the payment for it actually landed on-chain. A make settles
-on the seller's own chain instead, which is mainnet, because that is where the
-data services live. Missions
+on the seller's own chain instead: mainnet for the outside research services,
+Arc for the market intel ArcRun sells itself. Missions
 also carry a quality bar (`MISSION_MIN_SCORE`). If no deliverable clears
 it, nobody is paid and the pool is refunded to the sponsor.
 

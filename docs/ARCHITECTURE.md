@@ -76,12 +76,11 @@ Three map to a contest type; the fourth drives missions:
   only gas is spent. An op is a USDC to EURC DEX swap through Circle Swap
   Kit (`chain/appKitSwap.ts`), a one-way CCTP bridge from Arc to Base
   (`chain/scoutBridge.ts`, rolled in at `SCOUT_BRIDGE_FRACTION`), or a USDC
-  self-transfer. The swap is attempted first and the self-transfer is the
-  fallback: Arc testnet's USDC/EURC pool is thin and the aggregator
-  intermittently returns no route, so a reverted swap silently degrades to a
-  self-transfer of the same size rather than leaving the field at zero volume
-  and cancelling the event (`SCOUT_SWAP_FALLBACK_TRANSFER`). Ops are sized per
-  tier and scaled by traits. Scoring is cumulative volume produced.
+  self-transfer. The swap is the primary path and it fills: a probe on Arc
+  Testnet swapped 1.0 USDC into 0.908261 EURC and back, both legs on chain. The
+  self-transfer is only a safety net, so a failed route cannot leave the field at
+  zero volume and cancel the event (`SCOUT_SWAP_FALLBACK_TRANSFER`). Ops are sized
+  per tier and scaled by traits. Scoring is cumulative volume produced.
 - **Missions** (`runners/missions/`) runs the agent labor market. Its own
   section is below.
 
@@ -113,24 +112,27 @@ per-call cap, and a session budget per tier pool. Every payment writes
 a row to `nanopayments` with the endpoint, amount, status, and a
 response summary; the live stages render the spend per agent.
 
-These are the only settlements that do not happen on Arc, because the data
-sellers do not live there. `NANOPAY_PROVIDER=auto` routes per seller, reading
-each seller's 402 quote and caching the verdict per host:
+`NANOPAY_PROVIDER=auto` routes per seller, reading each seller's 402 quote and
+caching the verdict per host:
 
 - **Gateway batched (Circle Nanopayments)** for a seller whose quote carries
-  `extra.name = GatewayWalletBatched`. Predexon (`nano.blockrun.ai`) does. The
-  `@circle-fin/x402-batching` `GatewayClient` signs an EIP-3009 authorization
-  off chain with no gas and Gateway settles net positions in bulk on Polygon
-  mainnet, about 0.001 USDC a call.
+  `extra.name = GatewayWalletBatched`. ArcRun's own seller
+  (`backend/src/nanopayments/arcSeller.ts`) is the one that quotes it: a real
+  x402 resource server built on Circle's `createGatewayMiddleware`, restricted
+  to Arc Testnet (`eip155:5042002`), selling live Polymarket odds at 0.001 USDC
+  a call. The `@circle-fin/x402-batching` `GatewayClient` signs an EIP-3009
+  authorization off chain with no gas, and Gateway debits the buyer's balance
+  when it settles the batch. The `transaction` the buyer gets back is a Gateway
+  settlement id, not an Arc tx hash, because the batch settles later.
 - **Exact scheme** for a standard x402 seller. Exa (`api.exa.ai`, about 0.007
   USDC) and Gloria (`api.itsgloria.ai`, about 0.05 USDC) settle on Base
   mainnet through `@x402/core` and `@x402/evm`, signed from
   `NANOPAY_WALLET_PRIVATE_KEY`.
 
-So the rails are three: the agent economy and all prize settlement on Arc, and
-real mainnet USDC out to Base and Polygon for intelligence. The `cli` provider
-(shelling out to `circle services pay`) is still in the enum but is not what the
-deployment runs.
+So the agent economy and all prize settlement run on Arc, Circle's nanopayment
+rail runs on Arc, and the only money that leaves the chain is real mainnet USDC
+out to Base for third-party research. The `cli` provider (shelling out to
+`circle services pay`) is still in the enum but is not what the deployment runs.
 
 ### Missions (`backend/src/runners/missions`)
 
@@ -153,7 +155,8 @@ model (`modelForTier(tier)`, so a higher tier decides with a better brain) the
 brief and, per fragment, the make price and the buy price. It returns make, buy,
 or skip per fragment. A heuristic covers a model outage or malformed output.
 
-- **make** pays a live x402 data service through `payX402`, on Base or Polygon.
+- **make** pays a live x402 data service through `payX402`: Exa or Gloria on Base
+  mainnet, or ArcRun's own Gateway-batched market-intel seller on Arc.
 - **buy** runs `a2a.ts`: a bounded request, offer, accept, pay handshake that
   ends in a real ERC-20 USDC `transfer` on Arc from the operative's hot wallet
   to the specialist's. The trade is written to `a2a_trades` as `pending` before

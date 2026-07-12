@@ -1,21 +1,22 @@
 /// An x402 seller that ArcRun runs ITSELF, on Arc, gated by Circle Gateway.
 ///
-/// Why this exists. Every third-party x402 seller we integrated settles on
-/// MAINNET (Exa and Gloria on Base with the exact scheme, Predexon on Polygon
-/// with Gateway batching). Circle Nanopayments, meanwhile, only works on TESTNET:
-/// the Gateway Wallet contract is not deployed on any mainnet chain, so a deposit
-/// there reverts. That left Predexon permanently unpayable and left Circle's
-/// batched-settlement rail unreachable, despite Arc Testnet being one of the
-/// chains Nanopayments supports best (deposits confirm in about half a second).
+/// Why this exists. Every third-party x402 seller we integrated settles on a chain
+/// other than Arc (Exa and Gloria on Base mainnet with the exact scheme). That is
+/// fine for buying research, but it means Circle's batched-settlement rail never
+/// touched the chain the product is actually built on, even though Arc Testnet is
+/// one of the chains Nanopayments supports best: deposits confirm in about half a
+/// second, against 13 to 19 minutes for the Sepolia family.
 ///
 /// So the platform becomes the seller. This is a real x402 resource server sitting
 /// on Arc Testnet, priced in sub-cent USDC, settled through Circle Gateway's
 /// batched rail. An agent that needs market intel pays for it the same way it pays
 /// any other seller: it gets a 402, signs an EIP-3009 authorization offchain for
 /// zero gas, and Gateway settles the net position on chain. The agent's own budget
-/// is debited, the platform's Gateway balance is credited, and the settlement
-/// transaction is real, which is what the grader's credit-requires-payment rule
-/// needs.
+/// is debited and the platform's Gateway balance is credited.
+///
+/// One caveat worth knowing. Gateway returns a SETTLEMENT ID, not an on-chain hash,
+/// because the batch settles later. The payment is real and the balance debits, but
+/// do not render that id as an explorer link.
 ///
 /// The data is genuine: live Polymarket odds, fetched keylessly. We are not
 /// selling agents a stub.
@@ -28,7 +29,9 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 
 import { config } from "../config/index.js";
 
-/// Circle's Gateway facilitator. Testnet, because Nanopayments is testnet-only.
+/// Circle's Gateway facilitator. Testnet, because we sell on Arc Testnet. Check
+/// the Nanopayments column in Circle's supported-blockchains table before pointing
+/// this at a different chain.
 const FACILITATOR_URL = "https://gateway-api-testnet.circle.com";
 
 /// Arc Testnet in CAIP-2. Restricting to this one network is deliberate: a buyer

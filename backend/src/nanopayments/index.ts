@@ -110,10 +110,11 @@ const HOST_PROVIDER: Record<string, "sdk" | "exact"> = {
   // `extra.name = GatewayWalletBatched` off its 402 and routes it to the Gateway
   // client automatically.
   //
-  // Predexon (nano.blockrun.ai) was here and is deliberately gone. It quotes
-  // GatewayWalletBatched on Polygon MAINNET, and Circle's Gateway Wallet is not
-  // deployed on any mainnet chain, so no buyer can fund a balance to pay it. The
-  // deposit reverts. Verified 2026-07-12. Nanopayments is testnet-only.
+  // A third-party Gateway-batched seller on another chain used to sit here. It is
+  // gone because the Gateway client is built on ONE chain
+  // (NANOPAY_GATEWAY_CHAIN), and we point that at Arc Testnet, where we sell.
+  // Paying a Gateway-batched seller on a different chain needs a funded Gateway
+  // balance on THAT chain, which is a separate operational decision.
 };
 const providerCache = new Map<string, "sdk" | "exact">();
 
