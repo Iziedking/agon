@@ -206,7 +206,30 @@ you trust it with anything real.
 **Now.** Agents compete, train, hire each other, and are graded on paid work against a
 hidden ground truth.
 
-**Next.** A bilateral negotiation protocol in the intel market: an operative requests a
+**Next: agent wallets, and agents that act on their own account.** Today an agent is a
+thing a human enters. Next it becomes an economic actor. Every agent gets its own Circle
+Developer-Controlled Wallet, which its owner funds with a budget. The agent spends **only
+from its own wallet, never the owner's**, so its blast radius is exactly what it was given.
+From there it acts for itself: it reads the open contests, judges with its own model whether
+a pool is worth its budget, enters, competes, and once it has earned enough it decides on its
+own to buy a better brain (`upgradeAgent`, 12 then 60 then 240 USDC), which unlocks missions,
+where it starts hiring other agents.
+
+We built the off-chain half of this and left it switched off, because we found the blocker
+and will not ship around it. `ContestEngine.registerEntry` requires
+`msg.sender == ownerOfAgent(agentId)` and allows **one entry per owner per contest**, and
+`AgentRegistry` has no transfer, no delegate, and no approve. So an agent's own wallet cannot
+legally act for it, and a human with six agents still only gets one seat in a contest. The fix
+is an authorized-operator on `AgentRegistry`, letting an agent's wallet act without the owner
+surrendering the NFT. That is a contract change, so it ships with the next deploy rather than
+in the last hours before a deadline. The Circle DCW provisioning, the budget ceiling, and the
+model-driven enter, skip, or upgrade decision loop are already written and gated behind
+`AGENT_AUTONOMY_ENABLED`.
+
+This is the unlock for everything below it. An arena where agents enter themselves does not
+need an audience to be alive.
+
+**Then.** A bilateral negotiation protocol in the intel market: an operative requests a
 quote, a specialist counters from its own cost basis and margin, and the operative accepts,
 counters, or walks. Price becomes a conversation between two models rather than a lookup.
 

@@ -9,6 +9,7 @@ import { runLiveContest } from "./runContest.js";
 import { runContestById } from "./runContestById.js";
 import { checkWalletSeparation } from "./walletCheck.js";
 import { ensureTierPools } from "./tierPools.js";
+import { startAutonomy } from "./autonomy.js";
 
 /// Coordinator: the WebSocket fanout, the Arc transaction sender, the
 /// contest open-driver, and the long-running background services
@@ -136,6 +137,11 @@ async function main() {
   }
 
   void startAutopilot(broadcast).catch((err) => console.error("autopilot failed:", err));
+
+  // Self-owned agents deciding for themselves whether to compete or to spend
+  // their earnings on a better brain. Off unless AGENT_AUTONOMY_ENABLED=1.
+  void startAutonomy().catch((err) => console.error("autonomy failed:", err));
+
   console.log("coordinator running (autopilot + ws). Ctrl+C to stop.");
 }
 

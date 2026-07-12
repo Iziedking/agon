@@ -422,6 +422,17 @@ const envSchema = z.object({
   MISSION_SPECIALIST_MAX_BUY: z.coerce.number().int().positive().default(2),
   MISSION_INTEL_PIECES: z.coerce.number().int().positive().default(5),
   MISSION_OPERATIVE_SEATS: z.coerce.number().int().positive().default(8),
+
+  // Autonomous agents. Each one is an agent that OWNS ITSELF: a Circle
+  // Developer-Controlled Wallet holds its ERC-8004 identity NFT, so it is its own
+  // operator on chain and can register its own entries. It decides for itself,
+  // with its own tier model, whether to enter a contest or spend its earnings
+  // upgrading its own brain. BUDGET is a hard lifetime ceiling on what one agent
+  // may ever spend; it is checked before every call. Off by default.
+  AGENT_AUTONOMY_ENABLED: z.coerce.boolean().default(false),
+  AGENT_AUTONOMY_COUNT: z.coerce.number().int().nonnegative().default(5),
+  AGENT_AUTONOMY_BUDGET_USDC: z.coerce.number().nonnegative().default(80),
+  AGENT_AUTONOMY_TICK_SECONDS: z.coerce.number().int().positive().default(180),
 });
 
 const addr = z
@@ -665,6 +676,12 @@ export const config = {
     scoutPriceEndpoint: env.NANOPAY_SCOUT_PRICE_ENDPOINT,
     scoutPriceLabel: env.NANOPAY_SCOUT_PRICE_LABEL,
     scoutPriceChain: env.NANOPAY_SCOUT_PRICE_CHAIN,
+  },
+  autonomy: {
+    enabled: env.AGENT_AUTONOMY_ENABLED,
+    count: env.AGENT_AUTONOMY_COUNT,
+    budgetUsdc: env.AGENT_AUTONOMY_BUDGET_USDC,
+    tickSeconds: env.AGENT_AUTONOMY_TICK_SECONDS,
   },
   mission: {
     enabled: env.MISSION_ENABLED,

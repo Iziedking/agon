@@ -1040,3 +1040,36 @@ create table if not exists mission_submissions (
   created_at   timestamptz not null default now(),
   primary key (contest_id, agent_id)
 );
+
+-- Autonomous agents: an agent that OWNS ITSELF. Its Circle Developer-Controlled
+-- Wallet holds the ERC-8004 identity NFT, so on chain the agent is its own
+-- operator and can register its own contest entries. This is the only shape that
+-- works: ContestEngine.registerEntry requires msg.sender == ownerOfAgent(agentId)
+-- and allows one entry per owner per contest, so an agent entered by a human
+-- shares that human's single seat. A self-owned agent has its own.
+create table if not exists autonomous_agents (
+  id            bigserial primary key,
+  agent_id      bigint unique,               -- null until createAgent() lands
+  wallet_id     text not null unique,        -- Circle DCW wallet id
+  address       text not null unique,        -- the wallet, and the agent's owner
+  label         text not null,
+  budget_usdc_6 numeric not null default 0,  -- hard ceiling it may ever spend
+  spent_usdc_6  numeric not null default 0,
+  enabled       boolean not null default true,
+  created_at    timestamptz not null default now()
+);
+
+-- Every autonomous decision, with the model's own stated reason. The point is to
+-- be able to show a judge WHY an agent acted, not merely that it did.
+create table if not exists agent_decisions (
+  id          bigserial primary key,
+  agent_id    bigint,
+  address     text not null,
+  kind        text not null,                 -- enter | skip | upgrade | error
+  contest_id  bigint,
+  reason      text not null default '',
+  cost_usdc_6 numeric not null default 0,
+  tx_hash     text,
+  created_at  timestamptz not null default now()
+);
+create index if not exists agent_decisions_agent_idx on agent_decisions (agent_id, created_at desc);
