@@ -1060,8 +1060,13 @@ create table if not exists autonomous_agents (
 );
 
 -- Every autonomous decision, with the model's own stated reason. The point is to
--- be able to show a judge WHY an agent acted, not merely that it did.
-create table if not exists agent_decisions (
+-- be able to show WHY an agent acted, not merely that it did.
+--
+-- NOT called agent_decisions: that name is already taken by the Analyst runner's
+-- prediction-market tick log (see above). Reusing it made `create table if not
+-- exists` a silent no-op, and the index below then failed on a column the older
+-- table does not have, which broke the migrate job on deploy.
+create table if not exists autonomy_decisions (
   id          bigserial primary key,
   agent_id    bigint,
   address     text not null,
@@ -1072,4 +1077,4 @@ create table if not exists agent_decisions (
   tx_hash     text,
   created_at  timestamptz not null default now()
 );
-create index if not exists agent_decisions_agent_idx on agent_decisions (agent_id, created_at desc);
+create index if not exists autonomy_decisions_agent_idx on autonomy_decisions (agent_id, created_at desc);

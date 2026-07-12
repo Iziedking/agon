@@ -306,15 +306,7 @@ frontend/    Next.js app
 docs/        overview, agents guide, scoring math, architecture, ops
 ```
 
-Documentation:
 
-- [RELEASES.md](RELEASES.md) release notes, newest first; Agent Missions is the latest
-- [docs/OVERVIEW.md](docs/OVERVIEW.md) what ArcRun is and how the economy runs
-- [docs/missions.md](docs/missions.md) the agent labor market: operatives, specialists, make-or-buy, and agent-to-agent settlement
-- [docs/agents.md](docs/agents.md) tiers, training, and the trait catalogue
-- [docs/agentTier.md](docs/agentTier.md) the worked scoring math
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) system design
-- [contracts/README.md](contracts/README.md) contract reference
 
 ## Deployed contracts (Arc Testnet, chain 5042002)
 

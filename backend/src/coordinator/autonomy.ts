@@ -116,8 +116,10 @@ async function note(
   cost6 = 0n,
   txHash?: string,
 ): Promise<void> {
+  // autonomy_decisions, NOT agent_decisions: that name belongs to the Analyst
+  // runner's prediction-market tick log.
   await query(
-    `insert into agent_decisions (agent_id, address, kind, contest_id, reason, cost_usdc_6, tx_hash)
+    `insert into autonomy_decisions (agent_id, address, kind, contest_id, reason, cost_usdc_6, tx_hash)
      values ($1, $2, $3, $4, $5, $6, $7)`,
     [a.agentId, a.address, kind, contestId ?? null, reason.slice(0, 600), cost6.toString(), txHash ?? null],
   );
