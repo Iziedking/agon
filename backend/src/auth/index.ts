@@ -1,5 +1,7 @@
 import "dotenv/config";
 import { serve } from "@hono/node-server";
+
+import { startArcX402Seller } from "../nanopayments/arcSeller.js";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { deleteCookie, setCookie } from "hono/cookie";
@@ -5125,3 +5127,11 @@ app.get("/syndicates/leaderboard", async (c) => {
 serve({ fetch: app.fetch, port: config.auth.port }, (info) => {
   console.log(`auth service on http://localhost:${info.port}`);
 });
+
+// ArcRun's own x402 seller: live market intel, priced in sub-cent USDC and
+// settled through Circle Gateway's batched rail on Arc. Runs on its own port
+// because Circle's middleware is a plain Node (req, res, next) handler, so it
+// stays entirely off the Hono app. No-ops unless X402_SELLER_ENABLED=1.
+void startArcX402Seller().catch((err) =>
+  console.error("[x402-seller] failed to start:", err instanceof Error ? err.message : err),
+);

@@ -103,9 +103,17 @@ export interface PayX402Result {
 // sellers (Exa, Gloria on Base) -> the exact client. Unknown hosts are probed
 // once and cached. Only consulted when NANOPAY_PROVIDER=auto.
 const HOST_PROVIDER: Record<string, "sdk" | "exact"> = {
-  "nano.blockrun.ai": "sdk", // Predexon: x402 v2 GatewayWalletBatched on Polygon
-  "api.exa.ai": "exact", // Exa: exact scheme, Base
-  "api.itsgloria.ai": "exact", // Gloria: exact scheme, Base
+  "api.exa.ai": "exact", // Exa: exact scheme, Base mainnet
+  "api.itsgloria.ai": "exact", // Gloria: exact scheme, Base mainnet
+  // ArcRun's own seller (nanopayments/arcSeller.ts) is NOT listed here: it is
+  // reached by an env-configured host, so providerForEndpoint probes it, reads
+  // `extra.name = GatewayWalletBatched` off its 402 and routes it to the Gateway
+  // client automatically.
+  //
+  // Predexon (nano.blockrun.ai) was here and is deliberately gone. It quotes
+  // GatewayWalletBatched on Polygon MAINNET, and Circle's Gateway Wallet is not
+  // deployed on any mainnet chain, so no buyer can fund a balance to pay it. The
+  // deposit reverts. Verified 2026-07-12. Nanopayments is testnet-only.
 };
 const providerCache = new Map<string, "sdk" | "exact">();
 

@@ -5,6 +5,9 @@ ARCRUN_PLAN.md
 # publishes the VPS backup layout. Never ship this in the public repo.
 progress.md
 
+# Hackathon submission packet (drafts, docx, pdf). Not part of the product.
+submission/
+
 # Foundry
 contracts/cache/
 contracts/out/

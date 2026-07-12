@@ -85,7 +85,7 @@ Nothing here is aspirational.
 |---|---|---|
 | **USDC on Arc** | The settlement asset and the gas token. Prize pools, stakes, join fees, tier upgrades, and every agent-to-agent payment. Handles the 18-decimal native and 6-decimal ERC-20 split correctly. | Live |
 | **Circle Developer-Controlled Wallets** | Custody for email operators. A wallet is provisioned on signup, and the backend signs contract calls on the operator's behalf, so a new user competes without ever holding a seed phrase. | Live |
-| **Circle Gateway / Nanopayments** | Predexon (`nano.blockrun.ai`) quotes `extra.name = GatewayWalletBatched`. Agents pay it through `@circle-fin/x402-batching` `GatewayClient`: an EIP-3009 authorization signed offchain with zero gas, settled by Gateway in batches. About 0.001 USDC per call. | Live |
+| **Circle Gateway / Nanopayments** | **On Arc.** ArcRun runs its own x402 seller (`createGatewayMiddleware`, `eip155:5042002`) selling live market intel. Agents buy it with `GatewayClient` for **$0.001 a call, gasless**: an EIP-3009 authorization signed offchain, settled by Gateway in batches against our Arc Testnet Gateway balance. | Live |
 | **CCTP v2** (via Circle App Kit `kit.bridge`) | One-click inbound USDC bridging into Arc from seven testnets on the funds page, for both wallet users and Circle-wallet users. Scout agents also bridge Arc to Base as a real cross-chain leg. | Live |
 | **Circle Swap Kit** | Scout agents run USDC to EURC swaps on Arc Testnet. Honest caveat below. | Live, with fallback |
 | **x402 (standard exact scheme)** | Exa (~0.007 USDC/call) and Gloria (~0.05 USDC/call), paid in real Base mainnet USDC. | Live |
@@ -239,49 +239,78 @@ fast as agents can act.
 
 Written from things that actually cost us time on this build.
 
-**Nanopayments and x402**
+**Nanopayments: three defects we hit, in the order we hit them**
 
-1. The seller's settlement chain is invisible until you parse the 402. We only learned that
-   Predexon settles Gateway-batched on Polygon mainnet, while Exa and Gloria want the exact
-   scheme on Base mainnet, by decoding the base64 `payment-required` header by hand. A buyer
-   has to route per seller and fund per chain. A discovery endpoint, or a documented registry
-   of known x402 sellers with their scheme and chain, would have saved us a day.
-2. Gateway's rule that the deposit and the payment must be on the same chain is correct but
-   easy to miss, and the failure it produces is confusing. We had a funded 10 USDC Gateway
-   balance on Arc Testnet and a seller on Polygon, and the client simply failed. An error that
-   says "you have a balance on arcTestnet but this seller settles on polygon" would be worth a
-   lot.
-3. Batched settlement returns no immediate transaction hash, which is a real design problem for
-   anyone whose business logic gates on proof of payment (ours does: credit requires a settled
-   payment). A documented pattern for "what do I show the user between authorization and batch
-   settlement", plus a lookup from an authorization to its eventual settlement tx, would unblock
-   a whole class of applications.
-4. Nanopayments on Arc Testnet has the fastest deposit confirmation of any chain you list, about
-   half a second. That is a genuinely strong reason to run an agent economy on Arc, and it is
-   buried in a table. It deserves to be the headline of the Arc pitch to agent builders.
+1. **Nanopayments is testnet-only, and nothing prominent says so.** The fact lives in a single
+   column of `gateway/references/supported-blockchains`, marked "No" for every mainnet chain. The
+   landing page, both quickstarts, and the buyer and seller how-tos never mention it. We had
+   integrated three x402 sellers before we discovered that all of them settle on mainnet and
+   therefore none of them could ever be paid with Gateway. One sentence at the top of the
+   Nanopayments landing page would have saved us a day.
+
+2. **`supports()` returns a false positive on a chain where payment is structurally impossible.**
+   This is the serious one. `GatewayClient({ chain: "polygon" }).supports(sellerUrl)` returns
+   `supported: true`, with full `GatewayWalletBatched` requirements, for a live seller quoting
+   `eip155:137`. But the Gateway Wallet contract **is not deployed on Polygon mainnet** (its
+   documented address, `0x0077777d7EBA…`, has no bytecode there), so a buyer can never fund a
+   balance to pay that seller. `supports()` checks only what the *seller* advertises, never whether
+   the *buyer* can fund the chain. It is the exact call your docs tell people to make before paying,
+   and it told us to go ahead. It should return `false`, or a reason, when the caller's chain has no
+   Gateway Wallet.
+
+3. **`GatewayClient.deposit()` reports success on a reverted transaction.** Following the false
+   positive above, we deposited 2 USDC on Polygon mainnet. The transaction reverted. The SDK
+   returned a `depositTxHash` and no error, and `getBalances()` simply kept reading zero, which
+   looks exactly like "waiting for confirmations". We only found the revert by pulling the receipt
+   ourselves. `deposit()` should await the receipt and throw on `status: 0x0`.
+
+4. **Two pages state opposite rules about whether a Gateway balance is chain-bound.**
+   `gateway/nanopayments/supported-networks` says "deposits and payments must be on the same
+   blockchain". The seller quickstart says the middleware accepts payments "regardless of which
+   blockchain they deposited on". The same-chain rule is the correct one, and it is stated in the
+   less prominent of the two places.
+
+5. **A live production seller advertises a payment method nobody can pay.** Predexon
+   (`nano.blockrun.ai`) quotes `GatewayWalletBatched` on Polygon mainnet. Given point 1, no buyer
+   can fund Gateway there. Either mainnet support is coming and the docs lag it, or that seller is
+   misconfigured. A buyer has no way to tell which, and `supports()` actively encourages them to try.
+
+**Nanopayments on Arc: this part is genuinely excellent**
+
+6. Once we understood the constraint, we became the seller. `createGatewayMiddleware` on
+   `eip155:5042002` took about thirty lines and worked first try. An agent now pays ArcRun **$0.001,
+   gasless, for live market intel**, and the Gateway balance debits exactly. Sub-cent
+   agent-to-agent payment on Arc is real and it is a genuinely new capability. Deposits on Arc
+   Testnet confirm in about half a second against 13 to 19 minutes for the Sepolia family. That
+   combination, an Arc-native gasless sub-cent rail, deserves to be the headline of your pitch to
+   agent builders rather than a row in a table.
+
+7. The one gap for integrators like us: `payment.transaction` returns a Gateway settlement **UUID**,
+   not an on-chain hash, because the batch settles later. Our grading rule is that an agent only
+   gets credit for data it actually paid for, so we gate on proof of payment. We can gate on the
+   settlement id, but we cannot show a user a block explorer link. A documented lookup from a
+   settlement id to the eventual batch transaction would close this cleanly.
 
 **Swaps on Arc**
 
-5. Circle Swap Kit officially supports Arc Testnet, but the route is intermittently empty and the
-   SDK surfaces this as a bare "no route" error. There is no way to ask "is there liquidity for
-   this pair right now" before committing to the swap path. `estimateSwap` returning a structured
-   "no liquidity" signal rather than throwing would let us degrade gracefully instead of guessing.
+7. Circle Swap Kit officially supports Arc Testnet, but the route is intermittently empty and the
+   SDK surfaces this as a bare "no route" throw. There is no cheap way to ask whether liquidity
+   exists for a pair before committing to the swap path, so an agent cannot decide between swapping
+   and doing something else. A structured "no liquidity" result rather than an exception would let
+   callers degrade deliberately instead of catching and guessing.
 
 **Arc**
 
-6. The 18-decimal native and 6-decimal ERC-20 split on USDC is the single sharpest edge on Arc,
-   and the docs handle it well. It is still the thing most likely to silently corrupt a balance.
-   A lint rule, or a viem helper that refuses to mix the two, would prevent a category of bug.
-7. Sub-second deterministic finality changes how you build. We removed every confirmation spinner
-   and treated one block as final. The docs say this, but a short "things you can delete from your
-   app on Arc" page would help teams port faster.
+8. The 18-decimal native and 6-decimal ERC-20 split on USDC is the sharpest edge on Arc. The docs
+   handle it well and we still consider it the likeliest source of a silent balance bug in any Arc
+   codebase. A viem helper that refuses to mix the two would prevent a category of error.
 
 **Circle Wallets**
 
-8. Developer-Controlled Wallets were the single highest-leverage integration in this build. An
-   operator signs up with an email and competes on chain without ever seeing a seed phrase, and
-   the whole custodial path is a few hundred lines. Worth saying: this worked exactly as
-   documented, first try.
+9. Developer-Controlled Wallets were the highest-leverage integration in this build. An operator
+   signs up with an email and competes on chain without ever seeing a seed phrase, and the whole
+   custodial path is a few hundred lines. Worth saying plainly: this worked exactly as documented,
+   first try.
 
 ---
 

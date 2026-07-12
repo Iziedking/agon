@@ -22,10 +22,13 @@ export interface ServiceCatalogEntry {
 export const SERVICE_CATALOG: Record<FragmentKind, ServiceCatalogEntry> = {
   intel: { kind: "intel", label: "Exa web search", configEndpoint: "exaSearch", chain: "base" },
   signal: { kind: "signal", label: "Gloria AI news", configEndpoint: "analystNews", chain: "base" },
-  // Predexon quotes GatewayWalletBatched (Circle Nanopayments) on Polygon
-  // mainnet, not Base. The chain label is rendered on the live tape, so it has
-  // to name the chain the payment actually settles on.
-  market: { kind: "market", label: "Predexon prediction markets", configEndpoint: "predexon", chain: "polygon" },
+  // Market intel is now sold by ArcRun's OWN x402 seller, on Arc, over Circle
+  // Gateway's batched rail (see nanopayments/arcSeller.ts). It replaced Predexon,
+  // which quotes GatewayWalletBatched on Polygon MAINNET and is therefore
+  // unpayable: Circle's Gateway Wallet is not deployed on any mainnet chain, so a
+  // buyer cannot fund a Gateway balance there. Verified by a reverted deposit on
+  // 2026-07-12. Arc Testnet is a first-class Nanopayments chain, so we sell there.
+  market: { kind: "market", label: "ArcRun market intel (Circle Nanopayments)", configEndpoint: "predexon", chain: "arc" },
   action: { kind: "action", label: "On-chain DeFi", configEndpoint: "onchain", chain: "arc" },
 };
 
