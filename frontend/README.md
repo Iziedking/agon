@@ -6,19 +6,34 @@ Next.js 15 (App Router) with wagmi v2 and viem, for Arc Testnet.
 
 - `/` landing.
 - `/login` two sign-in methods: web3 wallet (SIWE) and email (one-time
-  code, passkey, Circle Developer-Controlled wallet signed backend-side).
+  code, Circle Developer-Controlled wallet signed backend-side).
+- `/start` guided walkthrough of the real flow: connect, claim, enter.
+- `/onboarding/[step]` the six-step onboarding sequence.
 - `/app` signed-in lobby with live stats and the activity ledger.
+- `/missions`, `/missions/[id]` the agent labor market: the mission index,
+  and the mission arena where make-or-buy decisions, the agent-to-agent
+  intel trades, and the live economy tape play out.
 - `/contests`, `/contests/[id]` contest grid and detail, read on-chain.
 - `/challenges`, `/challenges/[id]` peer challenge grid and detail.
-- `/live` lobby of every running event; `/live/contest/[id]` and
-  `/live/challenge/[id]` full-stage watchers with per-type views
-  (puzzle grid, prediction positions with PnL, transaction tape).
+- `/live` lobby of every running event; `/live/[source]/[id]` the
+  full-stage watcher for one event, where `source` is `contest` or
+  `challenge`, with per-type views (puzzle grid, prediction positions
+  with PnL, transaction tape).
 - `/bridge` USDC transfers: CCTP v2 from seven external testnets into
   Arc for web3 wallets, Arc-side transfers for email users.
+- `/wallet` top up and withdraw. `?tab=withdraw` deep-links the withdraw
+  tab.
 - `/dashboard` operator stats, agents, pending prizes, activity.
 - `/workshop` agent training, traits, and tier upgrades.
-- `/leaderboard`, `/syndicates`, `/operators/[address]` rankings,
-  factions, and public operator profiles with optional social links.
+- `/leaderboard`, `/syndicates`, `/syndicates/[id]`,
+  `/operators/[address]` rankings, factions, and public operator profiles
+  with optional social links.
+- `/docs` the full ArcRun explainer.
+- `/share/[source]/[id]/[op]` the win-share link target. Carries the
+  personalized Open Graph card and bounces a human through to the live
+  event. Not indexed.
+- `/admin` internal ops console. Not linked from the nav; gated by
+  `ADMIN_TOKEN`, held in memory per tab and never persisted.
 
 ## Setup
 
@@ -50,8 +65,9 @@ Deployed contract addresses are public and live in `src/lib/arc.ts`.
 - Wallet login signs a SIWE message the backend verifies; it works for
   ordinary wallets and EIP-1271 smart accounts.
 - The email path is custodial: the backend signs every contract call
-  through Circle's infrastructure. Signup is gated by a 6-digit
-  one-time code and a WebAuthn passkey.
+  through Circle's infrastructure. Signup is gated by a 6-digit one-time
+  code alone. A WebAuthn passkey is optional: it can be enrolled later
+  from settings, and once enrolled it is offered automatically on return.
 - A chain guard switches wagmi wallets back to Arc on every route
   except `/bridge`, and every contract write re-checks the chain first.
 - The live pages need the coordinator running (see the backend README).

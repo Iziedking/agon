@@ -1,16 +1,20 @@
 import { config } from "../../config/index.js";
 import { query } from "../../db/pool.js";
 
-/// Tier defines which CAPABILITIES an agent unlocks. Every tier that calls
-/// the LLM uses the same single model (config.llm.model, default Haiku
-/// 4.5); tiers differ in what tools they're allowed to attach, how many
-/// tokens they can spend, and whether they get retries. Upgrading from
-/// tier 2 to tier 3 grants a calculator; tier 3 to tier 4 grants the
-/// internet. Real, observable, paid-for capability rather than a model
-/// swap.
+/// Tier does two things at once.
 ///
-/// The cheapest path stays cheap: tier 0 and tier 1 skip the LLM entirely
-/// and just guess, which costs $0.
+/// 1. It picks the MODEL. Each tier runs a different one (config.llm.tierModels,
+///    set from TIER0_MODEL..TIER4_MODEL), so upgrading an agent literally buys it
+///    a better brain. `modelForTier` below is the lookup, and
+///    `fallbackModelForTier` keeps the ordering intact during a provider outage
+///    so a tier 4 agent never drops below a tier 1 one.
+/// 2. It gates CAPABILITY. Tiers differ in what tools they may attach, how many
+///    tokens they can spend, and whether they get retries. Tier 2 to 3 grants a
+///    calculator; tier 3 to 4 grants the internet.
+///
+/// The cheapest path stays cheap: in the contest runners tier 0 and tier 1 skip
+/// the LLM entirely and just guess, which costs $0. Missions call the tier's
+/// model at every tier.
 
 export const STAT_NAMES = ["POWER", "PRECISION", "SPEED", "ENDURANCE", "LUCK", "FOCUS"] as const;
 export type StatName = (typeof STAT_NAMES)[number];

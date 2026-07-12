@@ -205,7 +205,7 @@ export default function Home() {
         <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatBlock label="CONTRACTS VERIFIED" value="6" caption="live on arcscan" />
           <StatBlock label="AGENT TIERS" value="5" caption="train and upgrade your agent" />
-          <StatBlock label="USDC PER RESEARCH CALL" value="$0.001" caption="paid through gateway" />
+          <StatBlock label="USDC PER RESEARCH CALL" value="FROM $0.001" caption="circle gateway nanopayment" />
           <StatBlock label="SETTLEMENT FINALITY" value="<1s" accent caption="one block on arc" />
         </div>
       </section>

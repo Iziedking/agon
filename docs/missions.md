@@ -1,15 +1,8 @@
-# Missions — a verifiable agent labor market on Arc
+# Missions: a verifiable agent labor market on Arc
 
-Spec for the missions build (started 2026-06-23). This supersedes the earlier
-"RECON research-quiz" framing of this file; that framing is preserved at the
-bottom under "Appendix: prior RECON spec" because its grading spine
-(credit-requires-payment, the template library, drift handling) carries forward.
-
-The qualifying delta for the Lepton/Canteen "Agents" hackathon (deadline Jun 29;
-internal target Jun 27). Judged on Agency, Traction (real testnet payments),
-Circle tool usage (x402/USDC), and Innovation. One RFB is agent-to-agent
-networks, so the A2A payment layer is a primary scoring lever here, not a
-nice-to-have.
+The design doc for missions, ArcRun's agent labor market: what the market is, how
+the money moves, how an agent runs a mission, and how the work is graded. It also
+says plainly what is shipped and what is not.
 
 ---
 
@@ -17,8 +10,9 @@ nice-to-have.
 
 A mission is a real, open-ended commission an agent earns by doing work it cannot
 do alone: gathering live data, buying intel from other agents, and synthesizing a
-deliverable, with every hop settled on-chain in USDC. ArcRun is the venue and
-takes a small rake on the flow.
+deliverable. Every hop is a real settlement in real USDC. The agent economy
+settles on Arc; the outside data calls settle on the seller's own chain, which is
+mainnet (section 2). ArcRun is the venue and takes a small rake on the flow.
 
 This is a two-sided market with two roles:
 
@@ -36,8 +30,8 @@ because of it. Competitors trading directly with each other would be artificial
 
 ### Status and roadmap
 
-Shipped in the hackathon window (2026-06) and live on Arc Testnet: the full
-two-sided market described in this spec. Operatives and specialists, make-or-buy
+Shipped and live on Arc Testnet (2026-06): the full
+two-sided market described here. Operatives and specialists, make-or-buy
 decided by the agent, the x402 make path and the agent-to-agent buy handshake,
 the scarce-intel dealer market, 1:1-fit grading with credit-requires-payment,
 the join fee with full refund on cancel, withdrawal inside the join window, and
@@ -57,15 +51,15 @@ A mission is not solver-only. Any agent family can be sent on a mission, and the
 mission's `domain` decides what the operative actually does to complete it:
 
 - **SOLVER missions (research/synthesis).** The flagship. The operative gathers
-  fragments and synthesizes an intelligence deliverable. Needs the x402 + A2A
-  wiring: MAKE = pay Exa/Gloria/Predexon; BUY = pay a specialist for intel.
+  fragments and synthesizes an intelligence deliverable. Needs both the x402 and
+  A2A wiring: MAKE = pay Exa/Gloria/Predexon; BUY = pay a specialist for intel.
 - **ANALYST missions (prediction).** The operative forms and commits predictions
-  (Arcana positions, market reads). Also needs the x402 + A2A wiring: MAKE = pay
-  Gloria/Predexon for news/odds; BUY = pay a specialist for a read. Graded on
-  prediction quality.
+  (Arcana positions, market reads). Also needs both the x402 and A2A wiring:
+  MAKE = pay Gloria/Predexon for news/odds; BUY = pay a specialist for a read.
+  Graded on prediction quality.
 - **SCOUT missions (on-chain DeFi work).** The operative does real on-chain
   actions: swap, provide liquidity, borrow, lend, bridge. The MAKE path here is
-  NOT x402 — it is the on-chain DeFi rails (the existing Scout swap/bridge seam).
+  NOT x402: it is the on-chain DeFi rails (the existing Scout swap/bridge seam).
   A scout mission can still optionally BUY intel from a specialist over the A2A
   rail (e.g. which pool to LP), but its deliverable is the on-chain activity
   itself, graded on the DeFi metric (volume provided, liquidity supplied, etc.).
@@ -78,16 +72,23 @@ solver and analyst, on-chain DeFi for scout. The A2A rail, the specialist model,
 and the grader scaffolding are built once and reused across all three.
 
 Build order: SOLVER missions first (cleanest A2A showcase), then ANALYST (same
-wiring). SOLVER and ANALYST are shipped. SCOUT missions are DEFERRED for now:
-scout volume is transfer-only today (no live DEX on Arc), so a scout mission would
-not yet do genuine DeFi work, only self-transfer volume. Revisit the scout domain
-after the native Arc DEX integration lands. The foundation (A2A rail, specialists,
-grader) is shared and ready when it does.
+wiring). SOLVER and ANALYST are shipped. SCOUT missions are not, and the reason
+is liquidity, not rails.
 
-## 1c. The live mission economy (v2, the model we are building)
+The DeFi rails are real and in the tree. `chain/appKitSwap.ts` runs same-chain
+USDC/EURC swaps on Arc through Circle Swap Kit, and `chain/scoutBridge.ts` runs
+real Arc to Base CCTP bridges, both signed by the agent's own hot wallet. What is
+not dependable is the liquidity underneath them: Circle's swap aggregator
+routinely comes back with no route on Arc testnet, and when it does the Scout
+runner falls back to a USDC self-transfer so the event still fills and settles. A
+self-transfer is real on-chain volume, but it is not DeFi work, and a mission
+graded on a DeFi metric cannot ride a path that quietly degrades into a transfer.
 
-This section is the canonical design. Where it disagrees with the older Phase
-A/B framing in section 4, this section wins.
+So SCOUT missions wait on dependable Arc liquidity, most likely a native Arc DEX
+router in the `executeSwap` seam. The shared foundation (A2A rail, specialists,
+grader) is built and ready for the domain when that lands.
+
+## 1c. The live mission economy (v2)
 
 **Spontaneous by archetype.** Every mission is drawn at random into one of two
 shapes, so no two feel alike.
@@ -120,9 +121,8 @@ the moment a mission goes live (and pings users who have linked Telegram).
   spread `r - b` is their profit; an unsold piece costs them `b`. Their only
   stake is capital and pricing skill.
 - **Operative (the demand side).** Competes for the prize pool. Pays a join fee
-  of 5% of the pool on platform-funded missions (project-funded missions set
-  their own fee at listing, which may be zero). Buys the intel it needs, from a
-  specialist at `r` or, for any piece no specialist claimed, straight from the
+  of 5% of the pool (`MISSION_OPERATIVE_FEE_BPS`). Buys the intel it needs, from
+  a specialist at `r` or, for any piece no specialist claimed, straight from the
   platform at `b`. If it clears the bar it takes a pool share.
 
 **Grading is a 1:1 fit to the intel.** A deliverable that matches the bought
@@ -156,7 +156,7 @@ and a person can learn from watching it.
 
 The v2 economy in section 1c is built and live. What landed, end to end:
 
-- **Archetype + weight.** `computeMissionEconomics(pool)` rolls each mission into
+- **Archetype and weight.** `computeMissionEconomics(pool)` rolls each mission into
   external-x402 or internal-intel and derives the weight (pool x difficulty x
   subject), the base intel price `b` (0.5 to 5 USDC), and the caps. Persisted on
   the `missions` row (`archetype`, `weight`, `base_price_usdc_6`, `pool_usdc_6`).
@@ -196,7 +196,7 @@ The config knobs (`MISSION_EXTERNAL_FRACTION`, `MISSION_BASE_PRICE_*`,
 above and are tunable per deploy. The fee path needs `TREASURY_PRIVATE_KEY` set;
 without it the join is free and nothing is charged.
 
-## 2. The three settlement layers (all on-chain USDC)
+## 2. The three settlement layers (all real on-chain USDC)
 
 1. **Pool -> operative (the prize).** The mission is funded with a USDC pool. The
    coordinator scores the field and the top operatives claim their slice via the
@@ -210,9 +210,20 @@ without it the join is free and nothing is charged.
    pay Exa / Gloria / Predexon via x402 for live data, using the per-seller
    routing already shipped (`NANOPAY_PROVIDER=auto`).
 
-Every hop is a real on-chain settlement with a captured tx hash, so the whole
-trail is judge-legible: pool funds the mission, operative pays a specialist,
-specialist (or operative) pays a data service, winner claims the pool.
+**Which chain each layer settles on.** Layers 1 and 2 are the agent economy and
+they settle on Arc: the join fee, every agent-to-agent intel payment, and the
+prize settlement. Layer 3 settles where the seller lives, and the sellers live on
+mainnet. Exa and Gloria are standard x402 `exact`-scheme sellers on Base mainnet.
+Predexon is an x402 v2 Circle Gateway batched nanopayment seller
+(`extra.name = GatewayWalletBatched`) on Polygon mainnet.
+`NANOPAY_PROVIDER=auto` reads the 402 challenge per seller and routes each to the
+right client (`backend/src/nanopayments/index.ts`). x402 does not settle on Arc,
+and nothing in the mission economy pretends it does.
+
+Every hop is a real settlement with a captured tx hash, so the trail reads end to
+end: the pool funds the mission (Arc), an operative pays a specialist (Arc), an
+operative or specialist pays a data service (Base or Polygon), the winner claims
+the pool (Arc).
 
 ## 3. The operative run loop (autonomous make-or-buy)
 
@@ -243,71 +254,67 @@ The make-vs-buy decision is the on-stage drama: a smart operative buys a ready
 fragment from a specialist when that is cheaper or faster than sourcing it itself,
 and makes the rest. Both paths are real money moving on-chain.
 
-## 4. The economic model and its phased rollout
+## 4. The economic model: who seeds what
 
-The same design seeds the demo today and opens to operators and projects later.
-Everybody makes money at every phase.
+The same design seeds the market today and opens to projects later. Everybody
+makes money at every stage.
 
-### Phase A (v1, what we build now): platform seeds everything
+### Shipped: the platform seeds the market, operators trade inside it
 
-- The **platform seeds the mission contest** (funds the prize pool) AND seeds a
-  small set of **platform-run specialist agents that sell intel**. By our design,
-  at the moment a mission is seeded its intel lives in the specialists' hands (the
-  generator captures the ground-truth fragments and hands them to the specialists).
-- Operatives compete: make (pay x402) or buy (pay a platform specialist), then
-  synthesize and submit.
-- Controllable, always-on supply side, so the demo loop never starves.
+- The **platform funds the prize pool and originates the supply**. At seeding
+  time the generator captures the ground-truth fragments and puts them on the
+  platform shelf (`generator.ts`, `specialists.ts`), so there is always intel to
+  buy and the loop never starves.
+- **In the join window an operator picks a side** (section 1c). As an OPERATIVE it
+  pays the join fee and competes for the pool. As a SPECIALIST it buys pieces off
+  the platform shelf at the base price `b`, owns them exclusively
+  (`mission_intel_buys` keys on `(contest_id, fragment_id)`), and resells to
+  operatives at its own price `r`. The spread is its profit; an unsold piece costs
+  it `b`, refunded only if the mission cancels.
+- So the A2A market is **not platform-to-operative only**. An operator-run seller
+  sits between the platform and the field, and a non-winning operator still has a
+  way to earn. `listSpecialistsForFragment` deliberately ranks operator listings
+  above the platform shelf, because the operator's sale is the point of the
+  two-sided market.
 
-### Phase B (later, todo): operator-run intel sellers
+### Not shipped: project-seeded missions
 
-- In a mission's join window, an operator can **choose their role: intel seller or
-  mission contestant.**
-- An operator who picks intel seller **buys intel from the platform specialists at
-  a discount** and **resells it to contestants for a profit**. The platform still
-  originates the intel; operators become a resale tier on top.
-- This widens the A2A market from platform-to-operative to operative-to-operative,
-  and gives non-winning operators a way to earn.
-
-### Phase C (later, todo): project-seeded missions
-
-- **Projects fund their own missions** (the adoption story: completing the mission
-  is real usage of the project's product). By our design the mission's intel is
-  placed in the platform agents' hands at seeding time, so the supply side is ready
-  the moment the mission opens.
-- Funding a mission is **team-designed**: the UI's "fund a mission" path tells the
-  sponsor to contact the team so we design the brief, the verifiable ground truth,
-  and the specialist intel for them. No self-serve mission creation in v1.
-
-The default platform mission must be genuinely interesting on its own (section 6),
-because it carries the demo until phases B and C land.
+**Projects funding their own missions** is the adoption story (completing the
+mission is real usage of the project's product) and it is not built. There is no
+self-serve mission creation: no endpoint accepts an outside brief, an outside
+ground truth, or an outside pool. A sponsored mission today is team-designed,
+because the verifiable ground truth and the specialist intel have to be authored
+together with the brief. The default platform mission (section 6) therefore has to
+be genuinely interesting on its own, since it carries the product until this
+lands.
 
 ## 4b. Wallets, funding, and monetization
 
-**Automatic spending (Phase A, decided 2026-06-23).** Every agent payment and
-interaction in a mission happens with NO human signing, because the whole economy
-is shown live. v1 uses the **hot wallets**: each operative and each specialist gets
-a deterministic wallet derived from the master mnemonic by agentId
-(`deriveHotWallet`, the proven Scout pattern), so the coordinator signs every A2A
-payment and x402 call server-side, instantly, no wallet popup. Specialist wallets
-live on a reserved agentId range (`MISSION_SPECIALIST_AGENT_ID_BASE`). A
-Circle dev-controlled wallet per agent (stronger per-agent on-chain identity) is a
-later upgrade, deliberately not built against the Jun 27 deadline and carrying
-custody weight (see the production-readiness notes).
+**Automatic spending.** Every agent payment and interaction in a mission happens
+with NO human signing, because the whole economy is shown live. v1 uses the **hot
+wallets**: each operative and each specialist gets a deterministic wallet derived
+from the master mnemonic by agentId (`deriveHotWallet`, the proven Scout pattern),
+so the coordinator signs every A2A payment and x402 call server-side, instantly,
+no wallet popup. Specialist wallets live on a reserved agentId range
+(`MISSION_SPECIALIST_AGENT_ID_BASE`) so they never collide with a real operator
+agent. A Circle dev-controlled wallet per agent (stronger per-agent on-chain
+identity) is a later upgrade, not built in v1: it carries custody weight, and the
+custody posture is a mainnet decision (section 10).
 
 **Platform-funded floats.** For a frictionless run the platform fronts each
 operative a USDC float (`MISSION_OPERATIVE_FLOAT_USDC`) before the mission and
 sweeps the remainder after settlement, so participating costs the operator only
 their entry, not their own working capital. Specialist gas is likewise funded.
 
-**Monetization (Phase B/C, parked).** When the platform funds everything, the cost
-is recovered with a **subscription to participate in missions**. To keep the
+**Monetization (parked).** When the platform funds everything, the cost is
+recovered with a **subscription to participate in missions**. To keep the
 subscription fair and to reward genuine economic activity, an operative that
 actually puts its float to work earns a **partial refund**: if it spent more than
 ~40% of its allotted budget on real intel/data/sub-work during the mission, a
 portion of the subscription (or the float) is refunded. Agents that idle pay full
-freight; agents that engage the economy get money back. Exact thresholds and which
-base the 40% measures (the float vs the subscription) are an open knob recorded in
-todo.md, not wired in v1.
+freight; agents that engage the economy get money back. None of this is wired: v1
+charges no subscription, and the threshold and the base it measures against (the
+float or the subscription) are still open.
 
 ## 5. Grading: quality judged, credit gated by payment
 
@@ -344,7 +351,7 @@ platform specialists are seeded to hold.
 
 | Template | Service (make path) | Fragment | Specialist holds | Grade |
 |---|---|---|---|---|
-| **INTEL** | Exa web search | a fact about a recent event | the captured fact + source | source-anchored / exact |
+| **INTEL** | Exa web search | a fact about a recent event | the captured fact and its source | source-anchored / exact |
 | **SIGNAL** | Gloria news | bullish/bearish read across headlines | the ranked read | graded pick |
 | **MARKET** | Predexon | implied probability / live value | the captured value | tolerance band |
 
@@ -352,33 +359,7 @@ A mission runs K fragments in its window: mostly single-source, with a synthesis
 ask that combines them. The operative decides per fragment whether to make (pay
 the service) or buy (pay a specialist who already holds it).
 
-## 8. Build surface (files)
-
-Reuse the solver/coordinator/nanopayments machinery; do not rebuild
-streaming/scoring/settlement.
-
-- `backend/src/runners/missions/` (new):
-  - `types.ts` — Commission, Brief, Fragment, MakeOrBuyDecision, MissionResult.
-  - `templates.ts` — the INTEL/SIGNAL/MARKET template library.
-  - `generator.ts` — bind templates to live services, capture ground truth, build
-    the brief, seed specialist intel.
-  - `specialists.ts` — platform-seeded specialist agents (own hot wallets on a
-    reserved agentId range) that price and serve intel.
-  - `a2a.ts` — the bounded handshake and the real on-chain USDC transfer between
-    agent wallets; writes `a2a_trades`.
-  - `runner.ts` — the MissionRunner: the section-3 loop, returns `AgentResult[]`.
-  - `grader.ts` — section 5 (judge quality + credit-requires-payment).
-- `backend/src/coordinator/`: dispatch MissionRunner when a contest has a `missions`
-  row; `openMission()` in contestOps; an autopilot path behind `MISSION_ENABLED`.
-- `backend/src/config/index.ts`: `MISSION_*` env vars.
-- DB (new, idempotent): `missions`, `mission_specialists`, `a2a_trades`,
-  `mission_fragments`. Reuse `nanopayments` for the make-path proof; reuse
-  `entries`, `payouts`, `event_standings` for entry and settlement.
-- Frontend: a mission arena page and the live agentic-economy tape
-  (agent-paying-agent and agent-paying-service rows with tx links). ArcRun brand
-  via the `arcrun-redesign` skill.
-
-## 9. On-chain identity of a mission
+## 8. On-chain identity of a mission
 
 A mission is a SOLVER-type contest on `ContestEngine` (cType 2) tagged by a row in
 the `missions` table. No contract redeploy: entry, the prize pool, the score root,
@@ -386,31 +367,7 @@ settle, and claim are the existing solver-contest path. What differs is the
 coordinator runs the MissionRunner (not the SolverRunner) and the run produces real
 A2A and x402 settlements along the way.
 
-## 10. Build steps (each a clean, working commit)
-
-1. Spec + config + types + template library (this commit).
-2. Platform-seeded specialists + the A2A rail (request/offer/accept/pay,
-   on-chain USDC), verifiable in isolation.
-3. The MissionRunner (the section-3 loop with autonomous make-or-buy).
-4. The grader (judge quality + credit-requires-payment).
-5. Coordinator wiring + a default mission on autopilot + settlement.
-6. Frontend mission arena + the live economy tape + demo polish.
-
-## 11. Verification
-
-1. A2A: an operative buys a fragment from a specialist; assert a real USDC
-   `Transfer` from the operative wallet to the specialist wallet with a captured
-   tx, an `a2a_trades` row, and the specialist balance up by the price.
-2. Make: an operative pays an x402 service; assert the settlement tx is captured
-   (existing nanopayments path).
-3. Credit-requires-payment: force a good deliverable with NO payment trail -> no
-   credit; force a paid-but-weak deliverable -> judge rejects -> no credit; good +
-   paid -> credit.
-4. Settlement: the field scores, the merkle root posts, a winning operative claims
-   real USDC.
-5. `npx tsc --noEmit` clean in backend and frontend; contracts untouched.
-
-## 12. Risks
+## 9. Risks
 
 - **A2A wallet funding:** operatives need a USDC float to buy from specialists, and
   specialists need gas. Fund operative/specialist hot wallets before the run and
@@ -424,7 +381,7 @@ A2A and x402 settlements along the way.
 - **No new contracts:** everything rides the existing ContestEngine/PrizeEscrow and
   real USDC transfers.
 
-## 13. Going live (operations checklist)
+## 10. Going live (operations checklist)
 
 Missions are a real economic play: agents earn from funded work, pay live services
 for data, and pay each other for help, all in real USDC. Because real money moves,
@@ -442,7 +399,10 @@ toggle-test-toggle flow.
    operative's float, then sweeps the floats back after settlement.
 4. Optional, for the full experience: `NANOPAY_*` (so the make/x402 path settles
    real payments) and `ANTHROPIC_API_KEY` (so make-or-buy, synthesis, and the judge
-   are model-driven instead of the heuristic/neutral fallbacks).
+   are model-driven instead of the heuristic/neutral fallbacks). Note what the
+   x402 path costs: `NANOPAY_WALLET_PRIVATE_KEY` spends real mainnet USDC, because
+   the sellers are on Base and Polygon mainnet (section 2). Arc testnet USDC does
+   not pay for it.
 
 **Turn it on:**
 5. Set `MISSION_ENABLED=true`. Tune the knobs as needed:
@@ -451,7 +411,7 @@ toggle-test-toggle flow.
    - `MISSION_POOL_USDC`, `MISSION_DURATION_SECONDS`, `MISSION_OPERATIVE_FLOAT_USDC`.
    - `MISSION_MIN_TIER` (default 3): operatives must be this tier or higher. If you
      test with low-tier agents, lower this or they cannot enter.
-6. Recreate the coordinator (and the migrate step) so the new env + tables take
+6. Recreate the coordinator (and the migrate step) so the new env and tables take
    effect, e.g. `docker compose up -d --build --force-recreate migrate coordinator`
    (use your actual service names).
 
@@ -472,27 +432,16 @@ toggle-test-toggle flow.
     open; any already-open mission still settles normally. Safe to toggle on and off
     as often as you like.
 
-**Mainnet caveat:** on Arc testnet this is fine for demos. On mainnet the
-coordinator moves real USDC (pool, floats, agent-to-agent payments), so the custody
-and money-transmitter notes in the BEFORE PRODUCTION section of `todo.md` apply.
+**Mainnet caveat.** On Arc testnet this is fine. On mainnet the coordinator moves
+real USDC on every path here (the pool, the operative floats, the agent-to-agent
+payments, the join fees and their refunds), and the x402 wallet already spends
+real mainnet USDC on Base and Polygon. Two things must be settled before that:
 
----
-
-## Appendix: prior RECON spec (superseded framing, kept for the grading spine)
-
-The earlier version of this file framed missions as a research quiz: an agent pays
-an x402 service to answer a verifiable question, credited only when a settled
-payment exists. That framing is superseded by the labor-market model above, but
-these pieces carry forward unchanged and are already shipped:
-
-- **Credit-requires-payment** across all grading paths (the keystone, section 5).
-- **The live-value ORACLE** and **RECON multi-asset synthesis** research slots in
-  the solver (`runners/puzzles/oracle.ts`), which prove the verifiable-paid-utility
-  loop end to end.
-- **Drift handling:** count-type primary, tolerance bands for prices, short
-  windows, dual-timestamp grading (gen-time and grade-time both accepted within
-  tolerance).
-- **Template-to-live-service binding** at generation time, captured ground truth.
-
-The new model keeps all of this and adds the second settlement layer
-(operative -> specialist) and the autonomous make-or-buy decision on top.
+- **Key custody.** The treasury key, the master mnemonic behind every agent hot
+  wallet, and the x402 payment wallet are all live backend keys. Their storage,
+  blast radius, and rotation are covered in
+  [ops/wallet-recovery.md](ops/wallet-recovery.md).
+- **Custodial posture.** Email operators hold Circle Developer-Controlled wallets,
+  which the platform can move funds from. That is money-transmitter territory once
+  real USDC is involved and it needs legal review, or a migration to a
+  user-signed wallet, before mainnet.

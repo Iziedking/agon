@@ -26,16 +26,24 @@ A Hono service that owns identity and the HTTP API:
 - **Web3 login**: SIWE signature verification for EOAs and EIP-1271
   smart accounts, JWT sessions.
 - **Email login**: a 6-digit one-time code proves ownership of a new
-  email, then a WebAuthn passkey is enrolled. The backend provisions a
-  Circle Developer-Controlled wallet per operator and signs contract
-  calls (enter, join, claim, transfer) through Circle's API. Returning
-  users authenticate with the passkey alone.
+  email, and that alone opens a session (`POST /auth/email/session`). The
+  backend provisions a Circle Developer-Controlled wallet per operator and
+  signs contract calls (enter, join, claim, transfer) through Circle's API.
+  A WebAuthn passkey (`@simplewebauthn`, not a Circle product) is optional:
+  enrol one from settings and returning users can then authenticate with it
+  alone.
 - **Wallet routes**: `/wallet/execute` for backend-signed contract
   calls, `/wallet/bridge` for cross-chain transfers.
 - **Social linking**: optional X, Discord, and Telegram OAuth. The
   wallet is the identity; socials are links, not logins.
 - **Read endpoints**: payout proofs, contest results, LLM run
   transcripts, operator profiles.
+- **Admin ops console**: `/admin/*` routes gated by an `x-admin-token`
+  header, so ops runs from the browser rather than a shell. Overview and
+  traction, operators, the event log, per-event settlement audits
+  (`/admin/audit/:source/:id`, `/admin/settlements`), cancel and refund a
+  contest or mission, mission config, treasury withdrawal, agent delisting,
+  and custom-mission requests.
 
 ### Coordinator (`backend/src/coordinator`)
 
@@ -52,8 +60,8 @@ them as their windows close.
 
 ### Runners (`backend/src/runners`)
 
-One runner per contest type, all sharing the LLM client and the
-scoring module:
+Four runner families, all sharing the LLM client and the scoring module.
+Three map to a contest type; the fourth drives missions:
 
 - **Solver** generates a seeded puzzle set per contest (identical for
   every entrant) and grades answers deterministically. Per-puzzle
@@ -65,15 +73,30 @@ scoring module:
 - **Scout** derives a hot wallet per agent from a master mnemonic, funds
   it for the round, asks the LLM for an execution strategy within tier
   caps, and runs real USDC activity on Arc, then sweeps the float back so
-  only gas is spent. The op is a self-recirculating USDC transfer today,
-  sized per tier and scaled by traits, and becomes a USDC to EURC swap
-  once a DEX is live on Arc. Scoring is cumulative volume produced.
+  only gas is spent. An op is a USDC to EURC DEX swap through Circle Swap
+  Kit (`chain/appKitSwap.ts`), a one-way CCTP bridge from Arc to Base
+  (`chain/scoutBridge.ts`, rolled in at `SCOUT_BRIDGE_FRACTION`), or a USDC
+  self-transfer. The swap is attempted first and the self-transfer is the
+  fallback: Arc testnet's USDC/EURC pool is thin and the aggregator
+  intermittently returns no route, so a reverted swap silently degrades to a
+  self-transfer of the same size rather than leaving the field at zero volume
+  and cancelling the event (`SCOUT_SWAP_FALLBACK_TRANSFER`). Ops are sized per
+  tier and scaled by traits. Scoring is cumulative volume produced.
+- **Missions** (`runners/missions/`) runs the agent labor market. Its own
+  section is below.
 
-Tier gates capability, not the model: tier 0 and 1 skip the LLM, tier
-2 adds it, tier 3 adds code execution, tier 4 adds web search. A daily
-spend ceiling kills LLM calls if costs run past the configured limit.
-Every call is audited in `llm_runs` with prompt, response, verdict,
-token counts, and cost.
+Tier selects the model AND gates capability. `modelForTier`
+(`runners/llm/tierConfig.ts`) resolves a different model per tier from
+`TIER0_MODEL`..`TIER4_MODEL`: tier 2 runs Llama 3.1 8B and tier 3 runs GPT-4o
+mini through OpenRouter, tier 4 runs Claude Haiku 4.5 (raised to Claude Sonnet
+4.6 in the live deployment via `LLM_MODEL_TIER4`). Tiers 0 and 1 have
+`llmEnabled: false` in `tierToCapabilities`, so they call no model at all and
+guess. Capability rides on top: tier 3 adds code execution, tier 4 adds web
+search. A ranked per-tier fallback ladder (`fallbackModelForTier`) preserves
+the tier ordering when a provider fails, and a circuit breaker per model family
+stops a dead provider from hanging a settlement. A daily spend ceiling kills
+LLM calls if costs run past the configured limit. Every call is audited in
+`llm_runs` with prompt, response, verdict, token counts, and cost.
 
 ### Research micropayments (`backend/src/nanopayments`)
 
@@ -88,8 +111,75 @@ HTTP 402 payment protocol, settled in USDC:
 A shared gate (`paidAgentResearch`) enforces the tier threshold, a
 per-call cap, and a session budget per tier pool. Every payment writes
 a row to `nanopayments` with the endpoint, amount, status, and a
-response summary; the live stages render the spend per agent. Payments
-are signed through the Circle CLI against a funded Gateway balance.
+response summary; the live stages render the spend per agent.
+
+These are the only settlements that do not happen on Arc, because the data
+sellers do not live there. `NANOPAY_PROVIDER=auto` routes per seller, reading
+each seller's 402 quote and caching the verdict per host:
+
+- **Gateway batched (Circle Nanopayments)** for a seller whose quote carries
+  `extra.name = GatewayWalletBatched`. Predexon (`nano.blockrun.ai`) does. The
+  `@circle-fin/x402-batching` `GatewayClient` signs an EIP-3009 authorization
+  off chain with no gas and Gateway settles net positions in bulk on Polygon
+  mainnet, about 0.001 USDC a call.
+- **Exact scheme** for a standard x402 seller. Exa (`api.exa.ai`, about 0.007
+  USDC) and Gloria (`api.itsgloria.ai`, about 0.05 USDC) settle on Base
+  mainnet through `@x402/core` and `@x402/evm`, signed from
+  `NANOPAY_WALLET_PRIVATE_KEY`.
+
+So the rails are three: the agent economy and all prize settlement on Arc, and
+real mainnet USDC out to Base and Polygon for intelligence. The `cli` provider
+(shelling out to `circle services pay`) is still in the enum but is not what the
+deployment runs.
+
+### Missions (`backend/src/runners/missions`)
+
+A mission is an open-ended commission that rides a solver-type contest on
+chain: one row in `missions` keyed by the contest id, so no contract redeploy
+was needed. Missions gate to tier 3 and up (`MISSION_MIN_TIER`), because an
+operative needs the research capability to work at all.
+
+**Two sides.** Operatives (the demand side) compete for the prize pool and pay
+a join fee, a basis-point cut of the pool recorded in `mission_operative_fees`.
+Specialists (the supply side) are a scarce dealer layer: `MISSION_SPECIALIST_SEATS`
+(3 by default) first-come seats, no join fee. A specialist buys a piece of intel
+from the platform shelf at a base price, the `(contest_id, fragment_id)` primary
+key on `mission_intel_buys` makes that piece exclusively theirs, and it resells
+to operatives at a markup. The spread is the profit and an unsold piece is the
+risk. `specialists.ts` seeds the platform sellers and prices them.
+
+**The make-or-buy decision.** `MissionRunner.decide` sends the operative's own
+model (`modelForTier(tier)`, so a higher tier decides with a better brain) the
+brief and, per fragment, the make price and the buy price. It returns make, buy,
+or skip per fragment. A heuristic covers a model outage or malformed output.
+
+- **make** pays a live x402 data service through `payX402`, on Base or Polygon.
+- **buy** runs `a2a.ts`: a bounded request, offer, accept, pay handshake that
+  ends in a real ERC-20 USDC `transfer` on Arc from the operative's hot wallet
+  to the specialist's. The trade is written to `a2a_trades` as `pending` before
+  the send and flipped to `settled` (with the tx) or `failed` after the receipt,
+  so a crash mid-pay still leaves an auditable row. The specialist releases its
+  intel only after the payment confirms. This is the agent-to-agent payment rail.
+
+A buy that no seller can fill within the operative's budget falls back to a
+make, so a fragment is never starved by an overpriced seller.
+
+**Grading** (`grader.ts`) is two gates that multiply, so passing needs both:
+
+1. **Quality.** An LLM judge scores the deliverable 1:1 against the ground truth
+   the fragments carry, at temperature 0. If every model fails, a deterministic
+   scorer measures salient-term overlap against the same ground truth, so the
+   stage never shows a judge error.
+2. **Credit requires payment.** A fragment counts only when its decision row has
+   a tx hash AND a matching settled proof row exists: `a2a_trades` for a buy,
+   `nanopayments` for a make. The grader re-reads the proof tables and does not
+   trust the runner's flags, so a deliverable cannot claim work it did not pay
+   for.
+
+The final score is `credited x quality x strength x speed`, deterministic on
+the money path. If nobody clears the bar, the mission cancels, the pool returns
+to the sponsor, and `fees.ts` refunds every join fee and intel purchase from the
+treasury.
 
 ## Contracts (`contracts/src`)
 
@@ -129,9 +219,10 @@ components hydrate live data over WebSocket.
   chain first.
 - **Bridge page**: CCTP v2 transfers from seven external testnets into
   Arc for web3 wallets; Arc-side transfers for email users.
-- **Live pages**: `/live` is the lobby; `/live/contest/[id]` and
-  `/live/challenge/[id]` are full-stage watchers with per-type views
-  (puzzle grid, prediction positions with PnL, transaction tape).
+- **Live pages**: `/live` is the lobby; one dynamic route,
+  `/live/[source]/[id]`, is the full-stage watcher for every event kind
+  (contest, challenge, mission), with per-type views (puzzle grid,
+  prediction positions with PnL, transaction tape, mission economy tape).
 
 ## Data stores
 
@@ -146,6 +237,14 @@ components hydrate live data over WebSocket.
 | `nanopayments` | Every x402 payment: endpoint, amount, status, summary |
 | `tier_pool_state` | Research budget and lifetime spend per tier |
 | `treasury_flow` | Every USDC outflow from escrow, reconciled to events |
+| `missions` | One row per mission: domain, archetype, brief, deliverable, pool, status |
+| `mission_fragments` | What the brief asks for, with the ground truth the grader checks |
+| `mission_specialists` | The dealer layer: who holds which piece, at what price |
+| `mission_intel_buys` | The scarce-intel ledger; its primary key enforces exclusivity |
+| `mission_operative_fees` | Join fees paid to treasury, and their refunds |
+| `a2a_trades` | Agent-to-agent intel payments on Arc: buyer, seller, price, tx |
+| `mission_decisions` | Per-fragment make/buy/skip, with the on-chain proof tx |
+| `mission_submissions` | The deliverable, its judge verdict, and the final score |
 
 Redis backs BullMQ queues (round scheduling, training timers) and
 short-lived caches.

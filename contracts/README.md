@@ -16,6 +16,13 @@ Shared interfaces live in `src/interfaces`, shared enums in
 `src/types/ArcRunTypes.sol`. Money flows through `PrizeEscrow` only;
 the other contracts instruct it and hold no balances.
 
+Missions add no seventh contract. The coordinator opens a mission by
+listing an ordinary SOLVER-type contest on `ContestEngine`
+(`backend/src/coordinator/contestOps.ts`, `openMission`); the mission's
+domain, fragments and specialists live off chain in the `missions`
+table. So a mission escrows, scores and settles on chain exactly like
+any other solver contest.
+
 ## Build and test
 
 ```bash
@@ -24,7 +31,11 @@ forge test
 forge coverage --no-match-coverage "(test|script)"
 ```
 
-Line coverage is above 90% on every contract.
+Every contract has a Foundry test suite under `contracts/test/`:
+`ContestEngine.t.sol`, `ChallengeArena.t.sol`, `AgentRegistry.t.sol`,
+`PrizeEscrow.t.sol`, `PointsLedger.t.sol`, `SyndicateFactory.t.sol`,
+with mocks in `test/mocks/` and a Merkle helper in `test/utils/`. Run
+`forge coverage` to see the current numbers.
 
 ## Dependencies
 
@@ -50,7 +61,7 @@ to Arc Testnet defaults, with addresses defaulting to the deployer):
 | `COORDINATOR_ADDRESS` | deployer | Backend that scores and settles |
 | `USDC_ADDRESS` | `0x3600...0000` | Arc USDC ERC-20 interface, 6 decimals |
 | `IDENTITY_REGISTRY_ADDRESS` | `0x8004A8...BD9e` | ERC-8004 IdentityRegistry |
-| `LISTING_FEE` | `0` | Flat USDC (6 dp) per contest listing |
+| `LISTING_FEE_BPS` | `0` | Listing fee in bps of the prize pool, charged at listing. `0` = free hosting, ceiling 1000 (10%) |
 | `PLATFORM_FEE_BPS` | `500` | Platform skim, 5%, capped at 20% |
 
 ```bash
@@ -80,7 +91,7 @@ Recovery procedures per wallet are in
 
 ## Deployed addresses (Arc Testnet)
 
-Deployed 2026-05-27 to chain 5042002. The canonical record, including
+Deployed 2026-06-11 to chain 5042002. The canonical record, including
 role addresses, is
 [deployments/arc-testnet.json](deployments/arc-testnet.json).
 

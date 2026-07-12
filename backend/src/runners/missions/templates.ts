@@ -22,7 +22,10 @@ export interface ServiceCatalogEntry {
 export const SERVICE_CATALOG: Record<FragmentKind, ServiceCatalogEntry> = {
   intel: { kind: "intel", label: "Exa web search", configEndpoint: "exaSearch", chain: "base" },
   signal: { kind: "signal", label: "Gloria AI news", configEndpoint: "analystNews", chain: "base" },
-  market: { kind: "market", label: "Predexon prediction markets", configEndpoint: "predexon", chain: "base" },
+  // Predexon quotes GatewayWalletBatched (Circle Nanopayments) on Polygon
+  // mainnet, not Base. The chain label is rendered on the live tape, so it has
+  // to name the chain the payment actually settles on.
+  market: { kind: "market", label: "Predexon prediction markets", configEndpoint: "predexon", chain: "polygon" },
   action: { kind: "action", label: "On-chain DeFi", configEndpoint: "onchain", chain: "arc" },
 };
 

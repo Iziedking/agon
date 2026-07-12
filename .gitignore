@@ -1,6 +1,10 @@
 # Local-only design doc, not committed
 ARCRUN_PLAN.md
 
+# Internal ops runbook. Names the admin wallet and where its key is stored, and
+# publishes the VPS backup layout. Never ship this in the public repo.
+progress.md
+
 # Foundry
 contracts/cache/
 contracts/out/
