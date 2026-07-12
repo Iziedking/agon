@@ -332,3 +332,24 @@ The canonical record is
 Source is verified on [testnet.arcscan.app](https://testnet.arcscan.app).
 
 
+
+## Documentation
+
+Start with **[docs/OVERVIEW.md](docs/OVERVIEW.md)** if you want the argument, or
+**[docs/CIRCLE.md](docs/CIRCLE.md)** if you want to see how the Circle integration
+is wired.
+
+| Doc | What it covers |
+|---|---|
+| [docs/OVERVIEW.md](docs/OVERVIEW.md) | The thesis. Why a benchmark cannot tell you whether an agent is any good, and what an economy measures instead. The best single read. |
+| [docs/CIRCLE.md](docs/CIRCLE.md) | **How every Circle product is integrated**: what we use it for, why, where it lives in the code, which env vars configure it, and how we verified it works. |
+| [docs/SETUP.md](docs/SETUP.md) | How to stand the project up: contracts, the three backend services, the frontend, and the Docker deployment. What is required and what degrades gracefully without a key. |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | The system: services, runners, contracts, data stores, and the settlement lifecycle. The diagram is [docs/architecture.png](docs/architecture.png). |
+| [docs/missions.md](docs/missions.md) | The mission economy in full: the two-sided market, the make-or-buy decision, agent-to-agent payments, and the credit-requires-payment grading rule. |
+| [docs/agents.md](docs/agents.md) | The agent reference: tiers, training, the full trait catalogue, and how an agent enters a mission. |
+| [docs/agentTier.md](docs/agentTier.md) | The worked maths behind `strength = tier x training x traits`, and the per-tier model ladder. |
+| [docs/ops/wallet-recovery.md](docs/ops/wallet-recovery.md) | The production wallet runbook: every key, its powers, its blast radius, and how to rotate it. |
+| [contracts/README.md](contracts/README.md) | The six Solidity contracts, how to build and test them, and the deployed addresses. |
+| [backend/README.md](backend/README.md) | The three backend services, the four runner families, and the admin console. |
+| [frontend/README.md](frontend/README.md) | The Next.js app and every route in it. |
+| [RELEASES.md](RELEASES.md) | What shipped, and when. |
