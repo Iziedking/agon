@@ -5,7 +5,7 @@ import { mnemonicToAccount, privateKeyToAccount } from "viem/accounts";
 import { arcTestnet, publicClient } from "../chain/arc.js";
 import { config } from "../config/index.js";
 import { query } from "../db/pool.js";
-import { swapEnabled, executeSwap } from "../chain/appKitSwap.js";
+import { swapEnabled, swapDisabledReason, executeSwap } from "../chain/appKitSwap.js";
 import { bridgeScoutLeg } from "../chain/scoutBridge.js";
 import { scoutScore } from "../scoring/index.js";
 import type { AgentResult, ContestEntryInput, Runner, TapeEvent } from "./types.js";
@@ -88,18 +88,36 @@ export async function executeScout(
 ): Promise<ScoutExecution> {
   // Real DEX swaps when configured. Returns null (and falls through to
   // self-transfers) if the adapter isn't installed or nothing swapped.
-  if (swapEnabled()) {
+  //
+  // Every path OUT of the swap branch says why. A silent fallback here is what
+  // let the Scout contest produce nothing but self-transfers indefinitely: the
+  // swaps were never happening and nothing said so.
+  const swapOff = swapDisabledReason();
+  if (swapOff) {
+    console.warn(`[scout] agent ${agentId}: NOT swapping, ${swapOff}. Producing self-transfer volume instead.`);
+  } else {
     const swapped = await executeScoutSwaps(agentId, tier, opts?.ops).catch((err) => {
-      console.warn(`[scout] real-swap path failed, falling back: ${err instanceof Error ? err.message : err}`);
+      console.warn(
+        `[scout] agent ${agentId}: real-swap path threw, falling back to self-transfers: ` +
+          `${err instanceof Error ? err.message : err}`,
+      );
       return null;
     });
     // Only accept the swap result if it actually moved volume. A zero-volume
     // result (daily swap cap exhausted, or the hot wallet was empty at swap
     // time) must fall through to self-transfers instead of short-circuiting to
-    // score 0 — otherwise a volume challenge produces no payouts and cancels.
+    // score 0, otherwise a volume challenge produces no payouts and cancels.
     if (swapped && swapped.volumeUsdc6 > 0n) return swapped;
     if (swapped) {
-      console.warn(`[scout] agent ${agentId}: real swaps moved 0 volume (cap exhausted or empty wallet); falling back to self-transfers`);
+      console.warn(
+        `[scout] agent ${agentId}: real swaps moved 0 volume (daily cap exhausted, or the hot wallet ` +
+          `could not cover a swap plus gas); falling back to self-transfers`,
+      );
+    } else {
+      console.warn(
+        `[scout] agent ${agentId}: no swap filled (route or kit-key failure, see [scout-swap] above); ` +
+          `falling back to self-transfers`,
+      );
     }
   }
 
@@ -212,22 +230,54 @@ async function executeScoutSwaps(agentId: number, tier: number, ops?: number): P
   // Trait/training boost arrives as `ops` (more round-trips = more real volume).
   // Falls back to the per-run default. Always bounded by the shared daily cap.
   const want = ops != null && ops > 0 ? ops : config.scout.swapsPerRun;
-  const roundTrips = Math.min(want, remaining);
+  let roundTrips = Math.min(want, remaining);
   if (roundTrips <= 0) {
     return { address: account.address, volumeUsdc6: 0n, opsCount: 0, txHashes: [], txVolumesUsdc6: [] };
   }
 
-  // USDC is the gas token on Arc, so the swap (and its return leg) must leave
-  // headroom or the router pulls the whole balance and the tx reverts for gas.
-  // Reserve a buffer per leg (forward + return per round, plus one spare).
-  const gasReserveUsdc = Number(process.env.SCOUT_GAS_RESERVE_USDC ?? "0.10");
-  const reserveUsdc = gasReserveUsdc * (roundTrips * 2 + 1);
+  // USDC is the gas token on Arc, so every leg must leave headroom or the router
+  // pulls the whole balance and the tx reverts for gas.
+  //
+  // The old maths here silently killed the swap path. The reserve was
+  // `gasReserve * (roundTrips * 2 + 1)`, which SCALES WITH THE TRIP COUNT, so a
+  // trait-boosted agent asking for 500 ops reserved 0.10 * 1001 = 100 USDC,
+  // more than its entire funding. spendable fell to 0, perSwapUsdc fell to 0, we
+  // returned null, and the caller self-transferred. The busier the agent, the
+  // more certain it was never to swap. An on-chain audit found 691 self-transfers
+  // against 21 real swaps.
+  //
+  // Two corrections. First, the principal RECIRCULATES: a round trip is
+  // USDC -> EURC -> USDC, so the wallet only ever needs ONE swap's worth held at a
+  // time, not one per trip. Second, when the wallet cannot afford gas for every
+  // trip it asked for, SHRINK THE TRIP COUNT rather than abandoning the swap
+  // entirely. Fewer real swaps beats none.
+  const gasPerLegUsdc = Number(process.env.SCOUT_GAS_RESERVE_USDC ?? "0.05");
+  const gasFor = (trips: number) => gasPerLegUsdc * (trips * 2 + 1);
+  const tierSize = swapSizeUsdc(tier);
+  // Smallest swap worth making. Below this the gas costs more than the trade.
+  const MIN_SWAP_USDC = 0.5;
+
+  while (roundTrips > 1 && balanceUsdc - gasFor(roundTrips) < MIN_SWAP_USDC) {
+    roundTrips = Math.floor(roundTrips / 2);
+  }
+
+  const reserveUsdc = gasFor(roundTrips);
   const spendableUsdc = Math.max(0, balanceUsdc - reserveUsdc);
-  const perSwapUsdc = Math.min(swapSizeUsdc(tier), spendableUsdc);
-  if (perSwapUsdc <= 0) {
-    // Not enough USDC to swap and still cover gas: let the caller self-transfer.
+  const perSwapUsdc = Math.min(tierSize, spendableUsdc);
+  if (perSwapUsdc < MIN_SWAP_USDC) {
+    console.warn(
+      `[scout] agent ${agentId}: cannot swap. balance ${balanceUsdc.toFixed(4)} USDC, ` +
+        `gas reserve ${reserveUsdc.toFixed(4)} for ${roundTrips} round trip(s), ` +
+        `leaves ${spendableUsdc.toFixed(4)} which is under the ${MIN_SWAP_USDC} minimum. ` +
+        `Fund the hot wallet or lower SCOUT_GAS_RESERVE_USDC.`,
+    );
     return null;
   }
+  console.log(
+    `[scout] agent ${agentId} tier ${tier}: ${roundTrips} round trip(s) of ` +
+      `${perSwapUsdc.toFixed(4)} USDC <-> ${config.scout.swapTokenOut}, ` +
+      `balance ${balanceUsdc.toFixed(4)}, gas reserve ${reserveUsdc.toFixed(4)}`,
+  );
 
   const usdcSymbol = config.scout.swapTokenIn; // "USDC"
   const altSymbol = config.scout.swapTokenOut; // "EURC"

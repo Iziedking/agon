@@ -23,10 +23,52 @@ export interface SwapResult {
 
 let available: boolean | null = null;
 
-/// True when real swaps are turned on and the kit key is set. The actual
-/// package presence is checked lazily on the first swap.
+/// Why real swaps are OFF, or null when they are on.
+///
+/// This exists because of a trap that cost us the whole Scout contest type. The
+/// old check was `Boolean(realSwaps && kitKey)`. A deploy that copied
+/// `deploy/.env.example` verbatim carries `CIRCLE_KIT_KEY=<fill in kit key>`,
+/// which is a NON-EMPTY string, so the gate passed, the swap was attempted, Swap
+/// Kit rejected the key, executeSwap caught the error and returned null, and the
+/// runner quietly self-transferred instead. Forever. An on-chain audit of the
+/// agent hot wallets found ZERO swaps and nothing but transfers, while the logs
+/// said nothing louder than a console.warn.
+///
+/// So: validate the SHAPE of the key, and give the caller a reason it can print.
+export function swapDisabledReason(): string | null {
+  if (!config.scout.realSwaps) return "SCOUT_REAL_SWAPS is not set";
+  const key = config.scout.kitKey;
+  if (!key) return "CIRCLE_KIT_KEY is not set";
+  if (!/^KIT_KEY:[^:\s]+:[^:\s]+$/.test(key)) {
+    return `CIRCLE_KIT_KEY is malformed. Expected KIT_KEY:<id>:<secret>, got "${key.slice(0, 14)}..." ` +
+      `(a placeholder like <fill in kit key> counts as malformed)`;
+  }
+  return null;
+}
+
+/// True when real swaps are turned on AND the kit key is well-formed. The package
+/// presence is still checked lazily on the first swap.
 export function swapEnabled(): boolean {
-  return Boolean(config.scout.realSwaps && config.scout.kitKey);
+  return swapDisabledReason() === null;
+}
+
+/// Say once, at boot, whether real swaps are actually live. A misconfigured deploy
+/// must be visible in the container logs, not discovered weeks later by reading
+/// the explorer.
+export function logSwapStatus(): void {
+  const why = swapDisabledReason();
+  if (why) {
+    console.warn(
+      `[scout-swap] REAL SWAPS ARE OFF: ${why}.\n` +
+        `[scout-swap] Scout will fall back to USDC self-transfers, which still produce volume ` +
+        `but are NOT swaps. Fix the env to get real ${config.scout.swapTokenIn} -> ${config.scout.swapTokenOut} swaps.`,
+    );
+    return;
+  }
+  console.log(
+    `[scout-swap] real swaps ON: ${config.scout.swapTokenIn} <-> ${config.scout.swapTokenOut} on Arc, ` +
+      `slippage ${process.env.SCOUT_SWAP_SLIPPAGE_BPS ?? "500"} bps`,
+  );
 }
 
 /// One swap from a private-key-controlled wallet. Returns null when the path

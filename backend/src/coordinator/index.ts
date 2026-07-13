@@ -10,6 +10,7 @@ import { runContestById } from "./runContestById.js";
 import { checkWalletSeparation } from "./walletCheck.js";
 import { ensureTierPools } from "./tierPools.js";
 import { startAutonomy } from "./autonomy.js";
+import { logSwapStatus } from "../chain/appKitSwap.js";
 
 /// Coordinator: the WebSocket fanout, the Arc transaction sender, the
 /// contest open-driver, and the long-running background services
@@ -135,6 +136,12 @@ async function main() {
     console.log("coordinator running (manual scheduler + ws). Ctrl+C to stop.");
     return;
   }
+
+  // Say at boot whether Scout is producing REAL swaps or only self-transfers. A
+  // placeholder CIRCLE_KIT_KEY is a non-empty string, so it used to pass the gate
+  // and then fail silently inside the swap, leaving the whole contest type
+  // degraded with nothing in the logs to show for it.
+  logSwapStatus();
 
   void startAutopilot(broadcast).catch((err) => console.error("autopilot failed:", err));
 
