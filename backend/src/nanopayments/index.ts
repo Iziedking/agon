@@ -46,6 +46,81 @@ export async function isCliPresent(): Promise<boolean> {
   return cliPresent;
 }
 
+/// HOW EACH SELLER WANTS TO BE CALLED.
+///
+/// This is not a cosmetic detail. Gloria answers a GET with `402 Payment Required`
+/// (alive, payable, exactly right) and a POST with `404` (no such route). So a POST
+/// to Gloria is not a slow path or a degraded path: it is UNPAYABLE, and there is no
+/// 402 to respond to.
+///
+/// The mission runner passed a `payload`, and the payment layer turned any payload
+/// into a POST body. That POSTed to Gloria, took the 404, fell through to the unpaid
+/// HTTP fallback, POSTed again, took another 404, and recorded `failed` at 0 USDC.
+/// No payment means no credit, and the mission credit gate is multiplicative, so
+/// every operative in every affected mission scored exactly 0 and the mission
+/// cancelled. Six missions with real agents in them died on an HTTP verb.
+///
+/// The Analyst runner never hit this because it builds a query-string URL and sends
+/// no payload, so it GETs. Same seller, two call sites, one of them wrong.
+///
+/// A seller's calling convention belongs with the seller, not with the caller.
+type SellerRequest =
+  | { method: "GET"; query: (payload: Record<string, unknown>) => Record<string, string> }
+  | { method: "POST" };
+
+/// PayX402Opts.payload is a plain `object`, which has no index signature. Narrow it
+/// once here rather than casting at each call site.
+function asRecord(payload?: object): Record<string, unknown> | undefined {
+  return payload as Record<string, unknown> | undefined;
+}
+
+const HOST_REQUEST: Record<string, SellerRequest> = {
+  // Gloria: GET /news-by-keyword?keyword=... Anything else 404s.
+  "api.itsgloria.ai": {
+    method: "GET",
+    query: (p) => ({ keyword: String(p.query ?? p.keyword ?? p.q ?? "") }),
+  },
+  // Exa: POST /search with a JSON body.
+  "api.exa.ai": { method: "POST" },
+};
+
+/// Build the request the way THIS seller expects it. Unknown hosts keep the old
+/// behaviour (POST when there is a payload, GET otherwise), so adding a seller to
+/// the map is the only thing needed to teach the payment layer its convention.
+export function buildSellerRequest(
+  endpoint: string,
+  payloadIn?: object,
+): { url: string; init: RequestInit } {
+  const payload = asRecord(payloadIn);
+  let host = "";
+  try {
+    host = new URL(endpoint).host;
+  } catch {
+    /* keep the endpoint as-is and fall through to the default */
+  }
+  const shape = HOST_REQUEST[host];
+
+  if (payload && shape?.method === "GET") {
+    const url = new URL(endpoint);
+    for (const [k, v] of Object.entries(shape.query(payload))) {
+      if (v) url.searchParams.set(k, v);
+    }
+    return { url: url.toString(), init: { method: "GET" } };
+  }
+
+  if (payload) {
+    return {
+      url: endpoint,
+      init: {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+    };
+  }
+  return { url: endpoint, init: { method: "GET" } };
+}
+
 /// USDC decimal → 6-dec integer. Rounds DOWN so we never exceed a cap due
 /// to float drift.
 export function usdcToInt6(amount: number): bigint {
@@ -277,7 +352,21 @@ export async function payX402(opts: PayX402Opts): Promise<PayX402Result> {
 /// is configured. Returns "settled" with a zero charge (no USDC moves) so the
 /// runner injects the real data into the prompt; the row's error_message notes
 /// it was the HTTP path. A GET is used when there's no payload, else a POST.
+///
+/// THIS PATH DOES NOT PAY. It exists so an agent can still reason on real data when
+/// the payment rail is unavailable, but on a MISSION that is nearly useless: credit
+/// requires a settled payment, so a fragment sourced this way scores zero and the
+/// multiplicative gate zeroes the whole deliverable with it. It is also how we lost
+/// six missions: the provider defaulted to a Circle CLI that is not in the container,
+/// this fallback ran instead, POSTed to a GET-only seller, took a 404, and every
+/// operative scored 0. Shout about it, because silently serving unpaid data to a
+/// payment-gated scorer is the worst of both worlds.
 async function httpFallbackFetch(opts: PayX402Opts): Promise<PayX402Result> {
+  console.warn(
+    `[nanopay] HTTP FALLBACK for ${opts.endpoint}: fetching WITHOUT paying. No USDC moves and no tx, ` +
+      `so a mission fragment sourced this way earns NO CREDIT and will score 0. ` +
+      `Set NANOPAY_PROVIDER=auto and NANOPAY_HTTP_FALLBACK=0 to pay for real.`,
+  );
   try {
     const host = (() => {
       try { return new URL(opts.endpoint).host; } catch { return ""; }
@@ -288,14 +377,15 @@ async function httpFallbackFetch(opts: PayX402Opts): Promise<PayX402Result> {
       headers["authorization"] = `Bearer ${key}`;
       headers["x-api-key"] = key;
     }
-    const init: RequestInit = opts.payload
-      ? { method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(opts.payload) }
-      : { method: "GET", headers };
+    // Same seller convention as the paid path. The fallback used to POST whenever a
+    // payload existed, so it repeated the very 404 that sent us here.
+    const { url, init: shape } = buildSellerRequest(opts.endpoint, opts.payload);
+    const init: RequestInit = { ...shape, headers: { ...headers, ...(shape.headers as Record<string, string> | undefined) } };
     const ac = new AbortController();
     const t = setTimeout(() => ac.abort(), 20_000);
     let res: Response;
     try {
-      res = await fetch(opts.endpoint, { ...init, signal: ac.signal });
+      res = await fetch(url, { ...init, signal: ac.signal });
     } finally {
       clearTimeout(t);
     }
@@ -543,11 +633,11 @@ export async function payExactRequest(url: string, init: RequestInit): Promise<E
 /// per-call budget cap, then runs payExactRequest. Falls back to a data-only
 /// HTTPS fetch when the payment can't complete (and the fallback is enabled).
 async function payViaExact(opts: PayX402Opts): Promise<PayX402Result> {
-  const init: RequestInit = opts.payload
-    ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(opts.payload) }
-    : { method: "GET" };
+  // Call the seller the way IT expects. A payload is not automatically a POST body:
+  // Gloria takes its keyword on the query string and 404s a POST, which is unpayable.
+  const { url, init } = buildSellerRequest(opts.endpoint, opts.payload);
   try {
-    const res = await payExactRequest(opts.endpoint, init);
+    const res = await payExactRequest(url, init);
     if (res.error) {
       return persistAndReturn(opts, { status: "rejected", usdcAmount6: 0n, errorMessage: res.error });
     }

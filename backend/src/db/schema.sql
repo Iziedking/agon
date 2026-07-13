@@ -1002,7 +1002,7 @@ create table if not exists a2a_trades (
   fragment_id   text not null,
   price_usdc_6  text not null default '0',
   tx_hash       text,
-  status        text not null default 'pending',  -- 'pending' | 'settled' | 'failed'
+  status        text not null default 'pending',  -- 'pending' | 'settled' | 'failed' | 'declined'
   created_at    timestamptz not null default now()
 );
 -- The NEGOTIATE pillar. A trade now records what the seller ASKED as well as what

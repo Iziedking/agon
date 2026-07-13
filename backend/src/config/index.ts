@@ -274,7 +274,15 @@ const envSchema = z.object({
   // "auto" routes PER SELLER: GatewayWalletBatched sellers (Predexon) settle via
   // the Gateway batching client, standard "exact" sellers (Exa, Gloria) via the
   // exact client, so one mission round can pay several services correctly.
-  NANOPAY_PROVIDER: z.enum(["cli", "sdk", "exact", "auto"]).default("cli"),
+  // Default "auto": route per seller by reading its 402 quote. It used to default
+  // to "cli", which shells out to the Circle CLI binary — a binary we do NOT ship in
+  // the container. So a deploy that never set this landed on a provider that cannot
+  // work, isCliPresent() came back false, and (with NANOPAY_HTTP_FALLBACK on) every
+  // x402 call silently degraded to an UNPAID plain-HTTPS fetch. No payment means no
+  // credit, and the mission credit gate is multiplicative, so every operative scored
+  // exactly 0 and the mission cancelled. Six missions died that way with real agents
+  // in them. A default that cannot possibly work is not a default.
+  NANOPAY_PROVIDER: z.enum(["cli", "sdk", "exact", "auto"]).default("auto"),
   // Network the exact-scheme sellers settle on (x402 network name), e.g.
   // base | base-sepolia | polygon. Gloria/Exa declare "base" (mainnet).
   NANOPAY_EXACT_NETWORK: z.string().default("base"),
@@ -465,7 +473,46 @@ const deploymentsSchema = z.object({
   }),
 });
 
+/// Shout about any key set MORE THAN ONCE in the env file.
+///
+/// dotenv keeps the LAST assignment and says nothing, so a duplicated key is a
+/// silent config override. This has now broken a payment path TWICE:
+///   - NANOPAY_GATEWAY_CHAIN was set to arcTestnet and then polygonAmoy, so the
+///     Gateway client pointed at a chain with no balance.
+///   - NANOPAY_PROVIDER was set to `auto` and then `exact`, so every x402 call took
+///     the exact scheme, and with the HTTP fallback on it degraded to unpaid fetches.
+///     Six missions cancelled because nothing could be paid for.
+/// Both were invisible: the file LOOKS right if you read the first assignment.
+///
+/// process.env is already deduplicated by the time we see it, so read the raw file.
+function warnOnDuplicateEnvKeys(): void {
+  const path = process.env.DOTENV_CONFIG_PATH ?? ".env";
+  let raw: string;
+  try {
+    raw = readFileSync(path, "utf8");
+  } catch {
+    return; // no local env file (container envs come from compose); nothing to check
+  }
+  const seen = new Map<string, number[]>();
+  raw.split(/\r?\n/).forEach((line, i) => {
+    const m = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/.exec(line);
+    if (!m) return; // comment, blank, or continuation
+    const key = m[1]!;
+    seen.set(key, [...(seen.get(key) ?? []), i + 1]);
+  });
+  for (const [key, lines] of seen) {
+    if (lines.length > 1) {
+      console.error(
+        `[config] DUPLICATE ENV KEY: ${key} is set ${lines.length} times (lines ${lines.join(", ")}). ` +
+          `dotenv keeps the LAST one, so the value in use is the one on line ${lines[lines.length - 1]}. ` +
+          `Delete the others: a duplicated key silently overrides the value you meant.`,
+      );
+    }
+  }
+}
+
 function loadEnv() {
+  warnOnDuplicateEnvKeys();
   const parsed = envSchema.safeParse(process.env);
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `  ${i.path.join(".")}: ${i.message}`).join("\n");

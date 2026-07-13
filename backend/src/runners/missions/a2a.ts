@@ -105,15 +105,36 @@ export async function buyIntel(opts: {
 
   if (!deal) {
     const cheapest = sellers.reduce((a, b) => (BigInt(a.price6) <= BigInt(b.price6) ? a : b));
+    const transcript: A2AStep[] = [
+      { step: "request", detail: `agent ${buyerAgentId} requests ${fragmentId}` },
+      {
+        step: "walk",
+        detail:
+          `no deal: cheapest ask ${fmtUsdc(BigInt(cheapest.price6))} USDC, ` +
+          `buyer ceiling ${fmtUsdc(ceiling6)} (wallet holds ${fmtUsdc(balance)})`,
+      },
+    ];
+    // Record the DECLINE. This used to return with no row at all, so a buy that never
+    // happened was invisible: the operative chose BUY, paid nothing, scored zero, and
+    // a2a_trades had nothing in it to say why. Two whole missions looked like the buy
+    // path had never even run. An attempt that fails is exactly the thing you need on
+    // the record.
+    await query(
+      `insert into a2a_trades (contest_id, buyer_agent_id, seller_agent_id, fragment_id, price_usdc_6, quoted_usdc_6, rounds, transcript, status)
+       values ($1, $2, $3, $4, '0', $5, 0, $6, 'declined')`,
+      [missionId, buyerAgentId, cheapest.agentId, fragmentId, cheapest.price6, JSON.stringify(transcript)],
+    ).catch(() => {});
+    console.warn(
+      `[mission ${missionId}] agent ${buyerAgentId} could NOT buy ${fragmentId}: cheapest ask ` +
+        `${fmtUsdc(BigInt(cheapest.price6))} USDC, wallet holds ${fmtUsdc(balance)}. ` +
+        `The operative float is too small for the intel price band (raise MISSION_FUND_MAX_USDC / the float).`,
+    );
     return {
       ok: false,
       reason: "no seller came within the buyer's budget",
       sellerAgentId: cheapest.agentId,
       price6: cheapest.price6,
-      transcript: [
-        { step: "request", detail: `agent ${buyerAgentId} requests ${fragmentId}` },
-        { step: "walk", detail: `no deal: cheapest ask ${cheapest.price6}, ceiling ${ceiling6.toString()}` },
-      ],
+      transcript,
     };
   }
 
