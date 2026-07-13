@@ -5,7 +5,7 @@ import { mnemonicToAccount, privateKeyToAccount } from "viem/accounts";
 import { arcTestnet, publicClient } from "../chain/arc.js";
 import { config } from "../config/index.js";
 import { query } from "../db/pool.js";
-import { swapEnabled, swapDisabledReason, executeSwap } from "../chain/appKitSwap.js";
+import { swapEnabled, swapDisabledReason, executeSwap, executeSwapShrinking } from "../chain/appKitSwap.js";
 import { bridgeScoutLeg } from "../chain/scoutBridge.js";
 import { scoutScore } from "../scoring/index.js";
 import type { AgentResult, ContestEntryInput, Runner, TapeEvent } from "./types.js";
@@ -174,11 +174,27 @@ export async function executeScout(
   };
 }
 
+/// Smallest swap worth making. Below this the gas costs more than the trade.
+const MIN_SWAP_USDC = 0.5;
+
+/// Ceiling on how much of a clamped swap SIZE may be converted back into extra
+/// LEGS. Arc's pool cannot fill a whale-sized swap, so the whale trait pays out
+/// as more (fillable) swaps instead. Bounded so a heavily boosted agent cannot
+/// turn the race into thousands of dust trades: the daily budget and the round
+/// cap still clamp on top of this.
+const SIZE_TO_LEGS_MAX = Number(process.env.SCOUT_SIZE_TO_LEGS_MAX ?? "6");
+
 /// Per-tier SIZE of one swap/transfer in whole USDC (tier 0 = 2 up to tier 4 =
-/// 25 by default). This is the base each op moves; trait size multipliers scale
+/// 10 by default). This is the base each op moves; trait size multipliers scale
 /// it and the wallet balance plus SCOUT_SWAP_MAX_USDC clamp it. The daily swap
 /// budget is the same for every tier, so a smaller agent has to swap more times
 /// to match a higher tier's volume, and upgrading raises the size per op.
+///
+/// The tier ladder tops out at 10 because that is the largest round trip Arc
+/// Testnet's USDC/EURC pool will actually fill. It used to run to 25, which meant
+/// tiers 3 and 4 asked for a size with NO ROUTE, failed every swap, and silently
+/// self-transferred instead. The best agents were the ones guaranteed never to
+/// swap. Keep every value in this ladder at or below SCOUT_SWAP_MAX_USDC.
 function swapSizeUsdc(tier: number): number {
   const t = Math.min(Math.max(Math.floor(tier), 0), 4);
   return config.scout.swapSizeByTier[t] ?? 2;
@@ -254,8 +270,6 @@ async function executeScoutSwaps(agentId: number, tier: number, ops?: number): P
   const gasPerLegUsdc = Number(process.env.SCOUT_GAS_RESERVE_USDC ?? "0.05");
   const gasFor = (trips: number) => gasPerLegUsdc * (trips * 2 + 1);
   const tierSize = swapSizeUsdc(tier);
-  // Smallest swap worth making. Below this the gas costs more than the trade.
-  const MIN_SWAP_USDC = 0.5;
 
   while (roundTrips > 1 && balanceUsdc - gasFor(roundTrips) < MIN_SWAP_USDC) {
     roundTrips = Math.floor(roundTrips / 2);
@@ -263,7 +277,10 @@ async function executeScoutSwaps(agentId: number, tier: number, ops?: number): P
 
   const reserveUsdc = gasFor(roundTrips);
   const spendableUsdc = Math.max(0, balanceUsdc - reserveUsdc);
-  const perSwapUsdc = Math.min(tierSize, spendableUsdc);
+  // Clamp to the pool's real depth, same as the live race. A size above this has
+  // no route, and an unroutable swap is just a self-transfer wearing a costume.
+  const swapMaxUsdc = Number(process.env.SCOUT_SWAP_MAX_USDC ?? "10");
+  const perSwapUsdc = Math.min(tierSize, spendableUsdc, swapMaxUsdc);
   if (perSwapUsdc < MIN_SWAP_USDC) {
     console.warn(
       `[scout] agent ${agentId}: cannot swap. balance ${balanceUsdc.toFixed(4)} USDC, ` +
@@ -646,27 +663,64 @@ async function prepareSwapAbility(
     return { privateKey, perSwapUsdc: 0, targetLegs: 0 };
   }
 
-  // The principal recirculates each round-trip, so a flat gas buffer covers
-  // every leg's gas; no need to scale the reserve by the full round count.
-  const gasReserveUsdc = Number(process.env.SCOUT_GAS_RESERVE_USDC ?? "0.10");
-  const spendableUsdc = Math.max(0, balanceUsdc - gasReserveUsdc * 3);
-  // Per-swap size is the per-tier base (2 / 5 / 10 / 15 / 25 USDC) scaled by the
-  // agent's trait size multiplier (sizeBoost), so a whale-type trait genuinely
-  // buys a BIGGER trade, not just more of them. The wallet's spendable balance
-  // and SCOUT_SWAP_MAX_USDC are the only clamps. The cap defaults to 100 so the
-  // tier sizes and the whale boost both come through; it exists only to stop a
-  // misconfigured value from draining a wallet, not to flatten the tiers (the
-  // old default of 2 was doing exactly that, which is why traits had no effect).
-  const swapMaxUsdc = Number(process.env.SCOUT_SWAP_MAX_USDC ?? "100");
-  const perSwapUsdc = Math.min(swapSizeUsdc(tier) * sizeBoost, spendableUsdc, swapMaxUsdc);
+  // SIZE. The pool has the final say, and it is SHALLOW. Measured on Arc Testnet
+  // with swap-depth-probe: a USDC -> EURC -> USDC round trip fills up to about
+  // 10 USDC, and NOTHING at 15 or above routes at all. SCOUT_SWAP_MAX_USDC used
+  // to default to 100. So a trait-boosted tier-4 agent asked for ~90 USDC per
+  // swap, no route existed, every swap failed, and SCOUT_SWAP_FALLBACK_TRANSFER
+  // quietly rewrote each one as a USDC self-transfer. Challenge 102 settled with
+  // 12 ops of exactly 90.75 USDC and not one real swap among them.
+  const swapMaxUsdc = Number(process.env.SCOUT_SWAP_MAX_USDC ?? "10");
+  const desiredPerSwapUsdc = swapSizeUsdc(tier) * sizeBoost;
+  let perSwapUsdc = Math.min(desiredPerSwapUsdc, swapMaxUsdc);
+
+  // LEGS. Clamping the size would otherwise silently delete the whale trait: if
+  // every agent is pinned to the same 10 USDC ceiling, sizeBoost buys nothing and
+  // a whale scores identically to a bare agent. So the size the pool WON'T absorb
+  // becomes MORE LEGS. Same USDC intent, delivered in fillable slices, and the
+  // agent still has to land every one of them on chain to bank the volume.
+  const legMult = Math.min(Math.max(1, desiredPerSwapUsdc / Math.max(perSwapUsdc, 1e-9)), SIZE_TO_LEGS_MAX);
+  let finalLegs = Math.max(0, Math.min(Math.round(targetLegs * legMult), dailyRemaining));
+
+  // GAS. USDC is the gas token on Arc, so every leg pays its gas out of the very
+  // balance the swaps trade with. The wallet must therefore hold one swap's worth
+  // LIQUID (the principal recirculates, so only one at a time) PLUS gas for every
+  // leg it intends to run:
+  //     perSwap + gasPerLeg * legs <= balance
+  // Fit to that budget by cutting legs first (a smaller swap count still trades at
+  // a meaningful size), and only shrink the swap itself if legs alone won't do it.
+  // Without this a boosted lane is handed more legs than it can pay gas for and
+  // runs itself dry mid-race.
+  const gasPerLegUsdc = Number(process.env.SCOUT_GAS_RESERVE_USDC ?? "0.05");
+  const fits = () => perSwapUsdc + gasPerLegUsdc * finalLegs <= balanceUsdc;
+  while (finalLegs > 2 && !fits()) {
+    finalLegs = Math.floor(finalLegs / 2);
+  }
+  if (!fits()) {
+    perSwapUsdc = Math.max(0, balanceUsdc - gasPerLegUsdc * finalLegs);
+  }
+  if (perSwapUsdc < MIN_SWAP_USDC) {
+    console.warn(
+      `[scout] agent ${agentId}: 0 swaps — balance ${balanceUsdc.toFixed(4)} USDC cannot fund ` +
+        `${finalLegs} leg(s) of gas plus a ${MIN_SWAP_USDC} USDC minimum swap`,
+    );
+    return { privateKey, perSwapUsdc: 0, targetLegs: 0 };
+  }
+
   if (!(perSwapUsdc > 0)) {
     // The other 0-swap cause: hot wallet has no spendable USDC (funding missed
     // it, or it was swept and not re-funded).
     console.log(
       `[scout] agent ${agentId}: 0 swaps — hot wallet underfunded (balance ${balanceUsdc.toFixed(4)} USDC at ${account.address})`,
     );
+  } else {
+    console.log(
+      `[scout] agent ${agentId} tier ${tier}: ${finalLegs} leg(s) of ${perSwapUsdc.toFixed(4)} USDC ` +
+        `(wanted ${desiredPerSwapUsdc.toFixed(4)}/swap, pool caps at ${swapMaxUsdc}; ` +
+        `traded the size for ${legMult.toFixed(2)}x the legs), balance ${balanceUsdc.toFixed(4)}`,
+    );
   }
-  return { privateKey, perSwapUsdc, targetLegs };
+  return { privateKey, perSwapUsdc, targetLegs: finalLegs };
 }
 
 /// One real DEX swap: a single forward USDC -> EURC leg (one swap tx on Arc, one
@@ -683,6 +737,10 @@ async function prepareSwapAbility(
 /// ERC-20 Transfer of the same size — real on-chain volume that never depends on
 /// a pool — so events always fill and settle. Set to "0" to force swaps only.
 const SWAP_FALLBACK_TRANSFER = process.env.SCOUT_SWAP_FALLBACK_TRANSFER !== "0";
+
+/// EURC left over after a shrunk reverse leg that is too small to bother swapping
+/// back. Below this the gas outweighs the trade and the lane should just move on.
+const ALT_DUST = 0.05;
 
 /// One real USDC self-transfer leg: the pool-independent volume fallback. Funds
 /// return to the wallet (only gas is spent), same as the v0 scout op.
@@ -723,18 +781,25 @@ async function oneForwardSwap(
 ): Promise<{ leg: { txHash: Hash; vol6: bigint }; heldAlt: number } | null> {
   const usdc = config.scout.swapTokenIn;
   const alt = config.scout.swapTokenOut;
-  const fwd = await executeSwap({ privateKey, tokenIn: usdc, tokenOut: alt, amountIn: perSwapUsdc.toFixed(6) });
+  // Shrink-and-retry, not one shot. The pool is shallow and goes routeless
+  // intermittently, so a single failed attempt must not cost us a real swap.
+  const fwd = await executeSwapShrinking({ privateKey, tokenIn: usdc, tokenOut: alt, amountIn: perSwapUsdc });
   if (!fwd?.txHash) {
-    // Swap reverted (thin/unavailable testnet pool). Produce volume anyway with
-    // a real USDC self-transfer so the agent isn't stuck at 0 and the event
-    // still fills and settles. No EURC is held, so nothing to swap back.
+    // No route at ANY size. Produce volume anyway with a real USDC self-transfer
+    // so the agent isn't stuck at 0 and the event still fills and settles. No
+    // EURC is held, so nothing to swap back.
     if (!SWAP_FALLBACK_TRANSFER) return null;
     const t = await selfTransferLeg(privateKey, perSwapUsdc);
     return t ? { leg: t, heldAlt: 0 } : null;
   }
+  // Credit the size that ACTUALLY filled, not the size we asked for. The shrink
+  // ladder may have halved it, and scoring a swap for USDC it never moved would
+  // inflate the volume that decides the winner.
+  const filledIn = Number(fwd.amountIn);
+  const vol = Number.isFinite(filledIn) && filledIn > 0 ? filledIn : perSwapUsdc;
   const altOut = Number(fwd.amountOut);
   return {
-    leg: { txHash: fwd.txHash as Hash, vol6: BigInt(Math.round(perSwapUsdc * 1e6)) },
+    leg: { txHash: fwd.txHash as Hash, vol6: BigInt(Math.round(vol * 1e6)) },
     heldAlt: Number.isFinite(altOut) && altOut > 0 ? altOut : 0,
   };
 }
@@ -753,22 +818,28 @@ async function oneRoundTrip(privateKey: `0x${string}`, perSwapUsdc: number): Pro
   const legs: RoundTrip["legs"] = [];
   const usdc = config.scout.swapTokenIn;
   const alt = config.scout.swapTokenOut;
-  const fwd = await executeSwap({ privateKey, tokenIn: usdc, tokenOut: alt, amountIn: perSwapUsdc.toFixed(6) });
+  const fwd = await executeSwapShrinking({ privateKey, tokenIn: usdc, tokenOut: alt, amountIn: perSwapUsdc });
   if (!fwd) {
-    // Forward swap reverted: fall back to a real USDC self-transfer so the round
+    // No route at any size: fall back to a real USDC self-transfer so the round
     // still produces volume instead of stalling the agent at 0.
     if (!SWAP_FALLBACK_TRANSFER) return { legs, heldAlt: 0 };
     const t = await selfTransferLeg(privateKey, perSwapUsdc);
     if (t) legs.push(t);
     return { legs, heldAlt: 0 };
   }
-  if (fwd.txHash) legs.push({ txHash: fwd.txHash as Hash, vol6: BigInt(Math.round(perSwapUsdc * 1e6)) });
+  // Score the size that actually filled, which the shrink ladder may have halved.
+  const filledIn = Number(fwd.amountIn);
+  const vol = Number.isFinite(filledIn) && filledIn > 0 ? filledIn : perSwapUsdc;
+  if (fwd.txHash) legs.push({ txHash: fwd.txHash as Hash, vol6: BigInt(Math.round(vol * 1e6)) });
   const altOut = Number(fwd.amountOut);
   if (Number.isFinite(altOut) && altOut > 0) {
     const rec = await swapAltBack(privateKey, altOut);
     if (rec) {
-      legs.push(rec);
-      return { legs, heldAlt: 0 };
+      legs.push({ txHash: rec.txHash, vol6: rec.vol6 });
+      // The reverse may have shrunk to fit the pool, so only PART of the EURC
+      // came back. Carry the remainder; the lane swaps it first next round.
+      const leftover = Math.max(0, altOut - rec.usedAlt);
+      return { legs, heldAlt: leftover > ALT_DUST ? leftover : 0 };
     }
     // Forward landed, reverse failed: the wallet now holds altOut EURC.
     return { legs, heldAlt: altOut };
@@ -782,13 +853,18 @@ async function oneRoundTrip(privateKey: `0x${string}`, perSwapUsdc: number): Pro
 async function swapAltBack(
   privateKey: `0x${string}`,
   altAmount: number,
-): Promise<{ txHash: Hash; vol6: bigint } | null> {
+): Promise<{ txHash: Hash; vol6: bigint; usedAlt: number } | null> {
   const usdc = config.scout.swapTokenIn;
   const alt = config.scout.swapTokenOut;
-  const rev = await executeSwap({ privateKey, tokenIn: alt, tokenOut: usdc, amountIn: altAmount.toFixed(6) });
+  // The reverse leg is the SHALLOWER of the two: a forward that fills can produce
+  // more EURC than the pool will take back in one go. Shrinking here swaps back
+  // what it can; whatever is left stays as heldAlt and the lane retries it next
+  // round, so the principal is never stranded for good.
+  const rev = await executeSwapShrinking({ privateKey, tokenIn: alt, tokenOut: usdc, amountIn: altAmount });
   if (!rev?.txHash) return null;
   const back = Number(rev.amountOut) > 0 ? Number(rev.amountOut) : altAmount;
-  return { txHash: rev.txHash as Hash, vol6: BigInt(Math.round(back * 1e6)) };
+  const usedAlt = Number(rev.amountIn) > 0 ? Number(rev.amountIn) : altAmount;
+  return { txHash: rev.txHash as Hash, vol6: BigInt(Math.round(back * 1e6)), usedAlt };
 }
 
 interface ScoutPlan {
@@ -1107,7 +1183,7 @@ export class ScoutRunner implements Runner {
         // agent stalls (no USDC to trade with). This keeps the swaps flowing.
         if (lane.heldAlt > 0) {
           await sem.acquire();
-          let rec: { txHash: Hash; vol6: bigint } | null;
+          let rec: { txHash: Hash; vol6: bigint; usedAlt: number } | null;
           try {
             rec = await swapAltBack(ab.privateKey, lane.heldAlt);
           } catch {
@@ -1116,8 +1192,12 @@ export class ScoutRunner implements Runner {
             sem.release();
           }
           if (rec) {
-            pushLegs([rec]);
-            lane.heldAlt = 0;
+            pushLegs([{ txHash: rec.txHash, vol6: rec.vol6 }]);
+            // The recovery swap may itself have shrunk to fit the pool. Keep any
+            // EURC it could not take, so the next pass swaps that back too rather
+            // than treating the lane as clean and stranding the balance forever.
+            const leftover = Math.max(0, lane.heldAlt - rec.usedAlt);
+            lane.heldAlt = leftover > ALT_DUST ? leftover : 0;
             lane.strikes = 0;
             await recordSwaps(lane.agentId, 1).catch(() => {});
             emit();

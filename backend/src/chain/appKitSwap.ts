@@ -65,10 +65,31 @@ export function logSwapStatus(): void {
     );
     return;
   }
+  const maxUsdc = Number(process.env.SCOUT_SWAP_MAX_USDC ?? "10");
   console.log(
     `[scout-swap] real swaps ON: ${config.scout.swapTokenIn} <-> ${config.scout.swapTokenOut} on Arc, ` +
-      `slippage ${process.env.SCOUT_SWAP_SLIPPAGE_BPS ?? "500"} bps`,
+      `slippage ${process.env.SCOUT_SWAP_SLIPPAGE_BPS ?? "500"} bps, max ${maxUsdc} USDC/swap ` +
+      `(tier sizes ${config.scout.swapSizeByTier.join("/")})`,
   );
+  // The pool is the real limit, not the config. A round trip fills up to about
+  // 10 USDC on Arc Testnet and has no route at 15+. Anything sized above that
+  // cannot fill and silently degrades into a self-transfer, which is how a whole
+  // VOLUME challenge once settled with zero swaps in it. Say so at boot.
+  const MEASURED_POOL_DEPTH_USDC = 10;
+  const overCap = config.scout.swapSizeByTier.filter((n) => n > maxUsdc);
+  if (maxUsdc > MEASURED_POOL_DEPTH_USDC) {
+    console.warn(
+      `[scout-swap] WARNING: SCOUT_SWAP_MAX_USDC=${maxUsdc} is above the measured pool depth ` +
+        `(~${MEASURED_POOL_DEPTH_USDC} USDC round trip). Swaps that big have NO ROUTE and will fall back to ` +
+        `self-transfers. Re-measure with scripts/swap-depth-probe.ts before raising it.`,
+    );
+  }
+  if (overCap.length > 0) {
+    console.warn(
+      `[scout-swap] WARNING: tier size(s) ${overCap.join(", ")} exceed SCOUT_SWAP_MAX_USDC=${maxUsdc}. ` +
+        `Those tiers get clamped, so their whale traits pay out as extra legs instead of bigger trades.`,
+    );
+  }
 }
 
 /// One swap from a private-key-controlled wallet. Returns null when the path
@@ -176,6 +197,64 @@ export async function executeSwap(opts: {
     );
     return null;
   }
+}
+
+/// Try a swap, and on a routing failure HALVE it and try again, down to
+/// `minAmountIn`. Returns the swap that landed (at whatever size actually
+/// filled), or null when even the smallest size could not route.
+///
+/// This exists because Arc Testnet's USDC/EURC pool is shallow and the
+/// aggregator is flaky at the top of its band. Measured with swap-depth-probe:
+/// a USDC -> EURC -> USDC round trip fills up to about 10 USDC, NOTHING at 15 or
+/// above routes at all, and sizes near 8-10 go routeless intermittently (the
+/// same 7.9 EURC leg returned "no route" on one probe and filled on the next).
+///
+/// The runner used to fire one swap at its full requested size and, on failure,
+/// fall straight through to a USDC self-transfer. With SCOUT_SWAP_MAX_USDC
+/// defaulting to 100, a trait-boosted agent asked for ~90 USDC per swap, every
+/// swap missed, and every op landed on the tape as a `transfer`. A whole VOLUME
+/// challenge settled with zero real swaps in it.
+///
+/// So shrink instead of surrender. A smaller REAL swap beats a self-transfer.
+export async function executeSwapShrinking(opts: {
+  privateKey: `0x${string}`;
+  tokenIn: string;
+  tokenOut: string;
+  /// Human-readable amount of `tokenIn` to try first.
+  amountIn: number;
+  /// Floor: below this the gas costs more than the trade is worth.
+  minAmountIn?: number;
+  /// How many halvings to try before giving up.
+  maxAttempts?: number;
+}): Promise<SwapResult | null> {
+  const min = opts.minAmountIn ?? 0.25;
+  const maxAttempts = opts.maxAttempts ?? 5;
+  let amount = opts.amountIn;
+
+  for (let attempt = 0; attempt < maxAttempts && amount >= min; attempt++) {
+    const res = await executeSwap({
+      privateKey: opts.privateKey,
+      tokenIn: opts.tokenIn,
+      tokenOut: opts.tokenOut,
+      amountIn: amount.toFixed(6),
+    });
+    if (res?.txHash) {
+      if (attempt > 0) {
+        console.log(
+          `[scout-swap] filled at ${amount.toFixed(4)} ${opts.tokenIn} after shrinking from ` +
+            `${opts.amountIn.toFixed(4)} (${attempt} halving${attempt === 1 ? "" : "s"})`,
+        );
+      }
+      return res;
+    }
+    amount /= 2;
+  }
+
+  console.warn(
+    `[scout-swap] no route for ${opts.tokenIn}->${opts.tokenOut} at any size from ` +
+      `${opts.amountIn.toFixed(4)} down to ${min}; caller will fall back`,
+  );
+  return null;
 }
 
 /// Read-only diagnostic: ask the aggregator whether a fillable route EXISTS for

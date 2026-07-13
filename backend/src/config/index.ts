@@ -186,13 +186,19 @@ const envSchema = z.object({
     .transform((s) => s.split(",").map((n) => Number(n.trim()))),
   // Per-tier SIZE of each swap/transfer in whole USDC, index 0..4. Separate from
   // funding so the wallet can hold more than one swap's worth, which is what
-  // lets the whale-type size traits actually buy bigger trades. The base per
-  // op: tier 0 = 2, tier 1 = 5, tier 2 = 10, tier 3 = 15, tier 4 = 25. Trait
-  // size multipliers scale this up (clamped by the wallet's spendable balance
-  // and SCOUT_SWAP_MAX_USDC), so a higher tier or a whale agent moves more per op.
+  // lets the whale-type size traits actually buy bigger trades. Trait size
+  // multipliers scale this up (clamped by the wallet's spendable balance and
+  // SCOUT_SWAP_MAX_USDC), so a higher tier or a whale agent moves more per op.
+  //
+  // EVERY VALUE HERE MUST BE FILLABLE BY THE POOL, or that tier cannot swap at
+  // all. This ladder used to be "2,5,10,15,25", but Arc Testnet's USDC/EURC pool
+  // fills a round trip up to about 10 USDC and has NO ROUTE at 15 or above. So
+  // tiers 3 and 4 failed every single swap and fell back to self-transfers: the
+  // two best tiers were the two guaranteed never to trade. Re-measure with
+  // `npx tsx -r dotenv/config scripts/swap-depth-probe.ts` before raising these.
   SCOUT_SWAP_SIZE_BY_TIER: z
     .string()
-    .default("2,5,10,15,25")
+    .default("2,4,6,8,10")
     .transform((s) => s.split(",").map((n) => Number(n.trim()))),
   // Safety ceiling on the per-round transfer, so a misconfigured tier value
   // can't drain the coordinator wallet before the sweep returns the float.
