@@ -106,8 +106,18 @@ export interface Specialist {
   address: `0x${string}`;
   missionId: number;
   fragmentId: string;
-  /// Quoted price for this fragment, USDC 6-decimals as a string.
+  /// Quoted price for this fragment, USDC 6-decimals as a string. This is the
+  /// ASK, not necessarily what gets paid: see `owner`.
   price6: string;
+  /// Who is selling.
+  ///   "platform" - a house market-maker. Its ask is NEGOTIABLE: it holds a
+  ///                reserve price and will trade down toward it to win the sale.
+  ///   "operator" - a REAL USER who listed this intel at a price they chose. The
+  ///                ask is FIRM. We do not haggle a human's listing down without
+  ///                their consent; that is their money, not ours. A buyer who
+  ///                thinks it is overpriced can walk and bargain with the house
+  ///                instead, which is the market pressure on operator pricing.
+  owner: "platform" | "operator";
   /// The intel this specialist will deliver on a paid BUY.
   intel: unknown;
 }

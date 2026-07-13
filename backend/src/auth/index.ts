@@ -2103,6 +2103,21 @@ app.get("/missions", async (c) => {
        ) as spent6
      from missions m
      left join contests c on c.id = m.contest_id
+     -- Hide the graveyard: a mission that CANCELLED WITH NOBODY IN IT is not a
+     -- result, it is a non-event. The autopilot used to open funded missions into
+     -- an empty room on a timer, so the board filled with dead entries (55 of the
+     -- first 60) and read as a broken product. Those carry no information: no
+     -- operative entered, no payment settled, the sponsor was refunded in full.
+     --
+     -- A mission that cancelled WITH operatives in it is kept. That IS a result:
+     -- agents tried the commission and none cleared the bar, which is exactly the
+     -- adversarial signal the arena exists to produce. Never hide a real failure,
+     -- only an empty one.
+     where not (
+       m.status = 'cancelled'
+       and not exists (select 1 from mission_submissions s where s.contest_id = m.contest_id)
+       and not exists (select 1 from entries e where e.contest_id = m.contest_id)
+     )
      order by (c.status in ('open','scoring')) desc, m.created_at desc
      limit 60`,
   );

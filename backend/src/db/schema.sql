@@ -1005,6 +1005,16 @@ create table if not exists a2a_trades (
   status        text not null default 'pending',  -- 'pending' | 'settled' | 'failed'
   created_at    timestamptz not null default now()
 );
+-- The NEGOTIATE pillar. A trade now records what the seller ASKED as well as what
+-- was PAID, plus the handshake that got them there, so a bargain is provable after
+-- the fact instead of being a claim. quoted_usdc_6 = price_usdc_6 when the ask was
+-- firm (an operator listing) or nothing was conceded.
+-- Added as ALTER ... IF NOT EXISTS rather than in the create above, so an existing
+-- deployment migrates in place. schema.sql runs as ONE query, so a statement that
+-- throws kills the whole migrate job: keep every statement here idempotent.
+alter table a2a_trades add column if not exists quoted_usdc_6 text;
+alter table a2a_trades add column if not exists rounds integer not null default 0;
+alter table a2a_trades add column if not exists transcript jsonb;
 create index if not exists a2a_trades_contest_idx on a2a_trades(contest_id);
 create index if not exists a2a_trades_buyer_idx on a2a_trades(buyer_agent_id);
 create index if not exists a2a_trades_recent_idx on a2a_trades(created_at desc);

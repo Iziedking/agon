@@ -23,9 +23,13 @@ import { startAdminCommandWorker } from "./adminCommands.js";
 ///
 /// Contests open on a fixed daily schedule, not a tight loop: at each time in
 /// AUTOPILOT_CONTEST_TIMES every category opens once, so a category appears only
-/// a few times a day. Missions open MISSION_PER_DAY times a day at random inside
-/// an active window. Both fire a Telegram alert so operators know a joinable
-/// event opened. The due-sweeper still settles everything regardless of cadence.
+/// a few times a day. They fire a Telegram alert so operators know a joinable
+/// event opened. The due-sweeper settles everything regardless of cadence.
+///
+/// MISSIONS DO NOT AUTO-OPEN. A mission is a funded commission that needs real
+/// operatives; a timer cannot conjure them, and an unattended mission just cancels
+/// and refunds. Missions are opened deliberately (admin `open_mission`, or a
+/// project listing one). Set MISSION_PER_DAY > 0 to schedule them anyway.
 ///
 /// Env (all optional, sensible defaults):
 ///   AUTOPILOT=0                            turn it off even with a key set
@@ -43,9 +47,11 @@ import { startAdminCommandWorker } from "./adminCommands.js";
 ///   AUTOPILOT_DURATION_SECONDS_MIN=1200    lower bound of the join window, seconds (20 min default)
 ///   AUTOPILOT_DURATION_SECONDS_MAX=2400    upper bound of the join window, seconds (40 min default)
 ///   AUTOPILOT_DURATION_SECONDS=...         legacy fixed window; if set, used as both min and max
-///   MISSION_PER_DAY=2                      missions a day at random (0 = use MISSION_CADENCE_SECONDS instead)
+///   MISSION_PER_DAY=0                      timed mission opens per day. 0 (default) = OFF, on demand only
 ///   MISSION_ACTIVE_HOURS=08:00-22:00       window the random mission times are drawn from
-///   MISSION_CADENCE_SECONDS=3600           legacy fixed mission interval, used only when MISSION_PER_DAY=0
+///   MISSION_CADENCE_SECONDS=<unset>        legacy fixed mission interval. Only honoured if you set it
+///                                          explicitly. It is NOT a fallback for MISSION_PER_DAY=0 any more:
+///                                          it used to be, so "0" opened a mission every hour instead of none.
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -470,14 +476,38 @@ async function startMissionLoop(broadcast: (message: unknown) => void): Promise<
     }
   }
 
-  // Default cadence: MISSION_PER_DAY missions a day at random times inside the
-  // active window, so the arena gets a couple of real, well-attended missions
-  // instead of a steady drip. Set MISSION_PER_DAY=0 to fall back to the legacy
-  // fixed-interval cadence (MISSION_CADENCE_SECONDS).
-  const perDay = Number(process.env.MISSION_PER_DAY ?? "2");
+  // A mission is a real, funded commission that needs real operatives to show up.
+  // A timed auto-open cannot conjure them: it opens a 100 USDC pool into an empty
+  // room, nobody joins, and the mission correctly cancels and refunds. Repeat on a
+  // timer and you get a graveyard — 55 of our first 60 missions cancelled that way,
+  // which reads as a broken product rather than a quiet one.
+  //
+  // So the timed open is OFF by default now. Missions are opened DELIBERATELY: by
+  // an operator (the `open_mission` admin command) or by a project listing one. A
+  // quiet board of real missions beats a full board of dead ones.
+  //
+  // Set MISSION_PER_DAY > 0 to bring the timer back, and only do that once missions
+  // reliably attract operatives.
+  const perDay = Number(process.env.MISSION_PER_DAY ?? "0");
   if (perDay <= 0) {
-    const cadence = Number(process.env.MISSION_CADENCE_SECONDS ?? "3600");
-    console.log(`autopilot: missions on (${pinned ?? "rotate solver/analyst"}), every ${cadence}s, pool ${poolMin}-${poolMax} USDC`);
+    // This used to fall through to a legacy fixed-interval cadence
+    // (MISSION_CADENCE_SECONDS, default 3600), so "MISSION_PER_DAY=0" — the obvious
+    // way to ask for NO auto-opens — actually opened a mission EVERY HOUR. Exactly
+    // backwards, and it is what fed the graveyard. Zero now means zero.
+    // MISSION_CADENCE_SECONDS is honoured only when it is set explicitly.
+    const legacyCadence = process.env.MISSION_CADENCE_SECONDS;
+    if (!legacyCadence) {
+      console.log(
+        "autopilot: mission auto-open is OFF (MISSION_PER_DAY=0). Missions open on demand only " +
+          "(admin `open_mission`, or a project listing one). Set MISSION_PER_DAY>0 to schedule them.",
+      );
+      return;
+    }
+    const cadence = Number(legacyCadence);
+    console.warn(
+      `autopilot: missions on the LEGACY fixed cadence, every ${cadence}s, pool ${poolMin}-${poolMax} USDC. ` +
+        `This opens missions whether or not anyone is there to take them; unset MISSION_CADENCE_SECONDS to open on demand only.`,
+    );
     for (;;) {
       await openOneMission();
       await sleep(cadence * 1000);

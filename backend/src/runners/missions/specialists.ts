@@ -69,6 +69,9 @@ export async function seedSpecialists(mission: Commission): Promise<Specialist[]
       missionId: mission.missionId,
       fragmentId: f.id,
       price6: price6.toString(),
+      // Seeded here means a house market-maker, so its ask is negotiable. Operator
+      // listings are written by the listing flow and stay firm.
+      owner: "platform",
       intel,
     });
   }
@@ -89,9 +92,10 @@ export async function listSpecialistsForFragment(
     agent_id: string;
     address: string;
     price_usdc_6: string;
+    owner: string | null;
     intel: unknown;
   }>(
-    `select agent_id, address, price_usdc_6, intel
+    `select agent_id, address, price_usdc_6, owner, intel
        from mission_specialists
       where contest_id = $1 and fragment_id = $2
         and (owner = 'operator' or claimed_by is null)
@@ -104,6 +108,7 @@ export async function listSpecialistsForFragment(
     missionId,
     fragmentId,
     price6: r.price_usdc_6,
+    owner: r.owner === "operator" ? ("operator" as const) : ("platform" as const),
     intel: r.intel,
   }));
 }

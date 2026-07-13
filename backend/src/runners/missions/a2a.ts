@@ -15,6 +15,7 @@ import { config } from "../../config/index.js";
 import { query } from "../../db/pool.js";
 import { deriveHotWallet } from "../scout.js";
 import { listSpecialistsForFragment } from "./specialists.js";
+import { fragmentCeiling6, negotiate, type A2AStep } from "./negotiate.js";
 
 const USDC_ABI = parseAbi([
   "function transfer(address to, uint256 amount) returns (bool)",
@@ -25,20 +26,21 @@ const USDC_ABI = parseAbi([
 /// the transfer itself or it reverts with "transfer amount exceeds balance".
 const GAS_RESERVE6 = BigInt(Math.round(Number(process.env.MISSION_GAS_RESERVE_USDC ?? "0.05") * 1e6));
 
-/// One line of the handshake transcript, surfaced on the live stage so viewers
-/// watch the negotiation happen.
-export interface A2AStep {
-  step: "request" | "offer" | "accept" | "pay";
-  detail: string;
-}
+export type { A2AStep } from "./negotiate.js";
 
 export interface BuyIntelResult {
   ok: boolean;
   /// Set when ok is false.
   reason?: string;
   sellerAgentId?: number;
-  /// Quoted price, USDC 6-decimals as a string.
+  /// The price actually PAID, USDC 6-decimals as a string. After a negotiation this
+  /// is the agreed price, which may be below what the seller first asked.
   price6?: string;
+  /// What the seller originally asked, USDC 6-decimals. Equal to price6 when the
+  /// ask was firm (an operator listing) or nothing was conceded.
+  quoted6?: string;
+  /// How many offer/counter exchanges it took. 0 means a firm ask taken as listed.
+  rounds?: number;
   /// The on-chain USDC transfer that settled the buy.
   txHash?: string;
   /// The intel the specialist delivered on a successful, paid buy.
@@ -54,25 +56,29 @@ export async function buyIntel(opts: {
   missionId: number;
   fragmentId: string;
   buyerAgentId: number;
+  /// Drives how hard this operative bargains. A higher tier opens lower and concedes
+  /// slower, so it lands a better price out of the same market.
+  buyerTier?: number;
+  /// Fragments this operative still has to source, including this one. The buyer's
+  /// ceiling for THIS piece is its float shared over them, so an early fragment
+  /// cannot eat the budget for the rest. Defaults to 1 (spend up to the whole float).
+  fragmentsLeft?: number;
 }): Promise<BuyIntelResult> {
   const { missionId, fragmentId, buyerAgentId } = opts;
-  const transcript: A2AStep[] = [];
 
-  // request
-  transcript.push({ step: "request", detail: `agent ${buyerAgentId} requests ${fragmentId}` });
   const sellers = (await listSpecialistsForFragment(missionId, fragmentId)).filter(
     (s) => s.agentId !== buyerAgentId, // an operative cannot buy from itself
   );
   if (sellers.length === 0) {
-    return { ok: false, reason: "no specialist holds this fragment", transcript };
+    return {
+      ok: false,
+      reason: "no specialist holds this fragment",
+      transcript: [{ step: "request", detail: `agent ${buyerAgentId} requests ${fragmentId}` }],
+    };
   }
 
-  // The buyer needs the price plus a gas reserve (USDC is gas on Arc). Read the
-  // balance once, then take the FIRST affordable seller from the preference-
-  // ordered list (operators first, then cheapest). This is the affordability
-  // fallback: when the preferred operator listing is out of this operative's
-  // budget, it buys a cheaper platform seller instead of failing the buy — so an
-  // overpriced seller no longer starves the fragment and cancels the mission.
+  // USDC is the gas token on Arc, so the buyer must keep enough back to pay for the
+  // transfer itself. Everything above that reserve is what it can actually bargain with.
   const buyer = deriveHotWallet(buyerAgentId);
   const balance = await publicClient.readContract({
     address: config.external.USDC,
@@ -80,30 +86,64 @@ export async function buyIntel(opts: {
     functionName: "balanceOf",
     args: [buyer.address],
   });
-  const canAfford = (s: (typeof sellers)[number]) => balance >= BigInt(s.price6) + GAS_RESERVE6;
-  const specialist = sellers.find(canAfford);
-  if (!specialist) {
-    // Nobody is affordable. Report the cheapest seller for context.
-    const cheapest = sellers.reduce((a, b) => (BigInt(a.price6) <= BigInt(b.price6) ? a : b));
-    transcript.push({ step: "offer", detail: `cheapest seller ${cheapest.agentId} at ${cheapest.price6}` });
-    transcript.push({ step: "accept", detail: "declined: operative underfunded for every seller" });
-    return { ok: false, reason: "buyer underfunded", sellerAgentId: cheapest.agentId, price6: cheapest.price6, transcript };
-  }
+  const spendable6 = balance > GAS_RESERVE6 ? balance - GAS_RESERVE6 : 0n;
 
-  // offer
-  const price6 = BigInt(specialist.price6);
-  transcript.push({
-    step: "offer",
-    detail: `specialist ${specialist.agentId} offers ${fragmentId} for ${specialist.price6}`,
+  // The buyer's ceiling for THIS fragment. It is not the whole float: the pieces it
+  // has not sourced yet also cost money, and blowing the budget on the first one is
+  // how an operative ends up with a half-built deliverable.
+  const ceiling6 = fragmentCeiling6(spendable6, opts.fragmentsLeft ?? 1);
+
+  // Haggle. The buyer bargains across the sellers holding this fragment and takes the
+  // best deal it can reach; a seller that will not move can lose the sale to one that
+  // will. Operator listings are firm and are taken or walked, never negotiated down.
+  const deal = negotiate({
+    sellers,
+    buyerAgentId,
+    buyerTier: opts.buyerTier ?? 0,
+    ceiling6,
   });
 
-  // accept: record the intent BEFORE paying so a crash leaves an auditable row.
-  transcript.push({ step: "accept", detail: `agent ${buyerAgentId} accepts` });
+  if (!deal) {
+    const cheapest = sellers.reduce((a, b) => (BigInt(a.price6) <= BigInt(b.price6) ? a : b));
+    return {
+      ok: false,
+      reason: "no seller came within the buyer's budget",
+      sellerAgentId: cheapest.agentId,
+      price6: cheapest.price6,
+      transcript: [
+        { step: "request", detail: `agent ${buyerAgentId} requests ${fragmentId}` },
+        { step: "walk", detail: `no deal: cheapest ask ${cheapest.price6}, ceiling ${ceiling6.toString()}` },
+      ],
+    };
+  }
+
+  const specialist = deal.seller;
+  const price6 = deal.agreed6;
+  const transcript = deal.transcript;
+
+  // A deal it cannot actually pay for is not a deal. Guard the settlement.
+  if (price6 + GAS_RESERVE6 > balance) {
+    transcript.push({ step: "walk", detail: "declined: operative underfunded at the agreed price" });
+    return { ok: false, reason: "buyer underfunded", sellerAgentId: specialist.agentId, price6: price6.toString(), transcript };
+  }
+
+  // Record the intent BEFORE paying so a crash leaves an auditable row. The trade
+  // stores BOTH the ask and the agreed price, so the bargain is provable after the
+  // fact and not just a line in a transcript.
   const { rows } = await query<{ id: string }>(
-    `insert into a2a_trades (contest_id, buyer_agent_id, seller_agent_id, fragment_id, price_usdc_6, status)
-     values ($1, $2, $3, $4, $5, 'pending')
+    `insert into a2a_trades (contest_id, buyer_agent_id, seller_agent_id, fragment_id, price_usdc_6, quoted_usdc_6, rounds, transcript, status)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, 'pending')
      returning id`,
-    [missionId, buyerAgentId, specialist.agentId, fragmentId, specialist.price6],
+    [
+      missionId,
+      buyerAgentId,
+      specialist.agentId,
+      fragmentId,
+      price6.toString(),
+      deal.quoted6.toString(),
+      deal.rounds,
+      JSON.stringify(transcript),
+    ],
   );
   const tradeId = rows[0]!.id;
 
@@ -124,7 +164,7 @@ export async function buyIntel(opts: {
         ok: false,
         reason: "payment reverted on-chain",
         sellerAgentId: specialist.agentId,
-        price6: specialist.price6,
+        price6: price6.toString(),
         txHash,
         transcript,
       };
@@ -135,23 +175,36 @@ export async function buyIntel(opts: {
       ok: false,
       reason: `payment failed: ${err instanceof Error ? err.message : String(err)}`,
       sellerAgentId: specialist.agentId,
-      price6: specialist.price6,
+      price6: price6.toString(),
       transcript,
     };
   }
 
   await query(`update a2a_trades set status = 'settled', tx_hash = $2 where id = $1`, [tradeId, txHash]);
-  transcript.push({ step: "pay", detail: `paid ${specialist.price6} USDC, tx ${txHash}` });
+  const saved6 = deal.quoted6 - price6;
+  transcript.push({
+    step: "pay",
+    detail:
+      saved6 > 0n
+        ? `paid ${fmtUsdc(price6)} USDC (saved ${fmtUsdc(saved6)} off the ask), tx ${txHash}`
+        : `paid ${fmtUsdc(price6)} USDC, tx ${txHash}`,
+  });
 
   // The specialist delivers its intel only now that payment has confirmed.
   return {
     ok: true,
     sellerAgentId: specialist.agentId,
-    price6: specialist.price6,
+    price6: price6.toString(),
+    quoted6: deal.quoted6.toString(),
+    rounds: deal.rounds,
     txHash,
     intel: specialist.intel,
     transcript,
   };
+}
+
+function fmtUsdc(v6: bigint): string {
+  return (Number(v6) / 1e6).toFixed(4);
 }
 
 /// The settled A2A purchase a buyer made for a fragment, if any. The grader's

@@ -124,6 +124,13 @@ export class MissionRunner implements Runner {
 
     // Execute decisions sequentially: one operative wallet sends the A2A
     // transfers, so serial execution keeps the nonce ordering clean.
+    //
+    // How many fragments this operative still intends to BUY, so the negotiator can
+    // work out what it may spend on any ONE of them. Without this the buyer would
+    // treat its whole float as the ceiling for the first piece and could blow the
+    // budget before it sourced the rest.
+    let buysLeft = options.filter((o) => decisions.get(o.fragment.id)?.choice === "buy").length;
+
     for (const opt of options) {
       const d = decisions.get(opt.fragment.id) ?? { choice: "skip" as MakeOrBuy, reason: "no decision" };
       const row: FragmentDecision = {
@@ -159,16 +166,34 @@ export class MissionRunner implements Runner {
           events.push(this.tape(entry.agentId, made.spent6, made.txHash, opt.fragment.service.chain, opt.fragment.service.label));
         }
       } else if (d.choice === "buy" && opt.buyPrice6) {
-        const bought = await buyIntel({ missionId: mission.missionId, fragmentId: opt.fragment.id, buyerAgentId: entry.agentId }).catch((err) => {
+        // The operative HAGGLES before it pays. Its tier drives how hard it bargains
+        // (a higher tier opens lower and concedes slower), and buysLeft caps what it
+        // may spend on this one piece so it can still afford the others.
+        const bought = await buyIntel({
+          missionId: mission.missionId,
+          fragmentId: opt.fragment.id,
+          buyerAgentId: entry.agentId,
+          buyerTier: entry.tier,
+          fragmentsLeft: buysLeft,
+        }).catch((err) => {
           console.warn(`[mission] buy failed f=${opt.fragment.id}: ${err instanceof Error ? err.message : err}`);
           return null;
         });
+        buysLeft = Math.max(1, buysLeft - 1);
         if (bought && bought.ok && bought.txHash) {
           row.settled = true;
           row.txHash = bought.txHash;
           row.spent6 = bought.price6 ?? "0";
           row.data = bought.intel;
           row.specialistAgentId = bought.sellerAgentId;
+          if (bought.rounds && bought.rounds > 0) {
+            const saved6 = BigInt(bought.quoted6 ?? "0") - BigInt(bought.price6 ?? "0");
+            console.log(
+              `[mission ${mission.missionId}] agent ${entry.agentId} negotiated ${opt.fragment.id} from ` +
+                `${fmtUsdc6(bought.quoted6 ?? "0")} to ${fmtUsdc6(bought.price6 ?? "0")} USDC in ${bought.rounds} round(s), ` +
+                `saving ${fmtUsdc6(saved6)}`,
+            );
+          }
           fragmentData.push({ ask: opt.fragment.ask, data: bought.intel });
           events.push(this.tape(entry.agentId, bought.price6 ?? "0", bought.txHash, "arc", `intel from agent ${bought.sellerAgentId}`));
         } else if (opt.canMake && opt.fragment.service) {
