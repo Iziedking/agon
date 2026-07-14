@@ -12,3 +12,11 @@ api.arcrun.xyz {
 ws.arcrun.xyz {
 	reverse_proxy coordinator:8788
 }
+
+# Portable Agent Memory (the Agent-QA repo) deploys its own containers on this
+# compose project's default network and borrows this Caddy as its ingress. The
+# site block lives here, in the tracked source, because the deploy workflow
+# hard-resets /opt/arcrun on every push and would wipe a hand edit on the VPS.
+agentsqa.xyz {
+	reverse_proxy agentqa-app:9090
+}
