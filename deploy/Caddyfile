@@ -18,5 +18,14 @@ ws.arcrun.xyz {
 # site block lives here, in the tracked source, because the deploy workflow
 # hard-resets /opt/arcrun on every push and would wipe a hand edit on the VPS.
 agentsqa.xyz {
-	reverse_proxy agentqa-app:9090
+	# The paid lane: OKX marketplace buyers pay here and agentqa-pay forwards to
+	# the app once payment clears. Listed first because Caddy matches the most
+	# specific handle, and the free console must not end up behind the paywall.
+	handle /x402/* {
+		reverse_proxy agentqa-pay:9100
+	}
+
+	handle {
+		reverse_proxy agentqa-app:9090
+	}
 }
