@@ -58,6 +58,79 @@ export async function refundMissionFees(contestId: number): Promise<void> {
   console.log(`[mission ${contestId}] refunded ${refunded}/${rows.length} operative join fee(s) from the treasury`);
 }
 
+/// Participation refund (docs/missions.md s4b). At a SETTLED mission, an operative
+/// that put at least `minFrac` of its funded float to work on real settled spend
+/// (A2A intel buys + x402 makes) earns its FULL join fee back from the treasury.
+/// Idlers keep paying full freight. Volume (scout swaps) is NOT spend and is
+/// excluded — a scout operative earns the fee back on the intel it bought, not the
+/// swaps it recirculated. Idempotent on `refunded = false`; only ever runs on a
+/// paying mission (a cancelled one refunds every fee anyway), so it never races the
+/// cancel path. `floatUsdc` is the float ACTUALLY funded per operative (post-cap).
+export async function refundParticipationFees(
+  contestId: number,
+  operatives: Array<{ agentId: number; operator: string }>,
+  floatUsdc: number,
+  minFrac: number,
+): Promise<void> {
+  if (!config.treasury.privateKey || !config.treasury.address) return;
+  if (operatives.length === 0 || floatUsdc <= 0 || minFrac <= 0) return;
+  const float6 = BigInt(Math.round(floatUsdc * 1e6));
+  // threshold = float * minFrac, in 6-dec, using integer math (minFrac to /1000).
+  const threshold6 = (float6 * BigInt(Math.round(minFrac * 1000))) / 1000n;
+  if (threshold6 <= 0n) return;
+
+  const account = privateKeyToAccount(config.treasury.privateKey) as Account;
+  const wallet = createWalletClient({ account, chain: arcTestnet, transport: http(config.rpcHttp) });
+  let refunded = 0;
+  for (const op of operatives) {
+    // Real settled spend by this operative: A2A intel buys + x402 makes.
+    const { rows: sp } = await query<{ spent6: string }>(
+      `select (
+         coalesce((select sum(price_usdc_6::numeric) from a2a_trades where contest_id=$1 and buyer_agent_id=$2 and status='settled'),0)
+       + coalesce((select sum(usdc_amount_6::numeric) from nanopayments where contest_id=$1 and agent_id=$2 and status='settled'),0)
+       )::text as spent6`,
+      [contestId, op.agentId],
+    );
+    const spent6 = BigInt((sp[0]?.spent6 ?? "0").split(".")[0] || "0");
+    if (spent6 < threshold6) continue;
+
+    // Refund this operative's full, not-yet-refunded join fee (once).
+    const { rows: fee } = await query<{ amount_usdc_6: string }>(
+      "select amount_usdc_6 from mission_operative_fees where contest_id=$1 and lower(operator)=lower($2) and refunded=false",
+      [contestId, op.operator],
+    );
+    const amount = BigInt(fee[0]?.amount_usdc_6 || "0");
+    if (amount <= 0n) continue;
+    try {
+      const hash = await wallet.writeContract({
+        address: config.external.USDC,
+        abi: USDC_ABI,
+        functionName: "transfer",
+        args: [op.operator as `0x${string}`, amount],
+      });
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      if (receipt.status !== "success") throw new Error("refund tx reverted");
+      await query(
+        "update mission_operative_fees set refunded=true, refund_tx=$3, refund_reason='participation' where contest_id=$1 and lower(operator)=lower($2)",
+        [contestId, op.operator, hash],
+      );
+      void notify(op.operator, {
+        kind: "balance_credit",
+        title: "Join fee earned back",
+        body: `${fmtUsdc(amount)} returned — you put your float to work on mission #${contestId}. No claim needed.`,
+        href: `/missions/${contestId}`,
+        context: { contestId, amount6: amount.toString(), txHash: hash, kind: "participation_refund" },
+      });
+      refunded += 1;
+    } catch (err) {
+      console.error(`[mission ${contestId}] participation refund -> ${op.operator} failed: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+  if (refunded > 0) {
+    console.log(`[mission ${contestId}] participation: refunded ${refunded} operative join fee(s) for putting >=${Math.round(minFrac * 100)}% of float to work`);
+  }
+}
+
 /// Refund every unrefunded specialist intel purchase for a mission, from the
 /// treasury (which received the base price). Called when a mission cancels, so a
 /// specialist who bought a piece on a void mission is made whole.

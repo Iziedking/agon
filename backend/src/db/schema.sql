@@ -941,6 +941,11 @@ create table if not exists mission_operative_fees (
   created_at   timestamptz not null default now(),
   primary key (contest_id, operator)
 );
+-- Why a fee was returned: 'cancel' (mission voided), 'withdraw' (operative left
+-- the join window), or 'participation' (the operative put >= the configured
+-- fraction of its float to work on real spend, so it earned the fee back at a
+-- settled mission). NULL on rows never refunded. Additive for existing DBs.
+alter table mission_operative_fees add column if not exists refund_reason text;
 
 -- Operator-run specialists: an operator can enter a mission on the SUPPLY side,
 -- registering one of their agents to sell intel for a fragment at their own

@@ -1588,7 +1588,8 @@ app.get("/admin/mission-config", async (c) => {
   const m = config.mission;
   return c.json({
     economics: [
-      { key: "MISSION_OPERATIVE_FEE_BPS", label: "Operative join fee", value: `${(m.operativeFeeBps / 100).toFixed(2)}%`, note: "charged to the treasury on entry, refunded if the mission cancels" },
+      { key: "MISSION_OPERATIVE_FEE_BPS", label: "Operative join fee", value: `${(m.operativeFeeBps / 100).toFixed(2)}%`, note: "charged to the treasury on entry; refunded if the mission cancels, on withdrawal, or when the operative earns it back (see below)" },
+      { key: "MISSION_REFUND_MIN_SPEND_FRAC", label: "Fee-back threshold", value: `${Math.round(m.refundMinSpendFrac * 100)}%`, note: "an operative that spends at least this fraction of its float on real intel/data earns its full join fee back at settlement; idlers pay full freight" },
       { key: "MISSION_BASE_PRICE_MIN_USDC", label: "Platform intel min", value: `${m.basePriceMinUsdc} USDC`, note: "cheapest platform shelf price" },
       { key: "MISSION_BASE_PRICE_MAX_USDC", label: "Platform intel max", value: `${m.basePriceMaxUsdc} USDC`, note: "priciest platform shelf price (at max weight)" },
       { key: "MISSION_LISTING_PRICE_MAX_USDC", label: "Agent listing cap", value: `${m.listingPriceMaxUsdc} USDC`, note: "most an operator specialist may charge per piece" },

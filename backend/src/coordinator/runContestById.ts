@@ -10,7 +10,7 @@ import { ScoutRunner } from "../runners/scout.js";
 import { SolverRunner } from "../runners/solver.js";
 import { loadMission } from "../runners/missions/generator.js";
 import { getSpecialistForFragment } from "../runners/missions/specialists.js";
-import { refundMissionFees, refundMissionBuys, markMissionStatus } from "../runners/missions/fees.js";
+import { refundMissionFees, refundMissionBuys, markMissionStatus, refundParticipationFees } from "../runners/missions/fees.js";
 import { MissionRunner } from "../runners/missions/runner.js";
 import type { AgentResult, ContestEntryInput } from "../runners/types.js";
 
@@ -238,6 +238,20 @@ async function runMission(contestId: number, field: ContestEntryInput[]): Promis
     );
     return [];
   }
+
+  // The mission is settling (pays out). Reward genuine participants: refund the
+  // join fee of any operative that put >= MISSION_REFUND_MIN_SPEND_FRAC of its
+  // funded float to work on real settled spend. `perOp` is the float ACTUALLY
+  // funded per operative (post-cap), the correct denominator. Best-effort: a
+  // refund failure never blocks the payout.
+  await refundParticipationFees(
+    contestId,
+    field.map((e) => ({ agentId: e.agentId, operator: e.operator })),
+    perOp,
+    config.mission.refundMinSpendFrac,
+  ).catch((err) =>
+    console.warn(`[mission ${contestId}] participation refund failed: ${err instanceof Error ? err.message : err}`),
+  );
   return results;
 }
 

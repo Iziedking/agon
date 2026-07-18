@@ -429,6 +429,11 @@ const envSchema = z.object({
   // Operative join fee, basis points of the pool (350 = 3.5%). Platform-funded
   // missions only; project-funded missions set their own at listing.
   MISSION_OPERATIVE_FEE_BPS: z.coerce.number().int().min(0).max(10_000).default(350),
+  // Participation refund: an operative that put at least this FRACTION of its
+  // funded float to work on real settled spend (A2A intel buys + x402 makes) gets
+  // its FULL join fee back at settlement. Idlers keep paying full freight. 0.4 =
+  // 40%. Set to 0 to disable (nobody earns the fee back).
+  MISSION_REFUND_MIN_SPEND_FRAC: z.coerce.number().min(0).max(1).default(0.4),
   // Scarce-intel market caps. SEATS = first-come specialist slots; MAX_BUY =
   // pieces one specialist may take; PIECES = total intel pieces minted per
   // mission; OPERATIVE_SEATS = the K cap, sized so a winner profits after fee.
@@ -764,6 +769,7 @@ export const config = {
     basePriceMaxUsdc: env.MISSION_BASE_PRICE_MAX_USDC,
     listingPriceMaxUsdc: env.MISSION_LISTING_PRICE_MAX_USDC,
     operativeFeeBps: env.MISSION_OPERATIVE_FEE_BPS,
+    refundMinSpendFrac: env.MISSION_REFUND_MIN_SPEND_FRAC,
     specialistSeats: env.MISSION_SPECIALIST_SEATS,
     specialistMaxBuy: env.MISSION_SPECIALIST_MAX_BUY,
     intelPieces: env.MISSION_INTEL_PIECES,
