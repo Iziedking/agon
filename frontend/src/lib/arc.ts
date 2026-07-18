@@ -23,18 +23,26 @@ export function nftLink(tokenId: bigint | number | string): string {
 /// Native USDC on Arc (6 decimals as an ERC-20). Used for agent upgrades.
 export const USDC = "0x3600000000000000000000000000000000000000" as const;
 
+/// Optional dedicated Arc RPC for the browser. The public RPC
+/// (rpc.testnet.arc.network) rate-limits bursts (429) and runs ~0.65s/call, so a
+/// production deploy should point this at a dedicated endpoint on Vercel. Falls
+/// back to the chain's default RPC when unset.
+const ARC_RPC_HTTP = process.env.NEXT_PUBLIC_ARC_RPC_HTTP || undefined;
+
 /// Read-only client for fetching on-chain state (no wallet needed).
 ///
-/// `batch.multicall` is the load-bearing line: list pages read every contest
-/// and challenge ever created (2 eth_calls each, hundreds of items), and
-/// firing those as individual RPC requests rate-limits the public Arc RPC
-/// (pages crawled and throttled reads silently dropped cards from the grid).
-/// With batching on, viem aggregates all reads scheduled in the same tick
-/// through Multicall3 (deployed on Arc at the canonical address), so a full
-/// list load is a handful of RPC round-trips instead of 600.
+/// TWO layers of batching, both load-bearing against the rate-limited public RPC:
+///  - `batch.multicall` aggregates CONTRACT reads (readContract) through
+///    Multicall3, so a list page reading every contest/challenge (2 eth_calls
+///    each, hundreds of items) is a handful of round-trips, not 600.
+///  - `batch` on the transport (JSON-RPC batching) coalesces everything ELSE
+///    scheduled in the same tick — getBalance, getBlock, non-multicall reads —
+///    into ONE HTTP request. Without it those still burst the RPC and 429, which
+///    is what made pages crawl and balances read 0. `retryCount` backs off on the
+///    429/5xx that remain.
 export const publicClient = createPublicClient({
   chain: arcTestnet,
-  transport: http(),
+  transport: http(ARC_RPC_HTTP, { batch: { wait: 16 }, retryCount: 3, timeout: 15_000 }),
   batch: { multicall: { wait: 16, batchSize: 4_096 } },
 });
 

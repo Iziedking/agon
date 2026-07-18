@@ -35,7 +35,15 @@ import { getDefaultConfig } from "@rainbow-me/rainbowkit";
 /// arcTestnet is the home chain for everything ArcRun-native (contests, agents,
 /// settlement). The other testnets are registered so /bridge can switch the
 /// wallet to a source chain and bridge USDC into Arc. Each uses its public RPC.
+///
+/// The Arc transport is the hot path (every wallet read — balances, contract
+/// reads — goes through it), and the public Arc RPC rate-limits bursts. So it gets
+/// JSON-RPC batching (coalesce concurrent reads into one request), a retry for the
+/// 429/5xx, and an optional dedicated endpoint via NEXT_PUBLIC_ARC_RPC_HTTP. The
+/// bridge source chains stay on their bare public RPCs — they're touched only
+/// during an occasional bridge, not on every page.
 const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || "arcrun_walletconnect_unset";
+const ARC_RPC_HTTP = process.env.NEXT_PUBLIC_ARC_RPC_HTTP || undefined;
 
 export const config = getDefaultConfig({
   appName: "ArcRun",
@@ -51,7 +59,7 @@ export const config = getDefaultConfig({
     unichainSepolia,
   ],
   transports: {
-    [arcTestnet.id]: http(),
+    [arcTestnet.id]: http(ARC_RPC_HTTP, { batch: true, retryCount: 3 }),
     [sepolia.id]: http(),
     [baseSepolia.id]: http(),
     [arbitrumSepolia.id]: http(),
