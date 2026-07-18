@@ -1055,6 +1055,11 @@ const usdc6 = (b: bigint) => (Number(b) / 1e6).toFixed(2);
 // Native USDC on Arc is 18-decimal (eth_getBalance); it is the SAME balance as the
 // 6-decimal ERC-20 view, just a different scale (docs: stablecoin-native-model).
 const usdc18 = (b: bigint) => (Number(b) / 1e18).toFixed(2);
+
+// Last-known-good native balances, so a transient RPC failure shows the previous
+// value ("as of Ns ago") instead of "read failed". Process memory: warms on the
+// first successful load and rides out RPC hiccups (does not survive a restart).
+const lastGoodBalance = new Map<string, { wei: bigint; at: number }>();
 const cancelContestAbi = parseAbi(["function cancelContest(uint256 contestId)"]);
 const cancelChallengeAbi = parseAbi(["function cancelChallenge(uint256 id)"]);
 const treasuryViewAbi = parseAbi(["function treasury() view returns (address)"]);
@@ -1112,8 +1117,10 @@ app.get("/admin/overview", async (c) => {
   // the extra latency is fine; the durable cure is a dedicated ARC_RPC_HTTP.
   const balMap = new Map<string, bigint | null>();
   for (const a of targets) {
+    const key = a.toLowerCase();
     const b = await publicClient.getBalance({ address: a }).then((x) => x as bigint).catch(() => null);
-    balMap.set(a.toLowerCase(), b);
+    if (b != null) lastGoodBalance.set(key, { wei: b, at: Date.now() });
+    balMap.set(key, b);
   }
 
   const counts = await query<{
@@ -1130,23 +1137,33 @@ app.get("/admin/overview", async (c) => {
   );
   const k = counts.rows[0];
 
-  // null when the read failed (RPC throttle/timeout) so the UI can say "read
-  // failed" instead of a fake 0.00. On Arc the balance IS the gas headroom (same
-  // asset), so no separate gas figure is needed.
-  const fmtBal = (b: bigint | null | undefined) => (b == null ? null : usdc18(b));
+  // Resolve a wallet to { usdc, staleSeconds }: the fresh read, or the last-known-
+  // good value with its age when the live read failed, or null if never read. So a
+  // transient RPC failure shows the previous balance ("as of Ns ago"), not "read
+  // failed". On Arc the balance IS the gas headroom (same asset), so no separate
+  // gas figure is needed.
+  const resolveBal = (addr: string | null | undefined): { usdc: string | null; staleSeconds: number | null } => {
+    if (!addr) return { usdc: null, staleSeconds: null };
+    const key = addr.toLowerCase();
+    const fresh = balMap.get(key);
+    if (fresh != null) return { usdc: usdc18(fresh), staleSeconds: null };
+    const cached = lastGoodBalance.get(key);
+    if (cached) return { usdc: usdc18(cached.wei), staleSeconds: Math.max(0, Math.round((Date.now() - cached.at) / 1000)) };
+    return { usdc: null, staleSeconds: null };
+  };
   return c.json({
     chainId: config.chainId,
     usdc: config.external.USDC,
     coordinator: coordinatorAddress
-      ? { address: coordinatorAddress, usdc: fmtBal(balMap.get(coordinatorAddress.toLowerCase())) }
+      ? { address: coordinatorAddress, ...resolveBal(coordinatorAddress) }
       : null,
     treasury: treasuryAddr
-      ? { address: treasuryAddr, usdc: fmtBal(balMap.get(treasuryAddr.toLowerCase())) }
+      ? { address: treasuryAddr, ...resolveBal(treasuryAddr) }
       : null,
     contracts: contracts.map((x) => ({
       key: x.key,
       address: x.address,
-      usdc: fmtBal(balMap.get(x.address.toLowerCase())),
+      ...resolveBal(x.address),
     })),
     counts: {
       contests: Number(k?.contests ?? 0),

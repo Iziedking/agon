@@ -18,12 +18,13 @@ const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL ?? "http://localhost:8082";
 interface Overview {
   chainId: number;
   usdc: string;
-  // usdc is null when the on-chain read failed (RPC throttle), distinct from a
-  // real "0.00". On Arc the balance is the same asset as the gas token, so there
-  // is no separate gas figure.
-  coordinator: { address: string; usdc: string | null } | null;
-  treasury: { address: string; usdc: string | null } | null;
-  contracts: Array<{ key: string; address: string; usdc: string | null }>;
+  // usdc is null when the on-chain read failed AND there is no cached value, distinct
+  // from a real "0.00". staleSeconds is set when usdc is a last-known-good value
+  // served because the live read failed (age in seconds), null when fresh. On Arc
+  // the balance is the same asset as the gas token, so there is no separate gas figure.
+  coordinator: { address: string; usdc: string | null; staleSeconds: number | null } | null;
+  treasury: { address: string; usdc: string | null; staleSeconds: number | null } | null;
+  contracts: Array<{ key: string; address: string; usdc: string | null; staleSeconds: number | null }>;
   counts: {
     contests: number; challenges: number; operators: number; agents: number;
     openContests: number; liveChallenges: number;
@@ -263,7 +264,7 @@ function WalletsRow({ data }: { data: Overview }) {
         {data.treasury ? (
           <>
             <AddrLine address={data.treasury.address} />
-            <BalanceLine usdc={data.treasury.usdc} />
+            <BalanceLine usdc={data.treasury.usdc} staleSeconds={data.treasury.staleSeconds} />
           </>
         ) : (
           <div className="mt-2 font-mono text-[11px] text-ink-3">treasury read failed</div>
@@ -274,7 +275,7 @@ function WalletsRow({ data }: { data: Overview }) {
         {data.coordinator ? (
           <>
             <AddrLine address={data.coordinator.address} />
-            <BalanceLine usdc={data.coordinator.usdc} />
+            <BalanceLine usdc={data.coordinator.usdc} staleSeconds={data.coordinator.staleSeconds} />
             <div className="font-mono text-[10px] text-ink-3">USDC is also the gas token on Arc</div>
           </>
         ) : (
@@ -285,16 +286,30 @@ function WalletsRow({ data }: { data: Overview }) {
   );
 }
 
-/// A headline USDC balance. `null` means the on-chain read failed (RPC throttle),
-/// shown as "read failed" so a funded wallet is never misreported as 0.00.
-function BalanceLine({ usdc }: { usdc: string | null }) {
+/// Compact "how long ago" label for a stale balance.
+function ago(seconds: number): string {
+  if (seconds < 60) return `${seconds}s ago`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m ago`;
+  return `${Math.round(seconds / 3600)}h ago`;
+}
+
+/// A headline USDC balance. `usdc` null with no cache means the read failed (shown
+/// as "read failed", never a fake 0.00). When `staleSeconds` is set, `usdc` is the
+/// last-known-good value served because the live read failed — shown with an "as
+/// of Ns ago" note so a transient RPC hiccup doesn't blank a funded wallet.
+function BalanceLine({ usdc, staleSeconds }: { usdc: string | null; staleSeconds: number | null }) {
   if (usdc == null) {
     return <div className="mt-1 font-mono text-[13px]" style={{ color: "var(--warn)" }}>read failed · RPC busy, refresh</div>;
   }
   return (
-    <div className="mt-1 font-stencil text-[22px] text-ink">
-      {usdc} <span className="font-mono text-[11px] text-ink-3">USDC</span>
-    </div>
+    <>
+      <div className="mt-1 font-stencil text-[22px] text-ink">
+        {usdc} <span className="font-mono text-[11px] text-ink-3">USDC</span>
+      </div>
+      {staleSeconds != null ? (
+        <div className="font-mono text-[10px]" style={{ color: "var(--warn)" }}>as of {ago(staleSeconds)} · RPC busy</div>
+      ) : null}
+    </>
   );
 }
 
@@ -309,11 +324,14 @@ function ContractsTable({ contracts }: { contracts: Overview["contracts"] }) {
               <div className="font-mono text-[12px] uppercase tracking-[0.08em] text-ink">{ct.key}</div>
               <AddrLine address={ct.address} />
             </div>
-            <div className="font-stencil text-[18px] text-ink">
+            <div className="text-right">
               {ct.usdc == null ? (
                 <span className="font-mono text-[11px] text-ink-3">read failed</span>
               ) : (
-                <>{ct.usdc} <span className="font-mono text-[10px] text-ink-3">USDC</span></>
+                <>
+                  <div className="font-stencil text-[18px] text-ink">{ct.usdc} <span className="font-mono text-[10px] text-ink-3">USDC</span></div>
+                  {ct.staleSeconds != null ? <div className="font-mono text-[9px]" style={{ color: "var(--warn)" }}>as of {ago(ct.staleSeconds)}</div> : null}
+                </>
               )}
             </div>
           </div>
