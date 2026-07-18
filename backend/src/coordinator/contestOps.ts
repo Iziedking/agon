@@ -174,13 +174,25 @@ export async function findOpenContests(sponsor: `0x${string}`, lookback = 50): P
   const floor = Math.max(0, latest - lookback + 1);
   const want = sponsor.toLowerCase();
 
+  // Read the whole lookback window in ONE parallel pass: multicall + JSON-RPC
+  // batching collapse it into a single round-trip, instead of `lookback`
+  // sequential reads that used to take ~0.65s each against the rate-limited RPC.
+  const ids: number[] = [];
+  for (let id = latest; id >= floor; id--) ids.push(id);
+  const contests = await Promise.all(
+    ids.map((id) =>
+      publicClient
+        .readContract({ address: engine, abi: engineAbi, functionName: "getContest", args: [BigInt(id)] })
+        .catch(() => null),
+    ),
+  );
   const open: OpenContestInfo[] = [];
-  for (let id = latest; id >= floor; id--) {
-    const c = await publicClient.readContract({ address: engine, abi: engineAbi, functionName: "getContest", args: [BigInt(id)] });
-    if (Number(c.status) === 1 && c.sponsor.toLowerCase() === want) {
+  ids.forEach((id, i) => {
+    const c = contests[i];
+    if (c && Number(c.status) === 1 && c.sponsor.toLowerCase() === want) {
       open.push({ id, contestType: Number(c.contestType), endsAt: Number(c.endTime) * 1000 });
     }
-  }
+  });
   return open.reverse(); // oldest first, so we settle in the order they opened
 }
 
@@ -194,13 +206,25 @@ export async function findDueContests(lookback = 100): Promise<OpenContestInfo[]
   const floor = Math.max(0, latest - lookback + 1);
   const nowSec = Math.floor(Date.now() / 1000);
 
+  // Parallel scan (multicall + JSON-RPC batching → one round-trip). This runs on
+  // the sweeper's timer, so the old sequential `lookback` reads (~0.65s each)
+  // could take longer than the sweep interval and back up.
+  const ids: number[] = [];
+  for (let id = latest; id >= floor; id--) ids.push(id);
+  const contests = await Promise.all(
+    ids.map((id) =>
+      publicClient
+        .readContract({ address: engine, abi: engineAbi, functionName: "getContest", args: [BigInt(id)] })
+        .catch(() => null),
+    ),
+  );
   const due: OpenContestInfo[] = [];
-  for (let id = latest; id >= floor; id--) {
-    const c = await publicClient.readContract({ address: engine, abi: engineAbi, functionName: "getContest", args: [BigInt(id)] });
-    if (Number(c.status) === 1 && Number(c.endTime) <= nowSec) {
+  ids.forEach((id, i) => {
+    const c = contests[i];
+    if (c && Number(c.status) === 1 && Number(c.endTime) <= nowSec) {
       due.push({ id, contestType: Number(c.contestType), endsAt: Number(c.endTime) * 1000 });
     }
-  }
+  });
   return due.reverse(); // oldest first
 }
 
@@ -233,16 +257,25 @@ export async function fundHotWallets(
         }));
 
   const wallet = coordinatorWallet();
-  for (const { agentId, fundUsdc } of targets) {
+  // Read every hot wallet's current balance in ONE parallel pass (multicall +
+  // batching) before funding, instead of a sequential read per agent. The
+  // transfers stay SEQUENTIAL below: they all send from the single coordinator
+  // wallet, so they must keep nonce order. A failed read is treated as 0 (fund
+  // it); any over-fund is recovered by the post-contest sweep.
+  const bals = await Promise.all(
+    targets.map((t) =>
+      publicClient
+        .readContract({ address: config.external.USDC, abi: erc20, functionName: "balanceOf", args: [deriveHotWallet(t.agentId).address] })
+        .then((b) => b as bigint)
+        .catch(() => 0n),
+    ),
+  );
+  for (let i = 0; i < targets.length; i++) {
+    const { agentId, fundUsdc } = targets[i]!;
     const fund = BigInt(Math.round(fundUsdc * 1e6));
     if (fund <= 0n) continue;
     const w = deriveHotWallet(agentId);
-    const bal = (await publicClient.readContract({
-      address: config.external.USDC,
-      abi: erc20,
-      functionName: "balanceOf",
-      args: [w.address],
-    })) as bigint;
+    const bal = bals[i]!;
     if (bal >= fund) continue;
     const hash = await wallet.writeContract({
       address: config.external.USDC,
@@ -271,16 +304,24 @@ export async function sweepHotWallets(agentIds: number[]): Promise<void> {
   const reserve = BigInt(Math.max(0, Math.round(reserveUsdc * 1e6)));
   const dest = coordinatorAddress();
 
+  // Prefetch every hot wallet balance in parallel (one batched round-trip)
+  // before the sweep loop, which used to read them one at a time. The sweeps
+  // themselves stay sequential below.
+  const bals = await Promise.all(
+    agentIds.map((id) =>
+      publicClient
+        .readContract({ address: config.external.USDC, abi: erc20, functionName: "balanceOf", args: [deriveHotWallet(id).address] })
+        .then((b) => b as bigint)
+        .catch(() => 0n),
+    ),
+  );
+
   let swept = 0;
   let total = 0n;
-  for (const id of agentIds) {
+  for (let i = 0; i < agentIds.length; i++) {
+    const id = agentIds[i]!;
     const account = deriveHotWallet(id);
-    const bal = (await publicClient.readContract({
-      address: config.external.USDC,
-      abi: erc20,
-      functionName: "balanceOf",
-      args: [account.address],
-    })) as bigint;
+    const bal = bals[i]!;
     if (bal <= reserve) continue;
     const amount = bal - reserve;
     try {

@@ -28,6 +28,12 @@ export const publicClient = createPublicClient({
     retryCount: 3,
     timeout: 15_000,
   }),
+  // Multicall aggregates concurrent CONTRACT reads (readContract scheduled in the
+  // same tick) into ONE Multicall3 eth_call. Combined with the transport's
+  // JSON-RPC batching above, a parallelized scan (e.g. reading 100 contests to
+  // find the due ones) becomes a single round-trip instead of 100. Multicall3 is
+  // deployed on Arc at the canonical address.
+  batch: { multicall: { wait: 16, batchSize: 4_096 } },
 });
 
 /// WebSocket client for live event subscriptions (eth_subscribe is WS-only on Arc).

@@ -246,12 +246,24 @@ export async function findActiveChallenges(lookback = 100): Promise<number[]> {
   const next = (await publicClient.readContract({ address: arena, abi: arenaAbi, functionName: "nextChallengeId" })) as bigint;
   const latest = Number(next) - 1;
   const floor = Math.max(0, latest - lookback + 1);
+  // Parallel scan of the lookback window (multicall + batching → one round-trip),
+  // instead of `lookback` sequential getChallenge reads against the rate-limited RPC.
+  const ids: number[] = [];
+  for (let id = latest; id >= floor; id--) ids.push(id);
+  const challenges = await Promise.all(
+    ids.map((id) =>
+      publicClient
+        .readContract({ address: arena, abi: arenaAbi, functionName: "getChallenge", args: [BigInt(id)] })
+        .catch(() => null),
+    ),
+  );
   const active: number[] = [];
-  for (let id = latest; id >= floor; id--) {
-    const ch = await publicClient.readContract({ address: arena, abi: arenaAbi, functionName: "getChallenge", args: [BigInt(id)] });
+  ids.forEach((id, i) => {
+    const ch = challenges[i];
+    if (!ch) return;
     const status = Number(ch.status);
     if (ch.creator !== zeroAddress && (status === 0 || status === 1)) active.push(id);
-  }
+  });
   return active.reverse();
 }
 

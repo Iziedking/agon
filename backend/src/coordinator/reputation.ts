@@ -218,15 +218,25 @@ export async function postValidatorFeedback(
   const typeName = TYPE_NAMES[cType] ?? String(cType);
   const idPrefix = source === "contest" ? "c" : "ch";
   const label = source === "contest" ? "contest" : "challenge";
+  // Prefetch every ranked agent's registry row in one parallel pass (batched),
+  // instead of a sequential getAgent read per agent inside the loop. The
+  // giveFeedback WRITES below stay sequential: they all sign from the single
+  // validator wallet, so they must keep nonce order. A failed read skips that
+  // agent (null), same as the old per-iteration catch.
+  const rankedResults = ranked(results);
+  const agents = await Promise.all(
+    rankedResults.map((s) =>
+      publicClient
+        .readContract({ address: config.contracts.AgentRegistry, abi: agentRegistryAbi, functionName: "getAgent", args: [BigInt(s.r.agentId)] })
+        .catch(() => null),
+    ),
+  );
   let posted = 0;
-  for (const s of ranked(results)) {
+  for (let i = 0; i < rankedResults.length; i++) {
+    const s = rankedResults[i]!;
+    const agent = agents[i];
+    if (!agent) continue;
     try {
-      const agent = await publicClient.readContract({
-        address: config.contracts.AgentRegistry,
-        abi: agentRegistryAbi,
-        functionName: "getAgent",
-        args: [BigInt(s.r.agentId)],
-      });
       const tokenId = agent.erc8004TokenId;
       if (tokenId === 0n) continue;
       const result = s.rank === 1 ? "win" : s.rank <= 3 ? "podium" : "ran";
@@ -258,20 +268,24 @@ export async function postValidatorFeedback(
 export async function qualifiedField<T extends { operator: `0x${string}` }>(field: T[]): Promise<T[]> {
   const min = Number(process.env.QUALIFY_MIN_POINTS ?? "0");
   if (min <= 0 || field.length === 0) return field;
+  // Read each UNIQUE operator's points balance in one parallel pass (batched)
+  // rather than a sequential read per operator. A failed read is treated as 0
+  // (does not qualify), matching the prior behavior where a throw aborted scoring.
+  const uniqueOps = [...new Set(field.map((e) => e.operator.toLowerCase()))];
+  const balList = await Promise.all(
+    uniqueOps.map((op) =>
+      publicClient
+        .readContract({ address: config.contracts.PointsLedger, abi: pointsAbi, functionName: "balanceOf", args: [op as `0x${string}`] })
+        .then((b) => b as bigint)
+        .catch(() => 0n),
+    ),
+  );
   const seen = new Map<string, bigint>();
+  uniqueOps.forEach((op, i) => seen.set(op, balList[i]!));
   const out: T[] = [];
   for (const e of field) {
     const key = e.operator.toLowerCase();
-    let bal = seen.get(key);
-    if (bal === undefined) {
-      bal = (await publicClient.readContract({
-        address: config.contracts.PointsLedger,
-        abi: pointsAbi,
-        functionName: "balanceOf",
-        args: [e.operator],
-      })) as bigint;
-      seen.set(key, bal);
-    }
+    const bal = seen.get(key) ?? 0n;
     if (bal >= BigInt(min)) out.push(e);
     else console.log(`contest qualification: ${e.operator} below ${min} Cycles, skipped`);
   }

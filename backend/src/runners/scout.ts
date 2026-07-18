@@ -893,11 +893,22 @@ export class ScoutRunner implements Runner {
     const results: AgentResult[] = [];
     const plans: ScoutPlan[] = [];
 
+    // Read every hot-wallet balance in ONE parallel pass before the strategy
+    // loop. With JSON-RPC batching these coalesce into a single request instead
+    // of N sequential round-trips against the rate-limited Arc RPC (the pre-pass
+    // used to block one balance read at a time). A failed read is treated as
+    // unfunded (that agent skips), which is more robust than the old un-caught
+    // read throwing and failing the ENTIRE contest for one bad RPC response.
+    const balances = await Promise.all(
+      entries.map((e) => hotWalletBalance(e.agentId).catch(() => 0n)),
+    );
+
     // Pre-pass: pick each agent's strategy and trait-boosted swap target. The
     // execution (sequential burst, or the live streamed race) happens after.
-    for (const e of entries) {
+    for (let i = 0; i < entries.length; i++) {
+      const e = entries[i]!;
+      const balance = balances[i]!;
       const account = deriveHotWallet(e.agentId);
-      const balance = await hotWalletBalance(e.agentId);
       if (balance === 0n) {
         results.push({
           agentId: e.agentId,
