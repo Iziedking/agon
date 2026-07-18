@@ -7,6 +7,20 @@ import { arcTestnet } from "@/lib/arc";
 import { loginWithSigner, signInWithEmail } from "@/lib/auth";
 import { friendlyError } from "@/lib/errors";
 import { useAuth } from "@/hooks/useAuth";
+import { AppHeader } from "@/components/pengu/AppHeader";
+import { Footer } from "@/components/redesign/Footer";
+import {
+  BracketedCell,
+  CornerMarkers,
+  SectionHeader,
+  StatusChip,
+  TagButton,
+} from "@/components/redesign";
+
+/// /login. The standalone sign-in surface, on the flat ink-on-canvas system.
+/// The primary entry is the TopNav modal; this page is the direct-URL fallback
+/// (bookmarks, deep links). Same two-ways-in logic as the modal — only the
+/// presentation is the redesign.
 
 export default function LoginPage() {
   const [mounted, setMounted] = useState(false);
@@ -57,81 +71,109 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="wrap">
-      <nav className="nav">
-        <a className="wordmark" href="/">
-          Arc<span>Run</span>
-        </a>
-      </nav>
+    <div className="min-h-screen bg-canvas text-ink">
+      <AppHeader />
 
-      <div className="login">
-        <h1>Sign in</h1>
-        <p className="lead">Two ways in.</p>
+      <section className="relative mx-auto max-w-[1600px] px-4 sm:px-6 pt-16">
+        <CornerMarkers />
+        <SectionHeader
+          heading="SIGN IN"
+          subDeck={<>two ways in. bring a wallet, or start with an email and we make one for you.</>}
+        />
+      </section>
 
+      <section className="mx-auto max-w-[1600px] px-4 sm:px-6 py-10">
         {me ? (
-          <section className="card" style={{ marginTop: 24 }}>
-            <div className="status">
-              <div className="mono">
-                Signed in as {me.address.slice(0, 6)}…{me.address.slice(-4)}
+          <div className="max-w-[560px]">
+            <BracketedCell pad="lg">
+              <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">
+                <span aria-hidden className="text-accent">■</span> SESSION
               </div>
-              <div className="mono muted">
-                {me.canEnterContests ? "ready to compete" : "not yet qualified"}
+              <div className="mt-4 flex items-center gap-2">
+                <StatusChip tone="ok">SIGNED IN</StatusChip>
+                <span className="font-mono text-sm text-ink">
+                  {me.address.slice(0, 6)}…{me.address.slice(-4)}
+                </span>
               </div>
-              <button className="btn btn-ghost" onClick={signOut}>
-                Sign out
-              </button>
-            </div>
-          </section>
+              <p className="mt-2 font-mono text-sm text-ink-2">
+                {me.canEnterContests ? "ready to compete." : "not yet qualified — run a few cycles to enter contests."}
+              </p>
+              <div className="mt-6 flex flex-wrap items-center gap-3">
+                <TagButton href="/dashboard">GO TO DASHBOARD</TagButton>
+                <TagButton variant="ghost" arrow={false} onClick={signOut}>SIGN OUT</TagButton>
+              </div>
+            </BracketedCell>
+          </div>
         ) : (
-          <div className="auth-grid">
-            <section className="card">
-              <div className="n">Web3 wallet</div>
-              <h3>Connect a wallet</h3>
-              <p>Sign a free message to prove it&apos;s yours.</p>
-
-              {!mounted ? (
-                <button className="btn" disabled>
-                  Connect Wallet
-                </button>
-              ) : !isConnected ? (
-                <button className="btn" disabled={!openConnectModal} onClick={openConnectModal}>
-                  Connect Wallet
-                </button>
-              ) : chainId !== arcTestnet.id ? (
-                <button className="btn btn-warn" onClick={() => switchChain({ chainId: arcTestnet.id })}>
-                  Switch to Arc Testnet
-                </button>
-              ) : (
-                <button className="btn" disabled={busy} onClick={signInWeb3}>
-                  {busy ? "Signing..." : "Sign in with wallet"}
-                </button>
-              )}
-            </section>
-
-            <section className="card">
-              <div className="n">Email</div>
-              <h3>No wallet needed</h3>
-              <p>We create a wallet and seed it with testnet USDC. No password, no seed phrase.</p>
-              <input
-                className="field"
-                type="email"
-                placeholder="you@email.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                disabled={circleBusy}
-              />
-              <div className="cta">
-                <button className="btn" disabled={circleBusy} onClick={signInEmail}>
-                  {circleBusy ? "Setting up your wallet..." : "Continue"}
-                </button>
+          <div className="grid gap-4 lg:grid-cols-2">
+            {/* Web3 wallet */}
+            <BracketedCell pad="lg" className="flex flex-col">
+              <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">
+                <span aria-hidden className="text-accent">■</span> WEB3 WALLET
               </div>
-            </section>
+              <h2 className="mt-3 font-stencil uppercase text-ink" style={{ fontSize: "26px", lineHeight: 1.05 }}>
+                CONNECT A WALLET
+              </h2>
+              <p className="mt-3 font-mono text-sm leading-[1.55] text-ink-2">
+                sign a free message to prove it&apos;s yours. no gas, no approval.
+              </p>
+              <div className="mt-6">
+                {!mounted ? (
+                  <TagButton disabled arrow={false}>CONNECT WALLET</TagButton>
+                ) : !isConnected ? (
+                  <TagButton disabled={!openConnectModal} onClick={openConnectModal} arrow={false}>
+                    CONNECT WALLET
+                  </TagButton>
+                ) : chainId !== arcTestnet.id ? (
+                  <TagButton onClick={() => switchChain({ chainId: arcTestnet.id })} arrow={false}>
+                    SWITCH TO ARC TESTNET
+                  </TagButton>
+                ) : (
+                  <TagButton disabled={busy} onClick={signInWeb3}>
+                    {busy ? "SIGNING…" : "SIGN IN WITH WALLET"}
+                  </TagButton>
+                )}
+              </div>
+            </BracketedCell>
+
+            {/* Email */}
+            <BracketedCell pad="lg" className="flex flex-col">
+              <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">
+                <span aria-hidden className="text-accent">■</span> EMAIL
+              </div>
+              <h2 className="mt-3 font-stencil uppercase text-ink" style={{ fontSize: "26px", lineHeight: 1.05 }}>
+                NO WALLET NEEDED
+              </h2>
+              <p className="mt-3 font-mono text-sm leading-[1.55] text-ink-2">
+                we create a wallet and seed it with testnet USDC. no password, no seed phrase.
+              </p>
+              <div className="mt-6 flex flex-col gap-3">
+                <input
+                  className="w-full border border-[color:var(--hairline)] bg-canvas px-3 py-2.5 font-mono text-sm text-ink placeholder:text-ink-3 focus:border-ink focus:outline-none"
+                  type="email"
+                  placeholder="you@email.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  disabled={circleBusy}
+                  onKeyDown={(e) => { if (e.key === "Enter") signInEmail(); }}
+                />
+                <div>
+                  <TagButton disabled={circleBusy} onClick={signInEmail}>
+                    {circleBusy ? "SETTING UP…" : "CONTINUE"}
+                  </TagButton>
+                </div>
+              </div>
+            </BracketedCell>
           </div>
         )}
 
-        {error ? <div className="mono err">{error}</div> : null}
-        {loading ? <div className="mono muted">checking session...</div> : null}
-      </div>
+        {error ? (
+          <p className="mt-6 font-mono text-sm" style={{ color: "var(--err)" }}>{error}</p>
+        ) : null}
+        {loading ? <p className="mt-6 font-mono text-sm text-ink-3">checking session…</p> : null}
+      </section>
+
+      <Footer />
     </div>
   );
 }
