@@ -1099,17 +1099,22 @@ app.get("/admin/overview", async (c) => {
     ...(coordinatorAddress ? [coordinatorAddress] : []),
   ];
   // On Arc, native USDC (18-dec, eth_getBalance) and ERC-20 balanceOf (6-dec) are
-  // the SAME balance (docs: stablecoin-native-model). Read the NATIVE balance: it
-  // is the canonical single balance, a lighter call than an eth_call, and with
-  // JSON-RPC batching the whole set collapses into ONE request — the public RPC
-  // rate-limits bursts of eth_call, which is exactly what made a funded wallet
-  // (the coordinator, ~6398 USDC) read 0. A FAILED read stays null (surfaced as
-  // "read failed"), never a fake 0.00 that looks like an empty wallet.
-  const balances = await Promise.all(
-    targets.map((a) => publicClient.getBalance({ address: a }).then((b) => b as bigint).catch(() => null)),
-  );
+  // the SAME balance (docs: stablecoin-native-model), so the native read is the
+  // canonical value (it is what made a funded wallet read 0 when it failed).
+  //
+  // Read these SEQUENTIALLY, deliberately NOT through the transport batcher: this
+  // is a tiny, critical set, and batching folds all of them into ONE JSON-RPC
+  // request that the rate-limited public RPC can 429 as a unit — which nulled
+  // every wallet at once ("read failed" on all cards). Decoupled, each is its own
+  // lightweight request with the transport's built-in retry, so a busy moment
+  // drops one balance, not all of them. A read that still fails stays null
+  // (surfaced as "read failed"), never a fake 0.00. ~8 addresses, admin-only, so
+  // the extra latency is fine; the durable cure is a dedicated ARC_RPC_HTTP.
   const balMap = new Map<string, bigint | null>();
-  targets.forEach((a, i) => balMap.set(a.toLowerCase(), balances[i] ?? null));
+  for (const a of targets) {
+    const b = await publicClient.getBalance({ address: a }).then((x) => x as bigint).catch(() => null);
+    balMap.set(a.toLowerCase(), b);
+  }
 
   const counts = await query<{
     contests: string; challenges: string; operators: string; agents: string;
