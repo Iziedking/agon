@@ -1052,6 +1052,9 @@ function treasurySigner() {
 }
 
 const usdc6 = (b: bigint) => (Number(b) / 1e6).toFixed(2);
+// Native USDC on Arc is 18-decimal (eth_getBalance); it is the SAME balance as the
+// 6-decimal ERC-20 view, just a different scale (docs: stablecoin-native-model).
+const usdc18 = (b: bigint) => (Number(b) / 1e18).toFixed(2);
 const cancelContestAbi = parseAbi(["function cancelContest(uint256 contestId)"]);
 const cancelChallengeAbi = parseAbi(["function cancelChallenge(uint256 id)"]);
 const treasuryViewAbi = parseAbi(["function treasury() view returns (address)"]);
@@ -1095,19 +1098,18 @@ app.get("/admin/overview", async (c) => {
     ...(treasuryAddr ? [treasuryAddr] : []),
     ...(coordinatorAddress ? [coordinatorAddress] : []),
   ];
+  // On Arc, native USDC (18-dec, eth_getBalance) and ERC-20 balanceOf (6-dec) are
+  // the SAME balance (docs: stablecoin-native-model). Read the NATIVE balance: it
+  // is the canonical single balance, a lighter call than an eth_call, and with
+  // JSON-RPC batching the whole set collapses into ONE request — the public RPC
+  // rate-limits bursts of eth_call, which is exactly what made a funded wallet
+  // (the coordinator, ~6398 USDC) read 0. A FAILED read stays null (surfaced as
+  // "read failed"), never a fake 0.00 that looks like an empty wallet.
   const balances = await Promise.all(
-    targets.map((a) =>
-      publicClient
-        .readContract({ address: config.external.USDC, abi: usdcMinimalAbi, functionName: "balanceOf", args: [a] })
-        .then((b) => b as bigint)
-        .catch(() => 0n),
-    ),
+    targets.map((a) => publicClient.getBalance({ address: a }).then((b) => b as bigint).catch(() => null)),
   );
-  const balMap = new Map<string, bigint>();
-  targets.forEach((a, i) => balMap.set(a.toLowerCase(), balances[i] ?? 0n));
-  const coordGas = coordinatorAddress
-    ? await publicClient.getBalance({ address: coordinatorAddress }).catch(() => 0n)
-    : 0n;
+  const balMap = new Map<string, bigint | null>();
+  targets.forEach((a, i) => balMap.set(a.toLowerCase(), balances[i] ?? null));
 
   const counts = await query<{
     contests: string; challenges: string; operators: string; agents: string;
@@ -1123,19 +1125,23 @@ app.get("/admin/overview", async (c) => {
   );
   const k = counts.rows[0];
 
+  // null when the read failed (RPC throttle/timeout) so the UI can say "read
+  // failed" instead of a fake 0.00. On Arc the balance IS the gas headroom (same
+  // asset), so no separate gas figure is needed.
+  const fmtBal = (b: bigint | null | undefined) => (b == null ? null : usdc18(b));
   return c.json({
     chainId: config.chainId,
     usdc: config.external.USDC,
     coordinator: coordinatorAddress
-      ? { address: coordinatorAddress, usdc: usdc6(balMap.get(coordinatorAddress.toLowerCase()) ?? 0n), gas: usdc6(coordGas) }
+      ? { address: coordinatorAddress, usdc: fmtBal(balMap.get(coordinatorAddress.toLowerCase())) }
       : null,
     treasury: treasuryAddr
-      ? { address: treasuryAddr, usdc: usdc6(balMap.get(treasuryAddr.toLowerCase()) ?? 0n) }
+      ? { address: treasuryAddr, usdc: fmtBal(balMap.get(treasuryAddr.toLowerCase())) }
       : null,
     contracts: contracts.map((x) => ({
       key: x.key,
       address: x.address,
-      usdc: usdc6(balMap.get(x.address.toLowerCase()) ?? 0n),
+      usdc: fmtBal(balMap.get(x.address.toLowerCase())),
     })),
     counts: {
       contests: Number(k?.contests ?? 0),

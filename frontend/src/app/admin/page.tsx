@@ -18,9 +18,12 @@ const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL ?? "http://localhost:8082";
 interface Overview {
   chainId: number;
   usdc: string;
-  coordinator: { address: string; usdc: string; gas: string } | null;
-  treasury: { address: string; usdc: string } | null;
-  contracts: Array<{ key: string; address: string; usdc: string }>;
+  // usdc is null when the on-chain read failed (RPC throttle), distinct from a
+  // real "0.00". On Arc the balance is the same asset as the gas token, so there
+  // is no separate gas figure.
+  coordinator: { address: string; usdc: string | null } | null;
+  treasury: { address: string; usdc: string | null } | null;
+  contracts: Array<{ key: string; address: string; usdc: string | null }>;
   counts: {
     contests: number; challenges: number; operators: number; agents: number;
     openContests: number; liveChallenges: number;
@@ -260,7 +263,7 @@ function WalletsRow({ data }: { data: Overview }) {
         {data.treasury ? (
           <>
             <AddrLine address={data.treasury.address} />
-            <div className="mt-1 font-stencil text-[22px] text-ink">{data.treasury.usdc} <span className="font-mono text-[11px] text-ink-3">USDC</span></div>
+            <BalanceLine usdc={data.treasury.usdc} />
           </>
         ) : (
           <div className="mt-2 font-mono text-[11px] text-ink-3">treasury read failed</div>
@@ -271,13 +274,26 @@ function WalletsRow({ data }: { data: Overview }) {
         {data.coordinator ? (
           <>
             <AddrLine address={data.coordinator.address} />
-            <div className="mt-1 font-stencil text-[22px] text-ink">{data.coordinator.usdc} <span className="font-mono text-[11px] text-ink-3">USDC</span></div>
-            <div className="font-mono text-[10px] text-ink-3">gas: {data.coordinator.gas} USDC</div>
+            <BalanceLine usdc={data.coordinator.usdc} />
+            <div className="font-mono text-[10px] text-ink-3">USDC is also the gas token on Arc</div>
           </>
         ) : (
           <div className="mt-2 font-mono text-[11px] text-ink-3">no signer configured</div>
         )}
       </BracketedCell>
+    </div>
+  );
+}
+
+/// A headline USDC balance. `null` means the on-chain read failed (RPC throttle),
+/// shown as "read failed" so a funded wallet is never misreported as 0.00.
+function BalanceLine({ usdc }: { usdc: string | null }) {
+  if (usdc == null) {
+    return <div className="mt-1 font-mono text-[13px]" style={{ color: "var(--warn)" }}>read failed · RPC busy, refresh</div>;
+  }
+  return (
+    <div className="mt-1 font-stencil text-[22px] text-ink">
+      {usdc} <span className="font-mono text-[11px] text-ink-3">USDC</span>
     </div>
   );
 }
@@ -293,7 +309,13 @@ function ContractsTable({ contracts }: { contracts: Overview["contracts"] }) {
               <div className="font-mono text-[12px] uppercase tracking-[0.08em] text-ink">{ct.key}</div>
               <AddrLine address={ct.address} />
             </div>
-            <div className="font-stencil text-[18px] text-ink">{ct.usdc} <span className="font-mono text-[10px] text-ink-3">USDC</span></div>
+            <div className="font-stencil text-[18px] text-ink">
+              {ct.usdc == null ? (
+                <span className="font-mono text-[11px] text-ink-3">read failed</span>
+              ) : (
+                <>{ct.usdc} <span className="font-mono text-[10px] text-ink-3">USDC</span></>
+              )}
+            </div>
           </div>
         ))}
       </div>

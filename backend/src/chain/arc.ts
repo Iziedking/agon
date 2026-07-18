@@ -15,10 +15,19 @@ if (config.chainId !== arcTestnet.id) {
 }
 export { arcTestnet };
 
-/// HTTP client for reads and log polling.
+/// HTTP client for reads and log polling. `batch` coalesces concurrent JSON-RPC
+/// calls (e.g. a `Promise.all` of balance reads) into a SINGLE HTTP request. The
+/// public Arc RPC rate-limits bursts (observed 429s under a fan-out of eth_calls),
+/// which surfaced as slow loads and funded wallets reading 0. Batching cuts the
+/// request count sharply; the Arc RPC supports it. retryCount backs off on the
+/// transient 429/5xx that remain.
 export const publicClient = createPublicClient({
   chain: arcTestnet,
-  transport: http(config.rpcHttp, { retryCount: 3, timeout: 15_000 }),
+  transport: http(config.rpcHttp, {
+    batch: { wait: 16 },
+    retryCount: 3,
+    timeout: 15_000,
+  }),
 });
 
 /// WebSocket client for live event subscriptions (eth_subscribe is WS-only on Arc).
