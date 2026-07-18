@@ -238,7 +238,13 @@ export async function generateMission(opts: {
   // least partly solvable.
   let archetype = econ.archetype;
   let missionFragments = fragments;
-  if (archetype === "external") {
+  // SCOUT missions are always INTERNAL: the intel fragment is bought from the
+  // platform shelf over the A2A rail and the ACTION fragment executes on-chain.
+  // There is no external x402 shape for scout, and the action fragment (which has
+  // no service) must never be filtered out as unmakeable.
+  if (template.domain === "scout") {
+    archetype = "internal";
+  } else if (archetype === "external") {
     const makeable = fragments.filter((f) => f.service != null);
     if (makeable.length > 0) missionFragments = makeable;
     else archetype = "internal";

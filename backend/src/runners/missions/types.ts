@@ -65,8 +65,10 @@ export interface Commission {
 }
 
 /// The operative's autonomous per-fragment decision. The make-vs-buy choice is
-/// driven by the operative's own LLM, not a fixed rule.
-export type MakeOrBuy = "make" | "buy" | "skip";
+/// driven by the operative's own LLM, not a fixed rule. `action` is not a choice
+/// the operative makes: it is forced for an on-chain DeFi (scout) fragment, which
+/// is executed rather than made or bought.
+export type MakeOrBuy = "make" | "buy" | "skip" | "action";
 
 /// One fragment's decision plus its execution outcome. The on-chain proof
 /// (`txHash`) is what the credit-requires-payment grader checks: an x402 tx

@@ -13,7 +13,7 @@ import { config } from "../../config/index.js";
 import { query } from "../../db/pool.js";
 import { callModel, llmConfigured } from "./../llm/client.js";
 import { fallbackModelForTier, modelForTier } from "./../llm/tierConfig.js";
-import { deriveHotWallet } from "../scout.js";
+import { deriveHotWallet, executeScout } from "../scout.js";
 import { payX402 } from "../../nanopayments/index.js";
 import type {
   AgentResult,
@@ -59,9 +59,6 @@ export class MissionRunner implements Runner {
     const mission = await loadMission(contestId);
     if (!mission) {
       throw new Error(`contest ${contestId} is not a mission`);
-    }
-    if (mission.domain === "scout") {
-      throw new Error("scout-domain missions are not wired yet (later batch)");
     }
 
     // Resolve each fragment's options once.
@@ -140,6 +137,37 @@ export class MissionRunner implements Runner {
         settled: false,
         spent6: "0",
       };
+
+      // SCOUT action fragment: not a make/buy. Execute real on-chain DeFi volume
+      // on the Scout rails from this operative's own hot wallet. The intel
+      // fragment(s) in the same mission still run the A2A buy below, so a scout
+      // mission exercises BOTH the A2A economy (buy best-venue intel) and real
+      // on-chain execution (the action). Credit requires BOTH to settle.
+      if (opt.fragment.kind === "action") {
+        row.choice = "action";
+        row.reason = "on-chain DeFi execution (scout rails)";
+        const acted = await this.executeAction(mission, opt, entry).catch((err) => {
+          console.warn(`[mission] action failed f=${opt.fragment.id}: ${err instanceof Error ? err.message : err}`);
+          return null;
+        });
+        if (acted) {
+          // Always feed the summary to synthesis so the deliverable reflects the
+          // work even if the volume leg could not settle (uncredited, not empty).
+          if (acted.summary) {
+            row.data = acted.summary;
+            fragmentData.push({ ask: opt.fragment.ask, data: acted.summary });
+          }
+          if (acted.settled && acted.txHash) {
+            row.settled = true;
+            row.txHash = acted.txHash;
+            row.spent6 = acted.volume6;
+            for (const ev of acted.events) events.push(ev);
+          }
+        }
+        decisionRows.push(row);
+        await this.persistDecision(mission.missionId, entry.agentId, row);
+        continue;
+      }
 
       if (d.choice === "make" && opt.canMake && opt.fragment.service) {
         const made = await this.make(mission, opt, entry).catch((err) => {
@@ -370,6 +398,59 @@ export class MissionRunner implements Runner {
       spent6: res.usdcAmount6.toString(),
       data: res.response ?? null,
     };
+  }
+
+  /// SCOUT action: run real on-chain volume from the operative's own hot wallet
+  /// via the Scout rails (the same executeScout the Scout contest uses), record
+  /// the proof the grader's credit gate re-verifies (mission_actions), and tape
+  /// one SWAP row per landed tx. The "spend" recorded here is the on-chain volume
+  /// moved, which is what the scout quality score is normalized against. Neutral
+  /// wording ("volume", not "swap") because executeScout falls back to real
+  /// self-transfer volume when the pool is routeless, and we must not over-claim.
+  private async executeAction(
+    mission: Commission,
+    opt: FragmentOptions,
+    entry: ContestEntryInput,
+  ): Promise<{ settled: boolean; txHash?: string; volume6: string; summary: string; events: TapeEvent[] }> {
+    const ops = Math.max(1, Math.floor(config.mission.scoutOps));
+    const exec = await executeScout(entry.agentId, entry.tier, { ops });
+    const volume6 = exec.volumeUsdc6.toString();
+    const settled = exec.volumeUsdc6 > 0n && exec.txHashes.length > 0;
+    const txHash = exec.txHashes[0];
+
+    await query(
+      `insert into mission_actions (contest_id, agent_id, fragment_id, tx_hash, volume_usdc_6, ops, status)
+       values ($1,$2,$3,$4,$5,$6,$7)
+       on conflict (contest_id, agent_id, fragment_id) do update set
+         tx_hash=excluded.tx_hash, volume_usdc_6=excluded.volume_usdc_6,
+         ops=excluded.ops, status=excluded.status`,
+      [
+        mission.missionId,
+        entry.agentId,
+        opt.fragment.id,
+        txHash ?? null,
+        volume6,
+        exec.opsCount,
+        settled ? "settled" : "failed",
+      ],
+    );
+
+    const events: TapeEvent[] = exec.txHashes.map((h, i) => ({
+      agentId: entry.agentId,
+      verb: "SWAP" as const,
+      amount6: exec.txVolumesUsdc6[i] ?? "0",
+      token: "USDC",
+      txHash: h,
+      chain: "arc",
+      label: "scout rails",
+      ts: Date.now(),
+    }));
+
+    const summary = settled
+      ? `Moved ${(Number(exec.volumeUsdc6) / 1e6).toFixed(2)} USDC of on-chain volume across ${exec.opsCount} op(s) on the Scout rails.`
+      : `No on-chain volume moved (daily cap reached, or the hot wallet could not cover an op plus gas).`;
+
+    return { settled, txHash, volume6, summary, events };
   }
 
   /// Synthesizes the deliverable from the gathered fragments. LLM when available,

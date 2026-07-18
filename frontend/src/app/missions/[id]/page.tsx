@@ -731,7 +731,9 @@ function ChoiceChip({ choice }: { choice: Choice }) {
       ? { color: "var(--accent)", label: "BUY" }
       : choice === "make"
         ? { color: "var(--ok)", label: "MAKE" }
-        : { color: "var(--ink-3)", label: "SKIP" };
+        : choice === "action"
+          ? { color: "var(--syn-gold)", label: "ACT" }
+          : { color: "var(--ink-3)", label: "SKIP" };
   return (
     <span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink">
       <span aria-hidden style={{ color: conf.color }}>
@@ -825,6 +827,7 @@ function OperativeCard({
 function naturalReason(choice: Choice): string {
   if (choice === "buy") return "bought the read from a specialist";
   if (choice === "make") return "sourced it first-hand";
+  if (choice === "action") return "moved real volume on the scout rails";
   return "could not source this piece";
 }
 

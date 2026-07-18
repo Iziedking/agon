@@ -2082,6 +2082,7 @@ app.get("/missions", async (c) => {
     operatives: string;
     payments: string;
     spent6: string;
+    volume6: string;
   }>(
     `select
        m.contest_id,
@@ -2100,7 +2101,8 @@ app.get("/missions", async (c) => {
        (
          (select coalesce(sum(price_usdc_6::numeric), 0) from a2a_trades t where t.contest_id = m.contest_id and t.status = 'settled')
          + (select coalesce(sum(usdc_amount_6::numeric), 0) from nanopayments n where n.contest_id = m.contest_id and n.status = 'settled')
-       ) as spent6
+       ) as spent6,
+       (select coalesce(sum(volume_usdc_6::numeric), 0) from mission_actions a where a.contest_id = m.contest_id and a.status = 'settled') as volume6
      from missions m
      left join contests c on c.id = m.contest_id
      -- Hide the graveyard: a mission that CANCELLED WITH NOBODY IN IT is not a
@@ -2141,6 +2143,7 @@ app.get("/missions", async (c) => {
       operatives: Number(r.operatives),
       payments: Number(r.payments),
       spent6: String(r.spent6),
+      volume6: String(r.volume6),
     })),
   });
 });
@@ -2613,6 +2616,14 @@ app.get("/missions/:id", async (c) => {
     "select agent_id, fragment_id, base_price_6, tx_hash, created_at::text as created_at from mission_intel_buys where contest_id = $1 order by created_at",
     [contestId],
   );
+  // SCOUT missions move real on-chain VOLUME (not a payment). Kept SEPARATE from
+  // the payment tape/spent total so we never misrepresent volume as USDC spent;
+  // surfaced as its own on-chain-volume figure on the mission.
+  const scoutVol = await query<{ v: string }>(
+    "select coalesce(sum(volume_usdc_6::numeric),0)::text as v from mission_actions where contest_id = $1 and status = 'settled'",
+    [contestId],
+  );
+  const scoutVolume6 = scoutVol.rows[0]?.v ?? "0";
 
   // Naturalize the decision reason. The stored reason is the operative's raw
   // internal note and can name backend services (e.g. a data vendor); the UI
@@ -2625,7 +2636,9 @@ app.get("/missions/:id", async (c) => {
         ? "The operative gathered this piece itself."
         : choice === "skip"
           ? "Left this piece out of the deliverable."
-          : "";
+          : choice === "action"
+            ? "Executed real on-chain DeFi volume on the Scout rails."
+            : "";
 
   // Group decisions under each operative.
   const decByAgent = new Map<number, unknown[]>();
@@ -2736,6 +2749,8 @@ app.get("/missions/:id", async (c) => {
       weight: Number(mission.weight) || 0,
       basePrice6: mission.base_price_usdc_6,
       seq: Number(mission.seq) || 0,
+      // On-chain DeFi volume moved by scout-domain operatives (0 for solver/analyst).
+      scoutVolume6,
     },
     join: {
       poolUsdc6: poolUsdc6.toString(),

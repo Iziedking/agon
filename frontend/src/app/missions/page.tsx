@@ -124,7 +124,15 @@ export default function MissionsPage() {
                   <div className="mt-5 grid grid-cols-3 gap-2 border-t border-[color:var(--hairline)] pt-4">
                     <Stat label="OPERATIVES" value={String(m.operatives)} />
                     <Stat label="PAYMENTS" value={String(m.payments)} />
-                    <Stat label="MOVED" value={formatUsdc6(m.spent6).replace(" USDC", "")} />
+                    {/* SCOUT missions move real on-chain volume (the swap leg); solver/
+                        analyst move USDC as intel payments. Show the figure that fits
+                        the domain so a scout card never reads "0 MOVED" despite real
+                        DeFi activity. */}
+                    {m.domain === "scout" ? (
+                      <Stat label="VOLUME" value={formatUsdc6(m.volume6 ?? "0").replace(" USDC", "")} />
+                    ) : (
+                      <Stat label="MOVED" value={formatUsdc6(m.spent6).replace(" USDC", "")} />
+                    )}
                   </div>
 
                   <div className="mt-5">

@@ -1037,6 +1037,25 @@ create table if not exists mission_decisions (
 );
 create index if not exists mission_decisions_contest_idx on mission_decisions(contest_id, agent_id);
 
+-- SCOUT-domain missions execute an on-chain DeFi ACTION fragment (real swaps on
+-- the Scout rails) instead of a make/buy. This is the proof row the grader's
+-- credit gate re-verifies for an `action` decision, exactly as it verifies
+-- a2a_trades for a buy and nanopayments for a make: an action counts only when a
+-- settled row here carries the same tx_hash. volume_usdc_6 is what the scout
+-- quality score is normalized against.
+create table if not exists mission_actions (
+  contest_id     bigint not null,
+  agent_id       bigint not null,
+  fragment_id    text not null,
+  tx_hash        text,
+  volume_usdc_6  text not null default '0',
+  ops            int not null default 0,
+  status         text not null default 'pending',  -- 'pending' | 'settled' | 'failed'
+  created_at     timestamptz not null default now(),
+  primary key (contest_id, agent_id, fragment_id)
+);
+create index if not exists mission_actions_contest_idx on mission_actions(contest_id, agent_id);
+
 -- The operative's submitted deliverable and its grade. score is the deterministic
 -- value fed into the merkle payout; `judged` holds the judge.ts verdict detail.
 create table if not exists mission_submissions (

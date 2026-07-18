@@ -77,16 +77,19 @@ async function cancelOnChain(kind: "cancel_contest" | "cancel_challenge", target
 /// Open a mission on demand from the admin console. Uses the SAME openMission
 /// path the autopilot uses (real on-chain solver contest + generateMission +
 /// seedSpecialists), so an admin-opened mission is real agent work, not a stub.
-/// Params are all optional: domain (solver|analyst, default solver), poolUsdc
-/// (default MISSION_POOL_USDC_MIN or 200), windowSeconds (default 600). Seat
-/// counts and the internal/external mix come from the mission env, unchanged.
+/// Params are all optional: domain (solver|analyst|scout, default solver),
+/// poolUsdc (default MISSION_POOL_USDC_MIN or 200), windowSeconds (default 600).
+/// A scout mission is intel-then-act: the operative buys best-venue intel over
+/// A2A, then executes real on-chain DeFi volume on the Scout rails. Seat counts
+/// and the internal/external mix come from the mission env, unchanged.
 async function openMissionNow(
   params: Record<string, unknown> | null,
   broadcast: (message: unknown) => void,
 ): Promise<string> {
   const p = params ?? {};
   const domainRaw = String(p.domain ?? "solver").toLowerCase();
-  const domain: "solver" | "analyst" = domainRaw === "analyst" ? "analyst" : "solver";
+  const domain: "solver" | "analyst" | "scout" =
+    domainRaw === "analyst" ? "analyst" : domainRaw === "scout" ? "scout" : "solver";
   const poolFromEnv = Number(process.env.MISSION_POOL_USDC_MIN ?? "0");
   const poolUsdc = Number(p.poolUsdc) > 0 ? Number(p.poolUsdc) : poolFromEnv > 0 ? poolFromEnv : 200;
   const windowSeconds = Number(p.windowSeconds) > 0 ? Math.floor(Number(p.windowSeconds)) : 600;

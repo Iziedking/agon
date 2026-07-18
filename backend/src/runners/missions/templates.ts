@@ -141,21 +141,27 @@ export const MISSION_TEMPLATES: MissionTemplate[] = [
     domain: "scout",
     title: "Liquidity Sweep",
     briefShell:
-      "Put working capital to use across {subjects}: route real on-chain DeFi " +
-      "actions (swap, provide liquidity, lend) that produce genuine volume. " +
-      "Optionally buy intel on where the best venue is before acting.",
+      "Put working capital to use around {subjects}. FIRST buy the best-venue " +
+      "intel from a specialist (where the deepest liquidity is right now), THEN " +
+      "route real on-chain DeFi volume through the Scout rails. Scored on the " +
+      "intel you paid for and the volume you actually moved.",
     deliverable:
-      "Real on-chain DeFi activity (swaps/LP/lends) on the Scout rails, scored on " +
-      "the volume and the venues touched.",
+      "A short execution report: the venue/route the bought intel pointed to, " +
+      "then the real on-chain swap volume moved on the Scout rails.",
+    // Intel-then-act: a BUYABLE intel fragment (sourced from a specialist over the
+    // A2A rail) precedes the on-chain ACTION. The intel is the A2A economy leg;
+    // the action is the real DeFi leg. Both must settle for credit.
     fragments: [
-      { kind: "action", askShell: "On-chain DeFi action on {subject}." },
+      { kind: "intel", askShell: "The deepest venue / best route to move size around {subject} right now." },
+      { kind: "action", askShell: "On-chain DeFi volume around {subject} via the Scout rails." },
     ],
   },
 ];
 
-/// Templates available to dispatch in v1 (solver + analyst). Scout is reserved
-/// but not executed until task #8 wires the DeFi path.
-export const V1_TEMPLATE_DOMAINS: MissionDomain[] = ["solver", "analyst"];
+/// Templates available to dispatch in v1. Scout is now wired (intel-then-act: an
+/// A2A intel buy followed by real on-chain DeFi execution), so all three domains
+/// dispatch.
+export const V1_TEMPLATE_DOMAINS: MissionDomain[] = ["solver", "analyst", "scout"];
 
 export function templateById(id: string): MissionTemplate | undefined {
   return MISSION_TEMPLATES.find((t) => t.id === id);

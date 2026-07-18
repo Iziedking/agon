@@ -437,6 +437,14 @@ const envSchema = z.object({
   MISSION_INTEL_PIECES: z.coerce.number().int().positive().default(5),
   MISSION_OPERATIVE_SEATS: z.coerce.number().int().positive().default(8),
 
+  // SCOUT-domain missions (intel-then-act): the operative buys best-venue intel
+  // via A2A, then executes real on-chain DeFi. MISSION_SCOUT_OPS is how many swap
+  // round-trips the action fragment runs; MISSION_SCOUT_VOLUME_TARGET_USDC is the
+  // volume that maps to full quality in the scout grade (bounded by the shallow
+  // ~10 USDC pool, so keep it modest until a deeper DEX is wired).
+  MISSION_SCOUT_OPS: z.coerce.number().int().positive().default(4),
+  MISSION_SCOUT_VOLUME_TARGET_USDC: z.coerce.number().positive().default(20),
+
   // Autonomous agents. Each one is an agent that OWNS ITSELF: a Circle
   // Developer-Controlled Wallet holds its ERC-8004 identity NFT, so it is its own
   // operator on chain and can register its own entries. It decides for itself,
@@ -760,6 +768,8 @@ export const config = {
     specialistMaxBuy: env.MISSION_SPECIALIST_MAX_BUY,
     intelPieces: env.MISSION_INTEL_PIECES,
     operativeSeats: env.MISSION_OPERATIVE_SEATS,
+    scoutOps: env.MISSION_SCOUT_OPS,
+    scoutVolumeTargetUsdc: env.MISSION_SCOUT_VOLUME_TARGET_USDC,
   },
   liveData: {
     exaApiKey: env.EXA_API_KEY?.trim() || undefined,

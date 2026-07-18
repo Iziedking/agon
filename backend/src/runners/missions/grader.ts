@@ -84,6 +84,18 @@ export async function verifyCredit(
         [missionId, agentId, r.tx_hash],
       );
       proven = p.length > 0;
+    } else if (r.choice === "action") {
+      // SCOUT on-chain DeFi leg: proven by a settled mission_actions row with the
+      // same tx, exactly as buy/make are proven by their own tables. The runner's
+      // optimistic flag is never trusted; only the proof row credits the fragment.
+      const { rows: p } = await query(
+        `select 1 from mission_actions
+          where contest_id = $1 and agent_id = $2 and fragment_id = $3
+            and status = 'settled' and tx_hash = $4
+          limit 1`,
+        [missionId, agentId, r.fragment_id, r.tx_hash],
+      );
+      proven = p.length > 0;
     }
     if (proven) {
       credited += 1;
@@ -217,6 +229,29 @@ export async function judgeDeliverable(
   return deterministicQuality(mission, deliverable);
 }
 
+/// SCOUT quality: the real on-chain volume this operative moved, normalized
+/// against the configured target. Volume is read from the settled mission_actions
+/// proof rows (the same rows the credit gate checks), never the runner's flags.
+/// Zero volume scores zero quality, so an operative that bought intel but never
+/// executed scores ~0 — the execution is the point of a scout mission.
+async function scoutQuality(
+  missionId: number,
+  agentId: number,
+): Promise<{ quality: number; verdict: string }> {
+  const { rows } = await query<{ volume_usdc_6: string; status: string }>(
+    `select volume_usdc_6, status from mission_actions where contest_id = $1 and agent_id = $2`,
+    [missionId, agentId],
+  );
+  let vol6 = 0n;
+  for (const r of rows) if (r.status === "settled") vol6 += BigInt(r.volume_usdc_6 || "0");
+  const volUsdc = Number(vol6) / 1e6;
+  if (volUsdc <= 0) return { quality: 0, verdict: "scout · no on-chain volume moved" };
+  const target = Math.max(1, config.mission.scoutVolumeTargetUsdc);
+  // Landing real volume at all is worth a 0.4 floor; it scales to 1.0 at target.
+  const quality = clamp01(0.4 + 0.6 * Math.min(1, volUsdc / target));
+  return { quality, verdict: `scout · ${volUsdc.toFixed(2)} USDC on-chain volume (target ${target})` };
+}
+
 /// Grades one operative's submission: verified credit x judged quality, with a
 /// small speed amplifier on real work. Empty or rejected work scores ~0.
 export async function gradeSubmission(
@@ -224,7 +259,13 @@ export async function gradeSubmission(
   sub: { agentId: number; deliverable: string; elapsedMs: number; tier: number },
 ): Promise<MissionGrade> {
   const { credited, total, spent6 } = await verifyCredit(mission.missionId, sub.agentId);
-  const { quality, verdict } = await judgeDeliverable(mission, sub.deliverable);
+  // SCOUT missions are graded on the real on-chain VOLUME moved, not on a
+  // ground-truth intel match (the deliverable is an execution report, not a
+  // synthesis). Solver/analyst keep the LLM-vs-ground-truth judge.
+  const { quality, verdict } =
+    mission.domain === "scout"
+      ? await scoutQuality(mission.missionId, sub.agentId)
+      : await judgeDeliverable(mission, sub.deliverable);
 
   // Tier x training x traits — the SAME strength model contests use, now active
   // for missions. Capability genuinely matters: a higher tier and a trained,

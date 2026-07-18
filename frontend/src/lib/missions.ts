@@ -4,7 +4,9 @@
 
 const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL ?? "http://localhost:8082";
 
-export type Choice = "make" | "buy" | "skip";
+/// `action` is the SCOUT domain's on-chain DeFi leg (real swaps on the Scout
+/// rails), executed rather than made or bought.
+export type Choice = "make" | "buy" | "skip" | "action";
 
 export interface MissionFragment {
   id: string;
@@ -73,6 +75,10 @@ export interface MissionMeta {
   basePrice6?: string;
   /// Display sequence ("MISSION 001"); the URL still uses contestId.
   seq?: number;
+  /// SCOUT domain only: real on-chain DeFi volume moved (USDC 1e6). "0" for
+  /// solver/analyst. Kept separate from any payment total — this is volume, not
+  /// USDC spent.
+  scoutVolume6?: string;
 }
 
 export interface MissionSeats {
@@ -230,6 +236,8 @@ export interface MissionListItem {
   operatives: number;
   payments: number;
   spent6: string;
+  /// SCOUT missions: real on-chain DeFi volume moved (USDC 1e6). "0" otherwise.
+  volume6?: string;
 }
 
 /// Fetches the mission index (open first, then newest). Returns [] on any
