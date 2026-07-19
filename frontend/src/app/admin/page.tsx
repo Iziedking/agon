@@ -935,7 +935,7 @@ function Labeled({ label, children }: { label: string; children: React.ReactNode
   );
 }
 
-const MISSION_TEMPLATES: Record<"solver" | "analyst", Array<{ id: string; label: string }>> = {
+const MISSION_TEMPLATES: Record<"solver" | "analyst" | "scout", Array<{ id: string; label: string }>> = {
   solver: [
     { id: "", label: "RANDOM" },
     { id: "synthesis-intel-brief", label: "SIGNAL SYNTHESIS" },
@@ -946,10 +946,16 @@ const MISSION_TEMPLATES: Record<"solver" | "analyst", Array<{ id: string; label:
     { id: "prediction-read", label: "MARKET READ" },
     { id: "divergence-hunt", label: "DIVERGENCE HUNT" },
   ],
+  // SCOUT is intel-then-act: buy best-venue intel over A2A, then execute real
+  // on-chain DeFi volume on the Scout rails.
+  scout: [
+    { id: "", label: "RANDOM" },
+    { id: "liquidity-sweep", label: "LIQUIDITY SWEEP" },
+  ],
 };
 
 function MissionOpenCard({ token }: { token: string }) {
-  const [domain, setDomain] = useState<"solver" | "analyst">("solver");
+  const [domain, setDomain] = useState<"solver" | "analyst" | "scout">("solver");
   const [templateId, setTemplateId] = useState("");
   const [pool, setPool] = useState("250");
   const [windowMin, setWindowMin] = useState("10");
@@ -1002,13 +1008,14 @@ function MissionOpenCard({ token }: { token: string }) {
           <select
             value={domain}
             onChange={(e) => {
-              setDomain(e.target.value as "solver" | "analyst");
+              setDomain(e.target.value as "solver" | "analyst" | "scout");
               setTemplateId("");
             }}
             className={field}
           >
             <option value="solver">SOLVER</option>
             <option value="analyst">ANALYST</option>
+            <option value="scout">SCOUT</option>
           </select>
         </Labeled>
         <Labeled label="TEMPLATE">
