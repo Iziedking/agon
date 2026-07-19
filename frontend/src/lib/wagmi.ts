@@ -1,4 +1,4 @@
-import { http } from "wagmi";
+import { fallback, http } from "wagmi";
 import {
   arbitrumSepolia,
   arcTestnet,
@@ -39,11 +39,20 @@ import { getDefaultConfig } from "@rainbow-me/rainbowkit";
 /// The Arc transport is the hot path (every wallet read — balances, contract
 /// reads — goes through it), and the public Arc RPC rate-limits bursts. So it gets
 /// JSON-RPC batching (coalesce concurrent reads into one request), a retry for the
-/// 429/5xx, and an optional dedicated endpoint via NEXT_PUBLIC_ARC_RPC_HTTP. The
-/// bridge source chains stay on their bare public RPCs — they're touched only
-/// during an occasional bridge, not on every page.
+/// 429/5xx, and dedicated endpoint(s) via NEXT_PUBLIC_ARC_RPC_HTTP (comma-separated,
+/// primary first). When set, the transport is a `fallback([...])` that tries the
+/// dedicated endpoint(s) then the public RPC, so one endpoint failing never breaks
+/// wallet reads. The bridge source chains stay on their bare public RPCs — they're
+/// touched only during an occasional bridge, not on every page.
 const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || "arcrun_walletconnect_unset";
-const ARC_RPC_HTTP = process.env.NEXT_PUBLIC_ARC_RPC_HTTP || undefined;
+const arcDedicatedRpc = (process.env.NEXT_PUBLIC_ARC_RPC_HTTP || "")
+  .split(",")
+  .map((u) => u.trim())
+  .filter(Boolean);
+const ARC_RPC_OPTS = { batch: true, retryCount: 3 } as const;
+const arcTransport = arcDedicatedRpc.length
+  ? fallback([...arcDedicatedRpc.map((u) => http(u, ARC_RPC_OPTS)), http(undefined, ARC_RPC_OPTS)])
+  : http(undefined, ARC_RPC_OPTS);
 
 export const config = getDefaultConfig({
   appName: "ArcRun",
@@ -59,7 +68,7 @@ export const config = getDefaultConfig({
     unichainSepolia,
   ],
   transports: {
-    [arcTestnet.id]: http(ARC_RPC_HTTP, { batch: true, retryCount: 3 }),
+    [arcTestnet.id]: arcTransport,
     [sepolia.id]: http(),
     [baseSepolia.id]: http(),
     [arbitrumSepolia.id]: http(),

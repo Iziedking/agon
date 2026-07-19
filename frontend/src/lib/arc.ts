@@ -1,4 +1,4 @@
-import { createPublicClient, http } from "viem";
+import { createPublicClient, fallback, http } from "viem";
 import { arcTestnet } from "viem/chains";
 
 /// Re-export viem's built-in Arc testnet chain. viem ships `arcTestnet`
@@ -23,11 +23,15 @@ export function nftLink(tokenId: bigint | number | string): string {
 /// Native USDC on Arc (6 decimals as an ERC-20). Used for agent upgrades.
 export const USDC = "0x3600000000000000000000000000000000000000" as const;
 
-/// Optional dedicated Arc RPC for the browser. The public RPC
-/// (rpc.testnet.arc.network) rate-limits bursts (429) and runs ~0.65s/call, so a
-/// production deploy should point this at a dedicated endpoint on Vercel. Falls
-/// back to the chain's default RPC when unset.
-const ARC_RPC_HTTP = process.env.NEXT_PUBLIC_ARC_RPC_HTTP || undefined;
+/// Dedicated Arc RPC(s) for the browser, comma-separated (primary first), set on
+/// Vercel as NEXT_PUBLIC_ARC_RPC_HTTP. The public RPC (rpc.testnet.arc.network)
+/// rate-limits bursts (429) and runs ~0.65s/call, so a dedicated endpoint is the
+/// real fix. The chain's public RPC is ALWAYS appended as a final backstop.
+const RPC_OPTS = { batch: { wait: 16 }, retryCount: 3, timeout: 15_000 } as const;
+const dedicatedRpc = (process.env.NEXT_PUBLIC_ARC_RPC_HTTP || "")
+  .split(",")
+  .map((u) => u.trim())
+  .filter(Boolean);
 
 /// Read-only client for fetching on-chain state (no wallet needed).
 ///
@@ -40,9 +44,15 @@ const ARC_RPC_HTTP = process.env.NEXT_PUBLIC_ARC_RPC_HTTP || undefined;
 ///    into ONE HTTP request. Without it those still burst the RPC and 429, which
 ///    is what made pages crawl and balances read 0. `retryCount` backs off on the
 ///    429/5xx that remain.
+///
+/// When a dedicated RPC is set, the transport is a `fallback([...])`: viem uses
+/// the dedicated endpoint(s) first and fails over to the public RPC on error, so
+/// one endpoint going down never takes reads with it.
 export const publicClient = createPublicClient({
   chain: arcTestnet,
-  transport: http(ARC_RPC_HTTP, { batch: { wait: 16 }, retryCount: 3, timeout: 15_000 }),
+  transport: dedicatedRpc.length
+    ? fallback([...dedicatedRpc.map((u) => http(u, RPC_OPTS)), http(undefined, RPC_OPTS)])
+    : http(undefined, RPC_OPTS),
   batch: { multicall: { wait: 16, batchSize: 4_096 } },
 });
 

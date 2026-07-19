@@ -7,11 +7,34 @@ import { z } from "zod";
 /// from the environment; public contract addresses come from the committed
 /// deployments file the contracts package writes.
 
+/// Split a comma-separated URL list into trimmed, non-empty entries.
+function parseUrlList(s: string): string[] {
+  return s.split(",").map((u) => u.trim()).filter(Boolean);
+}
+
+/// True when every comma-separated entry parses as a URL (allows the RPC vars to
+/// carry a primary + fallback list, e.g. "https://dedicated,https://public").
+function isCommaSeparatedUrls(s: string): boolean {
+  const parts = parseUrlList(s);
+  if (parts.length === 0) return false;
+  return parts.every((p) => {
+    try {
+      new URL(p);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+}
+
 const envSchema = z.object({
   DATABASE_URL: z.string().url(),
   REDIS_URL: z.string().url(),
-  ARC_RPC_HTTP: z.string().url(),
-  ARC_RPC_WS: z.string().url(),
+  // One or more comma-separated URLs (primary first). Multiple URLs enable a
+  // fallback transport: the read clients try the primary, then fail over to the
+  // next on error, so a dedicated endpoint and the public RPC back each other up.
+  ARC_RPC_HTTP: z.string().refine(isCommaSeparatedUrls, "must be one or more comma-separated URLs"),
+  ARC_RPC_WS: z.string().refine(isCommaSeparatedUrls, "must be one or more comma-separated URLs"),
   CHAIN_ID: z.coerce.number().int().positive(),
   START_BLOCK: z.coerce.bigint().nonnegative().default(0n),
   DEPLOYMENTS_FILE: z.string().default("../contracts/deployments/arc-testnet.json"),
@@ -586,8 +609,13 @@ if (deployments.chainId !== env.CHAIN_ID) {
 export const config = {
   databaseUrl: env.DATABASE_URL,
   redisUrl: env.REDIS_URL,
-  rpcHttp: env.ARC_RPC_HTTP,
-  rpcWs: env.ARC_RPC_WS,
+  // rpcHttp/rpcWs are the PRIMARY (first) URL, used directly by wallet clients
+  // that take a single endpoint. rpcHttpList/rpcWsList carry every configured URL
+  // so the read clients can build a fallback transport (primary, then backups).
+  rpcHttp: parseUrlList(env.ARC_RPC_HTTP)[0]!,
+  rpcWs: parseUrlList(env.ARC_RPC_WS)[0]!,
+  rpcHttpList: parseUrlList(env.ARC_RPC_HTTP),
+  rpcWsList: parseUrlList(env.ARC_RPC_WS),
   chainId: env.CHAIN_ID,
   startBlock: env.START_BLOCK,
   contracts: deployments.contracts,

@@ -1,4 +1,4 @@
-import { createPublicClient, http, webSocket } from "viem";
+import { createPublicClient, fallback, http, webSocket } from "viem";
 import { arcTestnet } from "viem/chains";
 import { config } from "../config/index.js";
 
@@ -21,13 +21,18 @@ export { arcTestnet };
 /// which surfaced as slow loads and funded wallets reading 0. Batching cuts the
 /// request count sharply; the Arc RPC supports it. retryCount backs off on the
 /// transient 429/5xx that remain.
+/// Each configured HTTP RPC becomes a batching, retrying transport. With more than
+/// one URL they are wrapped in `fallback([...])`: viem uses the primary and fails
+/// over to the next on error, so a dedicated endpoint and the public RPC back each
+/// other up. Set `ARC_RPC_HTTP` to a comma-separated list (primary first).
+const httpTransports = config.rpcHttpList.map((url) =>
+  http(url, { batch: { wait: 16 }, retryCount: 3, timeout: 15_000 }),
+);
+const httpTransport = httpTransports.length > 1 ? fallback(httpTransports) : httpTransports[0]!;
+
 export const publicClient = createPublicClient({
   chain: arcTestnet,
-  transport: http(config.rpcHttp, {
-    batch: { wait: 16 },
-    retryCount: 3,
-    timeout: 15_000,
-  }),
+  transport: httpTransport,
   // Multicall aggregates concurrent CONTRACT reads (readContract scheduled in the
   // same tick) into ONE Multicall3 eth_call. Combined with the transport's
   // JSON-RPC batching above, a parallelized scan (e.g. reading 100 contests to
@@ -37,7 +42,11 @@ export const publicClient = createPublicClient({
 });
 
 /// WebSocket client for live event subscriptions (eth_subscribe is WS-only on Arc).
+/// Same fallback treatment when multiple WS URLs are configured via ARC_RPC_WS.
+const wsTransports = config.rpcWsList.map((url) => webSocket(url, { retryCount: 3 }));
+const wsTransport = wsTransports.length > 1 ? fallback(wsTransports) : wsTransports[0]!;
+
 export const wsClient = createPublicClient({
   chain: arcTestnet,
-  transport: webSocket(config.rpcWs, { retryCount: 3 }),
+  transport: wsTransport,
 });
