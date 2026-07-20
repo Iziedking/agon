@@ -183,19 +183,52 @@ async function finalScores(
 /// A FLAT float (the old default, 2 USDC) sits below the intel price band for any
 /// real pool, so every BUY was declined "buyer underfunded" and the mission
 /// cancelled with nobody credited — the recurring internal-mission cancel.
-async function operativeFloatUsdcFor(contestId: number): Promise<number> {
+///
+/// Returns the total AND the slice of it earmarked for on-chain action (swap
+/// principal + gas). They are reported separately because the participation
+/// refund measures spend against the float an operative could actually SPEND:
+/// swap principal recirculates rather than being spent, so counting it in the
+/// denominator would put the bar out of reach for every scout operative.
+interface OperativeFloat {
+  total: number;
+  actionUsdc: number;
+}
+
+async function operativeFloatUsdcFor(contestId: number): Promise<OperativeFloat> {
   const mission = await loadMission(contestId);
-  if (!mission) return config.mission.operativeFloatUsdc;
-  const GAS_RESERVE6 = BigInt(Math.round(Number(process.env.MISSION_GAS_RESERVE_USDC ?? "0.05") * 1e6));
+  if (!mission) return { total: config.mission.operativeFloatUsdc, actionUsdc: 0 };
+  const gasReserveUsdc = Number(process.env.MISSION_GAS_RESERVE_USDC ?? "0.05");
+  const GAS_RESERVE6 = BigInt(Math.round(gasReserveUsdc * 1e6));
   let total6 = 0n;
+  let action6 = 0n;
   for (const f of mission.fragments) {
+    // ACTION fragments (scout) are not bought from a specialist, they are swapped
+    // on chain, so they have no price to look up and used to add NOTHING to the
+    // float. The operative was funded for its intel buys alone and reached the
+    // swap with whatever crumbs were left (about 1 USDC after a 5 USDC intel
+    // buy), so real volume was a rounding error against the target. Budget the
+    // swap explicitly: one swap's principal (it recirculates through the round
+    // trip) plus gas for every leg, matching executeScoutSwaps' own maths.
+    if (f.kind === "action") {
+      const trips = Math.max(1, Math.floor(config.mission.scoutOps));
+      const swapMaxUsdc = Number(process.env.SCOUT_SWAP_MAX_USDC ?? "10");
+      const principal = Math.min(swapMaxUsdc, Math.max(...config.scout.swapSizeByTier));
+      const gas = Number(process.env.SCOUT_GAS_RESERVE_USDC ?? "0.05") * (trips * 2 + 1);
+      const budget6 = BigInt(Math.round((principal + gas) * 1e6));
+      total6 += budget6;
+      action6 += budget6;
+      continue;
+    }
     const spec = await getSpecialistForFragment(contestId, f.id).catch(() => null);
     if (spec) total6 += BigInt(spec.price6) + GAS_RESERVE6;
   }
-  if (total6 === 0n) return config.mission.operativeFloatUsdc;
+  if (total6 === 0n) return { total: config.mission.operativeFloatUsdc, actionUsdc: 0 };
   // 15% margin so a small price move or a second-choice seller still clears.
   const withMargin = Number((total6 * 115n) / 100n) / 1e6;
-  return Math.max(config.mission.operativeFloatUsdc, withMargin);
+  return {
+    total: Math.max(config.mission.operativeFloatUsdc, withMargin),
+    actionUsdc: Number((action6 * 115n) / 100n) / 1e6,
+  };
 }
 
 /// Funds each operative the USDC float it needs to BUY intel from specialists over
@@ -210,11 +243,11 @@ async function operativeFloatUsdcFor(contestId: number): Promise<number> {
 async function runMission(contestId: number, field: ContestEntryInput[]): Promise<AgentResult[]> {
   const ids = field.map((e) => e.agentId);
   const need = await operativeFloatUsdcFor(contestId);
-  const perOp = Math.min(need, config.mission.fundMaxUsdc);
+  const perOp = Math.min(need.total, config.mission.fundMaxUsdc);
   if (perOp > 0 && config.scout.masterMnemonic) {
-    if (perOp < need) {
+    if (perOp < need.total) {
       console.warn(
-        `[mission ${contestId}] operative float capped at ${perOp.toFixed(2)} USDC (need ${need.toFixed(2)}) by the per-operative ceiling MISSION_FUND_MAX_USDC=${config.mission.fundMaxUsdc}; some BUYs may decline. Raise MISSION_FUND_MAX_USDC.`,
+        `[mission ${contestId}] operative float capped at ${perOp.toFixed(2)} USDC (need ${need.total.toFixed(2)}) by the per-operative ceiling MISSION_FUND_MAX_USDC=${config.mission.fundMaxUsdc}; some BUYs may decline. Raise MISSION_FUND_MAX_USDC.`,
       );
     }
     await fundHotWallets(ids, perOp).catch((err) =>
@@ -241,13 +274,19 @@ async function runMission(contestId: number, field: ContestEntryInput[]): Promis
 
   // The mission is settling (pays out). Reward genuine participants: refund the
   // join fee of any operative that put >= MISSION_REFUND_MIN_SPEND_FRAC of its
-  // funded float to work on real settled spend. `perOp` is the float ACTUALLY
-  // funded per operative (post-cap), the correct denominator. Best-effort: a
-  // refund failure never blocks the payout.
+  // SPENDABLE float to work on real settled spend. The denominator is the float
+  // actually funded (post-cap) MINUS the slice earmarked for on-chain action:
+  // swap principal recirculates rather than being spent, so leaving it in would
+  // silently push the bar out of reach for every scout operative the moment the
+  // swap budget was added to the float. Scaled by the cap, since a cap that bites
+  // squeezes the action budget too. Best-effort: a refund failure never blocks
+  // the payout.
+  const capScale = need.total > 0 ? perOp / need.total : 1;
+  const spendableFloat = Math.max(0, perOp - need.actionUsdc * capScale);
   await refundParticipationFees(
     contestId,
     field.map((e) => ({ agentId: e.agentId, operator: e.operator })),
-    perOp,
+    spendableFloat,
     config.mission.refundMinSpendFrac,
   ).catch((err) =>
     console.warn(`[mission ${contestId}] participation refund failed: ${err instanceof Error ? err.message : err}`),

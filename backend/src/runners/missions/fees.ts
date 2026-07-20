@@ -65,7 +65,9 @@ export async function refundMissionFees(contestId: number): Promise<void> {
 /// excluded — a scout operative earns the fee back on the intel it bought, not the
 /// swaps it recirculated. Idempotent on `refunded = false`; only ever runs on a
 /// paying mission (a cancelled one refunds every fee anyway), so it never races the
-/// cancel path. `floatUsdc` is the float ACTUALLY funded per operative (post-cap).
+/// cancel path. `floatUsdc` is the SPENDABLE float per operative: the amount
+/// actually funded (post-cap) less any slice earmarked for on-chain action, since
+/// swap principal recirculates and never shows up as spend.
 export async function refundParticipationFees(
   contestId: number,
   operatives: Array<{ agentId: number; operator: string }>,
