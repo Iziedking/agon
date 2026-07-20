@@ -272,26 +272,39 @@ async function runMission(contestId: number, field: ContestEntryInput[]): Promis
     return [];
   }
 
-  // The mission is settling (pays out). Reward genuine participants: refund the
-  // join fee of any operative that put >= MISSION_REFUND_MIN_SPEND_FRAC of its
-  // SPENDABLE float to work on real settled spend. The denominator is the float
-  // actually funded (post-cap) MINUS the slice earmarked for on-chain action:
-  // swap principal recirculates rather than being spent, so leaving it in would
-  // silently push the bar out of reach for every scout operative the moment the
-  // swap budget was added to the float. Scaled by the cap, since a cap that bites
-  // squeezes the action budget too. Best-effort: a refund failure never blocks
-  // the payout.
+  return results;
+}
+
+/// Participation refund, run at settlement once the winners are known (which is
+/// why it lives here and not in runMission: the payout tree is computed after the
+/// run). Any operative that put >= MISSION_REFUND_MIN_SPEND_FRAC of its spendable
+/// float to work on real settled spend earns its join fee back, EXCEPT the
+/// operatives being paid a prize: a winner is already made whole by the payout.
+///
+/// The denominator is the float actually funded (post-cap) MINUS the slice
+/// earmarked for on-chain action. Swap principal recirculates rather than being
+/// spent, so leaving it in would push the bar out of reach for every scout
+/// operative. Scaled by the cap, since a cap that bites squeezes the action
+/// budget too. No-op on ordinary contests and best-effort throughout: a refund
+/// failure never blocks a settlement.
+async function participationRefunds(
+  contestId: number,
+  results: AgentResult[],
+  winners: string[],
+): Promise<void> {
+  const mission = await loadMission(contestId).catch(() => null);
+  if (!mission || results.length === 0) return;
+  const need = await operativeFloatUsdcFor(contestId);
+  const perOp = Math.min(need.total, config.mission.fundMaxUsdc);
   const capScale = need.total > 0 ? perOp / need.total : 1;
   const spendableFloat = Math.max(0, perOp - need.actionUsdc * capScale);
   await refundParticipationFees(
     contestId,
-    field.map((e) => ({ agentId: e.agentId, operator: e.operator })),
+    results.map((r) => ({ agentId: r.agentId, operator: r.operator })),
     spendableFloat,
     config.mission.refundMinSpendFrac,
-  ).catch((err) =>
-    console.warn(`[mission ${contestId}] participation refund failed: ${err instanceof Error ? err.message : err}`),
+    winners,
   );
-  return results;
 }
 
 function standings(results: AgentResult[]) {
@@ -633,6 +646,15 @@ export async function runContestById(contestId: number, broadcast: (message: unk
     const p = payouts[i]!;
     void notify(p.operator, await winNotice(contestId, i + 1, p.amount));
   }
+
+  // Mission participation refunds, minus the winners (their prize is the reward).
+  await participationRefunds(
+    contestId,
+    results,
+    payouts.map((p) => p.operator),
+  ).catch((err) =>
+    console.warn(`contest ${contestId}: participation refund failed: ${err instanceof Error ? err.message : err}`),
+  );
 
   // Post-settlement rewards (best-effort, each logs on failure):
   // in-game reputation, Cycles, ERC-8004 validator feedback, and one

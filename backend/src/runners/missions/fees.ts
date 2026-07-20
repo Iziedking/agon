@@ -68,14 +68,21 @@ export async function refundMissionFees(contestId: number): Promise<void> {
 /// cancel path. `floatUsdc` is the SPENDABLE float per operative: the amount
 /// actually funded (post-cap) less any slice earmarked for on-chain action, since
 /// swap principal recirculates and never shows up as spend.
+///
+/// Operators in `excludeOperators` are skipped. That is how winners are held out:
+/// the refund exists to make a losing operative whole for genuinely working the
+/// mission, so an operative already paid a prize does not also get its entry
+/// back.
 export async function refundParticipationFees(
   contestId: number,
   operatives: Array<{ agentId: number; operator: string }>,
   floatUsdc: number,
   minFrac: number,
+  excludeOperators: string[] = [],
 ): Promise<void> {
   if (!config.treasury.privateKey || !config.treasury.address) return;
   if (operatives.length === 0 || floatUsdc <= 0 || minFrac <= 0) return;
+  const excluded = new Set(excludeOperators.map((o) => o.toLowerCase()));
   const float6 = BigInt(Math.round(floatUsdc * 1e6));
   // threshold = float * minFrac, in 6-dec, using integer math (minFrac to /1000).
   const threshold6 = (float6 * BigInt(Math.round(minFrac * 1000))) / 1000n;
@@ -85,6 +92,7 @@ export async function refundParticipationFees(
   const wallet = createWalletClient({ account, chain: arcTestnet, transport: http(config.rpcHttp) });
   let refunded = 0;
   for (const op of operatives) {
+    if (excluded.has(op.operator.toLowerCase())) continue;
     // Real settled spend by this operative: A2A intel buys + x402 makes.
     const { rows: sp } = await query<{ spent6: string }>(
       `select (
