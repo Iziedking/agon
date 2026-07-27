@@ -3,6 +3,25 @@
 # 80 and 443 must be open on the VPS and both subdomains must resolve to this
 # host's public IP. The frontend (arcrun.xyz) lives on Vercel and is not
 # served here.
+#
+# THIS FILE IS SHARED INGRESS FOR THREE PRODUCTS. This Caddy owns ports 80 and
+# 443 on the VPS, so Agent QA (agentsqa.xyz) and Avow (api.avow.site) run their
+# own compose projects with no Caddy of their own and join this project's
+# default network (deploy_default) to be reached by container name. Two
+# consequences, both learned the hard way:
+#
+#   1. Every site block for them must live HERE, in tracked source. The deploy
+#      workflow runs `git reset --hard origin/main` on /opt/arcrun, so a block
+#      hand-added on the VPS survives exactly until the next arcrun push. The
+#      api.avow.site block below was lost that way and its site stayed dark.
+#   2. `docker compose down` in this directory deletes the deploy_default
+#      network and takes agentsqa.xyz and api.avow.site down with arcrun. Use
+#      `up -d` or restart individual services instead.
+#
+# Editing this file is not enough on its own: it is bind-mounted read-only, so
+# `up -d` will not restart Caddy for a content change. The deploy workflow
+# reloads Caddy explicitly after the reset. By hand:
+#   docker exec arcrun-caddy caddy reload --config /etc/caddy/Caddyfile
 
 api.arcrun.xyz {
 	reverse_proxy auth:8082
@@ -28,4 +47,11 @@ agentsqa.xyz {
 	handle {
 		reverse_proxy agentqa-app:9090
 	}
+}
+
+# Avow's agent backend (the avow-deploy compose project in ~/avow-deploy). Same
+# arrangement as Agent QA above: its container joins this project's network and
+# borrows this Caddy, so its site block belongs in this tracked file.
+api.avow.site {
+	reverse_proxy avow-agent:8787
 }
