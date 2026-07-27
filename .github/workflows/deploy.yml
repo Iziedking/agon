@@ -65,12 +65,15 @@ jobs:
             git reset --hard origin/main
             git submodule update --init --recursive
             docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build --remove-orphans
-            # The Caddyfile is bind-mounted read-only, so `up -d` does not
-            # restart Caddy when only its contents changed: without this the
-            # reset above silently serves the previous routing. That matters
+            # Caddy does not watch its config and `up -d` does not restart it
+            # when only the mounted config changed, so without this the reset
+            # above silently keeps serving the previous routing. That matters
             # beyond arcrun, because agentsqa.xyz and api.avow.site are proxied
-            # from that same file. Validate before reloading so a bad edit fails
-            # the deploy loudly instead of leaving Caddy on stale config.
+            # from that same file. This only works because the compose file
+            # mounts deploy/caddy as a DIRECTORY: with a single-file mount the
+            # container would re-read a pinned, stale inode and the reload would
+            # be a no-op. Validate before reloading so a bad edit fails the
+            # deploy loudly instead of leaving Caddy on stale config.
             docker exec arcrun-caddy caddy validate --config /etc/caddy/Caddyfile
             docker exec arcrun-caddy caddy reload --config /etc/caddy/Caddyfile
             docker image prune -f

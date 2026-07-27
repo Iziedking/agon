@@ -7,8 +7,8 @@
 # THIS FILE IS SHARED INGRESS FOR THREE PRODUCTS. This Caddy owns ports 80 and
 # 443 on the VPS, so Agent QA (agentsqa.xyz) and Avow (api.avow.site) run their
 # own compose projects with no Caddy of their own and join this project's
-# default network (deploy_default) to be reached by container name. Two
-# consequences, both learned the hard way:
+# default network (deploy_default) to be reached by container name. Three
+# consequences, all learned the hard way:
 #
 #   1. Every site block for them must live HERE, in tracked source. The deploy
 #      workflow runs `git reset --hard origin/main` on /opt/arcrun, so a block
@@ -17,10 +17,16 @@
 #   2. `docker compose down` in this directory deletes the deploy_default
 #      network and takes agentsqa.xyz and api.avow.site down with arcrun. Use
 #      `up -d` or restart individual services instead.
+#   3. This file lives in its own directory because compose mounts the
+#      DIRECTORY, not the file. Do not "tidy" it back up a level and mount
+#      ./Caddyfile directly: a single-file bind mount pins one inode, and
+#      `git reset --hard` replaces the file rather than writing into it, so the
+#      container silently keeps serving the version it started with. That is
+#      what hid the avow block for weeks, and it makes `caddy reload` a no-op
+#      because the reload re-reads the same stale inode.
 #
-# Editing this file is not enough on its own: it is bind-mounted read-only, so
-# `up -d` will not restart Caddy for a content change. The deploy workflow
-# reloads Caddy explicitly after the reset. By hand:
+# Caddy does not watch its config, so a content change still needs a reload.
+# The deploy workflow does it after the reset. By hand:
 #   docker exec arcrun-caddy caddy reload --config /etc/caddy/Caddyfile
 
 api.arcrun.xyz {
@@ -33,9 +39,7 @@ ws.arcrun.xyz {
 }
 
 # Portable Agent Memory (the Agent-QA repo) deploys its own containers on this
-# compose project's default network and borrows this Caddy as its ingress. The
-# site block lives here, in the tracked source, because the deploy workflow
-# hard-resets /opt/arcrun on every push and would wipe a hand edit on the VPS.
+# compose project's default network and borrows this Caddy as its ingress.
 agentsqa.xyz {
 	# The paid lane: OKX marketplace buyers pay here and agentqa-pay forwards to
 	# the app once payment clears. Listed first because Caddy matches the most

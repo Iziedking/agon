@@ -132,7 +132,13 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # The DIRECTORY, not the file. A single-file bind mount pins one inode,
+      # and the deploy's `git reset --hard` replaces the file rather than
+      # writing into it, so the container keeps serving the config it started
+      # with and `caddy reload` re-reads that same stale copy. Mounting the
+      # directory makes the name resolve on every read, so a redeployed
+      # Caddyfile is actually seen. See deploy/caddy/Caddyfile for the story.
+      - ./caddy:/etc/caddy:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
