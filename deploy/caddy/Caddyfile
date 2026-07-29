@@ -59,3 +59,11 @@ agentsqa.xyz {
 api.avow.site {
 	reverse_proxy avow-agent:8787
 }
+
+# sFace. Same arrangement as Agent QA and Avow above: its container joins this
+# project's default network and borrows this Caddy as ingress, so its site
+# block belongs in this tracked file. The client half is static and lives on
+# Vercel at sface.site; only the service is here.
+api.sface.site {
+	reverse_proxy sface-api:8790
+}

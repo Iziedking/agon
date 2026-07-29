@@ -46,6 +46,30 @@ const BATCH_BLOCKS = 5_000n;
 const POLL_INTERVAL_MS = 3_000;
 const ONCE = process.env.INDEXER_ONCE === "1";
 
+// Transient RPC failures are the normal weather on a shared testnet endpoint:
+// daily quota exhaustion on the dedicated node, then -32011 "request limit
+// reached" on the public one it falls back to. Retrying those at the 3s poll
+// interval is what turns a blip into a flood, so each consecutive failure
+// doubles the wait up to two minutes. A run of successes resets it.
+const BACKOFF_BASE_MS = 5_000;
+const BACKOFF_MAX_MS = 120_000;
+const backoffFor = (fails: number) =>
+  Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * 2 ** Math.min(fails - 1, 5));
+
+// Both loops follow the same chain head, and each poll used to be its own
+// eth_blockNumber: two calls every 3s is ~58k requests/day before a single log
+// range is fetched, which is a large slice of what exhausted the RPC quota in
+// the first place. Cache the head for one poll interval so the two loops share
+// one read. A stale head only means the next tick picks up the blocks.
+let headCache: { value: bigint; atMs: number } | null = null;
+
+async function currentHead(): Promise<bigint> {
+  if (headCache && Date.now() - headCache.atMs < POLL_INTERVAL_MS) return headCache.value;
+  const value = await publicClient.getBlockNumber();
+  headCache = { value, atMs: Date.now() };
+  return value;
+}
+
 const lc = (v: unknown) => (typeof v === "string" ? v.toLowerCase() : v);
 const s = (v: unknown) => (v === undefined || v === null ? null : String(v));
 
@@ -695,13 +719,14 @@ async function arcanaLoop() {
   console.log(`arcana indexer start: address=${config.arcana.address} startBlock=${config.arcana.startBlock}`);
   let last = await getArcanaLastBlock();
   let lastReconcileMs = 0;
+  let fails = 0;
 
   for (;;) {
     try {
-      const currentHead = await publicClient.getBlockNumber();
-      while (last < currentHead) {
+      const head = await currentHead();
+      while (last < head) {
         const from = last + 1n;
-        const to = from + BATCH_BLOCKS - 1n > currentHead ? currentHead : from + BATCH_BLOCKS - 1n;
+        const to = from + BATCH_BLOCKS - 1n > head ? head : from + BATCH_BLOCKS - 1n;
         const count = await indexArcanaRange(from, to);
         if (count > 0) console.log(`arcana blocks ${from}-${to}: ${count} events`);
         last = to;
@@ -711,9 +736,21 @@ async function arcanaLoop() {
         await reconcileArcanaMarkets(25);
         lastReconcileMs = Date.now();
       }
+      fails = 0;
     } catch (err) {
-      console.error("arcana indexer error:", err instanceof Error ? err.message : err);
-      // Fall through to the sleep; never let an Arcana failure crash us.
+      // Never let an Arcana failure crash us. Back off rather than retrying at
+      // the poll interval: hammering an endpoint that just said "request limit
+      // reached" is what produced tens of thousands of identical log lines.
+      fails += 1;
+      const wait = ONCE ? 0 : backoffFor(fails);
+      console.error(
+        `arcana indexer error (failure ${fails}, retry in ${wait}ms):`,
+        err instanceof Error ? err.message : err,
+      );
+      if (!ONCE) {
+        await new Promise((r) => setTimeout(r, wait));
+        continue;
+      }
     }
 
     if (ONCE) {
@@ -725,7 +762,7 @@ async function arcanaLoop() {
 }
 
 async function main() {
-  const head = await publicClient.getBlockNumber();
+  const head = await currentHead();
   let last = await getLastBlock();
   console.log(`indexer start: head=${head} resumeFrom=${last + 1n} once=${ONCE}`);
 
@@ -733,14 +770,36 @@ async function main() {
   // handling so a partner-contract issue can't stall ArcRun-native indexing.
   const arcanaPromise = arcanaLoop();
 
+  // This loop used to run bare, so one rejected RPC call rejected main() and
+  // took the process down with it. Under `restart: unless-stopped` that made a
+  // rate-limited endpoint look like a crash loop (989 restarts in 38h) while
+  // the real fault was transient. The cursor is committed in the same
+  // transaction as the events it covers, so re-running a failed range is
+  // idempotent and pausing costs nothing but latency.
+  let fails = 0;
   for (;;) {
-    const currentHead = await publicClient.getBlockNumber();
-    while (last < currentHead) {
-      const from = last + 1n;
-      const to = from + BATCH_BLOCKS - 1n > currentHead ? currentHead : from + BATCH_BLOCKS - 1n;
-      const count = await indexRange(from, to);
-      if (count > 0) console.log(`blocks ${from}-${to}: ${count} events`);
-      last = to;
+    try {
+      const head = await currentHead();
+      while (last < head) {
+        const from = last + 1n;
+        const to = from + BATCH_BLOCKS - 1n > head ? head : from + BATCH_BLOCKS - 1n;
+        const count = await indexRange(from, to);
+        if (count > 0) console.log(`blocks ${from}-${to}: ${count} events`);
+        last = to;
+      }
+      fails = 0;
+    } catch (err) {
+      // In ONCE mode (tests, backfill) a failure is still fatal: the caller
+      // wants a non-zero exit rather than a process that quietly retries.
+      if (ONCE) throw err;
+      fails += 1;
+      const wait = backoffFor(fails);
+      console.error(
+        `indexer error at block ${last + 1n} (failure ${fails}, retry in ${wait}ms):`,
+        err instanceof Error ? err.message : err,
+      );
+      await new Promise((r) => setTimeout(r, wait));
+      continue;
     }
 
     if (ONCE) {
