@@ -95,3 +95,9 @@ docs/brandkit/
 backend/circle-recovery/
 backend/circle-bootstrap.env.snippet
 .firecrawl/
+
+# V2 restructure plan (marketplace pivot). Working document, local only until
+# the direction is settled and the public docs are rewritten to match.
+PLAN-V2.md
+
+.worktrees/
