@@ -10,6 +10,7 @@ import {
   unichainSepolia,
 } from "wagmi/chains";
 import { getDefaultConfig } from "@rainbow-me/rainbowkit";
+import { PRODUCT_NAME } from "./product";
 
 /// wagmi config, built through RainbowKit's `getDefaultConfig` so the wallet
 /// picker is populated with the full branded list (MetaMask, Rabby, Coinbase,
@@ -55,7 +56,7 @@ const arcTransport = arcDedicatedRpc.length
   : http(undefined, ARC_RPC_OPTS);
 
 export const config = getDefaultConfig({
-  appName: "ArcRun",
+  appName: PRODUCT_NAME,
   projectId,
   chains: [
     arcTestnet,

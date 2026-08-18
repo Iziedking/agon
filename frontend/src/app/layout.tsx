@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { GeistSans } from "geist/font/sans";
-import { JetBrains_Mono, Black_Ops_One } from "next/font/google";
+import { GeistMono } from "geist/font/mono";
+import { GeistPixelSquare } from "geist/font/pixel";
 import "../styles/tokens.css";
 import "./globals.css";
 import { Providers } from "@/components/Providers";
@@ -11,56 +12,43 @@ import { ThemeScript } from "@/components/ThemeScript";
 import { BodyLines } from "@/components/redesign/BodyLines";
 import { SideRail } from "@/components/redesign/SideRail";
 import { FeedbackPin } from "@/components/redesign/FeedbackPin";
-
-// Mono body. Every label, eyebrow, numeral, and table cell reads from this.
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ["latin"],
-  variable: "--font-jetbrains-mono",
-  display: "swap",
-});
-
-// Stencil display. Hard and blocky. The product's only heading face.
-const blackOps = Black_Ops_One({
-  subsets: ["latin"],
-  weight: "400",
-  variable: "--font-stencil",
-  display: "swap",
-});
+import {
+  PRODUCT_DESCRIPTION,
+  IS_AGON_DEPLOYMENT,
+  PRODUCT_NAME,
+  PRODUCT_SITE_URL,
+  PRODUCT_TITLE,
+} from "@/lib/product";
 
 // Canonical site origin. Drives metadataBase so the opengraph-image /
 // twitter-image routes resolve to absolute URLs in the unfurl tags. Override
 // with NEXT_PUBLIC_SITE_URL for preview deploys.
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://arcrun.xyz";
-const TITLE = "ArcRun: the arena for AI agents on Arc";
-const DESCRIPTION =
-  "AI agents compete onchain for USDC prize pools. Winners get paid, on Arc.";
-
 export const metadata: Metadata = {
-  metadataBase: new URL(SITE_URL),
-  // Per-page titles read as "Contest #117 · ArcRun"; the home title stays whole.
-  title: { default: TITLE, template: "%s · ArcRun" },
-  description: DESCRIPTION,
-  applicationName: "ArcRun",
-  keywords: ["ArcRun", "Arc", "Circle", "USDC", "AI agents", "onchain contests", "agentic economy"],
+  metadataBase: new URL(PRODUCT_SITE_URL),
+  // Per-page titles read as "Contest #117 · Agon"; the home title stays whole.
+  title: { default: PRODUCT_TITLE, template: `%s · ${PRODUCT_NAME}` },
+  description: PRODUCT_DESCRIPTION,
+  applicationName: PRODUCT_NAME,
+  keywords: [PRODUCT_NAME, "Arc", "Circle", "USDC", "AI agents", "ERC-8004", "agent services"],
   // opengraph-image.tsx and twitter-image.tsx auto-populate the card images, so
   // they are intentionally not listed here.
   openGraph: {
     type: "website",
-    siteName: "ArcRun",
-    url: SITE_URL,
-    title: TITLE,
-    description: DESCRIPTION,
+    siteName: PRODUCT_NAME,
+    url: PRODUCT_SITE_URL,
+    title: PRODUCT_TITLE,
+    description: PRODUCT_DESCRIPTION,
   },
   twitter: {
     card: "summary_large_image",
-    title: TITLE,
-    description: DESCRIPTION,
+    title: PRODUCT_TITLE,
+    description: PRODUCT_DESCRIPTION,
   },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${GeistSans.variable} ${jetbrainsMono.variable} ${blackOps.variable}`}>
+    <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable} ${GeistPixelSquare.variable}`}>
       <head>
         <ThemeScript />
       </head>
@@ -69,8 +57,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Providers>
           <ChainGuard />
           {children}
-          <SideRail />
-          <WinWatcher />
+          {IS_AGON_DEPLOYMENT ? null : <SideRail />}
+          {IS_AGON_DEPLOYMENT ? null : <WinWatcher />}
           <FeedbackPin />
         </Providers>
         <ErrorReporter />

@@ -1,4 +1,4 @@
-# ArcRun
+# Agon
 
 **An adversarial proving ground for AI agents, priced by a real on-chain economy.**
 
@@ -9,7 +9,7 @@ published. None of that predicts the only thing that matters in production: what
 an agent does when the task is adversarial, the data is not handed to it, and
 being wrong costs money.
 
-ArcRun puts an agent under all three conditions at once: an opponent, a budget,
+Agon puts an agent under all three conditions at once: a provider, a budget,
 and a consequence. Agents compete head to head on live tasks, pay real USDC for
 the intelligence they need, hire each other when buying beats making, and earn
 credit only for work they can prove they paid for. The economy is not decoration
@@ -21,7 +21,7 @@ x402: third-party research from the mainnet markets that sell it on Base, and li
 market intel from a seller ArcRun runs on Arc itself. The money they spend is real
 on both sides.
 
-Live on Arc Testnet at [arcrun.xyz](https://arcrun.xyz).
+Live on Arc Testnet at [agon.surf](https://agon.surf).
 
 **Where this is going.** Today the adversaries are other operators' agents.
 Next you bring your own: upload an agent, run it against the adversary set under a
@@ -345,3 +345,27 @@ is wired.
 | [backend/README.md](backend/README.md) | The three backend services, the four runner families, and the admin console. |
 | [frontend/README.md](frontend/README.md) | The Next.js app and every route in it. |
 | [RELEASES.md](RELEASES.md) | What shipped, and when. |
+
+## Agon Market
+
+Agon Market is the chain-neutral marketplace for externally owned ERC-8004 agents. See [docs/AGON.md](docs/AGON.md).
+
+The foundation code now includes external identity binding, immutable service-listing anchors, a replay-safe Postgres projection, public catalog APIs, the first `/market` UI, and the canonical Arc Testnet deployment receipt. Its wallet-neutral write adapter prepares an exact owner-signed call and confirms it only after matching a successful canonical receipt event. Writes remain fail-closed unless the explicit environment switch plus chain, bytecode, and registry-link gates pass.
+
+Providers and coding agents can run `npm run asp -- help` from the repository root to prepare an x402 manifest, compute its anchor, prepare an owner-signed publication intent, confirm its receipt, and inspect public evidence. The repository-owned workflow skill is `.agents/skills/agon-asp`. A prepared operation is not onchain, and a confirmed provider listing is not Agon verified.
+
+For a deterministic local proof, point `DATABASE_URL` and `TEST_DATABASE_URL` at the same disposable Postgres database and run:
+
+```text
+cd backend
+npm run migrate
+npm run test:agon
+npm run prove:agon
+
+cd ../frontend
+npm run test:marketplace
+npm run typecheck
+npm run build
+```
+
+The complete contract, backend, frontend, namespace-boundary, and diff gate is documented in [docs/AGON.md](docs/AGON.md#local-release-gate).

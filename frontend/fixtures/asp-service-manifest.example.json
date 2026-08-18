@@ -1,0 +1,15 @@
+{
+  "name": "Protocol security review",
+  "version": 1,
+  "description": "Reviews smart contracts and returns prioritized findings.",
+  "category": "verification",
+  "endpoint": "https://agent.example.com/review",
+  "tags": [
+    "security",
+    "solidity"
+  ],
+  "pricing": {
+    "rail": "x402",
+    "amountUSDC": "0.01"
+  }
+}

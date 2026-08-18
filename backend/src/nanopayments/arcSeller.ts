@@ -1,4 +1,4 @@
-/// An x402 seller that ArcRun runs ITSELF, on Arc, gated by Circle Gateway.
+/// Agon's x402 market-intel seller on Arc, gated by Circle Gateway.
 ///
 /// Why this exists. Every third-party x402 seller we integrated settles on a chain
 /// other than Arc (Exa and Gloria on Base mainnet with the exact scheme). That is
@@ -27,8 +27,6 @@
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 
-import { config } from "../config/index.js";
-
 /// Circle's Gateway facilitator. Testnet, because we sell on Arc Testnet. Check
 /// the Nanopayments column in Circle's supported-blockchains table before pointing
 /// this at a different chain.
@@ -47,6 +45,19 @@ interface PaidRequest extends IncomingMessage {
     transaction?: string;
   };
 }
+
+export type ArcX402PaymentMiddleware = (
+  req: IncomingMessage,
+  res: ServerResponse,
+  next: (error?: unknown) => void,
+) => void | Promise<void>;
+
+export type ArcX402SellerHandlerOptions = {
+  price: string;
+  sellerAddress: string;
+  requirePayment: ArcX402PaymentMiddleware;
+  loadMarketIntel?: (topic: string) => Promise<unknown>;
+};
 
 /// Live Polymarket odds, keyless. The same ground truth the mission grader scores
 /// against, which is what makes the purchase worth making.
@@ -81,6 +92,67 @@ function send(res: ServerResponse, code: number, body: unknown): void {
   res.end(payload);
 }
 
+function sendMiddlewareError(res: ServerResponse, error: unknown): void {
+  if (res.writableEnded) return;
+  send(res, 500, { error: error instanceof Error ? error.message : String(error) });
+}
+
+export function createArcX402SellerHandler(
+  options: ArcX402SellerHandlerOptions,
+): (req: IncomingMessage, res: ServerResponse) => void {
+  const loadMarketIntel = options.loadMarketIntel ?? marketIntel;
+
+  return (req, res) => {
+    const url = new URL(req.url ?? "/", "http://seller.local");
+
+    if (url.pathname === "/health" || url.pathname === "/x402/health") {
+      send(res, 200, {
+        ok: true,
+        chain: ARC_CAIP2,
+        price: options.price,
+        seller: options.sellerAddress,
+      });
+      return;
+    }
+
+    if (url.pathname !== "/x402/market-intel") {
+      send(res, 404, { error: "not found" });
+      return;
+    }
+
+    const onPaid = (error?: unknown) => {
+      if (error) {
+        sendMiddlewareError(res, error);
+        return;
+      }
+      const paid = (req as PaidRequest).payment;
+      const topic = url.searchParams.get("topic") ?? "crypto";
+      void loadMarketIntel(topic)
+        .then((data) => {
+          console.log(
+            `[x402-seller] served ${topic} to ${paid?.payer ?? "?"} ` +
+              `for ${paid?.amount ?? "?"} on ${paid?.network ?? "?"} tx=${paid?.transaction ?? "pending-batch"}`,
+          );
+          send(res, 200, { ...(data as object), payment: paid ?? null });
+        })
+        .catch((loadError: unknown) => {
+          // The buyer already paid, so failing to fetch is on us. Say so plainly
+          // rather than returning a stub the agent would then be graded on.
+          send(res, 502, {
+            error: `upstream data unavailable: ${loadError instanceof Error ? loadError.message : String(loadError)}`,
+          });
+        });
+    };
+
+    try {
+      void Promise.resolve(options.requirePayment(req, res, onPaid))
+        .catch((error: unknown) => sendMiddlewareError(res, error));
+    } catch (error) {
+      sendMiddlewareError(res, error);
+    }
+  };
+}
+
 /// Start the seller. Returns silently when disabled or unconfigured, so a missing
 /// env can never take the backend down.
 export async function startArcX402Seller(): Promise<void> {
@@ -96,14 +168,14 @@ export async function startArcX402Seller(): Promise<void> {
   const port = Number(process.env.X402_SELLER_PORT ?? "8090");
   const price = process.env.X402_SELLER_PRICE ?? "$0.001";
 
-  let requirePayment: (req: IncomingMessage, res: ServerResponse, next: (e?: unknown) => void) => void | Promise<void>;
+  let requirePayment: ArcX402PaymentMiddleware;
   try {
     const { createGatewayMiddleware } = await import("@circle-fin/x402-batching/server");
     const gateway = createGatewayMiddleware({
       sellerAddress,
       networks: ARC_CAIP2,
       facilitatorUrl: FACILITATOR_URL,
-      description: "ArcRun market intel: live Polymarket odds",
+      description: "Agon market intel: live Polymarket odds",
     });
     requirePayment = gateway.require(price) as typeof requirePayment;
   } catch (err) {
@@ -111,45 +183,15 @@ export async function startArcX402Seller(): Promise<void> {
     return;
   }
 
-  const server = createServer((req, res) => {
-    const url = new URL(req.url ?? "/", `http://localhost:${port}`);
-
-    if (url.pathname === "/health") {
-      send(res, 200, { ok: true, chain: ARC_CAIP2, price, seller: sellerAddress });
-      return;
-    }
-
-    if (url.pathname !== "/x402/market-intel") {
-      send(res, 404, { error: "not found" });
-      return;
-    }
-
-    // Circle's middleware answers with a 402 (including the GatewayWalletBatched
-    // extra the buyer needs to build its EIP-712 domain) when the request carries
-    // no valid authorization, and calls next() once Gateway has verified and
-    // settled the payment.
-    void requirePayment(req, res, (err?: unknown) => {
-      if (err) {
-        send(res, 500, { error: err instanceof Error ? err.message : String(err) });
-        return;
-      }
-      const paid = (req as PaidRequest).payment;
-      const topic = url.searchParams.get("topic") ?? "crypto";
-      void marketIntel(topic)
-        .then((data) => {
-          console.log(
-            `[x402-seller] served ${topic} to ${paid?.payer ?? "?"} ` +
-              `for ${paid?.amount ?? "?"} on ${paid?.network ?? "?"} tx=${paid?.transaction ?? "pending-batch"}`,
-          );
-          send(res, 200, { ...(data as object), payment: paid ?? null });
-        })
-        .catch((e: unknown) => {
-          // The buyer already paid, so failing to fetch is on us. Say so plainly
-          // rather than returning a stub the agent would then be graded on.
-          send(res, 502, { error: `upstream data unavailable: ${e instanceof Error ? e.message : String(e)}` });
-        });
-    });
-  });
+  // Circle's middleware answers with a 402 (including the GatewayWalletBatched
+  // extra the buyer needs to build its EIP-712 domain) when the request carries
+  // no valid authorization, and calls next() once Gateway has verified and
+  // settled the payment.
+  const server = createServer(createArcX402SellerHandler({
+    price,
+    sellerAddress,
+    requirePayment,
+  }));
 
   server.listen(port, () => {
     console.log(

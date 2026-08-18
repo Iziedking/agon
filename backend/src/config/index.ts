@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { privateKeyToAccount } from "viem/accounts";
 import { z } from "zod";
+import { loadAgonDeployment } from "./deployments.js";
 
 /// Loads and validates all backend configuration in one place. Secrets come
 /// from the environment; public contract addresses come from the committed
@@ -38,6 +39,9 @@ const envSchema = z.object({
   CHAIN_ID: z.coerce.number().int().positive(),
   START_BLOCK: z.coerce.bigint().nonnegative().default(0n),
   DEPLOYMENTS_FILE: z.string().default("../contracts/deployments/arc-testnet.json"),
+  AGON_DEPLOYMENTS_FILE: z.string().default("../contracts/deployments/agon-arc-testnet.json"),
+  AGON_WRITES_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
+  AGON_READINESS_CACHE_MS: z.coerce.number().int().min(1_000).max(300_000).default(30_000),
 
   // Auth service
   JWT_SECRET: z.string().default("dev-insecure-secret-change-me"),
@@ -85,7 +89,7 @@ const envSchema = z.object({
   // protocol and port. For local dev RP_ID="localhost" and
   // ORIGIN="http://localhost:3000". For prod, RP_ID="arcrun.xyz" and
   // ORIGIN="https://arcrun.xyz".
-  WEBAUTHN_RP_NAME: z.string().default("ArcRun"),
+  WEBAUTHN_RP_NAME: z.string().default("Agon"),
   WEBAUTHN_RP_ID: z.string().default("localhost"),
   WEBAUTHN_ORIGIN: z.string().default("http://localhost:3000"),
 
@@ -599,11 +603,16 @@ function addressOfKey(raw: string | undefined, name: string): `0x${string}` | nu
 
 const env = loadEnv();
 const deployments = loadDeployments(env.DEPLOYMENTS_FILE);
+const agonDeployment = loadAgonDeployment(env.AGON_DEPLOYMENTS_FILE);
 
 if (deployments.chainId !== env.CHAIN_ID) {
   throw new Error(
     `Chain mismatch: deployments file is chain ${deployments.chainId}, env CHAIN_ID is ${env.CHAIN_ID}.`,
   );
+}
+
+if (env.AGON_WRITES_ENABLED && !agonDeployment.deployment) {
+  console.error(`[agon] writes requested but deployment receipt is unavailable: ${agonDeployment.error}`);
 }
 
 export const config = {
@@ -620,6 +629,13 @@ export const config = {
   startBlock: env.START_BLOCK,
   contracts: deployments.contracts,
   external: deployments.external,
+  agon: {
+    writesEnabled: env.AGON_WRITES_ENABLED,
+    deployment: agonDeployment.deployment,
+    deploymentError: agonDeployment.error,
+    deploymentPath: agonDeployment.path,
+    readinessCacheMs: env.AGON_READINESS_CACHE_MS,
+  },
   adminToken: env.ADMIN_TOKEN,
   supportToken: env.SUPPORT_TOKEN,
   syndicatePoolWeeklyUsdc: env.SYNDICATE_POOL_WEEKLY_USDC,

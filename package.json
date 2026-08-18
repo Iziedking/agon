@@ -1,11 +1,12 @@
 {
-  "name": "arcrun",
+  "name": "agon",
   "version": "0.1.0",
   "private": true,
-  "description": "ArcRun monorepo: smart contracts, backend services, and frontend. Convenience scripts that delegate to each package.",
+  "description": "Agon monorepo: smart contracts, backend services, and frontend. Convenience scripts that delegate to each package.",
   "scripts": {
     "dev:frontend": "cd frontend && npm run dev",
     "build:frontend": "cd frontend && npm run build",
+    "asp": "node --no-warnings --experimental-strip-types frontend/scripts/asp.ts",
     "stack:up": "docker compose -f backend/docker-compose.local.yml up --build -d",
     "stack:down": "docker compose -f backend/docker-compose.local.yml down",
     "stack:logs": "docker compose -f backend/docker-compose.local.yml logs -f",

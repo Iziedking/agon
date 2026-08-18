@@ -116,7 +116,7 @@
   /* Typography families (next/font variables, skill names as fallback) */
   --font-display: var(--font-geist-sans), "Geist", "Inter", system-ui, sans-serif;
   --font-body: var(--font-geist-sans), "Geist", "Inter", system-ui, sans-serif;
-  --font-mono: var(--font-jetbrains-mono), "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
+  --font-mono: var(--font-geist-mono), "Geist Mono", ui-monospace, "SFMono-Regular", monospace;
 
   /* Type scale */
   --text-display: clamp(64px, 9vw, 128px);

@@ -1,0 +1,40 @@
+{
+  "network": "arc-testnet",
+  "chainId": 5042002,
+  "rpcUrl": "https://rpc.testnet.arc.io",
+  "deployedAt": "2026-08-17T19:36:52Z",
+  "deployBlock": 57507744,
+  "deployer": "0x0aeEF0Dd6b0754262d1a91e435565749Cdc365Ad",
+  "admin": "0x0aeEF0Dd6b0754262d1a91e435565749Cdc365Ad",
+  "contracts": {
+    "AgonProfileRegistry": "0xE0c7A2545C2f4eE6d2bD797B6f2742c73E640574",
+    "AgonServiceRegistry": "0x2144C156B0a4581da2D046C2E41AC41C6C3938CB"
+  },
+  "transactions": {
+    "AgonProfileRegistry": "0xf90172c1e54fadfa695c09624970e421d097012b7e3e01693a32c9140d9dd6ad",
+    "AgonServiceRegistry": "0x71430f9b2c019b74fa3f4e4139a48ad1f67daa5c2c3c2f8540caa8a6f749444e"
+  },
+  "gas": {
+    "totalUsed": 2741463,
+    "effectiveGasPriceWei": "21000000000",
+    "actualCostUsdc": "0.057570723000000000"
+  },
+  "sourceVerification": {
+    "compiler": "v0.8.24+commit.e11b9ed9",
+    "optimizerRuns": 200,
+    "AgonProfileRegistry": {
+      "verifiedAt": "2026-08-17T19:39:00.328046Z",
+      "explorerUrl": "https://testnet.arcscan.app/address/0xE0c7A2545C2f4eE6d2bD797B6f2742c73E640574"
+    },
+    "AgonServiceRegistry": {
+      "verifiedAt": "2026-08-17T19:39:23.541815Z",
+      "explorerUrl": "https://testnet.arcscan.app/address/0x2144C156B0a4581da2D046C2E41AC41C6C3938CB"
+    }
+  },
+  "external": {
+    "IdentityRegistry": {
+      "address": "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+      "chainId": 5042002
+    }
+  }
+}

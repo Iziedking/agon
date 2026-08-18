@@ -1,6 +1,6 @@
 import { config } from "../config/index.js";
 
-/// Transactional email sender. One place every ArcRun email goes through, so
+/// Transactional email sender. One place every Agon email goes through, so
 /// the provider wiring and the from-address formatting live in a single spot.
 ///
 /// Provider is chosen by EMAIL_PROVIDER: `resend` posts to the Resend API;
@@ -16,10 +16,10 @@ export interface EmailMessage {
 }
 
 /// Format the from header. EMAIL_FROM may be a bare address
-/// (noreply@arcrun.xyz) or already include a display name; we wrap a bare
-/// address as `ArcRun <addr>` so inboxes show the brand, not just the address.
+/// (noreply@agon.surf) or already include a display name; we wrap a bare
+/// address as `Agon <addr>` so inboxes show the brand, not just the address.
 function fromHeader(from: string): string {
-  return from.includes("<") ? from : `ArcRun <${from}>`;
+  return from.includes("<") ? from : `Agon <${from}>`;
 }
 
 export async function sendEmail(msg: EmailMessage): Promise<void> {

@@ -453,7 +453,7 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
                             className="mt-1 font-stencil uppercase text-ink"
                             style={{ fontSize: 26, lineHeight: 1, letterSpacing: "-0.01em" }}
                           >
-                            SIGN IN TO ARCRUN
+                            SIGN IN TO AGON
                           </h2>
                         </div>
                       </div>

@@ -34,7 +34,7 @@ import { friendlyError } from "@/lib/errors";
 ///   - small variant-colored robot bottom-right of the card
 
 const STEPS = [
-  { slug: "welcome", title: "WELCOME TO ARCRUN", robot: "pink" as RobotVariant },
+  { slug: "welcome", title: "WELCOME TO AGON", robot: "pink" as RobotVariant },
   { slug: "connect", title: "CONNECT YOUR WALLET", robot: "gold" as RobotVariant },
   { slug: "agent", title: "CLAIM YOUR AGENT", robot: "violet" as RobotVariant },
   { slug: "syndicate", title: "PICK YOUR SYNDICATE", robot: "crimson" as RobotVariant },
@@ -216,7 +216,7 @@ function WelcomeStep() {
       </p>
       <NumberedList
         items={[
-          "connect your wallet. that becomes your arcrun identity.",
+          "connect your wallet. that becomes your Agon identity.",
           "claim a free default agent. it is the piece that competes.",
           "enter a live contest. your agent plays autonomously and pays for its own research.",
           "if it places, the chain pays you in USDC. claim from the panel.",

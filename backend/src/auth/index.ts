@@ -13,7 +13,13 @@ import { privateKeyToAccount } from "viem/accounts";
 import { config } from "../config/index.js";
 import { publicClient, arcTestnet } from "../chain/arc.js";
 import { usdcMinimalAbi } from "../chain/abi.js";
-import { query } from "../db/pool.js";
+import { pool, query } from "../db/pool.js";
+import { PostgresAgonRepository } from "../agon/store/repository.js";
+import { createAgonRoutes } from "../agon/http/routes.js";
+import { PostgresAgonMarketService } from "../agon/http/service.js";
+import { PostgresAgonOperationStore } from "../agon/write/repository.js";
+import { CachedAgonReadiness } from "../agon/write/readiness.js";
+import { ViemAgonWriteAdapter } from "../agon/write/adapter.js";
 import { logEvent } from "../events.js";
 import { notify } from "../notifications/index.js";
 import { setTierGate, getTierGate, type GateSurface } from "../lib/tierGate.js";
@@ -109,6 +115,30 @@ const b64url = (b: Buffer) => b.toString("base64url");
 
 app.get("/health", (c) => c.json({ ok: true, service: "auth" }));
 
+const agonRepository = new PostgresAgonRepository(pool);
+const agonOperations = new PostgresAgonOperationStore(pool);
+const agonReadiness = new CachedAgonReadiness(
+  {
+    enabled: config.agon.writesEnabled,
+    configuredChainId: config.chainId,
+    deployment: config.agon.deployment,
+    client: publicClient,
+  },
+  config.agon.readinessCacheMs,
+);
+const agonWriter = config.agon.deployment
+  ? new ViemAgonWriteAdapter({
+      deployment: config.agon.deployment,
+      client: publicClient,
+      readiness: agonReadiness,
+      operations: agonOperations,
+    })
+  : undefined;
+const agonService = new PostgresAgonMarketService(agonRepository, {
+  writer: agonWriter,
+});
+app.route("/agon", createAgonRoutes({ service: agonService, requireAuth }));
+
 // ----- SIWE wallet login -----
 
 app.post("/auth/wallet/nonce", async (c) => {
@@ -133,7 +163,19 @@ app.post("/auth/wallet/verify", async (c) => {
   if (!issuedFor || issuedFor !== fields.address.toLowerCase()) {
     return c.json({ error: "invalid or expired nonce" }, 401);
   }
-  if (fields.domain !== config.auth.domain) return c.json({ error: "bad domain" }, 401);
+  // Keep the configured origin authoritative while allowing the canonical Agon
+  // domains during the ArcRun -> Agon migration. This prevents a stale VPS
+  // AUTH_DOMAIN value from making SIWE unusable after the production cutover,
+  // without accepting arbitrary origins.
+  const allowedSiweDomains = new Set([
+    config.auth.domain,
+    "agon.surf",
+    "www.agon.surf",
+    "arcrun.xyz",
+    "www.arcrun.xyz",
+    "localhost:3000",
+  ]);
+  if (!fields.domain || !allowedSiweDomains.has(fields.domain)) return c.json({ error: "bad domain" }, 401);
   if (fields.chainId !== config.chainId) return c.json({ error: "wrong chain" }, 401);
   if (fields.expirationTime && new Date(fields.expirationTime) < new Date()) {
     return c.json({ error: "message expired" }, 401);
@@ -556,7 +598,22 @@ const WRITE_ALLOWLIST = new Set<string>(
     config.contracts.SyndicateFactory,
     config.contracts.PointsLedger,
     config.external.USDC,
+    ...(config.agon.deployment
+      ? [
+          config.agon.deployment.contracts.AgonProfileRegistry,
+          config.agon.deployment.contracts.AgonServiceRegistry,
+        ]
+      : []),
   ].map((a) => a.toLowerCase()),
+);
+
+const AGON_WRITE_ADDRESSES = new Set(
+  config.agon.deployment
+    ? [
+        config.agon.deployment.contracts.AgonProfileRegistry.toLowerCase(),
+        config.agon.deployment.contracts.AgonServiceRegistry.toLowerCase(),
+      ]
+    : [],
 );
 
 const executeBodySchema = {
@@ -615,6 +672,22 @@ app.post("/wallet/execute", requireAuth, async (c) => {
 
   if (!WRITE_ALLOWLIST.has(body.contractAddress.toLowerCase())) {
     return c.json({ error: "contract address is not part of ArcRun" }, 400);
+  }
+
+  if (AGON_WRITE_ADDRESSES.has(body.contractAddress.toLowerCase())) {
+    if (!agonWriter) return c.json({ error: "Agon writes are unavailable" }, 503);
+    if (!body.refId) return c.json({ error: "prepared Agon operation reference is required" }, 400);
+    const authorization = await agonWriter.authorizeCircleExecution(
+      operator,
+      body.refId,
+      body.contractAddress,
+      body.abiFunctionSignature,
+      body.abiParameters,
+    );
+    if (!authorization.ok) {
+      const status = authorization.error.code === "capability_unavailable" ? 503 : 400;
+      return c.json({ error: authorization.error.message }, status);
+    }
   }
 
   // Enforce the 6-agent profile cap for Circle wallet users at the
@@ -1463,6 +1536,12 @@ const ADMIN_COMMAND_KINDS = new Set([
   "clear_missions",
   // Open a mission on demand (targetId ignored; params carry the shape).
   "open_mission",
+  // Agon verification operations. These are executed by the coordinator
+  // wallet only after the admin console explicitly queues them.
+  "agon_grant_verifier",
+  "agon_revoke_verifier",
+  "agon_verify_listing",
+  "agon_recheck_listing",
 ]);
 
 app.post("/admin/commands", async (c) => {
@@ -1519,6 +1598,19 @@ app.get("/admin/commands", async (c) => {
       updatedAt: r.updated_at,
     })),
   });
+});
+
+app.get("/admin/agon/evidence/:listingId", async (c) => {
+  if (!config.adminToken) return c.json({ error: "admin disabled (set ADMIN_TOKEN)" }, 503);
+  if (!readAuthed(c)) return c.json({ error: "unauthorized" }, 401);
+  const listingId = Number(c.req.param("listingId"));
+  if (!Number.isSafeInteger(listingId) || listingId <= 0) return c.json({ error: "bad listingId" }, 400);
+  const { rows } = await query<{ id: string; listing_id: string; agent_id: string; passed: boolean; evidence_hash: string; evidence: unknown; verifier: string; created_at: string }>(
+    `select id::text, listing_id::text, agent_id::text, passed, evidence_hash, evidence, verifier, created_at
+       from agon_verification_evidence where listing_id = $1 order by id desc limit 20`,
+    [listingId],
+  );
+  return c.json({ evidence: rows.map((r) => ({ id: r.id, listingId: r.listing_id, agentId: r.agent_id, passed: r.passed, evidenceHash: r.evidence_hash, evidence: r.evidence, verifier: r.verifier, createdAt: r.created_at })) });
 });
 
 // The settlement ledger judges can read: every REAL on-chain payment the agent

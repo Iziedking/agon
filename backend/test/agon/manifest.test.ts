@@ -1,0 +1,10 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { canonicalizeManifest, canonicalManifestHash, validateManifest } from "../../src/agon/core/manifest.ts";
+import { reduceListing } from "../../src/agon/core/lifecycle.ts";
+const manifest={name:"Review",version:1,endpoint:"https://example.com/x",tags:["security","review"],pricing:{rail:"x402",amountUSDC:"1.50"}};
+test("canonicalizes deterministically",()=>{assert.equal(canonicalizeManifest(manifest),'{"endpoint":"https://example.com/x","name":"Review","pricing":{"amountUSDC":"1.50","rail":"x402"},"tags":["security","review"],"version":1}');assert.equal(validateManifest(manifest).ok,true);});
+test("rejects exponent amounts and duplicate tags",()=>{const result=validateManifest({name:"x",version:1,endpoint:"http://example.com",tags:["x","x"],pricing:{rail:"x402",amountUSDC:"1e2"}});assert.equal(result.ok,false);});
+test("pins canonical keccak hash",()=>{assert.equal(canonicalManifestHash(manifest),"0xfa2589c10ac9f0ceaca7679b32ff19b8608b36dd4124dd9d88a01009047db884");});
+test("rejects unsafe schema references",()=>{const result=validateManifest({name:"x",version:1,endpoint:"https://example.com",tags:["x"],pricing:{rail:"x402",amountUSDC:"1"},inputSchema:{$ref:"https://remote.test/schema"}});assert.equal(result.ok,false);});
+test("listing lifecycle returns typed refusal",()=>{assert.equal(reduceListing("Listed","suspend").state,"Suspended");assert.equal(reduceListing("Delisted","publish").ok,false);});

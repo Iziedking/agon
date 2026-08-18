@@ -1,5 +1,5 @@
 {
-  "name": "arcrun-frontend",
+  "name": "agon-frontend",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -7,7 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "asp": "node --no-warnings --experimental-strip-types scripts/asp.ts",
+    "test:asp": "node --experimental-strip-types --test src/lib/agon/asp.test.ts",
+    "test:publication": "node --experimental-strip-types --test src/lib/publication/agon-market-intel.test.ts",
+    "test:marketplace": "node --experimental-strip-types --test src/lib/agon/agon.test.ts src/lib/agon/asp.test.ts src/lib/publication/agon-market-intel.test.ts"
   },
   "dependencies": {
     "@circle-fin/adapter-viem-v2": "latest",

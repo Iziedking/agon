@@ -49,7 +49,7 @@ export function ChainGuard() {
   return (
     <div className="fixed inset-x-0 top-0 z-[60] flex flex-wrap items-center justify-center gap-3 bg-[#e0466e] px-4 py-2 text-white shadow-[0_2px_12px_rgba(0,0,0,0.15)]">
       <span className="font-mono text-xs">
-        wrong network · arcrun runs strictly on arc testnet (chain {arcTestnet.id})
+        wrong network · Agon runs strictly on Arc Testnet (chain {arcTestnet.id})
       </span>
       <button
         onClick={() => switchChain({ chainId: arcTestnet.id })}

@@ -150,7 +150,7 @@ export default function StartPage() {
           <Step
             n={1}
             title="CONNECT YOUR WALLET"
-            desc="your identity on arcrun. email login also works."
+            desc="your identity on Agon. email login also works."
             status={step1}
           >
             {isConnected && address ? (

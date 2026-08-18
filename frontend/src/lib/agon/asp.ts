@@ -1,0 +1,516 @@
+import { keccak256, stringToHex } from "viem";
+
+import {
+  AGON_CATEGORIES,
+  categoryById,
+  categoryBySlug,
+  type AgonCategory,
+} from "./catalog.ts";
+import { canonicalManifestHash, canonicalizeManifest } from "./canonical.ts";
+import { buildServiceManifest, parseTags, validateServiceDraft } from "./draft.ts";
+import type {
+  AgonHealth,
+  AgonListing,
+  PublishListingRequest,
+  SubmittedOperation,
+} from "./types.ts";
+import { assessListingAssurance, canUseEscrow, verifyManifestAnchor } from "./verify.ts";
+
+export type AspIssue = { field: string; message: string };
+
+export class AspCommandError extends Error {
+  readonly code: string;
+  readonly issues: AspIssue[];
+
+  constructor(code: string, message: string, issues: AspIssue[] = []) {
+    super(message);
+    this.name = "AspCommandError";
+    this.code = code;
+    this.issues = issues;
+  }
+}
+
+export type AspConfig = {
+  chainId: string;
+  agentId: string;
+  serviceKey: string;
+  manifestUri: string;
+  name: string;
+  description: string;
+  category: string;
+  endpoint: string;
+  tags: string[];
+  amountUSDC: string;
+};
+
+export type PreparedAspListing = {
+  config: AspConfig;
+  category: AgonCategory;
+  manifest: ReturnType<typeof buildServiceManifest>;
+  canonicalManifest: string;
+  manifestHash: `0x${string}`;
+  serviceKeyHash: `0x${string}`;
+  request: PublishListingRequest;
+  initialTrustState: "Provider listed";
+};
+
+export type AspManifestProof = {
+  valid: boolean;
+  state: "valid" | "match" | "mismatch" | "invalid";
+  recomputedHash: `0x${string}` | null;
+  expectedHash: string | null;
+  issues: AspIssue[];
+  message: string;
+};
+
+export type AspInspection = {
+  reference: string;
+  evidence: "coherent" | "unavailable" | "unsafe";
+  category: ReturnType<typeof categoryById>;
+  proof: ReturnType<typeof verifyManifestAnchor>;
+  trust: ReturnType<typeof assessListingAssurance>;
+  payment: AgonListing["payment"];
+  effectivePayment: {
+    directX402: boolean;
+    escrow: boolean;
+    message: string;
+  };
+  risk: AgonListing["risk"];
+  provenance: AgonListing["provenance"];
+};
+
+type PublishAspListingOptions = {
+  apiUrl: string;
+  token: string;
+  confirmed: boolean;
+  prepared: PreparedAspListing;
+  localManifest: unknown;
+  fetchImpl?: typeof fetch;
+};
+
+export type ConfirmAspOperationOptions = {
+  apiUrl: string;
+  token: string;
+  operationId: string;
+  txHash: string;
+  fetchImpl?: typeof fetch;
+};
+
+function object(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function cleanString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function resolveCategory(value: string): AgonCategory | null {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return null;
+  const byId = categoryById(normalized);
+  if (byId.slug !== "other") return byId;
+  return categoryBySlug(normalized) ??
+    AGON_CATEGORIES.find((category) => category.label.toLowerCase() === normalized) ??
+    null;
+}
+
+function normalizeApiUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("unsupported protocol");
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    throw new AspCommandError("invalid_api_url", "API URL must use HTTP or HTTPS");
+  }
+}
+
+function parseConfig(input: unknown): { config: AspConfig; category: AgonCategory } {
+  const source = object(input);
+  if (!source) throw new AspCommandError("invalid_config", "ASP config must be a JSON object");
+
+  const rawTags = source.tags;
+  const tagsAreStrings = Array.isArray(rawTags) && rawTags.every((tag) => typeof tag === "string");
+  const tags = tagsAreStrings ? parseTags((rawTags as string[]).join(",")) : [];
+  const category = resolveCategory(cleanString(source.category));
+  const config: AspConfig = {
+    chainId: cleanString(source.chainId),
+    agentId: cleanString(source.agentId),
+    serviceKey: cleanString(source.serviceKey),
+    manifestUri: cleanString(source.manifestUri),
+    name: cleanString(source.name),
+    description: cleanString(source.description),
+    category: cleanString(source.category),
+    endpoint: cleanString(source.endpoint),
+    tags,
+    amountUSDC: cleanString(source.amountUSDC),
+  };
+
+  const issues: AspIssue[] = [];
+  if (!/^[1-9]\d*$/.test(config.chainId)) {
+    issues.push({ field: "chainId", message: "Use a positive decimal chain ID." });
+  }
+  if (!category) {
+    issues.push({ field: "category", message: "Choose a category from the Agon registry." });
+  }
+  if (!tagsAreStrings) {
+    issues.push({ field: "tags", message: "Use a JSON array of search-tag strings." });
+  }
+  if (!/^(https:\/\/|ipfs:\/\/).+/i.test(config.manifestUri)) {
+    issues.push({ field: "manifestUri", message: "Manifest URI must use HTTPS or IPFS." });
+  }
+
+  const draftIssues = validateServiceDraft({
+    agentId: config.agentId,
+    name: config.name,
+    description: config.description,
+    categoryId: category?.id ?? "",
+    serviceKey: config.serviceKey,
+    endpoint: config.endpoint,
+    tags: config.tags.join(","),
+    amountUSDC: config.amountUSDC,
+  });
+  issues.push(...draftIssues.map((issue) => ({
+    field: issue.field === "categoryId" ? "category" : issue.field,
+    message: issue.message,
+  })));
+
+  if (issues.length || !category) {
+    throw new AspCommandError("invalid_config", "ASP config is not ready", issues);
+  }
+  return { config, category };
+}
+
+export function prepareAspListing(input: unknown): PreparedAspListing {
+  const { config, category } = parseConfig(input);
+  const manifest = buildServiceManifest({
+    agentId: config.agentId,
+    name: config.name,
+    description: config.description,
+    categoryId: category.id,
+    serviceKey: config.serviceKey,
+    endpoint: config.endpoint,
+    tags: config.tags.join(","),
+    amountUSDC: config.amountUSDC,
+  });
+  const manifestHash = canonicalManifestHash(manifest);
+  const serviceKeyHash = keccak256(stringToHex(config.serviceKey));
+  return {
+    config,
+    category,
+    manifest,
+    canonicalManifest: canonicalizeManifest(manifest),
+    manifestHash,
+    serviceKeyHash,
+    request: {
+      chainId: config.chainId,
+      agentId: config.agentId,
+      serviceKey: serviceKeyHash,
+      manifestHash,
+      manifestUri: config.manifestUri,
+      category: category.id,
+      paymentRail: "X402",
+    },
+    initialTrustState: "Provider listed",
+  };
+}
+
+function manifestIssues(input: unknown): AspIssue[] {
+  const manifest = object(input);
+  if (!manifest) return [{ field: "manifest", message: "Manifest must be a JSON object." }];
+
+  const category = resolveCategory(cleanString(manifest.category));
+  const pricing = object(manifest.pricing);
+  const rawTags = manifest.tags;
+  const tagsAreStrings = Array.isArray(rawTags) && rawTags.every((tag) => typeof tag === "string");
+  const issues: AspIssue[] = [];
+  if (manifest.version !== 1) issues.push({ field: "version", message: "Manifest version must be 1." });
+  if (!category || category.slug !== cleanString(manifest.category).toLowerCase()) {
+    issues.push({ field: "category", message: "Manifest category must use a registered category slug." });
+  }
+  if (!pricing || pricing.rail !== "x402") {
+    issues.push({ field: "pricing.rail", message: "The ASP CLI currently supports direct x402 pricing." });
+  }
+  if (!tagsAreStrings) {
+    issues.push({ field: "tags", message: "Manifest tags must be an array of strings." });
+  } else {
+    const normalizedTags = (rawTags as string[]).map((tag) => tag.trim().toLowerCase());
+    if (normalizedTags.some((tag) => !tag) || new Set(normalizedTags).size !== normalizedTags.length) {
+      issues.push({ field: "tags", message: "Manifest tags must be nonempty and unique." });
+    }
+  }
+
+  if (category && pricing && tagsAreStrings) {
+    const draftIssues = validateServiceDraft({
+      agentId: "1",
+      name: cleanString(manifest.name),
+      description: cleanString(manifest.description),
+      categoryId: category.id,
+      serviceKey: "manifest-check",
+      endpoint: cleanString(manifest.endpoint),
+      tags: (rawTags as string[]).join(","),
+      amountUSDC: cleanString(pricing.amountUSDC),
+    });
+    issues.push(...draftIssues
+      .filter((issue) => issue.field !== "agentId" && issue.field !== "serviceKey")
+      .map((issue) => ({
+        field: issue.field === "categoryId" ? "category" : issue.field,
+        message: issue.message,
+      })));
+  }
+
+  const encoded = JSON.stringify(manifest);
+  if (/"(?:\$ref|patternProperties|additionalProperties)"\s*:|"remote"\s*:/i.test(encoded)) {
+    issues.push({ field: "inputSchema", message: "Manifest schema contains a forbidden remote or executable keyword." });
+  }
+  return issues;
+}
+
+export function verifyAspManifest(input: unknown, expectedHash?: string): AspManifestProof {
+  const issues = manifestIssues(input);
+  if (issues.length) {
+    return {
+      valid: false,
+      state: "invalid",
+      recomputedHash: null,
+      expectedHash: expectedHash ?? null,
+      issues,
+      message: "Manifest validation failed.",
+    };
+  }
+
+  const recomputedHash = canonicalManifestHash(input);
+  if (!expectedHash) {
+    return {
+      valid: true,
+      state: "valid",
+      recomputedHash,
+      expectedHash: null,
+      issues: [],
+      message: "Manifest is valid and ready for anchoring.",
+    };
+  }
+  if (!/^0x[0-9a-fA-F]{64}$/.test(expectedHash)) {
+    return {
+      valid: false,
+      state: "invalid",
+      recomputedHash,
+      expectedHash,
+      issues: [{ field: "expectedHash", message: "Expected hash must be a bytes32 hex string." }],
+      message: "Expected hash is invalid.",
+    };
+  }
+  const matches = recomputedHash.toLowerCase() === expectedHash.toLowerCase();
+  return {
+    valid: true,
+    state: matches ? "match" : "mismatch",
+    recomputedHash,
+    expectedHash,
+    issues: [],
+    message: matches
+      ? "Canonical manifest hash matches the expected anchor."
+      : "Canonical manifest hash does not match the expected anchor.",
+  };
+}
+
+export function inspectAspListing(
+  listing: AgonListing,
+  manifest?: unknown,
+  currentOwner?: string | null,
+): AspInspection {
+  let proof = verifyManifestAnchor(listing.manifest.hash, manifest);
+  if (manifest !== undefined) {
+    const local = verifyAspManifest(manifest, listing.manifest.hash);
+    if (!local.valid) {
+      proof = { state: "invalid", recomputedHash: null, message: local.message };
+    }
+  }
+  const trust = assessListingAssurance(listing, proof, currentOwner);
+  const coherent = proof.state === "match";
+  const directX402 = coherent && listing.payment.directX402 &&
+    (trust.state === "verified" || trust.state === "unverified");
+  const escrow = canUseEscrow(listing, proof, currentOwner);
+  return {
+    reference: listing.id,
+    evidence: coherent
+      ? "coherent"
+      : proof.state === "unavailable"
+        ? "unavailable"
+        : "unsafe",
+    category: categoryById(listing.category),
+    proof,
+    trust,
+    payment: listing.payment,
+    effectivePayment: {
+      directX402,
+      escrow,
+      message: directX402 || escrow
+        ? "Current listing evidence supports the reported payment path."
+        : coherent
+          ? "The listing evidence is coherent, but no payment path is currently eligible."
+          : "Payment is not recommended because listing evidence is incomplete or unsafe.",
+    },
+    risk: listing.risk,
+    provenance: listing.provenance,
+  };
+}
+
+async function readJson(response: Response): Promise<unknown> {
+  return response.json().catch(() => null);
+}
+
+function apiFailure(status: number, body: unknown): AspCommandError {
+  const response = object(body);
+  const error = object(response?.error);
+  return new AspCommandError(
+    cleanString(error?.code) || "request_failed",
+    cleanString(error?.message) || `Agon API request failed with status ${status}`,
+  );
+}
+
+export async function getAspHealth(apiUrl: string, fetchImpl: typeof fetch = fetch): Promise<AgonHealth> {
+  const baseUrl = normalizeApiUrl(apiUrl);
+  let response: Response;
+  try {
+    response = await fetchImpl(`${baseUrl}/agon/health`, { signal: AbortSignal.timeout(10_000) });
+  } catch {
+    throw new AspCommandError("network_unavailable", "Could not reach the Agon API");
+  }
+  const body = await readJson(response);
+  if (!response.ok) throw apiFailure(response.status, body);
+  const health = object(body);
+  const capabilities = object(health?.capabilities);
+  if (health?.ok !== true || health.service !== "agon" || !capabilities) {
+    throw new AspCommandError("invalid_response", "Agon health response is malformed");
+  }
+  return body as AgonHealth;
+}
+
+export async function fetchAspListing(
+  apiUrl: string,
+  reference: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<AgonListing> {
+  const baseUrl = normalizeApiUrl(apiUrl);
+  let response: Response;
+  try {
+    response = await fetchImpl(`${baseUrl}/agon/listings/${encodeURIComponent(reference)}`, {
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch {
+    throw new AspCommandError("network_unavailable", "Could not reach the Agon API");
+  }
+  const body = await readJson(response);
+  if (!response.ok) throw apiFailure(response.status, body);
+  const listing = object(body);
+  if (!listing || cleanString(listing.id) !== reference || !object(listing.manifest)) {
+    throw new AspCommandError("invalid_response", "Agon listing response is malformed");
+  }
+  return body as AgonListing;
+}
+
+export async function publishAspListing(options: PublishAspListingOptions): Promise<SubmittedOperation> {
+  if (!options.confirmed) {
+    throw new AspCommandError("confirmation_required", "Publication requires explicit --yes confirmation");
+  }
+  const localProof = verifyAspManifest(options.localManifest, options.prepared.manifestHash);
+  if (!localProof.valid || localProof.state !== "match") {
+    throw new AspCommandError(
+      "manifest_mismatch",
+      "Local manifest does not match the prepared listing anchor",
+      localProof.issues,
+    );
+  }
+  if (canonicalizeManifest(options.localManifest) !== options.prepared.canonicalManifest) {
+    throw new AspCommandError("manifest_mismatch", "Local manifest content differs from the prepared service config");
+  }
+
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const apiUrl = normalizeApiUrl(options.apiUrl);
+  const health = await getAspHealth(apiUrl, fetchImpl);
+  if (!health.capabilities.listingWrites) {
+    throw new AspCommandError(
+      "capability_unavailable",
+      "Agon listing writes are unavailable; no publication request was sent",
+    );
+  }
+  if (!options.token.trim()) {
+    throw new AspCommandError("authentication_required", "Set the selected session-token environment variable");
+  }
+
+  let response: Response;
+  try {
+    response = await fetchImpl(`${apiUrl}/agon/listings`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${options.token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(options.prepared.request),
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch {
+    throw new AspCommandError("network_unavailable", "Agon publication request did not complete");
+  }
+  const body = await readJson(response);
+  if (!response.ok) throw apiFailure(response.status, body);
+  const operation = object(body);
+  if (!validWriteOperation(operation)) {
+    throw new AspCommandError("invalid_response", "Agon publication response is malformed");
+  }
+  return body as SubmittedOperation;
+}
+
+export async function confirmAspOperation(options: ConfirmAspOperationOptions): Promise<SubmittedOperation> {
+  if (!options.token.trim()) {
+    throw new AspCommandError("authentication_required", "Set the selected session-token environment variable");
+  }
+  if (!options.operationId.trim()) {
+    throw new AspCommandError("invalid_arguments", "Operation ID is required");
+  }
+  if (!/^0x[0-9a-fA-F]{64}$/.test(options.txHash)) {
+    throw new AspCommandError("invalid_arguments", "Transaction hash must be 32-byte hex");
+  }
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const apiUrl = normalizeApiUrl(options.apiUrl);
+  let response: Response;
+  try {
+    response = await fetchImpl(
+      `${apiUrl}/agon/operations/${encodeURIComponent(options.operationId)}/confirm`,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${options.token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ txHash: options.txHash }),
+        signal: AbortSignal.timeout(15_000),
+      },
+    );
+  } catch {
+    throw new AspCommandError("network_unavailable", "Agon receipt confirmation did not complete");
+  }
+  const body = await readJson(response);
+  if (!response.ok) throw apiFailure(response.status, body);
+  const operation = object(body);
+  if (!validWriteOperation(operation) || operation.state !== "confirmed" || !operation.txHash) {
+    throw new AspCommandError("invalid_response", "Agon confirmation response is malformed");
+  }
+  return body as SubmittedOperation;
+}
+
+function validWriteOperation(operation: Record<string, unknown> | null): operation is Record<string, unknown> & SubmittedOperation {
+  const transaction = object(operation?.transaction);
+  return Boolean(
+    operation &&
+    cleanString(operation.operationId) &&
+    (operation.state === "prepared" || operation.state === "confirmed") &&
+    transaction &&
+    cleanString(transaction.chainId) &&
+    /^0x[0-9a-fA-F]{40}$/.test(cleanString(transaction.to) ?? "") &&
+    /^0x[0-9a-fA-F]+$/.test(cleanString(transaction.data) ?? "") &&
+    (transaction.functionName === "bindProfile" || transaction.functionName === "publish") &&
+    Array.isArray(transaction.args),
+  );
+}

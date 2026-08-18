@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useAccount, useChainId, useSignMessage, useSwitchChain } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { arcTestnet } from "@/lib/arc";
@@ -23,6 +24,7 @@ import {
 /// presentation is the redesign.
 
 export default function LoginPage() {
+  const router = useRouter();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
@@ -32,6 +34,10 @@ export default function LoginPage() {
   const { switchChain } = useSwitchChain();
   const { signMessageAsync } = useSignMessage();
   const { me, loading, refresh, signOut } = useAuth();
+
+  useEffect(() => {
+    if (me) router.replace("/market");
+  }, [me, router]);
 
   const [busy, setBusy] = useState(false);
   const [email, setEmail] = useState("");

@@ -1,0 +1,254 @@
+import { z } from "zod";
+import type { Result } from "../core/result.ts";
+import {
+  PostgresAgonRepository,
+  type ListingCursor,
+  type StoredListing,
+} from "../store/repository.ts";
+import type {
+  AgonCapabilities,
+  AgonListingView,
+  BindProfileRequest,
+  ListingPage,
+  ListingQuery,
+  PublishListingRequest,
+  SubmittedOperation,
+} from "./api-types.ts";
+import type { AgonMarketService, AgonServiceError } from "./routes.ts";
+import type { AgonReadiness } from "../write/readiness.ts";
+
+const cursorSchema = z.object({
+  updatedAt: z.string().datetime(),
+  chainId: z.string().regex(/^[1-9]\d*$/),
+  serviceRegistry: z.string().regex(/^0x[0-9a-f]{40}$/),
+  listingId: z.string().regex(/^[1-9]\d*$/),
+});
+
+export type AgonWriteAdapter = {
+  getReadiness(force?: boolean): Promise<AgonReadiness>;
+  bindProfile(
+    actor: string,
+    request: BindProfileRequest,
+  ): Promise<Result<SubmittedOperation, AgonServiceError>>;
+  publishListing(
+    actor: string,
+    request: PublishListingRequest,
+  ): Promise<Result<SubmittedOperation, AgonServiceError>>;
+  confirmOperation(
+    actor: string,
+    operationId: string,
+    txHash: `0x${string}`,
+  ): Promise<Result<SubmittedOperation, AgonServiceError>>;
+};
+
+export type PostgresAgonMarketServiceOptions = {
+  writer?: AgonWriteAdapter;
+  identityReads?: boolean;
+  endpointQa?: boolean;
+  directX402?: boolean;
+};
+
+function parsePositive(value: string, label: string): bigint {
+  if (!/^[1-9]\d*$/.test(value)) throw new Error(`${label} must be a positive decimal string`);
+  return BigInt(value);
+}
+
+function encodeCursor(listing: StoredListing): string {
+  return Buffer.from(
+    JSON.stringify({
+      updatedAt: listing.updatedAt.toISOString(),
+      chainId: listing.chainId.toString(),
+      serviceRegistry: listing.serviceRegistry,
+      listingId: listing.listingId.toString(),
+    }),
+    "utf8",
+  ).toString("base64url");
+}
+
+function decodeCursor(value: string | null): ListingCursor | null {
+  if (value === null) return null;
+  try {
+    const parsed = cursorSchema.safeParse(JSON.parse(Buffer.from(value, "base64url").toString("utf8")));
+    if (!parsed.success) throw new Error("invalid cursor payload");
+    return {
+      updatedAt: new Date(parsed.data.updatedAt),
+      chainId: BigInt(parsed.data.chainId),
+      serviceRegistry: parsed.data.serviceRegistry,
+      listingId: BigInt(parsed.data.listingId),
+    };
+  } catch {
+    throw new Error("cursor is invalid or expired");
+  }
+}
+
+function parseReference(reference: string) {
+  const parts = reference.split(":");
+  if (parts.length !== 3) return null;
+  const [chainId, serviceRegistry, listingId] = parts;
+  if (!chainId || !serviceRegistry || !listingId) return null;
+  if (!/^[1-9]\d*$/.test(chainId) || !/^0x[0-9a-fA-F]{40}$/.test(serviceRegistry)) return null;
+  if (!/^[1-9]\d*$/.test(listingId)) return null;
+  return { chainId: BigInt(chainId), serviceRegistry, listingId: BigInt(listingId) };
+}
+
+function listingView(listing: StoredListing): AgonListingView {
+  const unverified = listing.verification !== "Verified";
+  const warning = listing.quarantineReason
+    ? `This listing is quarantined because its indexed anchor failed validation: ${listing.quarantineReason}.`
+    : unverified
+      ? "This service has not passed Agon Arena verification."
+      : null;
+  return {
+    id: `${listing.chainId}:${listing.serviceRegistry}:${listing.listingId}`,
+    chainId: listing.chainId.toString(),
+    serviceRegistry: listing.serviceRegistry,
+    listingId: listing.listingId.toString(),
+    agentId: listing.agentId.toString(),
+    serviceKey: listing.serviceKey,
+    category: listing.category.toString(),
+    version: listing.currentVersion.toString(),
+    manifest: { hash: listing.manifestHash, uri: listing.manifestUri },
+    providerSnapshot: listing.providerSnapshot,
+    status: listing.status,
+    verification: {
+      status: listing.verification,
+      scope: {
+        agentId: listing.agentId.toString(),
+        listingId: listing.listingId.toString(),
+        version: listing.currentVersion.toString(),
+        category: listing.category.toString(),
+      },
+    },
+    risk: {
+      unverified,
+      warning,
+      quarantineReason: listing.quarantineReason,
+    },
+    payment: {
+      rail: listing.paymentRail,
+      directX402: listing.paymentRail === "X402" && listing.status === "Listed",
+      escrowEligible:
+        listing.paymentRail === "Escrow" &&
+        listing.status === "Listed" &&
+        listing.verification === "Verified" &&
+        listing.quarantineReason === null,
+    },
+    provenance: {
+      sourceBlockNumber: listing.sourceBlockNumber.toString(),
+      sourceTxHash: listing.sourceTxHash,
+      sourceLogIndex: listing.sourceLogIndex,
+    },
+  };
+}
+
+function internalError(error: unknown): Result<never, AgonServiceError> {
+  console.error("[agon] service error:", error instanceof Error ? error.message : "unknown failure");
+  return { ok: false, error: { code: "internal", message: "Agon service request failed" } };
+}
+
+export class PostgresAgonMarketService implements AgonMarketService {
+  private readonly repository: PostgresAgonRepository;
+  private readonly options: PostgresAgonMarketServiceOptions;
+
+  constructor(repository: PostgresAgonRepository, options: PostgresAgonMarketServiceOptions = {}) {
+    this.repository = repository;
+    this.options = options;
+  }
+
+  async listListings(query: ListingQuery): Promise<Result<ListingPage, AgonServiceError>> {
+    try {
+      const rows = await this.repository.listListings({
+        limit: query.limit,
+        cursor: decodeCursor(query.cursor),
+        category: query.category ? parsePositive(query.category, "category") : null,
+        agentId: query.agentId ? parsePositive(query.agentId, "agent id") : null,
+      });
+      const hasMore = rows.length > query.limit;
+      const pageRows = rows.slice(0, query.limit);
+      const last = pageRows.at(-1);
+      return {
+        ok: true,
+        value: {
+          items: pageRows.map(listingView),
+          nextCursor: hasMore && last ? encodeCursor(last) : null,
+        },
+      };
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("cursor")) {
+        return { ok: false, error: { code: "validation_failed", message: error.message } };
+      }
+      return internalError(error);
+    }
+  }
+
+  async getListing(reference: string): Promise<Result<AgonListingView, AgonServiceError>> {
+    const key = parseReference(reference);
+    if (!key) return { ok: false, error: { code: "not_found", message: "listing not found" } };
+    try {
+      const listing = await this.repository.getListing(key);
+      return listing
+        ? { ok: true, value: listingView(listing) }
+        : { ok: false, error: { code: "not_found", message: "listing not found" } };
+    } catch (error) {
+      return internalError(error);
+    }
+  }
+
+  async bindProfile(
+    actor: string,
+    request: BindProfileRequest,
+  ): Promise<Result<SubmittedOperation, AgonServiceError>> {
+    if (!this.options.writer) {
+      return {
+        ok: false,
+        error: { code: "capability_unavailable", message: "profile writes are unavailable" },
+      };
+    }
+    return this.options.writer.bindProfile(actor, request);
+  }
+
+  async publishListing(
+    actor: string,
+    request: PublishListingRequest,
+  ): Promise<Result<SubmittedOperation, AgonServiceError>> {
+    if (!this.options.writer) {
+      return {
+        ok: false,
+        error: { code: "capability_unavailable", message: "listing writes are unavailable" },
+      };
+    }
+    return this.options.writer.publishListing(actor, request);
+  }
+
+  async confirmOperation(
+    actor: string,
+    operationId: string,
+    txHash: `0x${string}`,
+  ): Promise<Result<SubmittedOperation, AgonServiceError>> {
+    if (!this.options.writer) {
+      return {
+        ok: false,
+        error: { code: "capability_unavailable", message: "write confirmation is unavailable" },
+      };
+    }
+    return this.options.writer.confirmOperation(actor, operationId, txHash);
+  }
+
+  async getCapabilities(): Promise<AgonCapabilities> {
+    const readiness = this.options.writer ? await this.options.writer.getReadiness() : null;
+    const writesReady = readiness?.ready ?? false;
+    return {
+      identityReads: this.options.identityReads ?? false,
+      profileWrites: writesReady,
+      listingReads: true,
+      listingWrites: writesReady,
+      endpointQa: this.options.endpointQa ?? false,
+      directX402: this.options.directX402 ?? false,
+      escrow: false,
+      writeReadiness: {
+        checkedAt: readiness?.checkedAt ?? null,
+        reasons: readiness?.reasons ?? ["adapter_unconfigured"],
+      },
+    };
+  }
+}

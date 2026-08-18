@@ -25,6 +25,9 @@ export type CircleWriteArgs = {
   /// Optional native-value transfer in human-decimal form. ArcRun's writes are
   /// all USDC + custom calls with no native value so this stays undefined.
   value?: string;
+  /// Prepared operation reference for endpoints that require a backend proof
+  /// before Circle is allowed to sign the exact call.
+  refId?: string;
 };
 
 export interface UseCircleExecute {
@@ -57,6 +60,7 @@ export function useCircleExecute(): UseCircleExecute {
           abiFunctionSignature: sig,
           abiParameters: params,
           ...(args.value ? { amount: args.value } : {}),
+          ...(args.refId ? { refId: args.refId } : {}),
         }),
       });
       const submitBody = (await submitRes.json().catch(() => ({}))) as {

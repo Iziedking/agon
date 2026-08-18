@@ -15,6 +15,8 @@ export { StatusChip } from "./StatusChip";
 export { ActivityRow, ActivityLedger } from "./ActivityRow";
 export { SectionHeader } from "./SectionHeader";
 export { ArcRunMark } from "./ArcRunMark";
+export { AgonMark } from "./AgonMark";
+export { ProductMark } from "./ProductMark";
 export { SyndicateTile, SYNDICATE_CONF, type SyndicateKey } from "./SyndicateTile";
 export { BodyLines } from "./BodyLines";
 export { CornerMarkers } from "./CornerMarkers";

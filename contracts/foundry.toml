@@ -15,7 +15,7 @@ fuzz = { runs = 1000 }
 verbosity = 4
 
 [rpc_endpoints]
-arc_testnet = "https://rpc.testnet.arc.network"
+arc_testnet = "https://rpc.testnet.arc.io"
 
 [etherscan]
 arc_testnet = { key = "${ARCSCAN_API_KEY}", url = "https://testnet.arcscan.app/api", chain = 5042002 }

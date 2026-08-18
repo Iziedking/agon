@@ -1112,3 +1112,211 @@ create table if not exists autonomy_decisions (
   created_at  timestamptz not null default now()
 );
 create index if not exists autonomy_decisions_agent_idx on autonomy_decisions (agent_id, created_at desc);
+
+-- ---------------------------------------------------------------------------
+-- Agon Market foundation
+--
+-- These tables are isolated from the legacy ArcRun read model. Chain-derived
+-- identifiers use numeric so uint256 values never cross a JavaScript float.
+-- Addresses and hashes are stored as canonical lowercase hex. Raw chain events,
+-- validated listing versions, and listing audits are append-only provenance.
+-- ---------------------------------------------------------------------------
+
+create table if not exists agon_profiles (
+  chain_id                    numeric(78, 0) not null check (chain_id > 0),
+  profile_registry_address    text not null check (profile_registry_address ~ '^0x[0-9a-f]{40}$'),
+  identity_registry_address   text not null check (identity_registry_address ~ '^0x[0-9a-f]{40}$'),
+  agent_id                    numeric(78, 0) not null check (agent_id > 0),
+  owner_snapshot              text not null check (owner_snapshot ~ '^0x[0-9a-f]{40}$'),
+  metadata_uri                text not null check (char_length(metadata_uri) between 1 and 2048),
+  status                      text not null check (status in ('Active', 'Suspended', 'Archived')),
+  suspension_reason           text check (suspension_reason is null or suspension_reason ~ '^0x[0-9a-f]{64}$'),
+  source_block_number         numeric(78, 0) not null check (source_block_number >= 0),
+  source_tx_hash              text not null check (source_tx_hash ~ '^0x[0-9a-f]{64}$'),
+  source_log_index            integer not null check (source_log_index >= 0),
+  created_at                  timestamptz not null,
+  updated_at                  timestamptz not null,
+  primary key (chain_id, profile_registry_address, agent_id)
+);
+create index if not exists agon_profiles_owner_idx
+  on agon_profiles(chain_id, identity_registry_address, owner_snapshot);
+create index if not exists agon_profiles_status_idx
+  on agon_profiles(chain_id, status, updated_at desc);
+
+create table if not exists agon_listings (
+  chain_id                    numeric(78, 0) not null check (chain_id > 0),
+  service_registry_address    text not null check (service_registry_address ~ '^0x[0-9a-f]{40}$'),
+  listing_id                  numeric(78, 0) not null check (listing_id > 0),
+  agent_id                    numeric(78, 0) not null check (agent_id > 0),
+  service_key                 text not null check (service_key ~ '^0x[0-9a-f]{64}$'),
+  category                    numeric(78, 0) not null check (category > 0),
+  current_version             numeric(78, 0) not null check (current_version > 0),
+  manifest_hash               text not null check (manifest_hash ~ '^0x[0-9a-f]{64}$'),
+  manifest_uri                text not null check (char_length(manifest_uri) > 0),
+  payment_rail                text not null check (payment_rail in ('X402', 'Escrow')),
+  provider_snapshot           text not null check (provider_snapshot ~ '^0x[0-9a-f]{40}$'),
+  chain_status                text not null check (chain_status in ('Listed', 'Suspended', 'Delisted')),
+  status                      text not null check (status in ('Listed', 'Suspended', 'Delisted')),
+  verification                text not null check (
+    verification in ('Unverified', 'Pending', 'Verified', 'Expired', 'Suspended', 'Revoked')
+  ),
+  quarantine_reason           text,
+  source_block_number         numeric(78, 0) not null check (source_block_number >= 0),
+  source_tx_hash              text not null check (source_tx_hash ~ '^0x[0-9a-f]{64}$'),
+  source_log_index            integer not null check (source_log_index >= 0),
+  created_at                  timestamptz not null,
+  updated_at                  timestamptz not null,
+  primary key (chain_id, service_registry_address, listing_id)
+);
+create unique index if not exists agon_listings_service_key_unique
+  on agon_listings(chain_id, service_registry_address, agent_id, service_key);
+create index if not exists agon_listings_discovery_idx
+  on agon_listings(chain_id, status, verification, category, updated_at desc);
+create index if not exists agon_listings_agent_idx
+  on agon_listings(chain_id, agent_id, updated_at desc);
+
+-- A row is the exact manifest/provider/version tuple that passed local
+-- validation before activation. The projector compares chain anchors to this
+-- table. Rows cannot be edited after insertion; a new manifest is a new version.
+create table if not exists agon_listing_versions (
+  chain_id                    numeric(78, 0) not null check (chain_id > 0),
+  service_registry_address    text not null check (service_registry_address ~ '^0x[0-9a-f]{40}$'),
+  listing_id                  numeric(78, 0) not null check (listing_id > 0),
+  version                     numeric(78, 0) not null check (version > 0),
+  manifest_hash               text not null check (manifest_hash ~ '^0x[0-9a-f]{64}$'),
+  manifest_uri                text not null check (char_length(manifest_uri) > 0),
+  payment_rail                text not null check (payment_rail in ('X402', 'Escrow')),
+  provider_snapshot           text not null check (provider_snapshot ~ '^0x[0-9a-f]{40}$'),
+  validated_at                timestamptz not null,
+  primary key (chain_id, service_registry_address, listing_id, version)
+);
+create index if not exists agon_listing_versions_hash_idx
+  on agon_listing_versions(chain_id, manifest_hash);
+
+create table if not exists agon_listing_events (
+  id                          bigserial primary key,
+  chain_id                    numeric(78, 0) not null check (chain_id > 0),
+  service_registry_address    text not null check (service_registry_address ~ '^0x[0-9a-f]{40}$'),
+  listing_id                  numeric(78, 0) not null check (listing_id > 0),
+  version                     numeric(78, 0) check (version is null or version > 0),
+  event_type                  text not null check (
+    event_type in ('published', 'version_published', 'status_changed', 'verification_changed', 'quarantined')
+  ),
+  payload                     jsonb not null,
+  tx_hash                     text not null check (tx_hash ~ '^0x[0-9a-f]{64}$'),
+  log_index                   integer not null check (log_index >= 0),
+  block_number                numeric(78, 0) not null check (block_number >= 0),
+  block_hash                  text not null check (block_hash ~ '^0x[0-9a-f]{64}$'),
+  observed_at                 timestamptz not null,
+  unique (chain_id, tx_hash, log_index, event_type)
+);
+create index if not exists agon_listing_events_listing_idx
+  on agon_listing_events(chain_id, service_registry_address, listing_id, id);
+create index if not exists agon_listing_events_block_idx
+  on agon_listing_events(chain_id, block_number, log_index);
+
+create table if not exists agon_chain_events (
+  chain_id                    numeric(78, 0) not null check (chain_id > 0),
+  contract_address            text not null check (contract_address ~ '^0x[0-9a-f]{40}$'),
+  tx_hash                     text not null check (tx_hash ~ '^0x[0-9a-f]{64}$'),
+  log_index                   integer not null check (log_index >= 0),
+  block_number                numeric(78, 0) not null check (block_number >= 0),
+  block_hash                  text not null check (block_hash ~ '^0x[0-9a-f]{64}$'),
+  event_name                  text not null,
+  args                        jsonb not null,
+  observed_at                 timestamptz not null,
+  primary key (chain_id, tx_hash, log_index)
+);
+create index if not exists agon_chain_events_contract_block_idx
+  on agon_chain_events(chain_id, contract_address, block_number, log_index);
+
+-- Wallet-neutral Agon writes are prepared before the user's own wallet signs
+-- them, then confirmed only after the backend matches a successful canonical
+-- contract event. This ledger makes both phases durable and idempotent.
+create table if not exists agon_write_operations (
+  operation_id        uuid primary key,
+  actor_address       text not null check (actor_address ~ '^0x[0-9a-f]{40}$'),
+  operation_kind      text not null check (operation_kind in ('bind_profile', 'publish_listing')),
+  payload_hash        text not null check (payload_hash ~ '^0x[0-9a-f]{64}$'),
+  request_payload     jsonb not null,
+  transaction_intent jsonb not null,
+  state               text not null default 'prepared' check (state in ('prepared', 'confirmed')),
+  tx_hash             text unique check (tx_hash is null or tx_hash ~ '^0x[0-9a-f]{64}$'),
+  result_reference    text,
+  block_number        numeric(78, 0) check (block_number is null or block_number >= 0),
+  log_index           integer check (log_index is null or log_index >= 0),
+  created_at          timestamptz not null default now(),
+  updated_at          timestamptz not null default now(),
+  unique (actor_address, operation_kind, payload_hash),
+  check (
+    (state = 'prepared' and tx_hash is null and block_number is null and log_index is null)
+    or
+    (state = 'confirmed' and tx_hash is not null and block_number is not null and log_index is not null)
+  )
+);
+create index if not exists agon_write_operations_actor_idx
+  on agon_write_operations(actor_address, created_at desc);
+
+create table if not exists agon_verification_evidence (
+  id              bigserial primary key,
+  listing_id      numeric(78, 0) not null check (listing_id > 0),
+  agent_id        numeric(78, 0) not null check (agent_id >= 0),
+  passed          boolean not null,
+  evidence_hash   text not null check (evidence_hash ~ '^0x[0-9a-f]{64}$'),
+  evidence        jsonb not null,
+  verifier       text not null default 'agon-verifier-agent',
+  created_at      timestamptz not null default now()
+);
+create index if not exists agon_verification_evidence_listing_idx
+  on agon_verification_evidence(listing_id, created_at desc);
+
+create table if not exists agon_indexer_state (
+  stream_name                 text not null check (char_length(stream_name) > 0),
+  chain_id                    numeric(78, 0) not null check (chain_id > 0),
+  contract_address            text not null check (contract_address ~ '^0x[0-9a-f]{40}$'),
+  last_block                  numeric(78, 0) not null check (last_block >= 0),
+  last_block_hash             text not null check (last_block_hash ~ '^0x[0-9a-f]{64}$'),
+  updated_at                  timestamptz not null default now(),
+  primary key (stream_name, chain_id, contract_address)
+);
+
+create or replace function agon_reject_append_only_mutation()
+returns trigger
+language plpgsql
+as $$
+begin
+  raise exception '% is append-only', tg_table_name using errcode = '55000';
+end;
+$$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_trigger
+    where tgname = 'agon_listing_versions_append_only'
+      and tgrelid = 'agon_listing_versions'::regclass
+  ) then
+    create trigger agon_listing_versions_append_only
+      before update or delete on agon_listing_versions
+      for each row execute function agon_reject_append_only_mutation();
+  end if;
+  if not exists (
+    select 1 from pg_trigger
+    where tgname = 'agon_listing_events_append_only'
+      and tgrelid = 'agon_listing_events'::regclass
+  ) then
+    create trigger agon_listing_events_append_only
+      before update or delete on agon_listing_events
+      for each row execute function agon_reject_append_only_mutation();
+  end if;
+  if not exists (
+    select 1 from pg_trigger
+    where tgname = 'agon_chain_events_append_only'
+      and tgrelid = 'agon_chain_events'::regclass
+  ) then
+    create trigger agon_chain_events_append_only
+      before update or delete on agon_chain_events
+      for each row execute function agon_reject_append_only_mutation();
+  end if;
+end;
+$$;

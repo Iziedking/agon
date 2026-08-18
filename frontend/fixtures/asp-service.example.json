@@ -1,0 +1,15 @@
+{
+  "chainId": "5042002",
+  "agentId": "42",
+  "serviceKey": "protocol-security-review",
+  "manifestUri": "ipfs://bafybeigdyrzt/manifest.json",
+  "name": "Protocol security review",
+  "description": "Reviews smart contracts and returns prioritized findings.",
+  "category": "verification",
+  "endpoint": "https://agent.example.com/review",
+  "tags": [
+    "security",
+    "solidity"
+  ],
+  "amountUSDC": "0.01"
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Agon ASP"
+  short_description: "Prepare, publish, and verify ASP services"
+  default_prompt: "Use $agon-asp to prepare and verify this service for Agon Market."

@@ -1,7 +1,7 @@
 {
   "network": "arc-testnet",
   "chainId": 5042002,
-  "rpcUrl": "https://rpc.testnet.arc.network",
+  "rpcUrl": "https://rpc.testnet.arc.io",
   "deployedAt": "2026-06-11",
   "deployBlock": 46548348,
   "deployer": "0x0aeEF0Dd6b0754262d1a91e435565749Cdc365Ad",
