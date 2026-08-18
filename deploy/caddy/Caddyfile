@@ -1,8 +1,8 @@
-# Reverse proxy for the ArcRun backend. Caddy fetches and renews TLS
+# Reverse proxy for the ArcRun/Agon backend. Caddy fetches and renews TLS
 # certificates automatically through Let's Encrypt. For that to work, ports
 # 80 and 443 must be open on the VPS and both subdomains must resolve to this
-# host's public IP. The frontend (arcrun.xyz) lives on Vercel and is not
-# served here.
+# host's public IP. The frontends (legacy arcrun.xyz and canonical agon.surf)
+# live on Vercel and are not served here.
 #
 # THIS FILE IS SHARED INGRESS FOR THREE PRODUCTS. This Caddy owns ports 80 and
 # 443 on the VPS, so Agent QA (agentsqa.xyz) and Avow (api.avow.site) run their
@@ -30,11 +30,34 @@
 #   docker exec arcrun-caddy caddy reload --config /etc/caddy/Caddyfile
 
 api.arcrun.xyz {
-	reverse_proxy auth:8082
+	handle /x402/* {
+		reverse_proxy auth:8090
+	}
+
+	handle {
+		reverse_proxy auth:8082
+	}
+}
+
+# Agon's canonical API ingress. Keep the legacy api.arcrun.xyz block above
+# during the transition; both names reach the same services without redirecting
+# signed requests or changing existing clients underneath them.
+api.agon.surf {
+	handle /x402/* {
+		reverse_proxy auth:8090
+	}
+
+	handle {
+		reverse_proxy auth:8082
+	}
 }
 
 # WebSocket upgrades are handled transparently by reverse_proxy.
 ws.arcrun.xyz {
+	reverse_proxy coordinator:8788
+}
+
+ws.agon.surf {
 	reverse_proxy coordinator:8788
 }
 

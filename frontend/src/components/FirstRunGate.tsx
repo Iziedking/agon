@@ -85,7 +85,7 @@ export function FirstRunGate() {
       style={{ backgroundColor: "rgba(244,241,237,0.96)" }}
       role="dialog"
       aria-modal="true"
-      aria-label="Welcome to ArcRun"
+          aria-label="Welcome to Agon"
     >
       <div
         onClick={(e) => e.stopPropagation()}
@@ -95,7 +95,7 @@ export function FirstRunGate() {
           <Robot variant="pink" size={72} decorative />
         </div>
         <div className="mt-5 font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">
-          <span aria-hidden className="text-accent">■</span> WELCOME TO ARCRUN
+          <span aria-hidden className="text-accent">■</span> WELCOME TO AGON
         </div>
         <h1 className="mt-2 font-stencil uppercase text-ink" style={{ fontSize: 30, lineHeight: 1.05 }}>
           START HERE

@@ -1,0 +1,280 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import {
+  AspCommandError,
+  confirmAspOperation,
+  inspectAspListing,
+  prepareAspListing,
+  publishAspListing,
+  verifyAspManifest,
+} from "./asp.ts";
+
+const preparedOperation = {
+  operationId: "op_123",
+  state: "prepared" as const,
+  transaction: {
+    chainId: "5042002",
+    to: "0x2144C156B0a4581da2D046C2E41AC41C6C3938CB",
+    data: "0x1234",
+    functionName: "publish" as const,
+    args: ["42", `0x${"22".repeat(32)}`, `0x${"33".repeat(32)}`, "ipfs://manifest", "8", "0"],
+  },
+  txHash: null,
+  resultReference: null,
+  proof: null,
+};
+
+const config = {
+  chainId: "5042002",
+  agentId: "42",
+  serviceKey: "protocol-security-review",
+  manifestUri: "ipfs://bafybeigdyrzt/manifest.json",
+  name: "Protocol security review",
+  description: "Reviews smart contracts and returns prioritized findings.",
+  category: "verification",
+  endpoint: "https://agent.example.com/review",
+  tags: ["security", "solidity"],
+  amountUSDC: "0.01",
+};
+
+const listingBase = {
+  id: "5042002:0x1111111111111111111111111111111111111111:7",
+  chainId: "5042002",
+  serviceRegistry: "0x1111111111111111111111111111111111111111",
+  listingId: "7",
+  agentId: "42",
+  serviceKey: `0x${"22".repeat(32)}`,
+  category: "8",
+  version: "1",
+  manifest: {
+    hash: `0x${"00".repeat(32)}`,
+    uri: config.manifestUri,
+  },
+  providerSnapshot: "0x3333333333333333333333333333333333333333",
+  status: "Listed" as const,
+  verification: {
+    status: "Unverified" as const,
+    scope: { agentId: "42", listingId: "7", version: "1", category: "8" },
+  },
+  risk: {
+    unverified: true,
+    warning: "This service has not passed Agon Arena verification.",
+    quarantineReason: null,
+  },
+  payment: { rail: "X402" as const, directX402: true, escrowEligible: false },
+  provenance: {
+    sourceBlockNumber: "9001",
+    sourceTxHash: `0x${"44".repeat(32)}`,
+    sourceLogIndex: 2,
+  },
+};
+
+test("prepares the exact x402 manifest and listing payload from marketplace language", () => {
+  const prepared = prepareAspListing(config);
+
+  assert.deepEqual(prepared.manifest, {
+    name: config.name,
+    version: 1,
+    description: config.description,
+    category: "verification",
+    endpoint: config.endpoint,
+    tags: config.tags,
+    pricing: { rail: "x402", amountUSDC: "0.01" },
+  });
+  assert.equal(prepared.category.id, "8");
+  assert.match(prepared.manifestHash, /^0x[0-9a-f]{64}$/);
+  assert.match(prepared.serviceKeyHash, /^0x[0-9a-f]{64}$/);
+  assert.deepEqual(prepared.request, {
+    chainId: "5042002",
+    agentId: "42",
+    serviceKey: prepared.serviceKeyHash,
+    manifestHash: prepared.manifestHash,
+    manifestUri: config.manifestUri,
+    category: "8",
+    paymentRail: "X402",
+  });
+  assert.equal(prepared.initialTrustState, "Provider listed");
+});
+
+test("accepts category id or label without creating another registry", () => {
+  assert.equal(prepareAspListing({ ...config, category: "8" }).category.slug, "verification");
+  assert.equal(prepareAspListing({ ...config, category: "Verification" }).category.slug, "verification");
+  assert.throws(
+    () => prepareAspListing({ ...config, category: "47" }),
+    (error: unknown) =>
+      error instanceof AspCommandError &&
+      error.code === "invalid_config" &&
+      error.issues.some((issue) => issue.field === "category"),
+  );
+});
+
+test("validates and hashes local manifests before publication", () => {
+  const prepared = prepareAspListing(config);
+  const match = verifyAspManifest(prepared.manifest, prepared.manifestHash);
+  const mismatch = verifyAspManifest(prepared.manifest, `0x${"99".repeat(32)}`);
+  const invalid = verifyAspManifest({ ...prepared.manifest, endpoint: "http://localhost:3000" });
+  const duplicateTags = verifyAspManifest({ ...prepared.manifest, tags: ["security", "security"] });
+
+  assert.equal(match.state, "match");
+  assert.equal(match.valid, true);
+  assert.equal(mismatch.state, "mismatch");
+  assert.equal(mismatch.valid, true);
+  assert.equal(invalid.state, "invalid");
+  assert.equal(invalid.valid, false);
+  assert.equal(duplicateTags.state, "invalid");
+  assert.equal(duplicateTags.valid, false);
+});
+
+test("reports provider-listed and verified evidence without conflating them", () => {
+  const prepared = prepareAspListing(config);
+  const providerListed = inspectAspListing(
+    { ...listingBase, manifest: { ...listingBase.manifest, hash: prepared.manifestHash } },
+    prepared.manifest,
+  );
+  const verified = inspectAspListing(
+    {
+      ...listingBase,
+      manifest: { ...listingBase.manifest, hash: prepared.manifestHash },
+      verification: { ...listingBase.verification, status: "Verified" as const },
+      risk: { unverified: false, warning: null, quarantineReason: null },
+    },
+    prepared.manifest,
+    listingBase.providerSnapshot,
+  );
+
+  assert.equal(providerListed.evidence, "coherent");
+  assert.equal(providerListed.trust.state, "unverified");
+  assert.equal(providerListed.trust.label, "UNVERIFIED");
+  assert.equal(providerListed.payment.directX402, true);
+  assert.equal(providerListed.effectivePayment.directX402, true);
+  assert.equal(providerListed.effectivePayment.escrow, false);
+  assert.equal(verified.evidence, "coherent");
+  assert.equal(verified.trust.state, "verified");
+  assert.equal(verified.trust.label, "VERIFIED");
+});
+
+test("turns raw payment flags off when listing evidence is unsafe", () => {
+  const prepared = prepareAspListing(config);
+  const quarantined = inspectAspListing({
+    ...listingBase,
+    manifest: { ...listingBase.manifest, hash: `0x${"99".repeat(32)}` },
+    risk: {
+      unverified: true,
+      warning: "The manifest body does not match the immutable onchain hash.",
+      quarantineReason: "manifest_hash_mismatch",
+    },
+  }, prepared.manifest);
+
+  assert.equal(quarantined.evidence, "unsafe");
+  assert.equal(quarantined.payment.directX402, true);
+  assert.equal(quarantined.effectivePayment.directX402, false);
+  assert.equal(quarantined.effectivePayment.escrow, false);
+  assert.match(quarantined.effectivePayment.message, /unsafe/i);
+});
+
+test("refuses publication before POST when listing writes are unavailable", async () => {
+  const prepared = prepareAspListing(config);
+  const requests: Array<{ url: string; init?: RequestInit }> = [];
+  const fetchImpl: typeof fetch = async (input, init) => {
+    requests.push({ url: String(input), init });
+    return new Response(JSON.stringify({
+      ok: true,
+      service: "agon",
+      capabilities: {
+        identityReads: false,
+        profileWrites: false,
+        listingReads: true,
+        listingWrites: false,
+        endpointQa: false,
+        directX402: false,
+        escrow: false,
+      },
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+
+  await assert.rejects(
+    publishAspListing({
+      apiUrl: "https://api.example.com",
+      token: "test-session-token",
+      confirmed: true,
+      prepared,
+      localManifest: prepared.manifest,
+      fetchImpl,
+    }),
+    (error: unknown) =>
+      error instanceof AspCommandError && error.code === "capability_unavailable",
+  );
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0]?.url, "https://api.example.com/agon/health");
+  assert.equal(requests[0]?.init?.method, undefined);
+});
+
+test("publishes only after confirmation, local proof, capability, and environment token", async () => {
+  const prepared = prepareAspListing(config);
+  const requests: Array<{ url: string; init?: RequestInit }> = [];
+  const fetchImpl: typeof fetch = async (input, init) => {
+    requests.push({ url: String(input), init });
+    if (String(input).endsWith("/agon/health")) {
+      return new Response(JSON.stringify({
+        ok: true,
+        service: "agon",
+        capabilities: {
+          identityReads: true,
+          profileWrites: true,
+          listingReads: true,
+          listingWrites: true,
+          endpointQa: true,
+          directX402: true,
+          escrow: false,
+        },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    return new Response(JSON.stringify(preparedOperation), {
+      status: 201,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  const operation = await publishAspListing({
+    apiUrl: "https://api.example.com/",
+    token: "test-session-token",
+    confirmed: true,
+    prepared,
+    localManifest: prepared.manifest,
+    fetchImpl,
+  });
+
+  assert.deepEqual(operation, preparedOperation);
+  assert.equal(requests.length, 2);
+  assert.equal(requests[1]?.url, "https://api.example.com/agon/listings");
+  assert.equal(requests[1]?.init?.method, "POST");
+  assert.equal(new Headers(requests[1]?.init?.headers).get("authorization"), "Bearer test-session-token");
+  assert.deepEqual(JSON.parse(String(requests[1]?.init?.body)), prepared.request);
+});
+
+test("confirms a published transaction through the receipt-verification endpoint", async () => {
+  const txHash = `0x${"77".repeat(32)}`;
+  const fetchImpl: typeof fetch = async (input, init) => {
+    assert.equal(String(input), "https://api.example.com/agon/operations/op_123/confirm");
+    assert.equal(init?.method, "POST");
+    assert.equal(new Headers(init?.headers).get("authorization"), "Bearer test-session-token");
+    assert.deepEqual(JSON.parse(String(init?.body)), { txHash });
+    return new Response(JSON.stringify({
+      ...preparedOperation,
+      state: "confirmed",
+      txHash,
+      resultReference: "5042002:0x2144c156b0a4581da2d046c2e41ac41c6c3938cb:9",
+      proof: { blockNumber: "123", logIndex: 8 },
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  const confirmed = await confirmAspOperation({
+    apiUrl: "https://api.example.com",
+    token: "test-session-token",
+    operationId: "op_123",
+    txHash,
+    fetchImpl,
+  });
+  assert.equal(confirmed.state, "confirmed");
+  assert.equal(confirmed.txHash, txHash);
+});

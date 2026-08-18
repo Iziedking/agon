@@ -1,5 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  async redirects() {
+    return process.env.NEXT_PUBLIC_PRODUCT_VARIANT === "agon"
+      ? [{ source: "/", destination: "/market", permanent: false }]
+      : [];
+  },
   // Don't fail the production build on lint (e.g. <a> vs <Link>); types are still checked.
   eslint: { ignoreDuringBuilds: true },
   webpack: (config) => {

@@ -44,7 +44,7 @@ function txUrl(chain: string, hash: string): string {
 
 // The console grouped into tabs instead of one long scroll. `admin` tabs carry
 // write actions and are hidden from a support-tier token.
-type TabId = "overview" | "members" | "settlements" | "missions" | "events" | "treasury" | "activity";
+type TabId = "overview" | "members" | "settlements" | "missions" | "events" | "treasury" | "agon" | "activity";
 const TABS: Array<{ id: TabId; label: string; admin?: boolean }> = [
   { id: "overview", label: "OVERVIEW" },
   { id: "members", label: "MEMBERS" },
@@ -52,6 +52,7 @@ const TABS: Array<{ id: TabId; label: string; admin?: boolean }> = [
   { id: "missions", label: "MISSIONS", admin: true },
   { id: "events", label: "EVENTS", admin: true },
   { id: "treasury", label: "TREASURY", admin: true },
+  { id: "agon", label: "AGON VERIFY", admin: true },
   { id: "activity", label: "ACTIVITY" },
 ];
 
@@ -212,10 +213,77 @@ export default function AdminPage() {
             </>
           ) : null}
 
+          {activeTab === "agon" ? <AgonVerificationPanel token={token} /> : null}
+
           {activeTab === "activity" ? <CommandsLog token={token} /> : null}
         </div>
       )}
     </Shell>
+  );
+}
+
+function AgonVerificationPanel({ token }: { token: string }) {
+  const [listingId, setListingId] = useState("");
+  const [verifier, setVerifier] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [evidence, setEvidence] = useState<Array<{ id: string; passed: boolean; evidenceHash: string; evidence: { checks?: Record<string, { passed: boolean; detail: string }>; error?: string }; createdAt: string }>>([]);
+
+  async function queue(kind: string, targetId: number, params?: Record<string, unknown>) {
+    setBusy(true); setError(null); setResult(null);
+    try {
+      const res = await fetch(`${AUTH_URL}/admin/commands`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-admin-token": token },
+        body: JSON.stringify({ kind, targetId, params }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((data as { error?: string }).error ?? `http ${res.status}`);
+      setResult(`queued ${kind} #${(data as { id?: string }).id ?? "?"}`);
+    } catch (e) { setError(e instanceof Error ? e.message : "could not queue command"); }
+    setBusy(false);
+  }
+
+  function confirmQueue(kind: string, targetId: number, params: Record<string, unknown>, message: string) {
+    if (window.confirm(message)) void queue(kind, targetId, params);
+  }
+
+  async function loadEvidence() {
+    if (!id) return;
+    setError(null);
+    const res = await fetch(`${AUTH_URL}/admin/agon/evidence/${id}`, { headers: { "x-admin-token": token } });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { setError((data as { error?: string }).error ?? `http ${res.status}`); return; }
+    setEvidence((data as { evidence?: typeof evidence }).evidence ?? []);
+  }
+
+  const id = Number(listingId);
+  return (
+    <div className="grid gap-6 lg:grid-cols-2">
+      <BracketedCell pad="sm">
+        <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3"><span aria-hidden className="text-accent">■</span> AGON VERIFICATION</div>
+        <p className="mt-1 font-mono text-[10px] text-ink-3">Queue a recheck or approve a listing after the verifier evidence is reviewed.</p>
+        <div className="mt-3 flex gap-2">
+          <input value={listingId} onChange={(e) => setListingId(e.target.value)} placeholder="listing id" inputMode="numeric" className="w-28 border border-[color:var(--hairline-strong)] bg-canvas px-3 py-2 font-mono text-sm text-ink outline-none focus:border-ink" />
+          <button disabled={busy || !id} onClick={() => void queue("agon_recheck_listing", id, { listingId })} className="border border-[color:var(--hairline-strong)] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.1em] text-ink-2 hover:text-ink disabled:opacity-50">RECHECK</button>
+          <button disabled={busy || !id} onClick={() => confirmQueue("agon_verify_listing", id, { listingId }, "Queue onchain verification for this listing? This requires the configured verifier wallet.")} className="bg-accent px-3 py-2 font-mono text-[11px] uppercase tracking-[0.1em] text-accent-ink hover:bg-accent-press disabled:opacity-50">VERIFY</button>
+          <button disabled={!id} onClick={() => void loadEvidence()} className="border border-[color:var(--hairline-strong)] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.1em] text-ink-2 hover:text-ink disabled:opacity-50">EVIDENCE</button>
+        </div>
+        {evidence.length ? <div className="mt-3 flex flex-col gap-2">{evidence.map((run) => <div key={run.id} className="border-t border-[color:var(--hairline)] pt-2 font-mono text-[10px]"><span style={{ color: run.passed ? "var(--ok)" : "var(--err)" }}>{run.passed ? "PASS" : "FAIL"}</span> · {new Date(run.createdAt).toLocaleString()}<div className="mt-1 break-all text-ink-3">{run.evidenceHash}</div>{run.evidence.error ? <div className="text-[color:var(--err)]">{run.evidence.error}</div> : null}</div>)}</div> : null}
+      </BracketedCell>
+      <BracketedCell pad="sm">
+        <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3"><span aria-hidden className="text-accent">■</span> VERIFIER ROLE</div>
+        <p className="mt-1 font-mono text-[10px] text-ink-3">Grant or revoke the isolated verifier wallet. The worker refuses the action unless its wallet is Agon admin.</p>
+        <input value={verifier} onChange={(e) => setVerifier(e.target.value)} placeholder="0x verifier wallet" className="mt-3 w-full border border-[color:var(--hairline-strong)] bg-canvas px-3 py-2 font-mono text-sm text-ink outline-none focus:border-ink" />
+        <div className="mt-2 flex gap-2">
+          <button disabled={busy || !verifier} onClick={() => confirmQueue("agon_grant_verifier", 0, { verifier }, "Grant VERIFIER_ROLE to this wallet?")} className="bg-accent px-3 py-2 font-mono text-[11px] uppercase tracking-[0.1em] text-accent-ink hover:bg-accent-press disabled:opacity-50">GRANT ROLE</button>
+          <button disabled={busy || !verifier} onClick={() => confirmQueue("agon_revoke_verifier", 0, { verifier }, "Revoke VERIFIER_ROLE from this wallet?")} className="border border-[color:var(--err)] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.1em] text-[color:var(--err)] hover:bg-canvas-3 disabled:opacity-50">REVOKE</button>
+        </div>
+      </BracketedCell>
+      {error ? <p className="font-mono text-[11px] text-[color:var(--err)]">{error}</p> : null}
+      {result ? <p className="font-mono text-[11px] text-[color:var(--ok)]">{result} · inspect ACTIVITY for receipt</p> : null}
+    </div>
   );
 }
 

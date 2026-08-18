@@ -1,0 +1,1 @@
+﻿export type ListingRecord={status:'Listed'|'Suspended'|'Delisted';verification:'Unverified'|'Pending'|'Verified'|'Expired'|'Suspended'|'Revoked';paymentRail:'X402'|'Escrow'}; export const escrowEligible=(x:ListingRecord)=>x.status==='Listed'&&x.paymentRail==='Escrow'&&x.verification==='Verified';

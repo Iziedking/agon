@@ -14,6 +14,7 @@ import {
   refundAllCancelledMissions,
   clearMissionHistory,
 } from "../runners/missions/fees.js";
+import { verifyAgonListing, verificationEvidenceHash } from "../agon/verification.js";
 
 /// Admin command worker. The admin console (auth API process) inserts rows into
 /// admin_commands; this loop runs in the COORDINATOR process and drains them, so
@@ -26,6 +27,63 @@ const cancelAbi = parseAbi([
   "function cancelContest(uint256 contestId)",
   "function cancelChallenge(uint256 id)",
 ]);
+
+const agonVerificationAbi = parseAbi([
+  "function DEFAULT_ADMIN_ROLE() view returns (bytes32)",
+  "function VERIFIER_ROLE() view returns (bytes32)",
+  "function hasRole(bytes32 role,address account) view returns (bool)",
+  "function grantRole(bytes32 role,address account)",
+  "function revokeRole(bytes32 role,address account)",
+  "function setVerification(uint256 listingId,uint8 verification)",
+]);
+
+const AGON_SERVICE_REGISTRY = config.agon.deployment?.contracts.AgonServiceRegistry;
+const AGON_VERIFIED = 2;
+
+async function agonRoleAction(kind: "agon_grant_verifier" | "agon_revoke_verifier", params: Record<string, unknown> | null): Promise<string> {
+  if (!AGON_SERVICE_REGISTRY) throw new Error("Agon deployment is not configured");
+  const verifier = String(params?.verifier ?? "").trim() as `0x${string}`;
+  if (!/^0x[a-fA-F0-9]{40}$/.test(verifier)) throw new Error("verifier must be a checksummed or hexadecimal EVM address");
+  const role = await publicClient.readContract({ address: AGON_SERVICE_REGISTRY, abi: agonVerificationAbi, functionName: "VERIFIER_ROLE" });
+  const admin = await publicClient.readContract({ address: AGON_SERVICE_REGISTRY, abi: agonVerificationAbi, functionName: "DEFAULT_ADMIN_ROLE" });
+  const wallet = coordinatorWallet();
+  const walletAddress = (wallet.account as { address?: `0x${string}` } | undefined)?.address;
+  if (!walletAddress) throw new Error("coordinator wallet has no signing address");
+  const isAdmin = await publicClient.readContract({ address: AGON_SERVICE_REGISTRY, abi: agonVerificationAbi, functionName: "hasRole", args: [admin, walletAddress] });
+  if (!isAdmin) throw new Error(`coordinator wallet ${walletAddress} is not Agon admin; refusing role mutation`);
+  const functionName = kind === "agon_grant_verifier" ? "grantRole" : "revokeRole";
+  const hash = await wallet.writeContract({ address: AGON_SERVICE_REGISTRY, abi: agonVerificationAbi, functionName, args: [role, verifier] } as never);
+  await publicClient.waitForTransactionReceipt({ hash, timeout: RECEIPT_TIMEOUT_MS });
+  return `${functionName} VERIFIER_ROLE ${verifier}: ${hash}`;
+}
+
+async function agonVerifyListing(params: Record<string, unknown> | null): Promise<string> {
+  if (!AGON_SERVICE_REGISTRY) throw new Error("Agon deployment is not configured");
+  const listingId = BigInt(String(params?.listingId ?? "0"));
+  if (listingId <= 0n) throw new Error("listingId is required");
+  const wallet = coordinatorWallet();
+  const walletAddress = (wallet.account as { address?: `0x${string}` } | undefined)?.address;
+  if (!walletAddress) throw new Error("coordinator wallet has no signing address");
+  const role = await publicClient.readContract({ address: AGON_SERVICE_REGISTRY, abi: agonVerificationAbi, functionName: "VERIFIER_ROLE" });
+  const allowed = await publicClient.readContract({ address: AGON_SERVICE_REGISTRY, abi: agonVerificationAbi, functionName: "hasRole", args: [role, walletAddress] });
+  if (!allowed) throw new Error(`coordinator wallet ${walletAddress} is not a verifier; refusing verification`);
+  const hash = await wallet.writeContract({ address: AGON_SERVICE_REGISTRY, abi: agonVerificationAbi, functionName: "setVerification", args: [listingId, AGON_VERIFIED] } as never);
+  await publicClient.waitForTransactionReceipt({ hash, timeout: RECEIPT_TIMEOUT_MS });
+  return `listing ${listingId} verified: ${hash}`;
+}
+
+async function agonRecheckListing(params: Record<string, unknown> | null): Promise<string> {
+  const listingId = String(params?.listingId ?? "").trim();
+  if (!/^\d+$/.test(listingId) || listingId === "0") throw new Error("listingId is required");
+  const evidence = await verifyAgonListing(BigInt(listingId));
+  const hash = verificationEvidenceHash(evidence);
+  await query(
+    `insert into agon_verification_evidence (listing_id, agent_id, passed, evidence_hash, evidence)
+     values ($1, $2, $3, $4, $5::jsonb)`,
+    [evidence.listingId, evidence.agentId || "0", evidence.passed, hash, JSON.stringify(evidence)],
+  );
+  return `listing ${listingId} recheck ${evidence.passed ? "passed" : "failed"}; evidence ${hash}`;
+}
 
 const RECEIPT_TIMEOUT_MS = Number(process.env.SETTLE_RECEIPT_TIMEOUT_SECONDS ?? "90") * 1000;
 
@@ -174,6 +232,13 @@ async function execute(cmd: Command, broadcast: (message: unknown) => void): Pro
       return await clearMissionHistory();
     case "open_mission":
       return await openMissionNow(cmd.params, broadcast);
+    case "agon_grant_verifier":
+    case "agon_revoke_verifier":
+      return await agonRoleAction(cmd.kind, cmd.params);
+    case "agon_verify_listing":
+      return await agonVerifyListing(cmd.params);
+    case "agon_recheck_listing":
+      return await agonRecheckListing(cmd.params);
     default:
       throw new Error(`unknown command kind ${cmd.kind}`);
   }

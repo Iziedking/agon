@@ -97,6 +97,7 @@ services:
     cpus: 0.75
     expose:
       - "8082"
+      - "8090"
     depends_on:
       postgres:
         condition: service_healthy

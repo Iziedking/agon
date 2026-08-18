@@ -11,6 +11,8 @@ import { arcrunRainbowTheme } from "@/lib/rainbowTheme";
 import { AuthProvider } from "@/hooks/useAuth";
 import { SessionEndedToast } from "@/components/SessionEndedToast";
 import { MissionAlert } from "@/components/MissionAlert";
+import { AgonAccessGate } from "@/components/AgonAccessGate";
+import { IS_AGON_DEPLOYMENT, PRODUCT_NAME } from "@/lib/product";
 
 export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => new QueryClient());
@@ -24,16 +26,16 @@ export function Providers({ children }: { children: ReactNode }) {
           theme={arcrunRainbowTheme}
           initialChain={arcTestnet}
           modalSize="compact"
-          appInfo={{ appName: "ArcRun" }}
+          appInfo={{ appName: PRODUCT_NAME }}
         >
           <AuthProvider>
-            {children}
+            <AgonAccessGate>{children}</AgonAccessGate>
             {/* Surfaces a friendly toast when the auth context clears a
                 stale wallet session, so the user understands why the
                 login button reappeared. */}
             <SessionEndedToast />
             {/* Site-wide popup when a new mission goes live. */}
-            <MissionAlert />
+            {IS_AGON_DEPLOYMENT ? null : <MissionAlert />}
           </AuthProvider>
         </RainbowKitProvider>
       </QueryClientProvider>

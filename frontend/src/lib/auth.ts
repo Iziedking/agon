@@ -1,5 +1,6 @@
 import { createSiweMessage } from "viem/siwe";
 import { arcTestnet } from "./arc";
+import { PRODUCT_NAME } from "./product";
 
 /// Client for the ArcRun auth service. Runs the SIWE flow (shared by the web3
 /// wallet and the Circle Modular passkey login) and lets the backend persist
@@ -24,7 +25,7 @@ export function buildSiweMessage(address: `0x${string}`, nonce: string): string 
   return createSiweMessage({
     domain: window.location.host,
     address,
-    statement: "Sign in to ArcRun",
+    statement: `Sign in to ${PRODUCT_NAME}`,
     uri: window.location.origin,
     version: "1",
     chainId: arcTestnet.id,

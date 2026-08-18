@@ -1,0 +1,1 @@
+﻿export type IdentityRef={agentId:bigint;registry:string;owner:string}; export const normalizeIdentityRef=(x:IdentityRef):IdentityRef=>({...x,registry:x.registry.toLowerCase(),owner:x.owner.toLowerCase()});

@@ -1,7 +1,7 @@
 /// Brand-styled transactional email templates. Email clients are hostile to
 /// modern CSS, so these use table layout, inline styles, and web-safe font
 /// stacks only (no @font-face, no flexbox/grid, no clip-path). They carry the
-/// ArcRun look the way email allows: warm canvas, ink type, a single pink
+/// Agon look the way email allows: warm canvas, ink type, a single pink
 /// accent, a mono body, and a blocky uppercase heading.
 ///
 /// Pure functions: no config import, so callers pass any dynamic URLs.
@@ -45,7 +45,7 @@ function shell(opts: { preheader: string; eyebrow: string; heading: string; body
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;width:100%;">
   <tr><td style="padding:0 0 22px 4px;">
     <span style="display:inline-block;width:12px;height:12px;background:${C.accent};vertical-align:middle;"></span>
-    <span style="font-family:${C.mono};font-size:15px;font-weight:700;letter-spacing:2px;color:${C.ink};vertical-align:middle;padding-left:9px;">ARCRUN</span>
+    <span style="font-family:${C.mono};font-size:15px;font-weight:700;letter-spacing:2px;color:${C.ink};vertical-align:middle;padding-left:9px;">AGON</span>
   </td></tr>
   <tr><td style="border:1px solid ${C.ink};background:${C.canvas};">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
@@ -62,8 +62,8 @@ function shell(opts: { preheader: string; eyebrow: string; heading: string; body
     </table>
   </td></tr>
   <tr><td style="padding:22px 4px 0;font-family:${C.mono};font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:${C.ink3};line-height:1.6;">
-    ARCRUN &middot; AGENT ARENA ON ARC, SETTLED IN USDC<br>
-    <a href="https://arcrun.xyz" style="color:${C.ink3};text-decoration:none;">arcrun.xyz</a>
+    AGON &middot; TRUSTED AGENT SERVICES ON ARC, PRICED IN USDC<br>
+    <a href="https://agon.surf" style="color:${C.ink3};text-decoration:none;">agon.surf</a>
   </td></tr>
 </table>
 </td></tr>
@@ -85,7 +85,7 @@ function ctaButton(label: string, href: string): string {
 export function otpEmailTemplate(code: string): BuiltEmail {
   const bodyHtml = `
     <div style="font-family:${C.mono};font-size:14px;line-height:1.6;color:${C.ink2};padding-top:14px;">
-      use this code to verify your email and finish signing in to ArcRun.
+      use this code to verify your email and finish signing in to Agon.
     </div>
     <div style="font-family:${C.mono};font-size:34px;font-weight:700;letter-spacing:10px;color:${C.ink};text-align:center;padding:20px 0;margin-top:18px;border:1px dashed ${C.hairline};">
       ${code}
@@ -94,17 +94,17 @@ export function otpEmailTemplate(code: string): BuiltEmail {
       expires in 10 minutes. if you didn&rsquo;t request this, you can ignore this email.
     </div>`;
   return {
-    subject: "Your ArcRun verification code",
+    subject: "Your Agon verification code",
     html: shell({
-      preheader: `Your ArcRun code is ${code} (expires in 10 minutes).`,
+      preheader: `Your Agon code is ${code} (expires in 10 minutes).`,
       eyebrow: "VERIFY YOUR EMAIL",
       heading: "ENTER THE CODE",
       bodyHtml,
     }),
     text:
-      `Your ArcRun verification code is ${code}.\n\n` +
+      `Your Agon verification code is ${code}.\n\n` +
       `It expires in 10 minutes. If you didn't request this, ignore this email.\n\n` +
-      `ArcRun · agent arena on Arc, settled in USDC · arcrun.xyz`,
+      `Agon · trusted agent services on Arc, priced in USDC · agon.surf`,
   };
 }
 
@@ -119,7 +119,7 @@ export function welcomeEmailTemplate(opts: { appUrl: string }): BuiltEmail {
     </div>
     ${ctaButton("ENTER THE ARENA", opts.appUrl)}`;
   return {
-    subject: "Welcome to the ArcRun arena",
+    subject: "Welcome to Agon",
     html: shell({
       preheader: "Claim an agent and put it to work for real USDC on Arc.",
       eyebrow: "WELCOME",
@@ -127,10 +127,10 @@ export function welcomeEmailTemplate(opts: { appUrl: string }): BuiltEmail {
       bodyHtml,
     }),
     text:
-      `Welcome to ArcRun.\n\n` +
+      `Welcome to Agon.\n\n` +
       `Your wallet is your identity. Claim an agent, enter a contest or open a ` +
       `challenge, and let it compete for real USDC. Payouts settle on Arc in under a second.\n\n` +
       `Enter the arena: ${opts.appUrl}\n\n` +
-      `ArcRun · agent arena on Arc, settled in USDC · arcrun.xyz`,
+      `Agon · trusted agent services on Arc, priced in USDC · agon.surf`,
   };
 }

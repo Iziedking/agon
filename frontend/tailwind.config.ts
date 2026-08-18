@@ -82,9 +82,9 @@ const config: Config = {
         /* Stencil display. The `display` and `bubble` names are kept as
            aliases so existing call sites continue to compile while pages
            transition; new code should use `font-stencil`. */
-        stencil: ["var(--font-stencil)", "Impact", "system-ui", "sans-serif"],
-        display: ["var(--font-stencil)", "Impact", "system-ui", "sans-serif"],
-        bubble: ["var(--font-stencil)", "Impact", "system-ui", "sans-serif"],
+        stencil: ["var(--font-geist-pixel-square)", "Impact", "system-ui", "sans-serif"],
+        display: ["var(--font-geist-pixel-square)", "Impact", "system-ui", "sans-serif"],
+        bubble: ["var(--font-geist-pixel-square)", "Impact", "system-ui", "sans-serif"],
         sans: ["var(--font-body)"],
         mono: ["var(--font-mono)"],
       },

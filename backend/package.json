@@ -1,9 +1,9 @@
 {
-  "name": "arcrun-backend",
+  "name": "agon-backend",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "ArcRun backend: indexer, auth, and coordinator services for Arc testnet.",
+  "description": "Agon backend: indexer, auth, and coordinator services for Arc testnet.",
   "engines": {
     "node": ">=20"
   },
@@ -25,6 +25,10 @@
     "swap:probe": "tsx scripts/swap-probe.ts",
     "verify:root": "tsx scripts/verify-root.ts",
     "test:prediction": "tsx scripts/prediction-examples.ts",
+    "test:agon": "node --experimental-strip-types --test test/agon/*.test.ts",
+    "test:nanopayments": "node --experimental-strip-types --test test/nanopayments/*.test.ts",
+    "prove:agon": "node --experimental-strip-types scripts/prove-agon-foundation.ts",
+    "prove:agon-writes": "tsx scripts/prove-agon-write-readiness.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -47,7 +51,7 @@
     "jose": "^5.9.6",
     "pg": "^8.13.1",
     "siwe": "^3.0.0",
-    "viem": "^2.21.55",
+    "viem": "2.50.4",
     "ws": "^8.18.0",
     "x402-fetch": "^1.2.0",
     "zod": "^3.24.1"

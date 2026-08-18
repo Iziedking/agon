@@ -9,6 +9,7 @@
 /// Stacking: z-30, below the sticky nav (z-20) so we DON'T overlap it; we
 /// sit vertically centered. Modals at z-modal (40) still cover everything.
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 
 function ScrollTop() {
   function go() {
@@ -34,6 +35,9 @@ function ScrollTop() {
 }
 
 export function SideRail() {
+  const pathname = usePathname() ?? "/";
+  if (pathname === "/market" || pathname.startsWith("/market/")) return null;
+
   return (
     <aside
       aria-hidden
@@ -66,7 +70,7 @@ export function SideRail() {
           X
         </a>
         <a
-          href="https://github.com/Iziedking/arcrun"
+          href="https://github.com/Iziedking/agon"
           target="_blank"
           rel="noreferrer"
           aria-label="GitHub"
