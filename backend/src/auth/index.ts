@@ -93,13 +93,22 @@ const SESSION_MAX_AGE = 7 * 24 * 60 * 60; // 7 days, matches issueToken expiry
 
 const app = new Hono<{ Variables: { address: string } }>();
 
+const allowedBrowserOrigins = new Set([
+  config.auth.appUrl,
+  "https://agon.surf",
+  "https://www.agon.surf",
+  "https://arcrun.xyz",
+  "https://www.arcrun.xyz",
+  "http://localhost:3000",
+]);
+
 // Allow the frontend origin to call the auth API from the browser. Credentials
 // are on so the httpOnly session cookie is sent on cross-origin fetches from
 // the Next.js app to this service.
 app.use(
   "*",
   cors({
-    origin: config.auth.appUrl,
+    origin: (origin) => (allowedBrowserOrigins.has(origin) ? origin : null),
     credentials: true,
     // x-admin-token is the custom header the /admin console sends. Without it
     // in allowHeaders the browser's CORS preflight rejects the request and the
