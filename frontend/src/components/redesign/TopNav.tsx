@@ -98,8 +98,8 @@ export function TopNav() {
               <NotificationBell />
             </>
           ) : null}
-          {settling ? null : <LoginButton />}
-          {isAgon || isSignedIn ? (
+          {!isLogin && (settling ? null : <LoginButton />)}
+          {!isLogin && (isAgon || isSignedIn) ? (
             <button
               type="button"
               onClick={() => setOpen((v) => !v)}

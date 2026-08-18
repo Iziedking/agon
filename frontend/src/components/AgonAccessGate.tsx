@@ -17,8 +17,9 @@ export function AgonAccessGate({ children }: { children: ReactNode }) {
   const router = useRouter();
   const { isSignedIn, settling } = useOperatorAddress();
   const isLogin = pathname === "/login";
+  const isLanding = pathname === "/";
   const isProtocolDocument = pathname.startsWith("/.well-known/");
-  const shouldGate = IS_AGON_DEPLOYMENT && !isLogin && !isProtocolDocument;
+  const shouldGate = IS_AGON_DEPLOYMENT && !isLogin && !isLanding && !isProtocolDocument;
 
   useEffect(() => {
     if (shouldGate && !settling && !isSignedIn) router.replace("/login");

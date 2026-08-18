@@ -10,6 +10,7 @@ import { friendlyError } from "@/lib/errors";
 import { useAuth } from "@/hooks/useAuth";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/redesign/Footer";
+import { IS_AGON_DEPLOYMENT } from "@/lib/product";
 import {
   BracketedCell,
   CornerMarkers,
@@ -84,7 +85,7 @@ export default function LoginPage() {
         <CornerMarkers />
         <SectionHeader
           heading="SIGN IN"
-          subDeck={<>two ways in. bring a wallet, or start with an email and we make one for you.</>}
+          subDeck={<>choose a wallet or email to enter Agon.</>}
         />
       </section>
 
@@ -121,7 +122,7 @@ export default function LoginPage() {
                 CONNECT A WALLET
               </h2>
               <p className="mt-3 font-mono text-sm leading-[1.55] text-ink-2">
-                sign a free message to prove it&apos;s yours. no gas, no approval.
+                sign one free message. no gas or approval.
               </p>
               <div className="mt-6">
                 {!mounted ? (
@@ -151,7 +152,7 @@ export default function LoginPage() {
                 NO WALLET NEEDED
               </h2>
               <p className="mt-3 font-mono text-sm leading-[1.55] text-ink-2">
-                we create a wallet and seed it with testnet USDC. no password, no seed phrase.
+                use email. we create the wallet for you.
               </p>
               <div className="mt-6 flex flex-col gap-3">
                 <input
@@ -179,7 +180,9 @@ export default function LoginPage() {
         {loading ? <p className="mt-6 font-mono text-sm text-ink-3">checking session…</p> : null}
       </section>
 
-      <Footer />
+      {IS_AGON_DEPLOYMENT ? (
+        <div className="mx-auto max-w-[1600px] px-4 py-10 text-center font-mono text-[10px] uppercase tracking-[0.14em] text-ink-3 sm:px-6">AGON · PRIVATE ACCESS ON ARC</div>
+      ) : <Footer />}
     </div>
   );
 }
