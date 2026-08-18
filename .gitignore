@@ -100,4 +100,7 @@ backend/circle-bootstrap.env.snippet
 # the direction is settled and the public docs are rewritten to match.
 PLAN-V2.md
 
+# Internal research, evidence, and implementation plans are local-only.
+docs/superpowers/
+
 .worktrees/
