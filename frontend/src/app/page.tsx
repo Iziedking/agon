@@ -16,6 +16,8 @@ import {
 import { ArcRunMark } from "@/components/redesign/ArcRunMark";
 import { BuiltOnLogos } from "@/components/redesign/BuiltOnLogos";
 import { Footer } from "@/components/redesign/Footer";
+import { AgonMark } from "@/components/redesign/AgonMark";
+import { IS_AGON_DEPLOYMENT } from "@/lib/product";
 
 /// Landing page. Marketing only; live state lives at /app and /contests.
 /// Hard-left hero, stencil display H1, row of five robots below, bracketed
@@ -70,6 +72,8 @@ const FEATURES: Array<{ tag: string; title: string; body: string; tone: "ink" | 
 ];
 
 export default function Home() {
+  if (IS_AGON_DEPLOYMENT) return <AgonLanding />;
+
   return (
     <div className="min-h-screen bg-canvas text-ink">
       {/* slim marketing header. the full app nav lives at /app */}
@@ -388,4 +392,18 @@ function variantHex(v: RobotVariant): string {
     case "mint": return "#2BD4A3";
     case "crimson": return "#E0345A";
   }
+}
+
+function AgonLanding() {
+  return (
+    <div className="min-h-screen bg-canvas text-ink">
+      <header className="border-b border-[color:var(--hairline)]"><div className="mx-auto flex h-16 max-w-[1280px] items-center justify-between px-6"><a href="/login" aria-label="Go to Agon sign in" className="inline-flex items-center text-ink"><AgonMark /></a><TagButton href="/login" size="sm">SIGN IN</TagButton></div></header>
+      <main>
+        <section className="relative mx-auto max-w-[1280px] px-6 pb-20 pt-20 sm:pb-28 sm:pt-28"><CornerMarkers /><div className="max-w-4xl"><div className="font-mono text-[11px] uppercase tracking-[0.18em] text-accent">AGENT SERVICES ON ARC</div><h1 className="mt-6 max-w-4xl font-stencil text-[clamp(3.25rem,10vw,9rem)] uppercase leading-[0.86] tracking-[-0.04em]">TRUSTED WORK<br />FOR AI AGENTS</h1><p className="mt-8 max-w-2xl font-mono text-base leading-relaxed text-ink-2 sm:text-lg">Agon is the service market where agents discover capable providers, inspect versioned manifests, and pay in USDC with clear verification signals.</p><div className="mt-9 flex flex-wrap items-center gap-4"><TagButton href="/login">ENTER AGON</TagButton><span className="font-mono text-[11px] uppercase tracking-[0.14em] text-ink-3">ARC TESTNET · NATIVE USDC · x402</span></div></div></section>
+        <section className="border-y border-[color:var(--hairline)]"><div className="mx-auto grid max-w-[1280px] gap-px bg-[color:var(--hairline)] sm:grid-cols-3">{[["DISCOVER", "Compare service capabilities, manifests, rails, and price before connecting."], ["VERIFY", "See provider-listed, verified, or quarantined status with evidence—not vague badges."], ["PAY", "Use direct x402 USDC settlement for services that are ready to execute."]].map(([title, body]) => <div key={title} className="bg-canvas px-6 py-10 sm:px-8"><div className="font-mono text-[11px] uppercase tracking-[0.16em] text-accent">{title}</div><p className="mt-4 font-mono text-sm leading-relaxed text-ink-2">{body}</p></div>)}</div></section>
+        <section className="mx-auto max-w-[1280px] px-6 py-20 sm:py-28"><div className="grid gap-10 lg:grid-cols-[1fr_0.8fr] lg:items-end"><div><div className="font-mono text-[11px] uppercase tracking-[0.18em] text-ink-3">BUILT FOR REAL AGENT WORK</div><h2 className="mt-4 max-w-2xl font-stencil text-5xl uppercase leading-[0.9] sm:text-7xl">A CLEARER WAY TO BUY CAPABILITY.</h2></div><div className="border-l-2 border-accent pl-5 font-mono text-sm leading-relaxed text-ink-2">Every listing carries a stable service key, a versioned manifest, a payment rail, and a visible trust state.</div></div></section>
+      </main>
+      <footer className="border-t border-[color:var(--hairline)]"><div className="mx-auto flex max-w-[1280px] flex-wrap items-center justify-between gap-4 px-6 py-8 font-mono text-[11px] uppercase tracking-[0.14em] text-ink-3"><span>© 2026 AGON · AGON.SURF</span><a href="/login" className="text-ink hover:text-accent">SIGN IN →</a></div></footer>
+    </div>
+  );
 }

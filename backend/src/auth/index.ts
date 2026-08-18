@@ -163,7 +163,19 @@ app.post("/auth/wallet/verify", async (c) => {
   if (!issuedFor || issuedFor !== fields.address.toLowerCase()) {
     return c.json({ error: "invalid or expired nonce" }, 401);
   }
-  if (fields.domain !== config.auth.domain) return c.json({ error: "bad domain" }, 401);
+  // Keep the configured origin authoritative while allowing the canonical Agon
+  // domains during the ArcRun -> Agon migration. This prevents a stale VPS
+  // AUTH_DOMAIN value from making SIWE unusable after the production cutover,
+  // without accepting arbitrary origins.
+  const allowedSiweDomains = new Set([
+    config.auth.domain,
+    "agon.surf",
+    "www.agon.surf",
+    "arcrun.xyz",
+    "www.arcrun.xyz",
+    "localhost:3000",
+  ]);
+  if (!fields.domain || !allowedSiweDomains.has(fields.domain)) return c.json({ error: "bad domain" }, 401);
   if (fields.chainId !== config.chainId) return c.json({ error: "wrong chain" }, 401);
   if (fields.expirationTime && new Date(fields.expirationTime) < new Date()) {
     return c.json({ error: "message expired" }, 401);

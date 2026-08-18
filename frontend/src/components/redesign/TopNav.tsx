@@ -66,7 +66,7 @@ export function TopNav() {
   return (
     <header className="sticky top-0 z-20 border-b border-[color:var(--hairline)] bg-canvas">
       <div className="mx-auto flex h-16 max-w-[1600px] items-center justify-between gap-3 px-4 sm:px-6">
-        <Link href={isAgon ? "/market" : "/"} className="inline-flex items-center text-ink">
+        <Link href={isLogin || isAgon ? "/login" : "/"} className="inline-flex items-center text-ink" aria-label="Agon sign in">
           {isAgon ? <AgonMark /> : <ArcRunMark />}
         </Link>
 
@@ -107,7 +107,11 @@ export function TopNav() {
               aria-expanded={open}
               className="flex h-9 w-9 items-center justify-center border border-[color:var(--hairline-strong)] bg-canvas font-mono text-[14px] text-ink transition-colors hover:bg-canvas-3 md:hidden"
             >
-              <span aria-hidden>{open ? "Ã—" : "â‰¡"}</span>
+              <span aria-hidden className="relative block h-3.5 w-4">
+                <span className={`absolute left-0 top-0 block h-px w-4 bg-current transition-transform ${open ? "translate-y-[6px] rotate-45" : ""}`} />
+                <span className={`absolute left-0 top-[6px] block h-px w-4 bg-current transition-opacity ${open ? "opacity-0" : ""}`} />
+                <span className={`absolute left-0 top-3 block h-px w-4 bg-current transition-transform ${open ? "-translate-y-[6px] -rotate-45" : ""}`} />
+              </span>
             </button>
           ) : null}
         </div>
