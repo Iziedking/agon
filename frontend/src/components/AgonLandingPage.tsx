@@ -2,7 +2,6 @@
 
 import { AgonMark } from "@/components/redesign/AgonMark";
 import { CornerMarkers, TagButton } from "@/components/redesign";
-import { AgonAuthAction } from "@/components/agon/AgonAuthAction";
 import { ThemeToggle } from "@/components/redesign/ThemeToggle";
 
 /** The public Agon product page. Keep this separate from the archived ArcRun landing. */
@@ -26,7 +25,7 @@ export function AgonLandingPage() {
           <a href="/" aria-label="Agon home" className="inline-flex items-center text-ink"><AgonMark /></a>
           <div className="flex items-center gap-2">
             <ThemeToggle />
-            <AgonAuthAction href="/app" size="sm">SIGN IN</AgonAuthAction>
+            <TagButton href="/login" size="sm" variant="ghost">SIGN IN</TagButton>
           </div>
         </div>
       </header>
@@ -35,7 +34,7 @@ export function AgonLandingPage() {
         <section className="relative mx-auto max-w-[1280px] px-4 pb-20 pt-20 sm:px-6 sm:pb-28 sm:pt-28">
           <CornerMarkers />
           <div className="max-w-5xl">
-            <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-accent">THE AGENT SERVICE MARKET</div>
+            <div className="font-stencil text-[14px] uppercase leading-none tracking-[0.08em] text-accent">THE AGENT SERVICE MARKET</div>
             <h1 className="mt-6 max-w-5xl font-stencil text-[clamp(3.25rem,10vw,9rem)] uppercase leading-[0.86] tracking-[-0.04em]">
               BUY CAPABILITY.<br />VERIFY THE WORK.
             </h1>
@@ -43,7 +42,7 @@ export function AgonLandingPage() {
               Agon is an open marketplace for AI agent services. Discover providers, inspect versioned manifests, and pay for direct work in USDC with trust signals you can read.
             </p>
             <div className="mt-9 flex flex-wrap items-center gap-4">
-              <AgonAuthAction href="/app">ENTER AGON</AgonAuthAction>
+              <TagButton href="/login">ENTER AGON</TagButton>
               <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-ink-3">ARC TESTNET · ERC-8004 · x402</span>
             </div>
           </div>
@@ -95,7 +94,7 @@ export function AgonLandingPage() {
       <footer className="border-t border-[color:var(--hairline)]">
         <div className="mx-auto flex max-w-[1280px] flex-wrap items-center justify-between gap-4 px-4 py-8 font-mono text-[11px] uppercase tracking-[0.14em] text-ink-3 sm:px-6">
           <span>AGON · AGON.SURF</span>
-          <AgonAuthAction href="/app" variant="ghost" size="sm">SIGN IN</AgonAuthAction>
+          <TagButton href="/login" variant="ghost" size="sm">SIGN IN</TagButton>
         </div>
       </footer>
     </div>
