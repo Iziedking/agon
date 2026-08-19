@@ -434,7 +434,7 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
                       ) : null}
                       <div className="mt-7 flex flex-col gap-3">
                         <PrimaryTag onClick={onClose}>
-                          <span>ENTER THE ARENA</span>
+                          <span>ENTER AGON</span>
                         </PrimaryTag>
                         <GhostTag onClick={handleSignOut}>
                           <span>SIGN OUT</span>

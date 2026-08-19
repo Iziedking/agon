@@ -18,6 +18,7 @@ import { BuiltOnLogos } from "@/components/redesign/BuiltOnLogos";
 import { Footer } from "@/components/redesign/Footer";
 import { AgonMark } from "@/components/redesign/AgonMark";
 import { IS_AGON_DEPLOYMENT } from "@/lib/product";
+import { AgonLandingPage } from "@/components/AgonLandingPage";
 
 /// Landing page. Marketing only; live state lives at /app and /contests.
 /// Hard-left hero, stencil display H1, row of five robots below, bracketed
@@ -72,7 +73,7 @@ const FEATURES: Array<{ tag: string; title: string; body: string; tone: "ink" | 
 ];
 
 export default function Home() {
-  if (IS_AGON_DEPLOYMENT) return <AgonLanding />;
+  if (IS_AGON_DEPLOYMENT) return <AgonLandingPage />;
 
   return (
     <div className="min-h-screen bg-canvas text-ink">

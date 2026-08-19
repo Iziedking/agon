@@ -66,7 +66,7 @@ export function TopNav() {
   return (
     <header className="sticky top-0 z-20 border-b border-[color:var(--hairline)] bg-canvas">
       <div className="mx-auto flex h-16 max-w-[1600px] items-center justify-between gap-3 px-4 sm:px-6">
-        <Link href={isLogin || isAgon ? "/login" : "/"} className="inline-flex items-center text-ink" aria-label="Agon sign in">
+        <Link href="/" className="inline-flex items-center text-ink" aria-label="Agon home">
           {isAgon ? <AgonMark /> : <ArcRunMark />}
         </Link>
 
