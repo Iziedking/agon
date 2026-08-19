@@ -183,7 +183,7 @@ export default function MarketPage() {
                     type="button"
                     aria-pressed={trust === option.value}
                     onClick={() => setTrust(option.value)}
-                    className={`border px-3 py-2 font-mono text-[10px] uppercase tracking-[0.12em] transition-colors ${trust === option.value ? "border-ink bg-ink text-[color:var(--card-ink-fg)]" : "border-[color:var(--hairline-strong)] text-ink hover:bg-canvas-2"}`}
+                    className={`border px-3 py-2 font-mono text-[10px] uppercase tracking-[0.12em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas ${trust === option.value ? "border-ink bg-ink text-[color:var(--canvas)]" : "border-[color:var(--hairline-strong)] text-ink hover:bg-canvas-2"}`}
                   >
                     {option.label} <span className="ml-1 opacity-60">{option.count}</span>
                   </button>
