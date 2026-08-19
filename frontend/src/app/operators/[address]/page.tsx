@@ -277,7 +277,7 @@ export default function OperatorPage() {
                   { value: "light", label: "LIGHT" },
                   { value: "dark", label: "DARK" },
                 ]}
-                fallback="light"
+                fallback="dark"
               />
               <SettingRow
                 k="lang"

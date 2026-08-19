@@ -3,6 +3,7 @@
 import { AgonMark } from "@/components/redesign/AgonMark";
 import { CornerMarkers, TagButton } from "@/components/redesign";
 import { AgonAuthAction } from "@/components/agon/AgonAuthAction";
+import { ThemeToggle } from "@/components/redesign/ThemeToggle";
 
 /** The public Agon product page. Keep this separate from the archived ArcRun landing. */
 export function AgonLandingPage() {
@@ -23,7 +24,10 @@ export function AgonLandingPage() {
       <header className="border-b border-[color:var(--hairline)]">
         <div className="mx-auto flex h-16 max-w-[1280px] items-center justify-between px-4 sm:px-6">
           <a href="/" aria-label="Agon home" className="inline-flex items-center text-ink"><AgonMark /></a>
-          <AgonAuthAction href="/app" size="sm">SIGN IN</AgonAuthAction>
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <AgonAuthAction href="/app" size="sm">SIGN IN</AgonAuthAction>
+          </div>
         </div>
       </header>
 

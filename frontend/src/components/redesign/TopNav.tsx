@@ -12,6 +12,7 @@ import { ArcRunMark } from "@/components/redesign/ArcRunMark";
 import { AgonMark } from "@/components/redesign/AgonMark";
 import { NotificationBell } from "@/components/redesign/NotificationBell";
 import { LiveMissionBanner } from "@/components/redesign/LiveMissionBanner";
+import { ThemeToggle } from "@/components/redesign/ThemeToggle";
 import { IS_AGON_DEPLOYMENT } from "@/lib/product";
 
 /// The product nav. Left: â–  ARCRUN mono wordmark with the pink square mark.
@@ -99,6 +100,7 @@ export function TopNav() {
             </>
           ) : null}
           {!isLogin && (settling ? null : <LoginButton />)}
+          <ThemeToggle />
           {!isLogin && (isAgon || isSignedIn) ? (
             <button
               type="button"

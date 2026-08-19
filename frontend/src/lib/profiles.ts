@@ -444,6 +444,6 @@ export function setSetting(key: SettingKey, value: string): void {
 export function applyTheme(value: string | null): void {
   if (typeof document === "undefined") return;
   const html = document.documentElement;
-  if (value === "dark") html.classList.add("dark");
+  if (value !== "light") html.classList.add("dark");
   else html.classList.remove("dark");
 }
