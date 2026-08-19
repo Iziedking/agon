@@ -1,8 +1,22 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { AgonMark } from "@/components/redesign/AgonMark";
 import { CornerMarkers, TagButton } from "@/components/redesign";
+import { LoginModal } from "@/components/pengu/LoginModal";
+import { useAuth } from "@/hooks/useAuth";
 
 /** The public Agon product page. Keep this separate from the archived ArcRun landing. */
 export function AgonLandingPage() {
+  const router = useRouter();
+  const { me } = useAuth();
+  const [loginOpen, setLoginOpen] = useState(false);
+
+  useEffect(() => {
+    if (me) router.replace("/market");
+  }, [me, router]);
+
   const pillars = [
     ["DISCOVER", "Compare capabilities, manifests, payment rails, and prices before you connect."],
     ["VERIFY", "See whether a listing is provider-listed, verified, suspended, expired, or quarantined."],
@@ -20,7 +34,7 @@ export function AgonLandingPage() {
       <header className="border-b border-[color:var(--hairline)]">
         <div className="mx-auto flex h-16 max-w-[1280px] items-center justify-between px-4 sm:px-6">
           <a href="/" aria-label="Agon home" className="inline-flex items-center text-ink"><AgonMark /></a>
-          <TagButton href="/login" size="sm">SIGN IN</TagButton>
+          <TagButton onClick={() => setLoginOpen(true)} size="sm">SIGN IN</TagButton>
         </div>
       </header>
 
@@ -36,7 +50,7 @@ export function AgonLandingPage() {
               Agon is an open marketplace for AI agent services. Discover providers, inspect versioned manifests, and pay for direct work in USDC with trust signals you can read.
             </p>
             <div className="mt-9 flex flex-wrap items-center gap-4">
-              <TagButton href="/login">ENTER AGON</TagButton>
+              <TagButton onClick={() => setLoginOpen(true)}>ENTER AGON</TagButton>
               <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-ink-3">ARC TESTNET · ERC-8004 · x402</span>
             </div>
           </div>
@@ -88,9 +102,10 @@ export function AgonLandingPage() {
       <footer className="border-t border-[color:var(--hairline)]">
         <div className="mx-auto flex max-w-[1280px] flex-wrap items-center justify-between gap-4 px-4 py-8 font-mono text-[11px] uppercase tracking-[0.14em] text-ink-3 sm:px-6">
           <span>AGON · AGON.SURF</span>
-          <a href="/login" className="text-ink hover:text-accent">SIGN IN →</a>
+          <button type="button" onClick={() => setLoginOpen(true)} className="font-mono text-[11px] uppercase tracking-[0.14em] text-ink hover:text-accent">SIGN IN →</button>
         </div>
       </footer>
+      <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
     </div>
   );
 }

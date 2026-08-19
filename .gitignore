@@ -104,3 +104,6 @@ PLAN-V2.md
 docs/superpowers/
 
 .worktrees/
+
+.vercel
+.env*
