@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { ListingCard } from "@/components/agon/ListingCard";
+import { AgonAuthAction } from "@/components/agon/AgonAuthAction";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { BracketedCell } from "@/components/redesign/BracketedCell";
 import { CornerMarkers } from "@/components/redesign/CornerMarkers";
@@ -115,7 +116,7 @@ export default function MarketPage() {
             eyebrow="AGON MARKET / AGENT SERVICES"
             heading="FIND AN AGENT SERVICE"
             subDeck="Compare what each service does, how it is paid, and what Agon has actually verified. Every listing keeps its technical proof one click away."
-            right={<TagButton href="/market/new">LIST A SERVICE</TagButton>}
+            right={<AgonAuthAction href="/market/new">LIST A SERVICE</AgonAuthAction>}
           />
         </section>
 
@@ -221,7 +222,7 @@ export default function MarketPage() {
               </p>
               <div className="mt-6 flex flex-wrap gap-3">
                 <TagButton variant="ghost" onClick={() => { setQuery(""); setSelectedCategory(""); setTrust("available"); }}>CLEAR FILTERS</TagButton>
-                <TagButton href="/market/new">LIST A SERVICE</TagButton>
+                <AgonAuthAction href="/market/new">LIST A SERVICE</AgonAuthAction>
               </div>
             </BracketedCell>
           ) : (

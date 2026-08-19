@@ -8,9 +8,9 @@ import { useOperatorAddress } from "@/hooks/useAuth";
 import { IS_AGON_DEPLOYMENT } from "@/lib/product";
 
 /**
- * Agon is a signed-in platform. Keep protocol documents public for agents and
- * verifiers, but do not expose human-facing marketplace or documentation
- * surfaces until the backend session is established.
+ * Agon has a public discovery layer. Keep the landing page, catalog, service
+ * detail records, and documentation readable without an account; individual
+ * write/execute surfaces remain protected and ask for sign-in at the action.
  */
 export function AgonAccessGate({ children }: { children: ReactNode }) {
   const pathname = usePathname() ?? "/";
@@ -19,7 +19,11 @@ export function AgonAccessGate({ children }: { children: ReactNode }) {
   const isLogin = pathname === "/login";
   const isLanding = pathname === "/";
   const isProtocolDocument = pathname.startsWith("/.well-known/");
-  const shouldGate = IS_AGON_DEPLOYMENT && !isLogin && !isLanding && !isProtocolDocument;
+  const isPublicMarket = pathname === "/market" || (pathname.startsWith("/market/") && pathname !== "/market/new");
+  const isPublicDocs = pathname === "/docs" || pathname.startsWith("/docs/");
+  const isPublicOperator = pathname === "/operators" || pathname.startsWith("/operators/");
+  const isPublicDiscovery = isLanding || isLogin || isProtocolDocument || isPublicMarket || isPublicDocs || isPublicOperator;
+  const shouldGate = IS_AGON_DEPLOYMENT && !isPublicDiscovery;
 
   useEffect(() => {
     if (shouldGate && !settling && !isSignedIn) router.replace("/login");

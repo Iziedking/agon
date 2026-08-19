@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 
 import { ServiceProof } from "@/components/agon/ServiceProof";
+import { AgonAuthAction } from "@/components/agon/AgonAuthAction";
 import { UnverifiedWarning } from "@/components/agon/UnverifiedWarning";
 import { VerificationBadge } from "@/components/agon/VerificationBadge";
 import { AppHeader } from "@/components/pengu/AppHeader";
@@ -56,7 +57,7 @@ export default function ListingDetailPage() {
             eyebrow={service && listing ? `${service.category.label} / AGENT #${listing.agentId}` : "AGON MARKET / SERVICE"}
             heading={service?.name ?? "SERVICE DETAILS"}
             subDeck={service?.description ?? "Reading the service description and trust record from the Agon catalog."}
-            right={<><TagButton variant="ghost" href="/market">BACK TO MARKET</TagButton><TagButton href="/market/new">LIST A SERVICE</TagButton></>}
+            right={<><TagButton variant="ghost" href="/market">BACK TO MARKET</TagButton><AgonAuthAction href="/market/new">LIST A SERVICE</AgonAuthAction></>}
           />
         </section>
 
