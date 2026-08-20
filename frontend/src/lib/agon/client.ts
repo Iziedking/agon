@@ -18,6 +18,7 @@ import type {
   X402ExecutionPlanView,
   X402ExecutionApprovalRequest,
   X402ExecutionApprovalView,
+  X402ExecutionReadinessView,
 } from "./types";
 import { AGON_PREVIEW_HEALTH, AGON_PREVIEW_LISTINGS } from "./preview";
 
@@ -295,4 +296,23 @@ export function approveX402Execution(intentId: string, body: X402ExecutionApprov
     method: "POST",
     body: JSON.stringify(body),
   });
+}
+
+/** Inspect approval and adapter state without contacting Circle or settling. */
+export function getX402ExecutionReadiness(intentId: string): Promise<X402ExecutionReadinessView> {
+  if (AGON_PREVIEW_MODE) {
+    return prepareX402ExecutionPlan(intentId).then((plan) => ({
+      receiptId: plan.receiptId,
+      intentId,
+      state: "authorization_submitted" as const,
+      plan: plan.plan,
+      approval: null,
+      status: "approval_required" as const,
+      reason: "Execution approval is required before a settlement adapter can be considered.",
+      executionEnabled: false as const,
+      nextAction: "explicit_execution_approval" as const,
+      checkedAt: new Date().toISOString(),
+    }));
+  }
+  return request<X402ExecutionReadinessView>(`/call-intents/${encodeURIComponent(intentId)}/execution-readiness`, { method: "GET" });
 }

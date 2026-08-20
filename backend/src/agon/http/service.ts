@@ -34,6 +34,7 @@ import type {
   X402AuthorizationSubmittedView,
   X402ExecutionPlanView,
   X402ExecutionApprovalView,
+  X402ExecutionReadinessView,
 } from "./api-types.ts";
 import type { AgonMarketService, AgonServiceError } from "./routes.ts";
 import type { AgonReadiness } from "../write/readiness.ts";
@@ -721,6 +722,49 @@ export class PostgresAgonMarketService implements AgonMarketService {
       if (error instanceof AgonStoreInvariantError) return { ok: false, error: { code: "conflict", message: error.message } };
       return internalError(error);
     }
+  }
+
+  async getX402ExecutionReadiness(
+    actor: string,
+    intentId: string,
+  ): Promise<Result<X402ExecutionReadinessView, AgonServiceError>> {
+    const intent = await this.repository.getX402CallIntent(intentId);
+    if (!intent) return { ok: false, error: { code: "not_found", message: "x402 call intent not found" } };
+    if (intent.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the intent owner can inspect execution readiness" } };
+    const receipt = await this.repository.getX402CallReceipt(intentId);
+    if (!receipt) return { ok: false, error: { code: "receipt_unavailable", message: "x402 receipt has not been created" } };
+    if (receipt.state !== "authorization_submitted" || !receipt.quoteSnapshot || !receipt.authorizationPayload || !receipt.authorizationPayloadHash || !receipt.authorizationHash || !receipt.approvedAmountUSDC) {
+      return { ok: false, error: { code: "conflict", message: `x402 receipt is ${receipt.state}; submit a valid authorization first` } };
+    }
+    const plan = buildX402ExecutionPlan({
+      snapshot: receipt.quoteSnapshot as X402QuoteSnapshot,
+      authorization: receipt.authorizationPayload as X402AuthorizationPayload,
+      authorizationPayloadHash: receipt.authorizationPayloadHash,
+      authorizationHash: receipt.authorizationHash,
+      approvedAmountUSDC: receipt.approvedAmountUSDC,
+    });
+    if (!plan.ok) return { ok: false, error: { code: "execution_not_ready", message: plan.error.message } };
+    const stored = await this.repository.getLatestX402ExecutionApproval(intentId);
+    const expired = stored ? stored.expiresAt.getTime() <= Date.now() : false;
+    return {
+      ok: true,
+      value: {
+        receiptId: receipt.receiptId,
+        intentId,
+        state: "authorization_submitted",
+        plan: plan.value,
+        approval: stored ? executionApprovalView(receipt, stored) : null,
+        status: !stored ? "approval_required" : expired ? "approval_expired" : "approved_but_disabled",
+        reason: !stored
+          ? "Execution approval is required before a settlement adapter can be considered."
+          : expired
+            ? "The execution approval expired; prepare a fresh approval before any future execution review."
+            : "Approval evidence is valid, but Circle settlement remains disabled by policy.",
+        executionEnabled: false,
+        nextAction: !stored || expired ? "explicit_execution_approval" : "execution_adapter_not_enabled",
+        checkedAt: new Date().toISOString(),
+      },
+    };
   }
 
   async getCapabilities(): Promise<AgonCapabilities> {

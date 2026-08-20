@@ -45,6 +45,18 @@ function fail(message: string): { ok: false; error: X402ExecutionApprovalError }
   return { ok: false, error: { code: "execution_not_ready", message } };
 }
 
+/** Hash the approval evidence so a durable row can be checked before execution. */
+export function hashX402ExecutionApproval(input: {
+  intentId: string;
+  actor: string;
+  planHash: string;
+  approvalIdempotencyKey: string;
+  approvedAt: string;
+  expiresAt: string;
+}): `0x${string}` {
+  return keccak256(stringToHex(canonicalize(input)));
+}
+
 export function buildX402ExecutionApproval(input: {
   intentId: string;
   actor: string;
@@ -65,14 +77,14 @@ export function buildX402ExecutionApproval(input: {
     if (!Number.isSafeInteger(validBefore) || now >= validBefore) return fail("authorization is expired and cannot be approved");
     const approvedAt = new Date(now * 1000).toISOString();
     const expiresAt = new Date(Math.min(validBefore, now + 300) * 1000).toISOString();
-    const approvalHash = keccak256(stringToHex(canonicalize({
+    const approvalHash = hashX402ExecutionApproval({
       actor,
       approvalIdempotencyKey: input.request.approvalIdempotencyKey,
       approvedAt,
       expiresAt,
       intentId: input.intentId,
       planHash: input.plan.planHash,
-    })));
+    });
     return {
       ok: true,
       value: {

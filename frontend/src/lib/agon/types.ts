@@ -266,6 +266,19 @@ export type X402ExecutionApprovalView = {
   nextAction: "execution_adapter_not_enabled";
 };
 
+export type X402ExecutionReadinessView = {
+  receiptId: string;
+  intentId: string;
+  state: "authorization_submitted";
+  plan: X402ExecutionPlanView["plan"];
+  approval: X402ExecutionApprovalView | null;
+  status: "approval_required" | "approved_but_disabled" | "approval_expired";
+  reason: string;
+  executionEnabled: false;
+  nextAction: "explicit_execution_approval" | "execution_adapter_not_enabled";
+  checkedAt: string;
+};
+
 export type AgonHealth = {
   ok: boolean;
   service: "agon";

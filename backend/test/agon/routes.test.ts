@@ -26,6 +26,7 @@ import type {
   X402ExecutionPlanView,
   X402ExecutionApprovalRequest,
   X402ExecutionApprovalView,
+  X402ExecutionReadinessView,
 } from "../../src/agon/http/api-types.ts";
 import type { Result } from "../../src/agon/core/result.ts";
 
@@ -339,6 +340,29 @@ class FakeAgonService implements AgonMarketService {
     };
   }
 
+  async getX402ExecutionReadiness(
+    _actor: string,
+    intentId: string,
+  ): Promise<Result<X402ExecutionReadinessView, ServiceError>> {
+    const plan = await this.prepareX402ExecutionPlan("", intentId);
+    if (!plan.ok) return plan;
+    return {
+      ok: true,
+      value: {
+        receiptId: "00000000-0000-4000-8000-000000000002",
+        intentId,
+        state: "authorization_submitted",
+        plan: plan.value.plan,
+        approval: null,
+        status: "approval_required",
+        reason: "Execution approval is required before a settlement adapter can be considered.",
+        executionEnabled: false,
+        nextAction: "explicit_execution_approval",
+        checkedAt: "2026-08-20T10:07:00.000Z",
+      },
+    };
+  }
+
   async getCapabilities(): Promise<AgonCapabilities> {
     return capabilities;
   }
@@ -615,4 +639,18 @@ test("records explicit execution approval without enabling settlement", async ()
   assert.equal(body.testnetOnly, true);
   assert.equal(body.executionEnabled, false);
   assert.equal(body.nextAction, "execution_adapter_not_enabled");
+});
+
+test("returns disabled execution readiness without calling Circle", async () => {
+  const app = testApp(new FakeAgonService());
+  const response = await app.request("/agon/call-intents/00000000-0000-4000-8000-000000000001/execution-readiness", {
+    method: "GET",
+    headers: { "x-test-address": ADDRESS },
+  });
+  assert.equal(response.status, 200);
+  const body = (await response.json()) as X402ExecutionReadinessView;
+  assert.equal(body.status, "approval_required");
+  assert.equal(body.approval, null);
+  assert.equal(body.executionEnabled, false);
+  assert.equal(body.nextAction, "explicit_execution_approval");
 });

@@ -21,6 +21,7 @@ import type {
   X402ExecutionPlanView,
   X402ExecutionApprovalRequest,
   X402ExecutionApprovalView,
+  X402ExecutionReadinessView,
 } from "./api-types.ts";
 
 export type AgonRouteVariables = { address: string };
@@ -88,6 +89,10 @@ export type AgonMarketService = {
     intentId: string,
     request: X402ExecutionApprovalRequest,
   ): Promise<Result<X402ExecutionApprovalView, AgonServiceError>>;
+  getX402ExecutionReadiness(
+    actor: string,
+    intentId: string,
+  ): Promise<Result<X402ExecutionReadinessView, AgonServiceError>>;
   getCapabilities(): Promise<AgonCapabilities>;
 };
 
@@ -323,6 +328,14 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
       context.get("address"),
       context.req.param("intentId"),
       parsed.data,
+    );
+    return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  app.get("/call-intents/:intentId/execution-readiness", options.requireAuth, async (context) => {
+    const result = await options.service.getX402ExecutionReadiness(
+      context.get("address"),
+      context.req.param("intentId"),
     );
     return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
   });
