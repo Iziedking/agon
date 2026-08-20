@@ -328,7 +328,7 @@ export function inspectAspListing(
   }
   const trust = assessListingAssurance(listing, proof, currentOwner);
   const coherent = proof.state === "match";
-  const directX402 = coherent && listing.payment.directX402 &&
+  const directX402 = coherent && listing.payment.directX402 && listing.endpointQa.status === "passed" &&
     (trust.state === "verified" || trust.state === "unverified");
   const escrow = canUseEscrow(listing, proof, currentOwner);
   return {

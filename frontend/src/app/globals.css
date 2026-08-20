@@ -390,6 +390,31 @@ footer {
     opacity: 0.35;
   }
 }
+
+/* Agon public landing: a quiet instrument boot scan adds depth to the live
+   readout without competing with the product message. It only animates a
+   composited transform and opacity, and is disabled for reduced motion. */
+@keyframes agon-scan {
+  0% { transform: translateY(-8px); opacity: 0; }
+  18% { opacity: 0.28; }
+  52% { opacity: 0.12; }
+  100% { transform: translateY(420px); opacity: 0; }
+}
+.agon-preview-scan {
+  overflow: hidden;
+}
+.agon-preview-scan::after {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 1px;
+  background: var(--accent);
+  content: "";
+  pointer-events: none;
+  animation: agon-scan 5.5s var(--ease-in-out) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .agon-preview-scan::after { animation: none; opacity: 0; }
+}
 .countdown {
   font-family: var(--font-mono);
   font-size: 26px;

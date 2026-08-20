@@ -62,6 +62,16 @@ const listingBase = {
     warning: "This service has not passed Agon Arena verification.",
     quarantineReason: null,
   },
+  endpointQa: {
+    status: "passed" as const,
+    checkedAt: "2026-08-20T08:00:00.000Z",
+    endpointStatus: 402,
+    evidenceHash: `0x${"a1".repeat(32)}`,
+    reason: "Agon observed the service endpoint returning HTTP 402.",
+    attempts: 1,
+    passedAttempts: 1,
+    successRate: 100,
+  },
   payment: { rail: "X402" as const, directX402: true, escrowEligible: false },
   provenance: {
     sourceBlockNumber: "9001",

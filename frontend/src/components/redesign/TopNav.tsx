@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useOperatorAddress } from "@/hooks/useAuth";
+import { useAuth } from "@/hooks/useAuth";
 import { LoginButton } from "@/components/pengu/LoginButton";
 import { ProfileLink } from "@/components/pengu/ProfileLink";
 import { ArcChainChip } from "@/components/redesign/ArcChainChip";
@@ -14,6 +15,7 @@ import { NotificationBell } from "@/components/redesign/NotificationBell";
 import { LiveMissionBanner } from "@/components/redesign/LiveMissionBanner";
 import { ThemeToggle } from "@/components/redesign/ThemeToggle";
 import { IS_AGON_DEPLOYMENT } from "@/lib/product";
+import { useDisconnect } from "wagmi";
 
 /// The product nav. Left: â–  ARCRUN mono wordmark with the pink square mark.
 /// Center: mono caps route links separated by 32px on desktop. Right: the
@@ -56,6 +58,8 @@ export function TopNav() {
   // returning user does not flash the signed-out legacy nav before their
   // session loads.
   const { isSignedIn, settling } = useOperatorAddress();
+  const { signOut } = useAuth();
+  const { disconnect } = useDisconnect();
   const showRoutes = !isLogin && (isAgon || isSignedIn);
 
   // Close the drawer on route change so users don't see a stale open state
@@ -97,6 +101,16 @@ export function TopNav() {
               <WalletBalanceChip />
               <ArcChainChip />
               <NotificationBell />
+              <button
+                type="button"
+                onClick={async () => {
+                  await signOut();
+                  disconnect();
+                }}
+                className="hidden h-10 items-center border border-[color:var(--hairline-strong)] bg-canvas px-3 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-2 transition-colors hover:bg-canvas-3 hover:text-ink sm:inline-flex"
+              >
+                SIGN OUT
+              </button>
             </>
           ) : null}
           {!isLogin && (settling ? null : <LoginButton />)}
@@ -143,6 +157,19 @@ export function TopNav() {
               <div className="border-b border-[color:var(--hairline)] py-3 last:border-0">
                 <ProfileLink />
               </div>
+            ) : null}
+            {isSignedIn ? (
+              <button
+                type="button"
+                onClick={async () => {
+                  await signOut();
+                  disconnect();
+                  setOpen(false);
+                }}
+                className="border-b border-[color:var(--hairline)] py-3 text-left font-mono text-[12px] uppercase tracking-[0.16em] text-ink-2 last:border-0 hover:text-ink"
+              >
+                SIGN OUT
+              </button>
             ) : null}
           </nav>
         </div>
