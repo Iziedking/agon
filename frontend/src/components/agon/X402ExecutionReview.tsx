@@ -6,9 +6,9 @@ import { getX402ExecutionReadiness } from "@/lib/agon/client";
 import { executionReadinessLabel, executionReadinessTone, formatExecutionTimestamp, formatUSDCBaseUnits } from "@/lib/agon/execution-review";
 import type { X402ExecutionReadinessView } from "@/lib/agon/types";
 
-type Props = { intentId: string };
+type Props = { intentId: string; refreshKey?: string | number };
 
-export function X402ExecutionReview({ intentId }: Props) {
+export function X402ExecutionReview({ intentId, refreshKey }: Props) {
   const [readiness, setReadiness] = useState<X402ExecutionReadinessView | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -23,7 +23,7 @@ export function X402ExecutionReview({ intentId }: Props) {
         setError(failure instanceof Error ? failure.message : "Execution review is not available yet.");
       });
     return () => { live = false; };
-  }, [intentId]);
+  }, [intentId, refreshKey]);
 
   return (
     <section aria-labelledby="x402-execution-review" className="mt-4 border-t border-current pt-4">

@@ -4,11 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 
 import { LoginModal } from "@/components/pengu/LoginModal";
 import { X402ExecutionReview } from "@/components/agon/X402ExecutionReview";
+import { X402AuthorizationSigner } from "@/components/agon/X402AuthorizationSigner";
 import { TagButton } from "@/components/redesign/TagButton";
 import { useAuth } from "@/hooks/useAuth";
 import { AGON_PREVIEW_MODE, approveX402CallIntent, captureX402Quote, prepareX402Authorization, prepareX402CallIntent } from "@/lib/agon/client";
 import { assessX402Readiness, buildCallIntentRequest, newCallIntentKey } from "@/lib/agon/call-intent";
-import type { AgonListing, X402ApprovalView, X402AuthorizationView, X402CallIntentView, X402QuoteView } from "@/lib/agon/types";
+import type { AgonListing, X402ApprovalView, X402AuthorizationSubmittedView, X402AuthorizationView, X402CallIntentView, X402QuoteView } from "@/lib/agon/types";
 
 type Props = {
   listing: AgonListing;
@@ -27,6 +28,7 @@ export function X402CallIntentPanel({ listing, defaultAmount, endpointUrl }: Pro
   const [approval, setApproval] = useState<X402ApprovalView | null>(null);
   const [quote, setQuote] = useState<X402QuoteView | null>(null);
   const [authorization, setAuthorization] = useState<X402AuthorizationView | null>(null);
+  const [submittedAuthorization, setSubmittedAuthorization] = useState<X402AuthorizationSubmittedView | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [preparing, setPreparing] = useState(false);
   const [idempotencyKey, setIdempotencyKey] = useState("");
@@ -41,6 +43,7 @@ export function X402CallIntentPanel({ listing, defaultAmount, endpointUrl }: Pro
     setApproval(null);
     setQuote(null);
     setAuthorization(null);
+    setSubmittedAuthorization(null);
     if (!me && !AGON_PREVIEW_MODE) {
       setLoginOpen(true);
       return;
@@ -158,7 +161,7 @@ export function X402CallIntentPanel({ listing, defaultAmount, endpointUrl }: Pro
             <div className="mt-4 border-t border-current pt-3">
               <div className="uppercase tracking-[0.1em] text-[color:var(--ok)]">APPROVED LIMIT · {approval.approvedAmountUSDC} USDC</div>
               {!quote ? <TagButton variant="primary" size="sm" className="mt-3" onClick={readQuote} disabled={preparing}>{preparing ? "READING QUOTE..." : "READ PAYMENT QUOTE →"}</TagButton> : null}
-              {quote ? <div className="mt-4 border-t border-current pt-3 space-y-1 opacity-80"><div className="text-[color:var(--warn)]">HTTP 402 · PAYMENT REQUIRED</div><div>QUOTE HASH · {quote.quoteHash}</div>{quote.accepts.map((option) => <div key={`${option.network}-${option.payTo}`}>OPTION · {option.network} · {option.amount} USDC BASE UNITS · {option.gateway ? "GATEWAY BATCHED" : "UNSUPPORTED"}</div>)}<div className="pt-2 uppercase tracking-[0.08em]">NEXT · {authorization ? "user signature required" : "prepare authorization for review"}</div>{!authorization ? <TagButton variant="primary" size="sm" className="mt-3" onClick={prepareAuthorization} disabled={preparing}>{preparing ? "PREPARING AUTH..." : "PREPARE AUTHORIZATION →"}</TagButton> : <div className="mt-3 border-t border-current pt-3 space-y-1"><div>AUTHORIZATION READY · UNSIGNED</div><div>PAYLOAD HASH · {authorization.payloadHash}</div><div>FROM · {authorization.payload.message.from}</div><div>TO · {authorization.payload.message.to}</div><div>VALUE · {authorization.payload.message.value} USDC BASE UNITS</div><div>EXPIRES · {authorization.expiresAt}</div><div className="pt-2 text-[color:var(--warn)]">NO SIGNATURE CREATED · NO PAYMENT SENT</div><X402ExecutionReview intentId={intent.intentId} /></div>}</div> : null}
+              {quote ? <div className="mt-4 border-t border-current pt-3 space-y-1 opacity-80"><div className="text-[color:var(--warn)]">HTTP 402 · PAYMENT REQUIRED</div><div>QUOTE HASH · {quote.quoteHash}</div>{quote.accepts.map((option) => <div key={`${option.network}-${option.payTo}`}>OPTION · {option.network} · {option.amount} USDC BASE UNITS · {option.gateway ? "GATEWAY BATCHED" : "UNSUPPORTED"}</div>)}<div className="pt-2 uppercase tracking-[0.08em]">NEXT · {authorization ? submittedAuthorization ? "signature validated" : "user signature required" : "prepare authorization for review"}</div>{!authorization ? <TagButton variant="primary" size="sm" className="mt-3" onClick={prepareAuthorization} disabled={preparing}>{preparing ? "PREPARING AUTH..." : "PREPARE AUTHORIZATION →"}</TagButton> : <div className="mt-3 border-t border-current pt-3 space-y-1"><div>{submittedAuthorization ? "AUTHORIZATION SUBMITTED · VALIDATED" : "AUTHORIZATION READY · UNSIGNED"}</div><div>PAYLOAD HASH · {authorization.payloadHash}</div><div>FROM · {authorization.payload.message.from}</div><div>TO · {authorization.payload.message.to}</div><div>VALUE · {authorization.payload.message.value} USDC BASE UNITS</div><div>EXPIRES · {authorization.expiresAt}</div>{submittedAuthorization ? <><div>AUTHORIZATION HASH · {submittedAuthorization.authorizationHash}</div><div className="pt-2 text-[color:var(--warn)]">SIGNATURE VALIDATED · SETTLEMENT STILL DISABLED</div></> : <><div className="pt-2 text-[color:var(--warn)]">NO SIGNATURE CREATED · NO PAYMENT SENT</div><X402AuthorizationSigner intentId={intent.intentId} authorization={authorization} preview={AGON_PREVIEW_MODE} onSubmitted={setSubmittedAuthorization} /></>}{submittedAuthorization ? <X402ExecutionReview intentId={intent.intentId} refreshKey={submittedAuthorization.submittedAt} /> : null}</div>}</div> : null}
             </div>
           ) : (
             <div className="mt-4 border-t border-current pt-3">
