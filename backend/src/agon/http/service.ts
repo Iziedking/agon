@@ -10,6 +10,7 @@ import {
 } from "../store/repository.ts";
 import { callIntentView, prepareX402Call } from "../execution/x402-intent.ts";
 import { validateX402Approval } from "../execution/x402-approval.ts";
+import { parsePaymentRequiredHeader, type X402QuoteSnapshot } from "../execution/x402-quote.ts";
 import type {
   AgonCapabilities,
   AgonEndpointQa,
@@ -23,6 +24,7 @@ import type {
   SubmittedOperation,
   X402CallIntentRequest,
   X402CallIntentView,
+  X402QuoteView,
 } from "./api-types.ts";
 import type { AgonMarketService, AgonServiceError } from "./routes.ts";
 import type { AgonReadiness } from "../write/readiness.ts";
@@ -56,6 +58,7 @@ export type PostgresAgonMarketServiceOptions = {
   identityReads?: boolean;
   endpointQa?: boolean;
   directX402?: boolean;
+  fetchImpl?: typeof fetch;
 };
 
 function parsePositive(value: string, label: string): bigint {
@@ -130,6 +133,7 @@ function endpointQa(evidence: StoredVerificationEvidence | undefined): AgonEndpo
     ? new Date(body.checkedAt).toISOString()
     : evidence.createdAt.toISOString();
   const passed = evidence.passed && x402?.passed === true;
+  const endpointUrl = typeof body?.endpointUrl === "string" ? body.endpointUrl : undefined;
   const attempts = Number.isSafeInteger(evidence.attempts) && evidence.attempts > 0 ? evidence.attempts : 1;
   const passedAttempts = Number.isSafeInteger(evidence.passedAttempts) && evidence.passedAttempts >= 0
     ? Math.min(evidence.passedAttempts, attempts)
@@ -150,6 +154,7 @@ function endpointQa(evidence: StoredVerificationEvidence | undefined): AgonEndpo
     attempts,
     passedAttempts,
     successRate: Math.round((passedAttempts / attempts) * 100),
+    ...(endpointUrl ? { endpointUrl } : {}),
   };
 }
 
@@ -207,6 +212,40 @@ function listingView(listing: StoredListing, evidence?: StoredVerificationEviden
 function internalError(error: unknown): Result<never, AgonServiceError> {
   console.error("[agon] service error:", error instanceof Error ? error.message : "unknown failure");
   return { ok: false, error: { code: "internal", message: "Agon service request failed" } };
+}
+
+function quoteView(
+  intent: { intentId: string; targetUrl?: string | null },
+  receipt: { receiptId: string; updatedAt: Date },
+  snapshot: X402QuoteSnapshot,
+  quoteHash: string,
+): X402QuoteView {
+  return {
+    receiptId: receipt.receiptId,
+    intentId: intent.intentId,
+    state: "payment_required",
+    status: 402,
+    targetUrl: intent.targetUrl!,
+    quoteHash,
+    x402Version: 2,
+    resource: {
+      url: snapshot.resource.url,
+      description: snapshot.resource.description ?? null,
+      mimeType: snapshot.resource.mimeType ?? null,
+    },
+    accepts: snapshot.accepts.map((option) => ({
+      scheme: option.scheme,
+      network: option.network,
+      asset: option.asset,
+      amount: option.amount,
+      payTo: option.payTo,
+      maxTimeoutSeconds: option.maxTimeoutSeconds,
+      gateway: option.extra.name === "GatewayWalletBatched",
+    })),
+    executionEnabled: false,
+    nextAction: "authorization_not_enabled",
+    capturedAt: receipt.updatedAt.toISOString(),
+  };
 }
 
 export class PostgresAgonMarketService implements AgonMarketService {
@@ -336,6 +375,7 @@ export class PostgresAgonMarketService implements AgonMarketService {
         input: prepared.value.input,
         inputHash: prepared.value.inputHash,
         maxAmountUSDC: prepared.value.maxAmountUSDC,
+        targetUrl: prepared.value.targetUrl,
         state: "prepared",
       });
       return {
@@ -350,6 +390,7 @@ export class PostgresAgonMarketService implements AgonMarketService {
           maxAmountUSDC: stored.maxAmountUSDC,
           state: stored.state,
           createdAt: stored.createdAt,
+          targetUrl: stored.targetUrl,
         }),
       };
     } catch (error) {
@@ -402,6 +443,57 @@ export class PostgresAgonMarketService implements AgonMarketService {
       if (error instanceof AgonStoreInvariantError) {
         return { ok: false, error: { code: "conflict", message: error.message } };
       }
+      return internalError(error);
+    }
+  }
+
+  async captureX402Quote(
+    actor: string,
+    intentId: string,
+  ): Promise<Result<X402QuoteView, AgonServiceError>> {
+    const intent = await this.repository.getX402CallIntent(intentId);
+    if (!intent) return { ok: false, error: { code: "not_found", message: "x402 call intent not found" } };
+    if (intent.actor !== actor.toLowerCase()) {
+      return { ok: false, error: { code: "not_owner", message: "only the intent owner can capture this quote" } };
+    }
+    const receipt = await this.repository.getX402CallReceipt(intentId);
+    if (!receipt) return { ok: false, error: { code: "receipt_unavailable", message: "x402 approval receipt has not been created" } };
+    if (receipt.state === "payment_required" && receipt.quoteSnapshot && receipt.quoteHash) {
+      return { ok: true, value: quoteView(intent, receipt, receipt.quoteSnapshot as X402QuoteSnapshot, receipt.quoteHash) };
+    }
+    if (receipt.state !== "approved") {
+      return { ok: false, error: { code: "conflict", message: `x402 receipt is ${receipt.state}; approve the spend before reading a quote` } };
+    }
+    if (!intent.targetUrl || !receipt.approvedAmountUSDC) {
+      return { ok: false, error: { code: "capability_unavailable", message: "this intent has no verified HTTPS provider endpoint" } };
+    }
+    const fetchImpl = this.options.fetchImpl ?? globalThis.fetch;
+    let response: Response;
+    try {
+      response = await fetchImpl(intent.targetUrl, {
+        method: intent.method,
+        redirect: "error",
+        headers: intent.method === "GET" || intent.method === "DELETE" ? undefined : { "content-type": "application/json" },
+        body: intent.method === "GET" || intent.method === "DELETE" ? undefined : JSON.stringify(intent.input),
+        signal: AbortSignal.timeout(15_000),
+      });
+    } catch {
+      return { ok: false, error: { code: "capability_unavailable", message: "Agon could not reach the verified provider endpoint" } };
+    }
+    if (response.status !== 402) {
+      return { ok: false, error: { code: "validation_failed", message: `provider returned HTTP ${response.status}; expected HTTP 402` } };
+    }
+    const parsed = parsePaymentRequiredHeader(response.headers.get("PAYMENT-REQUIRED"), intent.targetUrl, intent.chainId.toString(), receipt.approvedAmountUSDC);
+    if (!parsed.ok) return { ok: false, error: { code: "receipt_invalid", message: parsed.error.message } };
+    try {
+      const stored = await this.repository.advanceX402CallReceipt(intentId, {
+        type: "payment_required",
+        quoteHash: parsed.value.quoteHash,
+        quoteSnapshot: parsed.value.snapshot,
+      });
+      return { ok: true, value: quoteView(intent, stored, parsed.value.snapshot, parsed.value.quoteHash) };
+    } catch (error) {
+      if (error instanceof AgonStoreInvariantError) return { ok: false, error: { code: "conflict", message: error.message } };
       return internalError(error);
     }
   }

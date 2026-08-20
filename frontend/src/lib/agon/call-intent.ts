@@ -46,13 +46,22 @@ export function buildCallIntentRequest(
   method: X402CallIntentRequest["method"],
   rawInput: string,
   maxAmountUSDC: string,
+  endpointUrl?: string,
 ): X402CallIntentRequest | { error: string } {
   const parsed = parseCallInput(rawInput);
   if ("error" in parsed) return parsed;
   if (!/^\d+(?:\.\d{1,6})?$/.test(maxAmountUSDC) || Number(maxAmountUSDC) <= 0) {
     return { error: "Spend cap must be a positive USDC amount with up to 6 decimals." };
   }
-  return { idempotencyKey, method, input: parsed.input, maxAmountUSDC };
+  if (endpointUrl !== undefined) {
+    try {
+      const url = new URL(endpointUrl);
+      if (url.protocol !== "https:" || url.username || url.password || url.hash || endpointUrl.length > 2048) throw new Error();
+    } catch {
+      return { error: "Provider endpoint must be a valid HTTPS URL." };
+    }
+  }
+  return { idempotencyKey, method, input: parsed.input, maxAmountUSDC, ...(endpointUrl ? { endpointUrl } : {}) };
 }
 
 export function newCallIntentKey(): string {

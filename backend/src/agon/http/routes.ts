@@ -14,6 +14,7 @@ import type {
   X402ApprovalView,
   X402CallIntentRequest,
   X402CallIntentView,
+  X402QuoteView,
 } from "./api-types.ts";
 
 export type AgonRouteVariables = { address: string };
@@ -57,6 +58,10 @@ export type AgonMarketService = {
     intentId: string,
     request: X402ApprovalRequest,
   ): Promise<Result<X402ApprovalView, AgonServiceError>>;
+  captureX402Quote(
+    actor: string,
+    intentId: string,
+  ): Promise<Result<X402QuoteView, AgonServiceError>>;
   getCapabilities(): Promise<AgonCapabilities>;
 };
 
@@ -100,6 +105,7 @@ const x402CallIntentSchema = z.object({
   method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]),
   input: z.unknown().default(null),
   maxAmountUSDC: z.string().regex(/^(0|[1-9]\d*)(\.\d{1,6})?$/, "must be a USDC amount with up to 6 decimals"),
+  endpointUrl: z.string().url().max(2048).optional(),
 }).strict();
 
 const x402ApprovalSchema = z.object({
@@ -226,6 +232,14 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
       context.get("address"),
       context.req.param("intentId"),
       parsed.data,
+    );
+    return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  app.post("/call-intents/:intentId/payment-required", options.requireAuth, async (context) => {
+    const result = await options.service.captureX402Quote(
+      context.get("address"),
+      context.req.param("intentId"),
     );
     return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
   });

@@ -1289,6 +1289,7 @@ create table if not exists agon_x402_call_intents (
   input                       jsonb not null,
   input_hash                  text not null check (input_hash ~ '^0x[0-9a-f]{64}$'),
   max_amount_usdc             text not null check (max_amount_usdc ~ '^(0|[1-9][0-9]*)(\.[0-9]{1,6})?$'),
+  target_url                  text check (target_url is null or (target_url ~ '^https://' and char_length(target_url) <= 2048)),
   state                       text not null default 'prepared' check (state = 'prepared'),
   created_at                  timestamptz not null default now(),
   updated_at                  timestamptz not null default now(),
@@ -1296,6 +1297,10 @@ create table if not exists agon_x402_call_intents (
 );
 create index if not exists agon_x402_call_intents_actor_idx
   on agon_x402_call_intents(actor_address, created_at desc);
+alter table agon_x402_call_intents add column if not exists target_url text;
+alter table agon_x402_call_intents drop constraint if exists agon_x402_call_intents_target_url_check;
+alter table agon_x402_call_intents add constraint agon_x402_call_intents_target_url_check
+  check (target_url is null or (target_url ~ '^https://' and char_length(target_url) <= 2048));
 
 -- Durable Circle/x402 receipt boundary. This records evidence and opaque
 -- settlement references without storing raw EIP-3009 signatures or keys.
@@ -1311,6 +1316,7 @@ create table if not exists agon_x402_call_receipts (
   )),
   approved_amount_usdc      text check (approved_amount_usdc is null or approved_amount_usdc ~ '^(0|[1-9][0-9]*)(\.[0-9]{1,6})?$'),
   quote_hash                text check (quote_hash is null or quote_hash ~ '^0x[0-9a-f]{64}$'),
+  quote_snapshot            jsonb,
   authorization_hash        text check (authorization_hash is null or authorization_hash ~ '^0x[0-9a-f]{64}$'),
   settlement_ref             text,
   service_status             int check (service_status is null or service_status between 200 and 299),
@@ -1324,6 +1330,7 @@ create table if not exists agon_x402_call_receipts (
 );
 create index if not exists agon_x402_call_receipts_state_idx
   on agon_x402_call_receipts(state, updated_at desc);
+alter table agon_x402_call_receipts add column if not exists quote_snapshot jsonb;
 
 create table if not exists agon_indexer_state (
   stream_name                 text not null check (char_length(stream_name) > 0),

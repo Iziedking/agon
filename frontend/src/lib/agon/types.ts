@@ -31,6 +31,7 @@ export type AgonEndpointQa = {
   attempts: number;
   passedAttempts: number;
   successRate: number | null;
+  endpointUrl?: string;
 };
 
 export type AgonListing = {
@@ -124,6 +125,7 @@ export type X402CallIntentRequest = {
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   input: unknown;
   maxAmountUSDC: string;
+  endpointUrl?: string;
 };
 
 export type X402CallIntentView = {
@@ -138,6 +140,7 @@ export type X402CallIntentView = {
   executionEnabled: false;
   nextAction: "execution_adapter_not_enabled";
   createdAt: string;
+  targetUrl?: string | null;
 };
 
 export type X402ApprovalRequest = {
@@ -153,6 +156,31 @@ export type X402ApprovalView = {
   executionEnabled: false;
   nextAction: "payment_adapter_not_enabled";
   approvedAt: string;
+};
+
+export type X402QuoteRequirementView = {
+  scheme: "exact";
+  network: string;
+  asset: `0x${string}`;
+  amount: string;
+  payTo: `0x${string}`;
+  maxTimeoutSeconds: number;
+  gateway: boolean;
+};
+
+export type X402QuoteView = {
+  receiptId: string;
+  intentId: string;
+  state: "payment_required";
+  status: 402;
+  targetUrl: string;
+  quoteHash: string;
+  x402Version: 2;
+  resource: { url: string; description: string | null; mimeType: string | null };
+  accepts: X402QuoteRequirementView[];
+  executionEnabled: false;
+  nextAction: "authorization_not_enabled";
+  capturedAt: string;
 };
 
 export type AgonHealth = {

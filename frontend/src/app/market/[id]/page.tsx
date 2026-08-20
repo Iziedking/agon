@@ -146,7 +146,7 @@ export default function ListingDetailPage() {
                       {listing.endpointQa.checkedAt ? <p className="mt-1 uppercase tracking-[0.08em]">Checked {listing.endpointQa.checkedAt}</p> : null}
                     </div>
 
-                    <X402CallIntentPanel listing={listing} defaultAmount={service.amountUSDC} />
+                    <X402CallIntentPanel listing={listing} defaultAmount={service.amountUSDC} endpointUrl={listing.endpointQa.endpointUrl ?? null} />
 
                     <div className="mt-7 border-t border-current pt-5 font-mono text-[9px] uppercase leading-relaxed tracking-[0.1em] opacity-55">
                       Protocol category {listing.category} <span aria-hidden>·</span> Listing {listing.listingId} <span aria-hidden>·</span> Chain {listing.chainId}

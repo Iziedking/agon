@@ -16,7 +16,7 @@ const identityAbi = [{ type: "function", name: "ownerOf", stateMutability: "view
 export type AgonVerificationEvidence = {
   listingId: string; agentId: string; checkedAt: string; passed: boolean;
   checks: Record<string, { passed: boolean; detail: string }>;
-  manifestHash?: string; endpointStatus?: number; error?: string;
+  manifestHash?: string; endpointStatus?: number; endpointUrl?: string; error?: string;
 };
 
 async function httpCheck(url: string): Promise<{ status: number; body: string }> {
@@ -49,7 +49,7 @@ export async function verifyAgonListing(listingId: bigint): Promise<AgonVerifica
     checks.category = { passed: listing[5] > 0n, detail: `category ${listing[5]}` };
     checks.service_key = { passed: listing[2] !== "0x" + "0".repeat(64), detail: listing[2] };
     const passed = Object.values(checks).every((c) => c.passed);
-    return { listingId: listingId.toString(), agentId: agentId.toString(), checkedAt, passed, checks, manifestHash: hash || undefined, endpointStatus: endpointResponse.status };
+    return { listingId: listingId.toString(), agentId: agentId.toString(), checkedAt, passed, checks, manifestHash: hash || undefined, endpointStatus: endpointResponse.status, endpointUrl: endpoint || undefined };
   } catch (error) {
     return { listingId: listingId.toString(), agentId: "", checkedAt, passed: false, checks, error: error instanceof Error ? error.message : String(error) };
   }

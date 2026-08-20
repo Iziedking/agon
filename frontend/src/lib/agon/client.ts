@@ -11,6 +11,7 @@ import type {
   X402CallIntentView,
   X402ApprovalRequest,
   X402ApprovalView,
+  X402QuoteView,
 } from "./types";
 import { AGON_PREVIEW_HEALTH, AGON_PREVIEW_LISTINGS } from "./preview";
 
@@ -132,6 +133,7 @@ export function prepareX402CallIntent(
       executionEnabled: false,
       nextAction: "execution_adapter_not_enabled",
       createdAt: "2026-08-20T12:00:00.000Z",
+      targetUrl: payload.endpointUrl ?? null,
     });
   }
   return request<X402CallIntentView>(`/listings/${encodeURIComponent(reference)}/call-intents`, {
@@ -160,4 +162,32 @@ export function approveX402CallIntent(
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export function captureX402Quote(intentId: string): Promise<X402QuoteView> {
+  if (AGON_PREVIEW_MODE) {
+    return Promise.resolve({
+      receiptId: "00000000-0000-4000-8000-000000000100",
+      intentId,
+      state: "payment_required",
+      status: 402,
+      targetUrl: "https://preview.provider.example/x402",
+      quoteHash: `0x${"ab".repeat(32)}`,
+      x402Version: 2,
+      resource: { url: "https://preview.provider.example/x402", description: "Agon preview quote", mimeType: "application/json" },
+      accepts: [{
+        scheme: "exact",
+        network: "eip155:5042002",
+        asset: `0x${"11".repeat(20)}`,
+        amount: "0.001",
+        payTo: `0x${"22".repeat(20)}`,
+        maxTimeoutSeconds: 600,
+        gateway: true,
+      }],
+      executionEnabled: false,
+      nextAction: "authorization_not_enabled",
+      capturedAt: "2026-08-20T12:02:00.000Z",
+    });
+  }
+  return request<X402QuoteView>(`/call-intents/${encodeURIComponent(intentId)}/payment-required`, { method: "POST" });
 }

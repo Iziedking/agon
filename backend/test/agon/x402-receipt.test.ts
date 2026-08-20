@@ -12,7 +12,7 @@ test("requires explicit approval before a payment requirement can be recorded", 
 
 test("models the Circle x402 lifecycle without treating settlement as final", () => {
   let state = transitionX402Receipt("prepared", { type: "approve", approvedAmountUSDC: "0.01" });
-  state = transitionX402Receipt(state.to, { type: "payment_required", quoteHash: hash });
+  state = transitionX402Receipt(state.to, { type: "payment_required", quoteHash: hash, quoteSnapshot: { x402Version: 2, accepts: [] } });
   state = transitionX402Receipt(state.to, { type: "authorization_submitted", authorizationHash: `0x${"22".repeat(32)}` });
   state = transitionX402Receipt(state.to, { type: "settlement_submitted", settlementRef: "gateway-settlement-123" });
   assert.equal(state.to, "settlement_submitted");
@@ -23,6 +23,6 @@ test("models the Circle x402 lifecycle without treating settlement as final", ()
 
 test("keeps terminal failures immutable and rejects invalid evidence", () => {
   assert.throws(() => transitionX402Receipt("reconciled", { type: "fail", failureCode: "late", failureMessage: "late" }), /cannot move/);
-  assert.throws(() => transitionX402Receipt("approved", { type: "payment_required", quoteHash: "0x00" }), /bytes32/);
+  assert.throws(() => transitionX402Receipt("approved", { type: "payment_required", quoteHash: "0x00", quoteSnapshot: {} }), /bytes32/);
   assert.throws(() => transitionX402Receipt("settlement_submitted", { type: "service_delivered", serviceStatus: 402, paymentResponseHash: hash }), /successful HTTP/);
 });

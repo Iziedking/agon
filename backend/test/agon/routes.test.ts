@@ -19,6 +19,7 @@ import type {
   X402ApprovalView,
   X402CallIntentRequest,
   X402CallIntentView,
+  X402QuoteView,
 } from "../../src/agon/http/api-types.ts";
 import type { Result } from "../../src/agon/core/result.ts";
 
@@ -191,6 +192,29 @@ class FakeAgonService implements AgonMarketService {
         executionEnabled: false,
         nextAction: "payment_adapter_not_enabled",
         approvedAt: "2026-08-20T10:01:00.000Z",
+      },
+    };
+  }
+
+  async captureX402Quote(
+    _actor: string,
+    intentId: string,
+  ): Promise<Result<X402QuoteView, ServiceError>> {
+    return {
+      ok: true,
+      value: {
+        receiptId: "00000000-0000-4000-8000-000000000002",
+        intentId,
+        state: "payment_required",
+        status: 402,
+        targetUrl: "https://provider.example/x402",
+        quoteHash: `0x${"88".repeat(32)}`,
+        x402Version: 2,
+        resource: { url: "https://provider.example/x402", description: null, mimeType: "application/json" },
+        accepts: [{ scheme: "exact", network: "eip155:5042002", asset: `0x${"11".repeat(20)}`, amount: "0.001", payTo: ADDRESS, maxTimeoutSeconds: 600, gateway: true }],
+        executionEnabled: false,
+        nextAction: "authorization_not_enabled",
+        capturedAt: "2026-08-20T10:02:00.000Z",
       },
     };
   }
@@ -385,4 +409,23 @@ test("returns an execution-disabled approval after authentication", async () => 
   assert.equal(body.approvedAmountUSDC, "0.01");
   assert.equal(body.executionEnabled, false);
   assert.equal(body.nextAction, "payment_adapter_not_enabled");
+});
+
+test("requires authentication before capturing a provider payment quote", async () => {
+  const app = testApp(new FakeAgonService());
+  const response = await app.request("/agon/call-intents/00000000-0000-4000-8000-000000000001/payment-required", { method: "POST" });
+  assert.equal(response.status, 401);
+});
+
+test("returns a non-spending HTTP 402 quote after authentication", async () => {
+  const app = testApp(new FakeAgonService());
+  const response = await app.request("/agon/call-intents/00000000-0000-4000-8000-000000000001/payment-required", {
+    method: "POST",
+    headers: { "x-test-address": ADDRESS },
+  });
+  assert.equal(response.status, 200);
+  const body = (await response.json()) as X402QuoteView;
+  assert.equal(body.status, 402);
+  assert.equal(body.executionEnabled, false);
+  assert.equal(body.nextAction, "authorization_not_enabled");
 });

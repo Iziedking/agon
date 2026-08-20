@@ -76,7 +76,7 @@ test("persists evidence through the lifecycle and retains opaque settlement refs
   const quoteHash = `0x${"22".repeat(32)}`;
   const authHash = `0x${"33".repeat(32)}`;
   const responseHash = `0x${"44".repeat(32)}`;
-  let current = await repository.advanceX402CallReceipt(intent.intentId, { type: "payment_required", quoteHash });
+  let current = await repository.advanceX402CallReceipt(intent.intentId, { type: "payment_required", quoteHash, quoteSnapshot: { x402Version: 2, accepts: [] } });
   current = await repository.advanceX402CallReceipt(current.intentId, { type: "authorization_submitted", authorizationHash: authHash });
   current = await repository.advanceX402CallReceipt(current.intentId, { type: "settlement_submitted", settlementRef: "gateway-settlement-001" });
   assert.equal(current.settlementRef, "gateway-settlement-001");

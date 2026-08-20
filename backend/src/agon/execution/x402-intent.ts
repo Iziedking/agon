@@ -21,6 +21,7 @@ export type PreparedX402Call = {
   input: unknown;
   inputHash: `0x${string}`;
   maxAmountUSDC: string;
+  targetUrl: string | null;
 };
 
 function canonicalize(value: unknown): string {
@@ -48,6 +49,20 @@ function inputHash(input: unknown): `0x${string}` {
 function amountIsPositive(value: string): boolean {
   if (!AMOUNT_PATTERN.test(value)) return false;
   return BigInt(value.replace(".", "").padEnd(value.includes(".") ? value.length + (6 - value.split(".")[1]!.length) : value.length, "0")) > 0n;
+}
+
+function targetUrl(value: string | undefined): Result<string | null, X402IntentError> {
+  if (value === undefined) return { ok: true, value: null };
+  if (value.length > 2048) return { ok: false, error: { code: "invalid_request", message: "endpointUrl is too long" } };
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== "https:" || parsed.username || parsed.password || parsed.hash) {
+      return { ok: false, error: { code: "invalid_request", message: "endpointUrl must be an HTTPS URL without credentials or fragments" } };
+    }
+    return { ok: true, value: parsed.toString() };
+  } catch {
+    return { ok: false, error: { code: "invalid_request", message: "endpointUrl must be a valid HTTPS URL" } };
+  }
 }
 
 function eligibilityError(listing: AgonListingView): X402IntentError | null {
@@ -82,6 +97,8 @@ export function prepareX402Call(
   if (!AMOUNT_PATTERN.test(request.maxAmountUSDC) || !amountIsPositive(request.maxAmountUSDC)) {
     return { ok: false, error: { code: "invalid_request", message: "maxAmountUSDC must be a positive USDC amount with up to 6 decimals" } };
   }
+  const endpoint = targetUrl(request.endpointUrl);
+  if (!endpoint.ok) return endpoint;
   try {
     return {
       ok: true,
@@ -93,6 +110,7 @@ export function prepareX402Call(
         input: request.input,
         inputHash: inputHash(request.input),
         maxAmountUSDC: request.maxAmountUSDC,
+        targetUrl: endpoint.value,
       },
     };
   } catch (error) {
@@ -113,6 +131,7 @@ export function callIntentView(input: {
   maxAmountUSDC: string;
   state: "prepared";
   createdAt: Date;
+  targetUrl?: string | null;
 }): X402CallIntentView {
   return {
     intentId: input.intentId,
@@ -126,5 +145,6 @@ export function callIntentView(input: {
     executionEnabled: false,
     nextAction: "execution_adapter_not_enabled",
     createdAt: input.createdAt.toISOString(),
+    ...(input.targetUrl ? { targetUrl: input.targetUrl } : {}),
   };
 }

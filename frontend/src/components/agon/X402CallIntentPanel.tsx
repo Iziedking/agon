@@ -5,16 +5,17 @@ import { useEffect, useMemo, useState } from "react";
 import { LoginModal } from "@/components/pengu/LoginModal";
 import { TagButton } from "@/components/redesign/TagButton";
 import { useAuth } from "@/hooks/useAuth";
-import { AGON_PREVIEW_MODE, approveX402CallIntent, prepareX402CallIntent } from "@/lib/agon/client";
+import { AGON_PREVIEW_MODE, approveX402CallIntent, captureX402Quote, prepareX402CallIntent } from "@/lib/agon/client";
 import { assessX402Readiness, buildCallIntentRequest, newCallIntentKey } from "@/lib/agon/call-intent";
-import type { AgonListing, X402ApprovalView, X402CallIntentView } from "@/lib/agon/types";
+import type { AgonListing, X402ApprovalView, X402CallIntentView, X402QuoteView } from "@/lib/agon/types";
 
 type Props = {
   listing: AgonListing;
   defaultAmount: string | null;
+  endpointUrl?: string | null;
 };
 
-export function X402CallIntentPanel({ listing, defaultAmount }: Props) {
+export function X402CallIntentPanel({ listing, defaultAmount, endpointUrl }: Props) {
   const { me } = useAuth();
   const readiness = useMemo(() => assessX402Readiness(listing), [listing]);
   const [loginOpen, setLoginOpen] = useState(false);
@@ -23,6 +24,7 @@ export function X402CallIntentPanel({ listing, defaultAmount }: Props) {
   const [maxAmountUSDC, setMaxAmountUSDC] = useState(defaultAmount ?? "0.01");
   const [intent, setIntent] = useState<X402CallIntentView | null>(null);
   const [approval, setApproval] = useState<X402ApprovalView | null>(null);
+  const [quote, setQuote] = useState<X402QuoteView | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [preparing, setPreparing] = useState(false);
   const [idempotencyKey, setIdempotencyKey] = useState("");
@@ -35,13 +37,14 @@ export function X402CallIntentPanel({ listing, defaultAmount }: Props) {
     setMessage(null);
     setIntent(null);
     setApproval(null);
+    setQuote(null);
     if (!me && !AGON_PREVIEW_MODE) {
       setLoginOpen(true);
       return;
     }
     const key = idempotencyKey || newCallIntentKey();
     setIdempotencyKey(key);
-    const request = buildCallIntentRequest(key, method, input, maxAmountUSDC);
+    const request = buildCallIntentRequest(key, method, input, maxAmountUSDC, endpointUrl ?? undefined);
     if ("error" in request) {
       setMessage(request.error);
       return;
@@ -64,6 +67,19 @@ export function X402CallIntentPanel({ listing, defaultAmount }: Props) {
       setApproval(await approveX402CallIntent(intent.intentId, { approvedAmountUSDC: intent.maxAmountUSDC }));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Agon could not record approval.");
+    } finally {
+      setPreparing(false);
+    }
+  }
+
+  async function readQuote() {
+    if (!approval || !intent) return;
+    setMessage(null);
+    setPreparing(true);
+    try {
+      setQuote(await captureX402Quote(intent.intentId));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Agon could not read the provider payment quote.");
     } finally {
       setPreparing(false);
     }
@@ -123,7 +139,11 @@ export function X402CallIntentPanel({ listing, defaultAmount }: Props) {
           <div className="flex items-center justify-between gap-3 uppercase tracking-[0.12em] text-[color:var(--ok)]"><span>{approval ? "SPEND APPROVED" : "INTENT PREPARED"}</span><span>EXECUTION OFF</span></div>
           <div className="mt-3 space-y-1 opacity-75"><div>INPUT HASH · {intent.inputHash}</div><div>MAX SPEND · {intent.maxAmountUSDC} USDC</div><div>NEXT · {approval ? approval.nextAction.replaceAll("_", " ") : intent.nextAction.replaceAll("_", " ")}</div></div>
           {approval ? (
-            <div className="mt-4 border-t border-current pt-3 uppercase tracking-[0.1em] text-[color:var(--ok)]">APPROVED LIMIT · {approval.approvedAmountUSDC} USDC</div>
+            <div className="mt-4 border-t border-current pt-3">
+              <div className="uppercase tracking-[0.1em] text-[color:var(--ok)]">APPROVED LIMIT · {approval.approvedAmountUSDC} USDC</div>
+              {!quote ? <TagButton variant="primary" size="sm" className="mt-3" onClick={readQuote} disabled={preparing}>{preparing ? "READING QUOTE..." : "READ PAYMENT QUOTE →"}</TagButton> : null}
+              {quote ? <div className="mt-4 border-t border-current pt-3 space-y-1 opacity-80"><div className="text-[color:var(--warn)]">HTTP 402 · PAYMENT REQUIRED</div><div>QUOTE HASH · {quote.quoteHash}</div>{quote.accepts.map((option) => <div key={`${option.network}-${option.payTo}`}>OPTION · {option.network} · {option.amount} USDC · {option.gateway ? "GATEWAY BATCHED" : "UNSUPPORTED"}</div>)}<div className="pt-2 uppercase tracking-[0.08em]">NEXT · authorization not enabled</div></div> : null}
+            </div>
           ) : (
             <div className="mt-4 border-t border-current pt-3">
               <p className="mb-3 opacity-75">This records your maximum spend permission. It does not sign, pay, or contact the provider.</p>
