@@ -15,6 +15,7 @@ import type {
   X402AuthorizationView,
   X402AuthorizationSignatureRequest,
   X402AuthorizationSubmittedView,
+  X402ExecutionPlanView,
 } from "./types";
 import { AGON_PREVIEW_HEALTH, AGON_PREVIEW_LISTINGS } from "./preview";
 
@@ -243,4 +244,45 @@ export function submitX402AuthorizationSignature(
     method: "POST",
     body: JSON.stringify(body),
   });
+}
+
+/** Return a redacted, testnet-only settlement plan. This never calls Circle. */
+export function prepareX402ExecutionPlan(intentId: string): Promise<X402ExecutionPlanView> {
+  if (AGON_PREVIEW_MODE) {
+    const address = `0x${"aa".repeat(20)}` as `0x${string}`;
+    return Promise.resolve({
+      receiptId: "00000000-0000-4000-8000-000000000100",
+      intentId,
+      state: "authorization_submitted",
+      plan: {
+        testnetOnly: true,
+        facilitatorUrl: "https://gateway-api-testnet.circle.com",
+        settlementEndpoint: "https://gateway-api-testnet.circle.com/v1/x402/settle",
+        requirements: {
+          scheme: "exact",
+          network: "eip155:5042002",
+          asset: address,
+          amount: "1000",
+          payTo: address,
+          maxTimeoutSeconds: 604900,
+          extra: { name: "GatewayWalletBatched", version: "1", verifyingContract: address },
+        },
+        authorizationHash: `0x${"de".repeat(32)}`,
+        paymentPayloadPreview: {
+          x402Version: 2,
+          payload: {
+            authorization: { from: address, to: address, value: "1000", validAfter: "1787240000", validBefore: "1787844900", nonce: `0x${"bb".repeat(32)}` },
+            signatureHash: `0x${"de".repeat(32)}`,
+            signature: null,
+          },
+        },
+        executionEnabled: false,
+        nextAction: "explicit_execution_approval",
+      },
+      executionEnabled: false,
+      nextAction: "explicit_execution_approval",
+      preparedAt: "2026-08-20T12:05:00.000Z",
+    });
+  }
+  return request<X402ExecutionPlanView>(`/call-intents/${encodeURIComponent(intentId)}/execution-plan`, { method: "POST" });
 }

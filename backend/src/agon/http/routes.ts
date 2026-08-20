@@ -18,6 +18,7 @@ import type {
   X402AuthorizationView,
   X402AuthorizationSignatureRequest,
   X402AuthorizationSubmittedView,
+  X402ExecutionPlanView,
 } from "./api-types.ts";
 
 export type AgonRouteVariables = { address: string };
@@ -32,6 +33,7 @@ export type AgonServiceError = {
     | "receipt_unavailable"
     | "receipt_invalid"
     | "signature_invalid"
+    | "execution_not_ready"
     | "internal";
   message: string;
 };
@@ -75,6 +77,10 @@ export type AgonMarketService = {
     intentId: string,
     request: X402AuthorizationSignatureRequest,
   ): Promise<Result<X402AuthorizationSubmittedView, AgonServiceError>>;
+  prepareX402ExecutionPlan(
+    actor: string,
+    intentId: string,
+  ): Promise<Result<X402ExecutionPlanView, AgonServiceError>>;
   getCapabilities(): Promise<AgonCapabilities>;
 };
 
@@ -164,6 +170,10 @@ function serviceErrorResponse(
       return context.json(body, 409);
     case "receipt_invalid":
       return context.json(body, 422);
+    case "signature_invalid":
+      return context.json(body, 422);
+    case "execution_not_ready":
+      return context.json(body, 409);
     case "internal":
       return context.json(body, 500);
   }
@@ -279,6 +289,14 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
       context.get("address"),
       context.req.param("intentId"),
       parsed.data as X402AuthorizationSignatureRequest,
+    );
+    return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  app.post("/call-intents/:intentId/execution-plan", options.requireAuth, async (context) => {
+    const result = await options.service.prepareX402ExecutionPlan(
+      context.get("address"),
+      context.req.param("intentId"),
     );
     return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
   });

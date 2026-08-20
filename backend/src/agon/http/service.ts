@@ -13,6 +13,7 @@ import { callIntentView, prepareX402Call } from "../execution/x402-intent.ts";
 import { validateX402Approval } from "../execution/x402-approval.ts";
 import { parsePaymentRequiredHeader, type X402QuoteSnapshot } from "../execution/x402-quote.ts";
 import { buildX402Authorization, validateX402AuthorizationSignature, type X402AuthorizationPayload } from "../execution/x402-authorization.ts";
+import { buildX402ExecutionPlan } from "../execution/x402-facilitator.ts";
 import type {
   AgonCapabilities,
   AgonEndpointQa,
@@ -30,6 +31,7 @@ import type {
   X402AuthorizationView,
   X402AuthorizationSignatureRequest,
   X402AuthorizationSubmittedView,
+  X402ExecutionPlanView,
 } from "./api-types.ts";
 import type { AgonMarketService, AgonServiceError } from "./routes.ts";
 import type { AgonReadiness } from "../write/readiness.ts";
@@ -286,6 +288,22 @@ function authorizationSubmittedView(
     executionEnabled: false,
     nextAction: "settlement_not_enabled",
     submittedAt: receipt.updatedAt.toISOString(),
+  };
+}
+
+function executionPlanView(
+  intentId: string,
+  receipt: { receiptId: string; updatedAt: Date },
+  plan: X402ExecutionPlanView["plan"],
+): X402ExecutionPlanView {
+  return {
+    receiptId: receipt.receiptId,
+    intentId,
+    state: "authorization_submitted",
+    plan,
+    executionEnabled: false,
+    nextAction: "explicit_execution_approval",
+    preparedAt: receipt.updatedAt.toISOString(),
   };
 }
 
@@ -608,6 +626,29 @@ export class PostgresAgonMarketService implements AgonMarketService {
       if (error instanceof AgonStoreInvariantError) return { ok: false, error: { code: "conflict", message: error.message } };
       return internalError(error);
     }
+  }
+
+  async prepareX402ExecutionPlan(
+    actor: string,
+    intentId: string,
+  ): Promise<Result<X402ExecutionPlanView, AgonServiceError>> {
+    const intent = await this.repository.getX402CallIntent(intentId);
+    if (!intent) return { ok: false, error: { code: "not_found", message: "x402 call intent not found" } };
+    if (intent.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the intent owner can prepare an execution plan" } };
+    const receipt = await this.repository.getX402CallReceipt(intentId);
+    if (!receipt) return { ok: false, error: { code: "receipt_unavailable", message: "x402 receipt has not been created" } };
+    if (receipt.state !== "authorization_submitted" || !receipt.quoteSnapshot || !receipt.authorizationPayload || !receipt.authorizationPayloadHash || !receipt.authorizationHash || !receipt.approvedAmountUSDC) {
+      return { ok: false, error: { code: "conflict", message: `x402 receipt is ${receipt.state}; submit a valid authorization first` } };
+    }
+    const built = buildX402ExecutionPlan({
+      snapshot: receipt.quoteSnapshot as X402QuoteSnapshot,
+      authorization: receipt.authorizationPayload as X402AuthorizationPayload,
+      authorizationPayloadHash: receipt.authorizationPayloadHash,
+      authorizationHash: receipt.authorizationHash,
+      approvedAmountUSDC: receipt.approvedAmountUSDC,
+    });
+    if (!built.ok) return { ok: false, error: { code: "execution_not_ready", message: built.error.message } };
+    return { ok: true, value: executionPlanView(intentId, receipt, built.value) };
   }
 
   async getCapabilities(): Promise<AgonCapabilities> {

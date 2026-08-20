@@ -200,6 +200,34 @@ export type X402AuthorizationSubmittedView = {
   submittedAt: string;
 };
 
+export type X402ExecutionPlanView = {
+  receiptId: string;
+  intentId: string;
+  state: "authorization_submitted";
+  plan: {
+    testnetOnly: true;
+    facilitatorUrl: "https://gateway-api-testnet.circle.com";
+    settlementEndpoint: "https://gateway-api-testnet.circle.com/v1/x402/settle";
+    requirements: {
+      scheme: "exact";
+      network: "eip155:5042002";
+      asset: `0x${string}`;
+      amount: string;
+      payTo: `0x${string}`;
+      maxTimeoutSeconds: number;
+      extra: { name: "GatewayWalletBatched"; version: "1"; verifyingContract: `0x${string}` };
+    };
+    authorization: { from: `0x${string}`; to: `0x${string}`; value: string; validAfter: string; validBefore: string; nonce: `0x${string}` };
+    authorizationHash: string;
+    paymentPayloadPreview: { x402Version: 2; payload: { authorization: X402ExecutionPlanView["plan"]["authorization"]; signatureHash: string; signature: null } };
+    executionEnabled: false;
+    nextAction: "explicit_execution_approval";
+  };
+  executionEnabled: false;
+  nextAction: "explicit_execution_approval";
+  preparedAt: string;
+};
+
 export type BindProfileRequest = {
   chainId: string;
   agentId: string;

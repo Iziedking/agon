@@ -23,6 +23,7 @@ import type {
   X402AuthorizationView,
   X402AuthorizationSignatureRequest,
   X402AuthorizationSubmittedView,
+  X402ExecutionPlanView,
 } from "../../src/agon/http/api-types.ts";
 import type { Result } from "../../src/agon/core/result.ts";
 
@@ -264,6 +265,49 @@ class FakeAgonService implements AgonMarketService {
         executionEnabled: false,
         nextAction: "settlement_not_enabled",
         submittedAt: "2026-08-20T10:04:00.000Z",
+      },
+    };
+  }
+
+  async prepareX402ExecutionPlan(
+    _actor: string,
+    intentId: string,
+  ): Promise<Result<X402ExecutionPlanView, ServiceError>> {
+    return {
+      ok: true,
+      value: {
+        receiptId: "00000000-0000-4000-8000-000000000002",
+        intentId,
+        state: "authorization_submitted",
+        plan: {
+          testnetOnly: true,
+          facilitatorUrl: "https://gateway-api-testnet.circle.com",
+          settlementEndpoint: "https://gateway-api-testnet.circle.com/v1/x402/settle",
+          requirements: {
+            scheme: "exact",
+            network: "eip155:5042002",
+            asset: `0x${"11".repeat(20)}`,
+            amount: "1000",
+            payTo: ADDRESS,
+            maxTimeoutSeconds: 604900,
+            extra: { name: "GatewayWalletBatched", version: "1", verifyingContract: ADDRESS },
+          },
+          authorization: { from: ADDRESS, to: ADDRESS, value: "1000", validAfter: "1", validBefore: "2", nonce: `0x${"aa".repeat(32)}` },
+          authorizationHash: `0x${"ab".repeat(32)}`,
+          paymentPayloadPreview: {
+            x402Version: 2,
+            payload: {
+              authorization: { from: ADDRESS, to: ADDRESS, value: "1000", validAfter: "1", validBefore: "2", nonce: `0x${"aa".repeat(32)}` },
+              signatureHash: `0x${"ab".repeat(32)}`,
+              signature: null,
+            },
+          },
+          executionEnabled: false,
+          nextAction: "explicit_execution_approval",
+        },
+        executionEnabled: false,
+        nextAction: "explicit_execution_approval",
+        preparedAt: "2026-08-20T10:05:00.000Z",
       },
     };
   }
@@ -515,4 +559,19 @@ test("records a validated signature handoff without enabling settlement", async 
   assert.equal(body.signatureAccepted, true);
   assert.equal(body.executionEnabled, false);
   assert.equal(body.nextAction, "settlement_not_enabled");
+});
+
+test("returns a testnet-only redacted execution plan after signature handoff", async () => {
+  const app = testApp(new FakeAgonService());
+  const response = await app.request("/agon/call-intents/00000000-0000-4000-8000-000000000001/execution-plan", {
+    method: "POST",
+    headers: { "x-test-address": ADDRESS },
+  });
+  assert.equal(response.status, 200);
+  const body = (await response.json()) as X402ExecutionPlanView;
+  assert.equal(body.plan.testnetOnly, true);
+  assert.equal(body.plan.requirements.network, "eip155:5042002");
+  assert.equal(body.plan.paymentPayloadPreview.payload.signature, null);
+  assert.equal(body.executionEnabled, false);
+  assert.equal(body.nextAction, "explicit_execution_approval");
 });
