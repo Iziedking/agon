@@ -14,6 +14,7 @@ import { validateX402Approval } from "../execution/x402-approval.ts";
 import { parsePaymentRequiredHeader, type X402QuoteSnapshot } from "../execution/x402-quote.ts";
 import { buildX402Authorization, validateX402AuthorizationSignature, type X402AuthorizationPayload } from "../execution/x402-authorization.ts";
 import { buildX402ExecutionPlan } from "../execution/x402-facilitator.ts";
+import { buildX402ExecutionApproval, type X402ExecutionApprovalRequest } from "../execution/x402-execution-approval.ts";
 import type {
   AgonCapabilities,
   AgonEndpointQa,
@@ -32,6 +33,7 @@ import type {
   X402AuthorizationSignatureRequest,
   X402AuthorizationSubmittedView,
   X402ExecutionPlanView,
+  X402ExecutionApprovalView,
 } from "./api-types.ts";
 import type { AgonMarketService, AgonServiceError } from "./routes.ts";
 import type { AgonReadiness } from "../write/readiness.ts";
@@ -304,6 +306,35 @@ function executionPlanView(
     executionEnabled: false,
     nextAction: "explicit_execution_approval",
     preparedAt: receipt.updatedAt.toISOString(),
+  };
+}
+
+function executionApprovalView(
+  receipt: { receiptId: string },
+  approval: {
+    approvalHash: string;
+    intentId: string;
+    actor: string;
+    planHash: string;
+    authorizationHash: string;
+    approvalIdempotencyKey: string;
+    approvedAt: Date;
+    expiresAt: Date;
+  },
+): X402ExecutionApprovalView {
+  return {
+    approvalHash: approval.approvalHash,
+    receiptId: receipt.receiptId,
+    intentId: approval.intentId,
+    actor: approval.actor as `0x${string}`,
+    planHash: approval.planHash,
+    authorizationHash: approval.authorizationHash,
+    approvalIdempotencyKey: approval.approvalIdempotencyKey,
+    testnetOnly: true,
+    approvedAt: approval.approvedAt.toISOString(),
+    expiresAt: approval.expiresAt.toISOString(),
+    executionEnabled: false,
+    nextAction: "execution_adapter_not_enabled",
   };
 }
 
@@ -649,6 +680,47 @@ export class PostgresAgonMarketService implements AgonMarketService {
     });
     if (!built.ok) return { ok: false, error: { code: "execution_not_ready", message: built.error.message } };
     return { ok: true, value: executionPlanView(intentId, receipt, built.value) };
+  }
+
+  async approveX402Execution(
+    actor: string,
+    intentId: string,
+    request: X402ExecutionApprovalRequest,
+  ): Promise<Result<X402ExecutionApprovalView, AgonServiceError>> {
+    const intent = await this.repository.getX402CallIntent(intentId);
+    if (!intent) return { ok: false, error: { code: "not_found", message: "x402 call intent not found" } };
+    if (intent.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the intent owner can approve execution" } };
+    const receipt = await this.repository.getX402CallReceipt(intentId);
+    if (!receipt) return { ok: false, error: { code: "receipt_unavailable", message: "x402 receipt has not been created" } };
+    if (receipt.state !== "authorization_submitted" || !receipt.quoteSnapshot || !receipt.authorizationPayload || !receipt.authorizationPayloadHash || !receipt.authorizationHash || !receipt.approvedAmountUSDC) {
+      return { ok: false, error: { code: "conflict", message: `x402 receipt is ${receipt.state}; submit a valid authorization first` } };
+    }
+    const plan = buildX402ExecutionPlan({
+      snapshot: receipt.quoteSnapshot as X402QuoteSnapshot,
+      authorization: receipt.authorizationPayload as X402AuthorizationPayload,
+      authorizationPayloadHash: receipt.authorizationPayloadHash,
+      authorizationHash: receipt.authorizationHash,
+      approvedAmountUSDC: receipt.approvedAmountUSDC,
+    });
+    if (!plan.ok) return { ok: false, error: { code: "execution_not_ready", message: plan.error.message } };
+    const approval = buildX402ExecutionApproval({ intentId, actor, plan: plan.value, request });
+    if (!approval.ok) return { ok: false, error: { code: "execution_not_ready", message: approval.error.message } };
+    try {
+      const stored = await this.repository.recordX402ExecutionApproval({
+        approvalHash: approval.value.approvalHash,
+        intentId,
+        actor,
+        planHash: approval.value.planHash,
+        authorizationHash: approval.value.authorizationHash,
+        approvalIdempotencyKey: approval.value.approvalIdempotencyKey,
+        approvedAt: new Date(approval.value.approvedAt),
+        expiresAt: new Date(approval.value.expiresAt),
+      });
+      return { ok: true, value: executionApprovalView(receipt, stored) };
+    } catch (error) {
+      if (error instanceof AgonStoreInvariantError) return { ok: false, error: { code: "conflict", message: error.message } };
+      return internalError(error);
+    }
   }
 
   async getCapabilities(): Promise<AgonCapabilities> {

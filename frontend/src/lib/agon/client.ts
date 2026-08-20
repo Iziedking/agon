@@ -16,6 +16,8 @@ import type {
   X402AuthorizationSignatureRequest,
   X402AuthorizationSubmittedView,
   X402ExecutionPlanView,
+  X402ExecutionApprovalRequest,
+  X402ExecutionApprovalView,
 } from "./types";
 import { AGON_PREVIEW_HEALTH, AGON_PREVIEW_LISTINGS } from "./preview";
 
@@ -268,6 +270,7 @@ export function prepareX402ExecutionPlan(intentId: string): Promise<X402Executio
           extra: { name: "GatewayWalletBatched", version: "1", verifyingContract: address },
         },
         authorizationHash: `0x${"de".repeat(32)}`,
+        planHash: `0x${"ef".repeat(32)}`,
         paymentPayloadPreview: {
           x402Version: 2,
           payload: {
@@ -285,4 +288,11 @@ export function prepareX402ExecutionPlan(intentId: string): Promise<X402Executio
     });
   }
   return request<X402ExecutionPlanView>(`/call-intents/${encodeURIComponent(intentId)}/execution-plan`, { method: "POST" });
+}
+
+export function approveX402Execution(intentId: string, body: X402ExecutionApprovalRequest): Promise<X402ExecutionApprovalView> {
+  return request<X402ExecutionApprovalView>(`/call-intents/${encodeURIComponent(intentId)}/execution-approval`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }

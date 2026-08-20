@@ -115,6 +115,8 @@ export type X402CallReceiptProjection = {
   approvedAmountUSDC?: string | null;
   quoteHash: string | null;
   quoteSnapshot?: unknown | null;
+  authorizationPayloadHash?: string | null;
+  authorizationPayload?: unknown | null;
   authorizationHash: string | null;
   settlementRef: string | null;
   serviceStatus: number | null;
@@ -128,6 +130,21 @@ export type X402CallReceiptProjection = {
 export type StoredX402CallReceipt = X402CallReceiptProjection & {
   createdAt: Date;
   updatedAt: Date;
+};
+
+export type X402ExecutionApprovalProjection = {
+  approvalHash: string;
+  intentId: string;
+  actor: string;
+  planHash: string;
+  authorizationHash: string;
+  approvalIdempotencyKey: string;
+  approvedAt: Date;
+  expiresAt: Date;
+};
+
+export type StoredX402ExecutionApproval = X402ExecutionApprovalProjection & {
+  createdAt: Date;
 };
 
 export type ListingCursor = {
@@ -265,6 +282,8 @@ type X402CallReceiptRow = QueryResultRow & {
   approved_amount_usdc: string | null;
   quote_hash: string | null;
   quote_snapshot: unknown | null;
+  authorization_payload_hash: string | null;
+  authorization_payload: unknown | null;
   authorization_hash: string | null;
   settlement_ref: string | null;
   service_status: number | null;
@@ -274,6 +293,18 @@ type X402CallReceiptRow = QueryResultRow & {
   failure_message: string | null;
   created_at: Date;
   updated_at: Date;
+};
+
+type X402ExecutionApprovalRow = QueryResultRow & {
+  approval_hash: string;
+  intent_id: string;
+  actor_address: string;
+  plan_hash: string;
+  authorization_hash: string;
+  approval_idempotency_key: string;
+  approved_at: Date;
+  expires_at: Date;
+  created_at: Date;
 };
 
 type VersionRow = QueryResultRow & {
@@ -438,6 +469,8 @@ function mapX402CallReceipt(row: X402CallReceiptRow): StoredX402CallReceipt {
     approvedAmountUSDC: row.approved_amount_usdc,
     quoteHash: row.quote_hash,
     quoteSnapshot: row.quote_snapshot,
+    authorizationPayloadHash: row.authorization_payload_hash,
+    authorizationPayload: row.authorization_payload,
     authorizationHash: row.authorization_hash,
     settlementRef: row.settlement_ref,
     serviceStatus: row.service_status,
@@ -447,6 +480,20 @@ function mapX402CallReceipt(row: X402CallReceiptRow): StoredX402CallReceipt {
     failureMessage: row.failure_message,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  };
+}
+
+function mapX402ExecutionApproval(row: X402ExecutionApprovalRow): StoredX402ExecutionApproval {
+  return {
+    approvalHash: row.approval_hash,
+    intentId: row.intent_id,
+    actor: row.actor_address,
+    planHash: row.plan_hash,
+    authorizationHash: row.authorization_hash,
+    approvalIdempotencyKey: row.approval_idempotency_key,
+    approvedAt: row.approved_at,
+    expiresAt: row.expires_at,
+    createdAt: row.created_at,
   };
 }
 
@@ -480,9 +527,13 @@ const X402_INTENT_COLUMNS = `
   input, input_hash, max_amount_usdc, target_url, state, created_at, updated_at`;
 
 const X402_RECEIPT_COLUMNS = `
-  receipt_id, intent_id, state, approved_amount_usdc, quote_hash, quote_snapshot, authorization_hash, settlement_ref,
+  receipt_id, intent_id, state, approved_amount_usdc, quote_hash, quote_snapshot, authorization_payload_hash, authorization_payload, authorization_hash, settlement_ref,
   service_status, payment_response_hash, charged_amount_usdc, failure_code,
   failure_message, created_at, updated_at`;
+
+const X402_EXECUTION_APPROVAL_COLUMNS = `
+  approval_hash, intent_id, actor_address, plan_hash, authorization_hash,
+  approval_idempotency_key, approved_at, expires_at, created_at`;
 
 export class PostgresAgonRepository {
   private readonly pool: Pool;
@@ -599,13 +650,13 @@ export class PostgresAgonRepository {
     if (input.state !== "prepared") throw new AgonStoreInvariantError("new x402 receipts must start prepared");
     const inserted = await this.pool.query<X402CallReceiptRow>(
       `insert into agon_x402_call_receipts (
-         receipt_id, intent_id, state, approved_amount_usdc, quote_hash, quote_snapshot, authorization_hash, settlement_ref,
+         receipt_id, intent_id, state, approved_amount_usdc, quote_hash, quote_snapshot, authorization_payload_hash, authorization_payload, authorization_hash, settlement_ref,
          service_status, payment_response_hash, charged_amount_usdc, failure_code,
          failure_message, created_at, updated_at
-       ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14)
+       ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $16)
        on conflict (intent_id) do nothing
        returning ${X402_RECEIPT_COLUMNS}`,
-      [input.receiptId, input.intentId, input.state, input.approvedAmountUSDC, input.quoteHash, input.quoteSnapshot, input.authorizationHash, input.settlementRef, input.serviceStatus, input.paymentResponseHash, input.chargedAmountUSDC, input.failureCode, input.failureMessage, input.createdAt ?? new Date()],
+      [input.receiptId, input.intentId, input.state, input.approvedAmountUSDC, input.quoteHash, input.quoteSnapshot, input.authorizationPayloadHash, input.authorizationPayload, input.authorizationHash, input.settlementRef, input.serviceStatus, input.paymentResponseHash, input.chargedAmountUSDC, input.failureCode, input.failureMessage, input.createdAt ?? new Date()],
     );
     if (inserted.rows[0]) return mapX402CallReceipt(inserted.rows[0]);
     const existing = await this.pool.query<X402CallReceiptRow>(
@@ -633,14 +684,16 @@ export class PostgresAgonRepository {
            state = $2, approved_amount_usdc = coalesce($3, approved_amount_usdc),
            quote_hash = coalesce($4, quote_hash),
            quote_snapshot = coalesce($5, quote_snapshot),
-           authorization_hash = coalesce($6, authorization_hash),
-           settlement_ref = coalesce($7, settlement_ref),
-           service_status = coalesce($8, service_status),
-           payment_response_hash = coalesce($9, payment_response_hash),
-           failure_code = coalesce($10, failure_code),
-           failure_message = coalesce($11, failure_message), updated_at = now()
+           authorization_payload_hash = coalesce($6, authorization_payload_hash),
+           authorization_payload = coalesce($7, authorization_payload),
+           authorization_hash = coalesce($8, authorization_hash),
+           settlement_ref = coalesce($9, settlement_ref),
+           service_status = coalesce($10, service_status),
+           payment_response_hash = coalesce($11, payment_response_hash),
+           failure_code = coalesce($12, failure_code),
+           failure_message = coalesce($13, failure_message), updated_at = now()
          where intent_id = $1 returning ${X402_RECEIPT_COLUMNS}`,
-        [intentId, transition.to, transition.patch.approvedAmountUSDC ?? null, transition.patch.quoteHash ?? null, transition.patch.quoteSnapshot ?? null, transition.patch.authorizationHash ?? null, transition.patch.settlementRef ?? null, transition.patch.serviceStatus ?? null, transition.patch.paymentResponseHash ?? null, transition.patch.failureCode ?? null, transition.patch.failureMessage ?? null],
+        [intentId, transition.to, transition.patch.approvedAmountUSDC ?? null, transition.patch.quoteHash ?? null, transition.patch.quoteSnapshot ?? null, transition.patch.authorizationPayloadHash ?? null, transition.patch.authorizationPayload ?? null, transition.patch.authorizationHash ?? null, transition.patch.settlementRef ?? null, transition.patch.serviceStatus ?? null, transition.patch.paymentResponseHash ?? null, transition.patch.failureCode ?? null, transition.patch.failureMessage ?? null],
       );
       await client.query("commit");
       return mapX402CallReceipt(updated.rows[0]!);
@@ -692,6 +745,70 @@ export class PostgresAgonRepository {
     } finally {
       client.release();
     }
+  }
+
+  async recordX402ExecutionApproval(input: X402ExecutionApprovalProjection): Promise<StoredX402ExecutionApproval> {
+    const actor = normalizeAddress(input.actor);
+    const planHash = normalizeHash(input.planHash);
+    const authorizationHash = normalizeHash(input.authorizationHash);
+    if (!/^[0-9a-f-]{36}$/i.test(input.intentId)) throw new AgonStoreInvariantError("intent id must be a UUID");
+    const approvalHash = normalizeHash(input.approvalHash);
+    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/.test(input.approvalIdempotencyKey)) throw new AgonStoreInvariantError("approval idempotency key is invalid");
+    if (!(input.expiresAt > input.approvedAt)) throw new AgonStoreInvariantError("execution approval expiry must be after approval time");
+    const client = await this.pool.connect();
+    try {
+      await client.query("begin");
+      const receipt = await client.query<{ state: X402ReceiptState }>(
+        "select state from agon_x402_call_receipts where intent_id = $1 for update",
+        [input.intentId],
+      );
+      if (receipt.rows[0]?.state !== "authorization_submitted") {
+        throw new AgonStoreInvariantError("execution approval requires a submitted authorization");
+      }
+      const inserted = await client.query<X402ExecutionApprovalRow>(
+        `insert into agon_x402_execution_approvals (
+           approval_hash, intent_id, actor_address, plan_hash, authorization_hash,
+           approval_idempotency_key, approved_at, expires_at, created_at
+         ) values ($1, $2, $3, $4, $5, $6, $7, $8, now())
+         on conflict (intent_id, approval_idempotency_key) do nothing
+         returning ${X402_EXECUTION_APPROVAL_COLUMNS}`,
+        [approvalHash, input.intentId, actor, planHash, authorizationHash, input.approvalIdempotencyKey, input.approvedAt, input.expiresAt],
+      );
+      if (inserted.rows[0]) {
+        await client.query("commit");
+        return mapX402ExecutionApproval(inserted.rows[0]);
+      }
+      const existing = await client.query<X402ExecutionApprovalRow>(
+        `select ${X402_EXECUTION_APPROVAL_COLUMNS}
+         from agon_x402_execution_approvals
+         where intent_id = $1 and approval_idempotency_key = $2`,
+        [input.intentId, input.approvalIdempotencyKey],
+      );
+      const row = existing.rows[0];
+      if (!row) throw new AgonStoreInvariantError("execution approval conflict could not be loaded");
+      if (row.approval_hash !== approvalHash || row.plan_hash !== planHash || row.authorization_hash !== authorizationHash || row.actor_address !== actor) {
+        throw new AgonStoreInvariantError("approval idempotency key already used for a different execution plan");
+      }
+      await client.query("commit");
+      return mapX402ExecutionApproval(row);
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async getLatestX402ExecutionApproval(intentId: string): Promise<StoredX402ExecutionApproval | null> {
+    const result = await this.pool.query<X402ExecutionApprovalRow>(
+      `select ${X402_EXECUTION_APPROVAL_COLUMNS}
+       from agon_x402_execution_approvals
+       where intent_id = $1
+       order by approved_at desc, created_at desc
+       limit 1`,
+      [intentId],
+    );
+    return result.rows[0] ? mapX402ExecutionApproval(result.rows[0]) : null;
   }
 
   async getLatestVerificationEvidence(

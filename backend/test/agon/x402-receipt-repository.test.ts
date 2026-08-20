@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 
-import { PostgresAgonRepository, type X402CallIntentProjection, type X402CallReceiptProjection } from "../../src/agon/store/repository.ts";
+import { PostgresAgonRepository, type X402CallIntentProjection, type X402CallReceiptProjection, type X402ExecutionApprovalProjection } from "../../src/agon/store/repository.ts";
 import { createAgonTestDatabase, type AgonTestDatabase } from "./database-test-helper.ts";
 
 let database: AgonTestDatabase;
@@ -87,4 +87,35 @@ test("persists evidence through the lifecycle and retains opaque settlement refs
   assert.equal(current.quoteHash, quoteHash);
   assert.equal(current.authorizationHash, authHash);
   assert.equal(current.paymentResponseHash, responseHash);
+});
+
+test("stores explicit execution approval evidence idempotently and only after authorization", async () => {
+  const approvalIntent = { ...intent, intentId: "00000000-0000-4000-8000-000000000014", idempotencyKey: "receipt-014" };
+  await repository.prepareX402CallIntent(approvalIntent);
+  await repository.createX402CallReceipt({ ...receipt({ receiptId: "00000000-0000-4000-8000-000000000015", intentId: approvalIntent.intentId }) });
+  const planHash = `0x${"55".repeat(32)}`;
+  const authorizationHash = `0x${"66".repeat(32)}`;
+  const approval: X402ExecutionApprovalProjection = {
+    approvalHash: `0x${"77".repeat(32)}`,
+    intentId: approvalIntent.intentId,
+    actor: intent.actor,
+    planHash,
+    authorizationHash,
+    approvalIdempotencyKey: "approval-014",
+    approvedAt: new Date("2026-08-20T10:00:00.000Z"),
+    expiresAt: new Date("2026-08-20T10:05:00.000Z"),
+  };
+  await assert.rejects(() => repository.recordX402ExecutionApproval(approval), /submitted authorization/);
+  await repository.approveX402CallReceipt(approvalIntent.intentId, "0.01");
+  await repository.advanceX402CallReceipt(approvalIntent.intentId, { type: "payment_required", quoteHash: `0x${"88".repeat(32)}`, quoteSnapshot: { x402Version: 2, accepts: [] } });
+  await repository.advanceX402CallReceipt(approvalIntent.intentId, { type: "authorization_ready", authorizationPayloadHash: `0x${"99".repeat(32)}`, authorizationPayload: { x402Version: 2 } });
+  await repository.advanceX402CallReceipt(approvalIntent.intentId, { type: "authorization_submitted", authorizationHash });
+  const first = await repository.recordX402ExecutionApproval(approval);
+  const retry = await repository.recordX402ExecutionApproval(approval);
+  assert.equal(retry.approvalHash, first.approvalHash);
+  assert.equal((await repository.getLatestX402ExecutionApproval(approvalIntent.intentId))?.planHash, planHash);
+  await assert.rejects(
+    () => repository.recordX402ExecutionApproval({ ...approval, planHash: `0x${"aa".repeat(32)}` }),
+    /different execution plan/,
+  );
 });

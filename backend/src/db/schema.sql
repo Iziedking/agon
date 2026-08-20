@@ -1310,13 +1310,15 @@ create table if not exists agon_x402_call_receipts (
   receipt_id                uuid primary key,
   intent_id                 uuid not null references agon_x402_call_intents(intent_id),
   state                     text not null check (state in (
-    'prepared', 'approved', 'payment_required', 'authorization_submitted',
+    'prepared', 'approved', 'payment_required', 'authorization_ready', 'authorization_submitted',
     'settlement_submitted', 'service_delivered', 'reconciled', 'rejected',
     'failed', 'unknown'
   )),
   approved_amount_usdc      text check (approved_amount_usdc is null or approved_amount_usdc ~ '^(0|[1-9][0-9]*)(\.[0-9]{1,6})?$'),
   quote_hash                text check (quote_hash is null or quote_hash ~ '^0x[0-9a-f]{64}$'),
   quote_snapshot            jsonb,
+  authorization_payload_hash text check (authorization_payload_hash is null or authorization_payload_hash ~ '^0x[0-9a-f]{64}$'),
+  authorization_payload     jsonb,
   authorization_hash        text check (authorization_hash is null or authorization_hash ~ '^0x[0-9a-f]{64}$'),
   settlement_ref             text,
   service_status             int check (service_status is null or service_status between 200 and 299),
@@ -1331,6 +1333,26 @@ create table if not exists agon_x402_call_receipts (
 create index if not exists agon_x402_call_receipts_state_idx
   on agon_x402_call_receipts(state, updated_at desc);
 alter table agon_x402_call_receipts add column if not exists quote_snapshot jsonb;
+alter table agon_x402_call_receipts add column if not exists authorization_payload_hash text;
+alter table agon_x402_call_receipts add column if not exists authorization_payload jsonb;
+
+-- Human execution approvals are append-only evidence. They bind one explicit
+-- approval to the exact prepared plan and authorization hash without enabling
+-- settlement or storing the raw signature.
+create table if not exists agon_x402_execution_approvals (
+  approval_hash             text primary key check (approval_hash ~ '^0x[0-9a-f]{64}$'),
+  intent_id                 uuid not null references agon_x402_call_intents(intent_id),
+  actor_address             text not null check (actor_address ~ '^0x[0-9a-f]{40}$'),
+  plan_hash                 text not null check (plan_hash ~ '^0x[0-9a-f]{64}$'),
+  authorization_hash        text not null check (authorization_hash ~ '^0x[0-9a-f]{64}$'),
+  approval_idempotency_key  text not null check (char_length(approval_idempotency_key) between 8 and 128),
+  approved_at               timestamptz not null,
+  expires_at                timestamptz not null check (expires_at > approved_at),
+  created_at                timestamptz not null default now(),
+  unique (intent_id, approval_idempotency_key)
+);
+create index if not exists agon_x402_execution_approvals_intent_idx
+  on agon_x402_execution_approvals(intent_id, approved_at desc);
 
 create table if not exists agon_indexer_state (
   stream_name                 text not null check (char_length(stream_name) > 0),

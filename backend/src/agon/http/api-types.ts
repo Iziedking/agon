@@ -219,6 +219,7 @@ export type X402ExecutionPlanView = {
     };
     authorization: { from: `0x${string}`; to: `0x${string}`; value: string; validAfter: string; validBefore: string; nonce: `0x${string}` };
     authorizationHash: string;
+    planHash: string;
     paymentPayloadPreview: { x402Version: 2; payload: { authorization: X402ExecutionPlanView["plan"]["authorization"]; signatureHash: string; signature: null } };
     executionEnabled: false;
     nextAction: "explicit_execution_approval";
@@ -226,6 +227,27 @@ export type X402ExecutionPlanView = {
   executionEnabled: false;
   nextAction: "explicit_execution_approval";
   preparedAt: string;
+};
+
+export type X402ExecutionApprovalRequest = {
+  planHash: string;
+  approvalIdempotencyKey: string;
+  confirmation: "APPROVE_ARC_TESTNET_X402";
+};
+
+export type X402ExecutionApprovalView = {
+  approvalHash: string;
+  receiptId: string;
+  intentId: string;
+  actor: `0x${string}`;
+  planHash: string;
+  authorizationHash: string;
+  approvalIdempotencyKey: string;
+  testnetOnly: true;
+  approvedAt: string;
+  expiresAt: string;
+  executionEnabled: false;
+  nextAction: "execution_adapter_not_enabled";
 };
 
 export type BindProfileRequest = {

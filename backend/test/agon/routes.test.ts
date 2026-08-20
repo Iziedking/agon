@@ -24,6 +24,8 @@ import type {
   X402AuthorizationSignatureRequest,
   X402AuthorizationSubmittedView,
   X402ExecutionPlanView,
+  X402ExecutionApprovalRequest,
+  X402ExecutionApprovalView,
 } from "../../src/agon/http/api-types.ts";
 import type { Result } from "../../src/agon/core/result.ts";
 
@@ -294,6 +296,7 @@ class FakeAgonService implements AgonMarketService {
           },
           authorization: { from: ADDRESS, to: ADDRESS, value: "1000", validAfter: "1", validBefore: "2", nonce: `0x${"aa".repeat(32)}` },
           authorizationHash: `0x${"ab".repeat(32)}`,
+          planHash: `0x${"cd".repeat(32)}`,
           paymentPayloadPreview: {
             x402Version: 2,
             payload: {
@@ -308,6 +311,30 @@ class FakeAgonService implements AgonMarketService {
         executionEnabled: false,
         nextAction: "explicit_execution_approval",
         preparedAt: "2026-08-20T10:05:00.000Z",
+      },
+    };
+  }
+
+  async approveX402Execution(
+    _actor: string,
+    intentId: string,
+    _request: X402ExecutionApprovalRequest,
+  ): Promise<Result<X402ExecutionApprovalView, ServiceError>> {
+    return {
+      ok: true,
+      value: {
+        approvalHash: `0x${"ee".repeat(32)}`,
+        receiptId: "00000000-0000-4000-8000-000000000002",
+        intentId,
+        actor: ADDRESS,
+        planHash: `0x${"cd".repeat(32)}`,
+        authorizationHash: `0x${"ab".repeat(32)}`,
+        approvalIdempotencyKey: "approval-001",
+        testnetOnly: true,
+        approvedAt: "2026-08-20T10:06:00.000Z",
+        expiresAt: "2026-08-20T10:11:00.000Z",
+        executionEnabled: false,
+        nextAction: "execution_adapter_not_enabled",
       },
     };
   }
@@ -574,4 +601,18 @@ test("returns a testnet-only redacted execution plan after signature handoff", a
   assert.equal(body.plan.paymentPayloadPreview.payload.signature, null);
   assert.equal(body.executionEnabled, false);
   assert.equal(body.nextAction, "explicit_execution_approval");
+});
+
+test("records explicit execution approval without enabling settlement", async () => {
+  const app = testApp(new FakeAgonService());
+  const response = await app.request("/agon/call-intents/00000000-0000-4000-8000-000000000001/execution-approval", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-test-address": ADDRESS },
+    body: JSON.stringify({ planHash: `0x${"cd".repeat(32)}`, approvalIdempotencyKey: "approval-001", confirmation: "APPROVE_ARC_TESTNET_X402" }),
+  });
+  assert.equal(response.status, 200);
+  const body = (await response.json()) as X402ExecutionApprovalView;
+  assert.equal(body.testnetOnly, true);
+  assert.equal(body.executionEnabled, false);
+  assert.equal(body.nextAction, "execution_adapter_not_enabled");
 });

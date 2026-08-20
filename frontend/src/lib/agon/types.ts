@@ -235,6 +235,7 @@ export type X402ExecutionPlanView = {
       extra: { name: "GatewayWalletBatched"; version: "1"; verifyingContract: `0x${string}` };
     };
     authorizationHash: string;
+    planHash: string;
     paymentPayloadPreview: { x402Version: 2; payload: { authorization: X402AuthorizationView["payload"]["message"]; signatureHash: string; signature: null } };
     executionEnabled: false;
     nextAction: "explicit_execution_approval";
@@ -242,6 +243,27 @@ export type X402ExecutionPlanView = {
   executionEnabled: false;
   nextAction: "explicit_execution_approval";
   preparedAt: string;
+};
+
+export type X402ExecutionApprovalRequest = {
+  planHash: string;
+  approvalIdempotencyKey: string;
+  confirmation: "APPROVE_ARC_TESTNET_X402";
+};
+
+export type X402ExecutionApprovalView = {
+  approvalHash: string;
+  receiptId: string;
+  intentId: string;
+  actor: `0x${string}`;
+  planHash: string;
+  authorizationHash: string;
+  approvalIdempotencyKey: string;
+  testnetOnly: true;
+  approvedAt: string;
+  expiresAt: string;
+  executionEnabled: false;
+  nextAction: "execution_adapter_not_enabled";
 };
 
 export type AgonHealth = {

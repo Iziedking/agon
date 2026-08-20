@@ -1,4 +1,5 @@
 import { getAddress } from "viem";
+import { keccak256, stringToHex } from "viem";
 import type { X402AuthorizationPayload } from "./x402-authorization.ts";
 import type { X402QuoteSnapshot } from "./x402-quote.ts";
 
@@ -25,6 +26,7 @@ export type X402ExecutionPlan = {
   };
   authorization: X402AuthorizationPayload["message"];
   authorizationHash: `0x${string}`;
+  planHash: `0x${string}`;
   paymentPayloadPreview: {
     x402Version: 2;
     payload: {
@@ -45,6 +47,24 @@ function microUsdc(value: string): bigint {
 
 function fail(message: string): { ok: false; error: X402ExecutionPlanError } {
   return { ok: false, error: { code: "execution_not_ready", message } };
+}
+
+function canonicalize(value: unknown): string {
+  if (value === null || typeof value === "boolean" || typeof value === "number" || typeof value === "string") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonicalize).join(",")}]`;
+  if (typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => `${JSON.stringify(key)}:${canonicalize(entry)}`)
+      .join(",")}}`;
+  }
+  throw new Error("execution plan must be JSON-compatible");
+}
+
+/** Hash the exact plan fields a human must review before approving execution. */
+export function hashX402ExecutionPlan(plan: Omit<X402ExecutionPlan, "planHash"> | X402ExecutionPlan): `0x${string}` {
+  const { planHash: _ignored, ...reviewed } = plan as X402ExecutionPlan;
+  return keccak256(stringToHex(canonicalize(reviewed)));
 }
 
 /**
@@ -88,21 +108,25 @@ export function buildX402ExecutionPlan(input: {
         verifyingContract: option.extra.verifyingContract,
       },
     };
+    const reviewedPlan = {
+      testnetOnly: true as const,
+      facilitatorUrl: AGON_X402_TESTNET_FACILITATOR,
+      settlementEndpoint: `${AGON_X402_TESTNET_FACILITATOR}/v1/x402/settle` as const,
+      requirements,
+      authorization: input.authorization.message,
+      authorizationHash: input.authorizationHash.toLowerCase() as `0x${string}`,
+      paymentPayloadPreview: {
+        x402Version: 2 as const,
+        payload: { authorization: input.authorization.message, signatureHash: input.authorizationHash.toLowerCase() as `0x${string}`, signature: null },
+      },
+      executionEnabled: false as const,
+      nextAction: "explicit_execution_approval" as const,
+    };
     return {
       ok: true,
       value: {
-        testnetOnly: true,
-        facilitatorUrl: AGON_X402_TESTNET_FACILITATOR,
-        settlementEndpoint: `${AGON_X402_TESTNET_FACILITATOR}/v1/x402/settle`,
-        requirements,
-        authorization: input.authorization.message,
-        authorizationHash: input.authorizationHash.toLowerCase() as `0x${string}`,
-        paymentPayloadPreview: {
-          x402Version: 2,
-          payload: { authorization: input.authorization.message, signatureHash: input.authorizationHash.toLowerCase() as `0x${string}`, signature: null },
-        },
-        executionEnabled: false,
-        nextAction: "explicit_execution_approval",
+        ...reviewedPlan,
+        planHash: hashX402ExecutionPlan(reviewedPlan),
       },
     };
   } catch {

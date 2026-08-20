@@ -19,6 +19,8 @@ import type {
   X402AuthorizationSignatureRequest,
   X402AuthorizationSubmittedView,
   X402ExecutionPlanView,
+  X402ExecutionApprovalRequest,
+  X402ExecutionApprovalView,
 } from "./api-types.ts";
 
 export type AgonRouteVariables = { address: string };
@@ -81,6 +83,11 @@ export type AgonMarketService = {
     actor: string,
     intentId: string,
   ): Promise<Result<X402ExecutionPlanView, AgonServiceError>>;
+  approveX402Execution(
+    actor: string,
+    intentId: string,
+    request: X402ExecutionApprovalRequest,
+  ): Promise<Result<X402ExecutionApprovalView, AgonServiceError>>;
   getCapabilities(): Promise<AgonCapabilities>;
 };
 
@@ -134,6 +141,12 @@ const x402ApprovalSchema = z.object({
 const x402AuthorizationSignatureSchema = z.object({
   payloadHash: bytes32,
   signature: z.string().regex(/^0x[0-9a-fA-F]{130}$/, "must be a 65-byte ECDSA signature"),
+}).strict();
+
+const x402ExecutionApprovalSchema = z.object({
+  planHash: bytes32,
+  approvalIdempotencyKey: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/, "must be 8-128 safe characters"),
+  confirmation: z.literal("APPROVE_ARC_TESTNET_X402"),
 }).strict();
 
 function validationResponse(error: ZodError): ApiErrorResponse {
@@ -297,6 +310,19 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
     const result = await options.service.prepareX402ExecutionPlan(
       context.get("address"),
       context.req.param("intentId"),
+    );
+    return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  app.post("/call-intents/:intentId/execution-approval", options.requireAuth, async (context) => {
+    const body = await parseJson(context);
+    if (isApiError(body)) return context.json(body, 400);
+    const parsed = x402ExecutionApprovalSchema.safeParse(body);
+    if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
+    const result = await options.service.approveX402Execution(
+      context.get("address"),
+      context.req.param("intentId"),
+      parsed.data,
     );
     return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
   });
