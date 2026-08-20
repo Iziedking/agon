@@ -22,6 +22,17 @@ export type AgonCapabilities = {
   };
 };
 
+export type AgonEndpointQa = {
+  status: "passed" | "failed" | "not_checked";
+  checkedAt: string | null;
+  endpointStatus: number | null;
+  evidenceHash: string | null;
+  reason: string;
+  attempts: number;
+  passedAttempts: number;
+  successRate: number | null;
+};
+
 export type AgonListing = {
   id: string;
   chainId: string;
@@ -52,6 +63,7 @@ export type AgonListing = {
     warning: string | null;
     quarantineReason: string | null;
   };
+  endpointQa: AgonEndpointQa;
   payment: {
     rail: PaymentRail;
     directX402: boolean;
@@ -105,6 +117,27 @@ export type SubmittedOperation = {
   txHash: `0x${string}` | null;
   resultReference: string | null;
   proof: { blockNumber: string; logIndex: number } | null;
+};
+
+export type X402CallIntentRequest = {
+  idempotencyKey: string;
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  input: unknown;
+  maxAmountUSDC: string;
+};
+
+export type X402CallIntentView = {
+  intentId: string;
+  actor: string;
+  idempotencyKey: string;
+  listingReference: string;
+  listingVersion: string;
+  inputHash: string;
+  maxAmountUSDC: string;
+  state: "prepared";
+  executionEnabled: false;
+  nextAction: "execution_adapter_not_enabled";
+  createdAt: string;
 };
 
 export type AgonHealth = {

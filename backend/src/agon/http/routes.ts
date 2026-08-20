@@ -10,6 +10,8 @@ import type {
   ListingQuery,
   PublishListingRequest,
   SubmittedOperation,
+  X402CallIntentRequest,
+  X402CallIntentView,
 } from "./api-types.ts";
 
 export type AgonRouteVariables = { address: string };
@@ -43,6 +45,11 @@ export type AgonMarketService = {
     operationId: string,
     txHash: `0x${string}`,
   ): Promise<Result<SubmittedOperation, AgonServiceError>>;
+  prepareX402Call(
+    actor: string,
+    reference: string,
+    request: X402CallIntentRequest,
+  ): Promise<Result<X402CallIntentView, AgonServiceError>>;
   getCapabilities(): Promise<AgonCapabilities>;
 };
 
@@ -80,6 +87,13 @@ const publishListingSchema = z.object({
 const confirmOperationSchema = z.object({
   txHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/, "must be a transaction hash"),
 });
+
+const x402CallIntentSchema = z.object({
+  idempotencyKey: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/, "must be 8-128 safe characters"),
+  method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]),
+  input: z.unknown().default(null),
+  maxAmountUSDC: z.string().regex(/^(0|[1-9]\d*)(\.\d{1,6})?$/, "must be a USDC amount with up to 6 decimals"),
+}).strict();
 
 function validationResponse(error: ZodError): ApiErrorResponse {
   return {
@@ -177,6 +191,19 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
   app.get("/listings/:reference", async (context) => {
     const result = await options.service.getListing(context.req.param("reference"));
     return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  app.post("/listings/:reference/call-intents", options.requireAuth, async (context) => {
+    const body = await parseJson(context);
+    if (isApiError(body)) return context.json(body, 400);
+    const parsed = x402CallIntentSchema.safeParse(body);
+    if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
+    const result = await options.service.prepareX402Call(
+      context.get("address"),
+      context.req.param("reference"),
+      { ...parsed.data, input: parsed.data.input ?? null },
+    );
+    return result.ok ? context.json(result.value, 201) : serviceErrorResponse(context, result.error);
   });
 
   app.post("/profiles/bind", options.requireAuth, async (context) => {

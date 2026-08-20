@@ -82,6 +82,29 @@ export type StoredVerificationEvidence = {
   passedAttempts: number;
 };
 
+export type X402CallIntentProjection = {
+  intentId: string;
+  actor: string;
+  idempotencyKey: string;
+  listingReference: string;
+  chainId: bigint;
+  serviceRegistry: string;
+  listingId: bigint;
+  agentId: bigint;
+  version: bigint;
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  input: unknown;
+  inputHash: string;
+  maxAmountUSDC: string;
+  state: "prepared";
+  createdAt?: Date;
+};
+
+export type StoredX402CallIntent = X402CallIntentProjection & {
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 export type ListingCursor = {
   updatedAt: Date;
   chainId: bigint;
@@ -188,6 +211,25 @@ type VerificationEvidenceRow = QueryResultRow & {
   created_at: Date;
   attempts: string;
   passed_attempts: string;
+};
+
+type X402CallIntentRow = QueryResultRow & {
+  intent_id: string;
+  actor_address: string;
+  idempotency_key: string;
+  listing_reference: string;
+  chain_id: string;
+  service_registry_address: string;
+  listing_id: string;
+  agent_id: string;
+  listing_version: string;
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  input: unknown;
+  input_hash: string;
+  max_amount_usdc: string;
+  state: "prepared";
+  created_at: Date;
+  updated_at: Date;
 };
 
 type VersionRow = QueryResultRow & {
@@ -322,6 +364,27 @@ function mapVersion(row: VersionRow): ValidatedListingVersion {
   };
 }
 
+function mapX402CallIntent(row: X402CallIntentRow): StoredX402CallIntent {
+  return {
+    intentId: row.intent_id,
+    actor: row.actor_address,
+    idempotencyKey: row.idempotency_key,
+    listingReference: row.listing_reference,
+    chainId: BigInt(row.chain_id),
+    serviceRegistry: row.service_registry_address,
+    listingId: BigInt(row.listing_id),
+    agentId: BigInt(row.agent_id),
+    version: BigInt(row.listing_version),
+    method: row.method,
+    input: row.input,
+    inputHash: row.input_hash,
+    maxAmountUSDC: row.max_amount_usdc,
+    state: row.state,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 function versionsMatch(left: ValidatedListingVersion, right: ValidatedListingVersion): boolean {
   return (
     left.chainId === right.chainId &&
@@ -345,6 +408,11 @@ const LISTING_COLUMNS = `
   current_version, manifest_hash, manifest_uri, payment_rail, provider_snapshot,
   chain_status, status, verification, quarantine_reason, source_block_number,
   source_tx_hash, source_log_index, created_at, updated_at`;
+
+const X402_INTENT_COLUMNS = `
+  intent_id, actor_address, idempotency_key, listing_reference, chain_id,
+  service_registry_address, listing_id, agent_id, listing_version, method,
+  input, input_hash, max_amount_usdc, state, created_at, updated_at`;
 
 export class PostgresAgonRepository {
   private readonly pool: Pool;
@@ -384,6 +452,56 @@ export class PostgresAgonRepository {
       [requirePositive(key.chainId, "chain id"), normalizeAddress(key.serviceRegistry), requirePositive(key.listingId, "listing id")],
     );
     return result.rows[0] ? mapListing(result.rows[0]) : null;
+  }
+
+  async prepareX402CallIntent(input: X402CallIntentProjection): Promise<StoredX402CallIntent> {
+    const actor = normalizeAddress(input.actor);
+    const inserted = await this.pool.query<X402CallIntentRow>(
+      `insert into agon_x402_call_intents (
+         intent_id, actor_address, idempotency_key, listing_reference, chain_id,
+         service_registry_address, listing_id, agent_id, listing_version, method,
+         input, input_hash, max_amount_usdc, state, created_at, updated_at
+       ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13, $14, $15, $15)
+       on conflict (actor_address, idempotency_key) do nothing
+       returning ${X402_INTENT_COLUMNS}`,
+      [
+        input.intentId,
+        actor,
+        requireText(input.idempotencyKey, "idempotency key"),
+        requireText(input.listingReference, "listing reference"),
+        requirePositive(input.chainId, "chain id"),
+        normalizeAddress(input.serviceRegistry),
+        requirePositive(input.listingId, "listing id"),
+        requireNonNegative(input.agentId, "agent id"),
+        requirePositive(input.version, "listing version"),
+        input.method,
+        JSON.stringify(jsonSafe(input.input)),
+        normalizeHash(input.inputHash),
+        input.maxAmountUSDC,
+        input.state,
+        input.createdAt ?? new Date(),
+      ],
+    );
+    if (inserted.rows[0]) return mapX402CallIntent(inserted.rows[0]);
+
+    const existing = await this.pool.query<X402CallIntentRow>(
+      `select ${X402_INTENT_COLUMNS}
+       from agon_x402_call_intents
+       where actor_address = $1 and idempotency_key = $2`,
+      [actor, input.idempotencyKey],
+    );
+    const row = existing.rows[0];
+    if (!row) throw new AgonStoreInvariantError("x402 call intent conflict could not be loaded");
+    const value = mapX402CallIntent(row);
+    if (
+      value.listingReference !== input.listingReference ||
+      value.method !== input.method ||
+      value.inputHash !== input.inputHash ||
+      value.maxAmountUSDC !== input.maxAmountUSDC
+    ) {
+      throw new AgonStoreInvariantError("idempotency key already used for a different x402 call");
+    }
+    return value;
   }
 
   async getLatestVerificationEvidence(

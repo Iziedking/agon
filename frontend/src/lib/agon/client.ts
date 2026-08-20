@@ -7,6 +7,8 @@ import type {
   ListListingsQuery,
   PublishListingRequest,
   SubmittedOperation,
+  X402CallIntentRequest,
+  X402CallIntentView,
 } from "./types";
 import { AGON_PREVIEW_HEALTH, AGON_PREVIEW_LISTINGS } from "./preview";
 
@@ -108,5 +110,15 @@ export function confirmAgonOperation(
   return request<SubmittedOperation>(`/operations/${encodeURIComponent(operationId)}/confirm`, {
     method: "POST",
     body: JSON.stringify({ txHash }),
+  });
+}
+
+export function prepareX402CallIntent(
+  reference: string,
+  payload: X402CallIntentRequest,
+): Promise<X402CallIntentView> {
+  return request<X402CallIntentView>(`/listings/${encodeURIComponent(reference)}/call-intents`, {
+    method: "POST",
+    body: JSON.stringify(payload),
   });
 }

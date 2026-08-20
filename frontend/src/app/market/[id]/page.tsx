@@ -7,6 +7,7 @@ import { ServiceProof } from "@/components/agon/ServiceProof";
 import { AgonAuthAction } from "@/components/agon/AgonAuthAction";
 import { UnverifiedWarning } from "@/components/agon/UnverifiedWarning";
 import { VerificationBadge } from "@/components/agon/VerificationBadge";
+import { X402CallIntentPanel } from "@/components/agon/X402CallIntentPanel";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { BracketedCell } from "@/components/redesign/BracketedCell";
 import { CornerMarkers } from "@/components/redesign/CornerMarkers";
@@ -129,17 +130,23 @@ export default function ListingDetailPage() {
                     <div className="font-mono text-[10px] uppercase tracking-[0.16em] opacity-60">PRICE AND ACCESS</div>
                     <div className="mt-4 font-stencil text-[36px] uppercase leading-none sm:text-[42px]">{service.amountUSDC ? `${service.amountUSDC} USDC` : "PRICE NOT INDEXED"}</div>
                     <div className="mt-7 space-y-4 border-t border-current pt-5">
-                      <Readiness label="LISTING ACTIVE" ready={listing.status === "Listed"} value={listing.status === "Listed" ? "YES" : listing.status.toUpperCase()} />
-                      <Readiness label="DIRECT X402" ready={listing.payment.directX402 && !quarantined} value={listing.payment.directX402 ? "DECLARED" : "NO"} />
-                      <Readiness label="ESCROW PROTECTION" ready={Boolean(escrowEligible)} value={escrowEligible ? "ELIGIBLE" : "NOT AVAILABLE"} />
+                      <Readiness label="LISTING ACTIVE" state={listing.status === "Listed" ? "ready" : "blocked"} value={listing.status === "Listed" ? "YES" : listing.status.toUpperCase()} />
+                      <Readiness
+                        label="DIRECT X402"
+                        state={quarantined || listing.endpointQa.status === "failed" ? "blocked" : listing.endpointQa.status === "passed" ? "ready" : "caution"}
+                        value={quarantined ? "BLOCKED" : listing.endpointQa.status === "passed" ? "QA PASSED" : listing.endpointQa.status === "failed" ? "BLOCKED" : listing.payment.directX402 ? "DECLARED" : "NO"}
+                      />
+                      <Readiness label="ESCROW PROTECTION" state={escrowEligible ? "ready" : "blocked"} value={escrowEligible ? "ELIGIBLE" : "NOT AVAILABLE"} />
                     </div>
 
-                    <button type="button" disabled className="mt-7 w-full bg-accent px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] text-accent-ink opacity-45">
-                      {quarantined ? "SERVICE BLOCKED" : "EXECUTION NOT ENABLED"}
-                    </button>
-                    <p className="mt-4 font-mono text-[10px] leading-relaxed opacity-65">
-                      This release proves discovery and trust state. It does not pretend a payment or service call is available before the execution adapter is enabled.
-                    </p>
+                    <div className="mt-5 border-t border-current pt-4 font-mono text-[10px] leading-relaxed opacity-70">
+                      <div className="uppercase tracking-[0.12em]">ENDPOINT CHECK</div>
+                      <p className="mt-2">{listing.endpointQa.reason}</p>
+                      {listing.endpointQa.attempts > 0 ? <p className="mt-1 uppercase tracking-[0.08em]">{listing.endpointQa.passedAttempts}/{listing.endpointQa.attempts} checks passed · {listing.endpointQa.successRate}% reliability</p> : null}
+                      {listing.endpointQa.checkedAt ? <p className="mt-1 uppercase tracking-[0.08em]">Checked {listing.endpointQa.checkedAt}</p> : null}
+                    </div>
+
+                    <X402CallIntentPanel listing={listing} defaultAmount={service.amountUSDC} />
 
                     <div className="mt-7 border-t border-current pt-5 font-mono text-[9px] uppercase leading-relaxed tracking-[0.1em] opacity-55">
                       Protocol category {listing.category} <span aria-hidden>·</span> Listing {listing.listingId} <span aria-hidden>·</span> Chain {listing.chainId}
@@ -166,8 +173,9 @@ function OverviewFact({ label, value, note }: { label: string; value: string; no
   );
 }
 
-function Readiness({ label, ready, value }: { label: string; ready: boolean; value: string }) {
-  return <div className="flex items-center justify-between gap-4 font-mono text-[10px]"><span className="opacity-65">{label}</span><span className="inline-flex items-center gap-2 uppercase"><span className="h-2 w-2" style={{ background: ready ? "var(--ok)" : "var(--err)" }} />{value}</span></div>;
+function Readiness({ label, state, value }: { label: string; state: "ready" | "caution" | "blocked"; value: string }) {
+  const color = state === "ready" ? "var(--ok)" : state === "caution" ? "var(--warn)" : "var(--err)";
+  return <div className="flex items-center justify-between gap-4 font-mono text-[10px]"><span className="opacity-65">{label}</span><span className="inline-flex items-center gap-2 uppercase"><span className="h-2 w-2" style={{ background: color }} />{value}</span></div>;
 }
 
 function DetailLoading() {

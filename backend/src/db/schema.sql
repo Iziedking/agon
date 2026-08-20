@@ -1270,6 +1270,33 @@ create table if not exists agon_verification_evidence (
 create index if not exists agon_verification_evidence_listing_idx
   on agon_verification_evidence(listing_id, created_at desc);
 
+-- Durable buyer-side x402 preparation. This is an authorization boundary, not
+-- a payment ledger: the row is written before any future Circle call and is
+-- intentionally stuck in `prepared` while the execution adapter is disabled.
+-- The actor + idempotency key pair prevents duplicate intent creation and the
+-- input hash makes a retry with changed economics or payload fail closed.
+create table if not exists agon_x402_call_intents (
+  intent_id                   uuid primary key,
+  actor_address               text not null check (actor_address ~ '^0x[0-9a-f]{40}$'),
+  idempotency_key             text not null check (char_length(idempotency_key) between 8 and 128),
+  listing_reference           text not null check (char_length(listing_reference) between 1 and 512),
+  chain_id                    numeric(78, 0) not null check (chain_id > 0),
+  service_registry_address    text not null check (service_registry_address ~ '^0x[0-9a-f]{40}$'),
+  listing_id                  numeric(78, 0) not null check (listing_id > 0),
+  agent_id                    numeric(78, 0) not null check (agent_id >= 0),
+  listing_version             numeric(78, 0) not null check (listing_version > 0),
+  method                      text not null check (method in ('GET', 'POST', 'PUT', 'PATCH', 'DELETE')),
+  input                       jsonb not null,
+  input_hash                  text not null check (input_hash ~ '^0x[0-9a-f]{64}$'),
+  max_amount_usdc             text not null check (max_amount_usdc ~ '^(0|[1-9][0-9]*)(\.[0-9]{1,6})?$'),
+  state                       text not null default 'prepared' check (state = 'prepared'),
+  created_at                  timestamptz not null default now(),
+  updated_at                  timestamptz not null default now(),
+  unique (actor_address, idempotency_key)
+);
+create index if not exists agon_x402_call_intents_actor_idx
+  on agon_x402_call_intents(actor_address, created_at desc);
+
 create table if not exists agon_indexer_state (
   stream_name                 text not null check (char_length(stream_name) > 0),
   chain_id                    numeric(78, 0) not null check (chain_id > 0),

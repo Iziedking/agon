@@ -1,11 +1,14 @@
 import { z } from "zod";
+import { randomUUID } from "node:crypto";
 import type { Result } from "../core/result.ts";
 import {
   PostgresAgonRepository,
+  AgonStoreInvariantError,
   type ListingCursor,
   type StoredListing,
   type StoredVerificationEvidence,
 } from "../store/repository.ts";
+import { callIntentView, prepareX402Call } from "../execution/x402-intent.ts";
 import type {
   AgonCapabilities,
   AgonEndpointQa,
@@ -15,6 +18,8 @@ import type {
   ListingQuery,
   PublishListingRequest,
   SubmittedOperation,
+  X402CallIntentRequest,
+  X402CallIntentView,
 } from "./api-types.ts";
 import type { AgonMarketService, AgonServiceError } from "./routes.ts";
 import type { AgonReadiness } from "../write/readiness.ts";
@@ -294,6 +299,62 @@ export class PostgresAgonMarketService implements AgonMarketService {
       };
     }
     return this.options.writer.confirmOperation(actor, operationId, txHash);
+  }
+
+  async prepareX402Call(
+    actor: string,
+    reference: string,
+    request: X402CallIntentRequest,
+  ): Promise<Result<X402CallIntentView, AgonServiceError>> {
+    const listing = await this.getListing(reference);
+    if (!listing.ok) return listing;
+    const prepared = prepareX402Call(actor, listing.value, request);
+    if (!prepared.ok) {
+      return {
+        ok: false,
+        error: {
+          code: prepared.error.code === "invalid_request" ? "validation_failed" : "capability_unavailable",
+          message: prepared.error.message,
+        },
+      };
+    }
+    try {
+      const stored = await this.repository.prepareX402CallIntent({
+        intentId: randomUUID(),
+        actor: prepared.value.actor,
+        idempotencyKey: prepared.value.idempotencyKey,
+        listingReference: listing.value.id,
+        chainId: BigInt(listing.value.chainId),
+        serviceRegistry: listing.value.serviceRegistry,
+        listingId: BigInt(listing.value.listingId),
+        agentId: BigInt(listing.value.agentId),
+        version: BigInt(listing.value.version),
+        method: prepared.value.method,
+        input: prepared.value.input,
+        inputHash: prepared.value.inputHash,
+        maxAmountUSDC: prepared.value.maxAmountUSDC,
+        state: "prepared",
+      });
+      return {
+        ok: true,
+        value: callIntentView({
+          intentId: stored.intentId,
+          actor: stored.actor,
+          idempotencyKey: stored.idempotencyKey,
+          listingReference: stored.listingReference,
+          listingVersion: stored.version.toString(),
+          inputHash: stored.inputHash,
+          maxAmountUSDC: stored.maxAmountUSDC,
+          state: stored.state,
+          createdAt: stored.createdAt,
+        }),
+      };
+    } catch (error) {
+      if (error instanceof AgonStoreInvariantError && error.message.includes("idempotency key")) {
+        return { ok: false, error: { code: "conflict", message: error.message } };
+      }
+      return internalError(error);
+    }
   }
 
   async getCapabilities(): Promise<AgonCapabilities> {

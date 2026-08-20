@@ -44,6 +44,16 @@ const listing = {
     scope: { agentId: "42", listingId: "7", version: "1", category: "3" },
   },
   risk: { unverified: false, warning: null, quarantineReason: null },
+  endpointQa: {
+    status: "not_checked" as const,
+    checkedAt: null,
+    endpointStatus: null,
+    evidenceHash: null,
+    reason: "Agon has not run endpoint verification for this listing yet.",
+    attempts: 0,
+    passedAttempts: 0,
+    successRate: null,
+  },
   payment: { rail: "Escrow" as const, directX402: false, escrowEligible: true },
   provenance: {
     sourceBlockNumber: "9001",
@@ -108,15 +118,19 @@ test("keeps unverified and quarantined listings escrow-ineligible", () => {
   assert.equal(canUseEscrow(quarantined, proof), false);
 });
 
-test("preview fixtures expose exactly one verified, provider-listed, and quarantined record", () => {
-  assert.equal(AGON_PREVIEW_LISTINGS.length, 3);
-  assert.equal(AGON_PREVIEW_LISTINGS.filter((item) => item.verification.status === "Verified").length, 1);
+test("preview fixtures expose verified, provider-listed, quarantined, and direct-x402 records", () => {
+  assert.equal(AGON_PREVIEW_LISTINGS.length, 4);
+  assert.equal(AGON_PREVIEW_LISTINGS.filter((item) => item.verification.status === "Verified").length, 2);
   assert.equal(AGON_PREVIEW_LISTINGS.filter((item) => item.risk.unverified && !item.risk.quarantineReason).length, 1);
   assert.equal(AGON_PREVIEW_LISTINGS.filter((item) => Boolean(item.risk.quarantineReason)).length, 1);
 
   const verified = AGON_PREVIEW_LISTINGS.find((item) => item.verification.status === "Verified");
   assert.ok(verified);
   assert.equal(verifyManifestAnchor(verified.manifest.hash, verified.manifest.body).state, "match");
+
+  const directX402 = AGON_PREVIEW_LISTINGS.find((item) => item.payment.directX402 && item.verification.status === "Verified");
+  assert.ok(directX402);
+  assert.equal(directX402.endpointQa.status, "passed");
 
   const quarantined = AGON_PREVIEW_LISTINGS.find((item) => Boolean(item.risk.quarantineReason));
   assert.ok(quarantined);

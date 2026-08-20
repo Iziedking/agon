@@ -101,6 +101,27 @@ export type ListingQuery = {
   agentId: string | null;
 };
 
+export type X402CallIntentRequest = {
+  idempotencyKey: string;
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  input: unknown;
+  maxAmountUSDC: string;
+};
+
+export type X402CallIntentView = {
+  intentId: string;
+  actor: string;
+  idempotencyKey: string;
+  listingReference: string;
+  listingVersion: string;
+  inputHash: string;
+  maxAmountUSDC: string;
+  state: "prepared";
+  executionEnabled: false;
+  nextAction: "execution_adapter_not_enabled";
+  createdAt: string;
+};
+
 export type BindProfileRequest = {
   chainId: string;
   agentId: string;

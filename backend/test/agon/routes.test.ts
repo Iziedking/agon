@@ -15,6 +15,8 @@ import type {
   ListingQuery,
   PublishListingRequest,
   SubmittedOperation,
+  X402CallIntentRequest,
+  X402CallIntentView,
 } from "../../src/agon/http/api-types.ts";
 import type { Result } from "../../src/agon/core/result.ts";
 
@@ -144,6 +146,29 @@ class FakeAgonService implements AgonMarketService {
         state: "confirmed",
         txHash,
         proof: { blockNumber: "123", logIndex: 7 },
+      },
+    };
+  }
+
+  async prepareX402Call(
+    _actor: string,
+    _reference: string,
+    _request: X402CallIntentRequest,
+  ): Promise<Result<X402CallIntentView, ServiceError>> {
+    return {
+      ok: true,
+      value: {
+        intentId: "00000000-0000-4000-8000-000000000001",
+        actor: ADDRESS,
+        idempotencyKey: "review-001",
+        listingReference: listing.id,
+        listingVersion: listing.version,
+        inputHash: `0x${"77".repeat(32)}`,
+        maxAmountUSDC: "0.01",
+        state: "prepared",
+        executionEnabled: false,
+        nextAction: "execution_adapter_not_enabled",
+        createdAt: "2026-08-20T10:00:00.000Z",
       },
     };
   }
@@ -289,4 +314,28 @@ test("confirms a prepared operation with a validated transaction hash", async ()
   const operation = (await response.json()) as SubmittedOperation;
   assert.equal(operation.state, "confirmed");
   assert.equal(operation.txHash, txHash);
+});
+
+test("requires authentication before preparing an x402 call intent", async () => {
+  const app = testApp(new FakeAgonService());
+  const response = await app.request(`/agon/listings/${encodeURIComponent(listing.id)}/call-intents`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ idempotencyKey: "review-001", method: "POST", input: {}, maxAmountUSDC: "0.01" }),
+  });
+  assert.equal(response.status, 401);
+});
+
+test("returns a durable execution-disabled x402 intent after auth", async () => {
+  const app = testApp(new FakeAgonService());
+  const response = await app.request(`/agon/listings/${encodeURIComponent(listing.id)}/call-intents`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-test-address": ADDRESS },
+    body: JSON.stringify({ idempotencyKey: "review-001", method: "POST", input: { prompt: "audit" }, maxAmountUSDC: "0.01" }),
+  });
+  assert.equal(response.status, 201);
+  const body = (await response.json()) as X402CallIntentView;
+  assert.equal(body.state, "prepared");
+  assert.equal(body.executionEnabled, false);
+  assert.equal(body.nextAction, "execution_adapter_not_enabled");
 });
