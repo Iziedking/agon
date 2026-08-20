@@ -245,7 +245,7 @@ export default function NewListingPage() {
               <BracketedCell pad="lg">
                 <StepHeading number="01" title="Choose the service owner" copy="Use an ERC-8004 agent that this wallet owns. Agon binds to that identity and never mints a replacement." />
                 <div className="mt-7 grid gap-5 sm:grid-cols-2">
-                  <Field label="ERC-8004 AGENT" hint="The onchain agent that provides this service">
+                  <Field label="ERC-8004 AGENT" hint="Find this ID in your identity record">
                     <input required value={agentId} onChange={(event) => setAgentId(event.target.value)} inputMode="numeric" pattern="[1-9][0-9]*" placeholder="42" className={INPUT_CLASS} />
                   </Field>
                   <Field label="NETWORK" hint="Fixed for this foundation release">
@@ -279,10 +279,10 @@ export default function NewListingPage() {
                   <Field label="SERVICE NAME" hint="Short and outcome-focused">
                     <input required value={name} onChange={(event) => setName(event.target.value)} placeholder="Protocol security review" className={INPUT_CLASS} />
                   </Field>
-                  <Field label="CATEGORY" hint="Choose by buyer intent">
+                  <Field label="CATEGORY" hint="Choose by buyer intent · ID shown in the list">
                     <select required value={categoryId} onChange={(event) => setCategoryId(event.target.value)} className={INPUT_CLASS}>
                       <option value="">Choose a category</option>
-                      {AGON_CATEGORIES.map((category) => <option key={category.id} value={category.id}>{category.label}</option>)}
+                      {AGON_CATEGORIES.map((category) => <option key={category.id} value={category.id}>{category.id} · {category.label}</option>)}
                     </select>
                   </Field>
 
@@ -311,8 +311,8 @@ export default function NewListingPage() {
               <BracketedCell pad="lg">
                 <StepHeading number="03" title="Set delivery and payment" copy="Point to the public service endpoint, declare the price, and provide a permanent URL for the exact manifest shown in review." />
                 <div className="mt-7 grid gap-5 sm:grid-cols-2">
-                  <Field label="SERVICE ENDPOINT" hint="Public HTTPS only" className="sm:col-span-2">
-                    <input required value={endpoint} onChange={(event) => setEndpoint(event.target.value)} placeholder="https://agent.example.com/review" className={INPUT_CLASS} />
+                  <Field label="SERVICE ENDPOINT" hint="HTTPS · return 402 before payment" className="sm:col-span-2">
+                    <input required type="url" value={endpoint} onChange={(event) => setEndpoint(event.target.value)} placeholder="https://agent.example.com/review" className={INPUT_CLASS} />
                   </Field>
                   <Field label="PRICE" hint="Fixed amount, up to 6 decimals">
                     <div className="relative">
@@ -331,7 +331,7 @@ export default function NewListingPage() {
                       The listing can declare escrow, but escrow remains blocked until Agon verifies this exact service version.
                     </div>
                   ) : null}
-                  <Field label="PERMANENT MANIFEST URL" hint="Upload the exact JSON shown in review" className="sm:col-span-2">
+                  <Field label="PERMANENT MANIFEST URL" hint="IPFS or HTTPS · exact JSON shown in review" className="sm:col-span-2">
                     <input required value={manifestUri} onChange={(event) => setManifestUri(event.target.value)} placeholder="ipfs://... or https://..." className={INPUT_CLASS} />
                   </Field>
                 </div>
@@ -347,7 +347,7 @@ export default function NewListingPage() {
                 </p>
 
                 <div className="mt-6 grid gap-px border border-current bg-current sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-                  <ReviewFact label="CATEGORY" value={selectedCategory?.label ?? "Not chosen"} />
+                  <ReviewFact label="CATEGORY" value={selectedCategory ? `${selectedCategory.id} · ${selectedCategory.label}` : "Not chosen"} />
                   <ReviewFact label="PRICE" value={amountUSDC ? `${amountUSDC} USDC` : "Not set"} />
                   <ReviewFact label="AGENT" value={agentId ? `#${agentId}` : "Not chosen"} />
                   <ReviewFact label="FIRST TRUST STATE" value="Provider listed" />
