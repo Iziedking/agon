@@ -44,6 +44,13 @@ const listing: AgonListingView = {
     warning: "This service has not passed Agon Arena verification.",
     quarantineReason: null,
   },
+  endpointQa: {
+    status: "not_checked",
+    checkedAt: null,
+    endpointStatus: null,
+    evidenceHash: null,
+    reason: "Agon has not run endpoint verification for this listing yet.",
+  },
   payment: { rail: "X402", directX402: true, escrowEligible: false },
   provenance: {
     sourceBlockNumber: "100",

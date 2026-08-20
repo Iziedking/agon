@@ -39,6 +39,14 @@ export type VerificationScope = {
   category: string;
 };
 
+export type AgonEndpointQa = {
+  status: "passed" | "failed" | "not_checked";
+  checkedAt: string | null;
+  endpointStatus: number | null;
+  evidenceHash: string | null;
+  reason: string;
+};
+
 export type AgonListingView = {
   id: string;
   chainId: string;
@@ -65,6 +73,7 @@ export type AgonListingView = {
     warning: string | null;
     quarantineReason: string | null;
   };
+  endpointQa: AgonEndpointQa;
   payment: {
     rail: PaymentRail;
     directX402: boolean;

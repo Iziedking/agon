@@ -47,6 +47,26 @@ before(async () => {
       await tx.upsertListing(listing);
     }
   });
+
+  await database.pool.query(
+    `insert into agon_verification_evidence
+      (listing_id, agent_id, passed, evidence_hash, evidence)
+     values ($1, $2, $3, $4, $5::jsonb)`,
+    [
+      "1",
+      "42",
+      true,
+      `0x${"ab".repeat(32)}`,
+      JSON.stringify({
+        listingId: "1",
+        agentId: "42",
+        checkedAt: "2026-08-20T08:00:00.000Z",
+        passed: true,
+        endpointStatus: 402,
+        checks: { x402_payment: { passed: true, detail: "endpoint HTTP 402" } },
+      }),
+    ],
+  );
 });
 
 after(async () => {
@@ -80,4 +100,20 @@ test("maps filters and explicit unverified risk from stored listings", async () 
   assert.equal(result.value.items[0]?.risk.unverified, true);
   assert.equal(result.value.items[0]?.payment.directX402, true);
   assert.equal(result.value.items[0]?.payment.escrowEligible, false);
+  assert.deepEqual(result.value.items[0]?.endpointQa, {
+    status: "passed",
+    checkedAt: "2026-08-20T08:00:00.000Z",
+    endpointStatus: 402,
+    evidenceHash: `0x${"ab".repeat(32)}`,
+    reason: "Agon observed the service endpoint returning HTTP 402.",
+  });
+});
+
+test("keeps direct x402 declared when no endpoint evidence exists", async () => {
+  const result = await service.getListing(`${CHAIN_ID}:${SERVICE_REGISTRY}:2`);
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.value.payment.directX402, true);
+  assert.equal(result.value.endpointQa.status, "not_checked");
+  assert.equal(result.value.endpointQa.endpointStatus, null);
 });

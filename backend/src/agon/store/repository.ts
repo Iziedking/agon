@@ -71,6 +71,15 @@ export type StoredListing = Omit<ListingProjection, "chainStatus"> & {
   updatedAt: Date;
 };
 
+export type StoredVerificationEvidence = {
+  listingId: bigint;
+  agentId: bigint;
+  passed: boolean;
+  evidenceHash: string;
+  evidence: unknown;
+  createdAt: Date;
+};
+
 export type ListingCursor = {
   updatedAt: Date;
   chainId: bigint;
@@ -166,6 +175,15 @@ type ListingRow = QueryResultRow & {
   source_log_index: number;
   created_at: Date;
   updated_at: Date;
+};
+
+type VerificationEvidenceRow = QueryResultRow & {
+  listing_id: string;
+  agent_id: string;
+  passed: boolean;
+  evidence_hash: string;
+  evidence: unknown;
+  created_at: Date;
 };
 
 type VersionRow = QueryResultRow & {
@@ -362,6 +380,38 @@ export class PostgresAgonRepository {
       [requirePositive(key.chainId, "chain id"), normalizeAddress(key.serviceRegistry), requirePositive(key.listingId, "listing id")],
     );
     return result.rows[0] ? mapListing(result.rows[0]) : null;
+  }
+
+  async getLatestVerificationEvidence(
+    keys: Array<Pick<ListingKey, "listingId"> & Pick<ListingProjection, "agentId">>,
+  ): Promise<Map<string, StoredVerificationEvidence>> {
+    if (keys.length === 0) return new Map();
+    const params: string[] = [];
+    const values = keys.map((key, index) => {
+      params.push(requirePositive(key.listingId, "listing id"), requireNonNegative(key.agentId, "agent id"));
+      const offset = index * 2;
+      return `($${offset + 1}::numeric, $${offset + 2}::numeric)`;
+    });
+    const result = await this.pool.query<VerificationEvidenceRow>(
+      `select distinct on (e.listing_id, e.agent_id)
+         e.listing_id::text, e.agent_id::text, e.passed, e.evidence_hash, e.evidence, e.created_at
+       from agon_verification_evidence e
+       join (values ${values.join(", ")}) as requested(listing_id, agent_id)
+         on requested.listing_id = e.listing_id and requested.agent_id = e.agent_id
+       order by e.listing_id, e.agent_id, e.created_at desc, e.id desc`,
+      params,
+    );
+    return new Map(result.rows.map((row) => [
+      `${row.listing_id}:${row.agent_id}`,
+      {
+        listingId: BigInt(row.listing_id),
+        agentId: BigInt(row.agent_id),
+        passed: row.passed,
+        evidenceHash: row.evidence_hash,
+        evidence: row.evidence,
+        createdAt: row.created_at,
+      },
+    ]));
   }
 
   async listListings(search: ListingSearch): Promise<StoredListing[]> {

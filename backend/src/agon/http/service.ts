@@ -4,9 +4,11 @@ import {
   PostgresAgonRepository,
   type ListingCursor,
   type StoredListing,
+  type StoredVerificationEvidence,
 } from "../store/repository.ts";
 import type {
   AgonCapabilities,
+  AgonEndpointQa,
   AgonListingView,
   BindProfileRequest,
   ListingPage,
@@ -91,7 +93,49 @@ function parseReference(reference: string) {
   return { chainId: BigInt(chainId), serviceRegistry, listingId: BigInt(listingId) };
 }
 
-function listingView(listing: StoredListing): AgonListingView {
+function record(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function endpointQa(evidence: StoredVerificationEvidence | undefined): AgonEndpointQa {
+  if (!evidence) {
+    return {
+      status: "not_checked",
+      checkedAt: null,
+      endpointStatus: null,
+      evidenceHash: null,
+      reason: "Agon has not run endpoint verification for this listing yet.",
+    };
+  }
+  const body = record(evidence.evidence);
+  const checks = record(body?.checks);
+  const x402 = record(checks?.x402_payment);
+  const endpointStatus = typeof body?.endpointStatus === "number" && Number.isInteger(body.endpointStatus)
+    ? body.endpointStatus
+    : null;
+  const checkedAt = typeof body?.checkedAt === "string" && !Number.isNaN(Date.parse(body.checkedAt))
+    ? new Date(body.checkedAt).toISOString()
+    : evidence.createdAt.toISOString();
+  const passed = evidence.passed && x402?.passed === true;
+  const reason = passed
+    ? "Agon observed the service endpoint returning HTTP 402."
+    : typeof body?.error === "string" && body.error
+      ? body.error
+      : typeof x402?.detail === "string" && x402.detail
+        ? x402.detail
+        : "The latest Agon endpoint verification did not pass.";
+  return {
+    status: passed ? "passed" : "failed",
+    checkedAt,
+    endpointStatus,
+    evidenceHash: evidence.evidenceHash,
+    reason,
+  };
+}
+
+function listingView(listing: StoredListing, evidence?: StoredVerificationEvidence): AgonListingView {
   const unverified = listing.verification !== "Verified";
   const warning = listing.quarantineReason
     ? `This listing is quarantined because its indexed anchor failed validation: ${listing.quarantineReason}.`
@@ -124,6 +168,7 @@ function listingView(listing: StoredListing): AgonListingView {
       warning,
       quarantineReason: listing.quarantineReason,
     },
+    endpointQa: endpointQa(evidence),
     payment: {
       rail: listing.paymentRail,
       directX402: listing.paymentRail === "X402" && listing.status === "Listed",
@@ -166,10 +211,11 @@ export class PostgresAgonMarketService implements AgonMarketService {
       const hasMore = rows.length > query.limit;
       const pageRows = rows.slice(0, query.limit);
       const last = pageRows.at(-1);
+      const evidence = await this.repository.getLatestVerificationEvidence(pageRows);
       return {
         ok: true,
         value: {
-          items: pageRows.map(listingView),
+          items: pageRows.map((listing) => listingView(listing, evidence.get(`${listing.listingId}:${listing.agentId}`))),
           nextCursor: hasMore && last ? encodeCursor(last) : null,
         },
       };
@@ -187,7 +233,13 @@ export class PostgresAgonMarketService implements AgonMarketService {
     try {
       const listing = await this.repository.getListing(key);
       return listing
-        ? { ok: true, value: listingView(listing) }
+        ? {
+            ok: true,
+            value: listingView(
+              listing,
+              (await this.repository.getLatestVerificationEvidence([listing])).get(`${listing.listingId}:${listing.agentId}`),
+            ),
+          }
         : { ok: false, error: { code: "not_found", message: "listing not found" } };
     } catch (error) {
       return internalError(error);
