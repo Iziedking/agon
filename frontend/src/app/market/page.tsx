@@ -105,6 +105,13 @@ export default function MarketPage() {
     { value: "provider", label: "Provider listed", count: summary.provider },
     { value: "quarantined", label: "Quarantined records", count: summary.quarantined },
   ];
+  const selectedTrustLabel = trustOptions.find((option) => option.value === trust)?.label ?? "Available";
+  const hasFilters = Boolean(query || selectedCategory || trust !== "available");
+  const resetFilters = () => {
+    setQuery("");
+    setSelectedCategory("");
+    setTrust("available");
+  };
 
   return (
     <div className="min-h-screen bg-canvas text-ink">
@@ -189,6 +196,16 @@ export default function MarketPage() {
                   </button>
                 ))}
               </div>
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3" aria-live="polite">
+                <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
+                  SHOWING <span className="text-ink">{filteredItems.length} {selectedTrustLabel.toLowerCase()} {filteredItems.length === 1 ? "service" : "services"}</span>
+                </p>
+                {hasFilters ? (
+                  <button type="button" onClick={resetFilters} className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink underline decoration-accent underline-offset-4 hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas">
+                    RESET VIEW →
+                  </button>
+                ) : null}
+              </div>
             </div>
           </div>
         </section>
@@ -197,9 +214,7 @@ export default function MarketPage() {
           <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
             <div>
               <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-accent">SERVICE CATALOG</div>
-              <h2 id="services-heading" className="mt-2 font-stencil text-[32px] uppercase leading-none text-ink sm:text-[38px]">
-                {trustOptions.find((option) => option.value === trust)?.label}
-              </h2>
+              <h2 id="services-heading" className="mt-2 font-stencil text-[32px] uppercase leading-none text-ink sm:text-[38px]">{selectedTrustLabel}</h2>
             </div>
             {items ? <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">{filteredItems.length} MATCHING RECORDS</span> : null}
           </div>
@@ -208,7 +223,7 @@ export default function MarketPage() {
             <BracketedCell tone="cream" className="mb-6">
               <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-[color:var(--err)]">CATALOG READ FAILED</div>
               <p className="mt-2 font-mono text-sm text-ink-2">{error}</p>
-              <button onClick={() => setReloadKey((value) => value + 1)} className="mt-4 font-mono text-[11px] uppercase tracking-[0.14em] text-ink underline decoration-accent underline-offset-4">RETRY</button>
+              <TagButton variant="ghost" size="sm" className="mt-4" onClick={() => setReloadKey((value) => value + 1)}>RETRY CATALOG</TagButton>
             </BracketedCell>
           ) : null}
 
@@ -221,7 +236,7 @@ export default function MarketPage() {
                 Change the category, trust level, or search term. Providers can also list the first service in this category.
               </p>
               <div className="mt-6 flex flex-wrap gap-3">
-                <TagButton variant="ghost" onClick={() => { setQuery(""); setSelectedCategory(""); setTrust("available"); }}>CLEAR FILTERS</TagButton>
+                <TagButton variant="ghost" onClick={resetFilters}>CLEAR FILTERS</TagButton>
                 <AgonAuthAction href="/market/new">LIST A SERVICE</AgonAuthAction>
               </div>
             </BracketedCell>
@@ -235,7 +250,7 @@ export default function MarketPage() {
             <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--hairline)] pt-5">
               <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-3">{items.length} RECORDS LOADED</span>
               {nextCursor ? (
-                <button onClick={loadNextPage} disabled={loadingNext} className="border border-ink px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.14em] text-ink hover:bg-ink hover:text-[color:var(--card-ink-fg)] disabled:opacity-50">
+                <button onClick={loadNextPage} disabled={loadingNext} className="border border-ink px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.14em] text-ink hover:bg-ink hover:text-[color:var(--canvas)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas disabled:opacity-50">
                   {loadingNext ? "READING MORE..." : "LOAD MORE SERVICES →"}
                 </button>
               ) : <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-3">END OF CATALOG</span>}
