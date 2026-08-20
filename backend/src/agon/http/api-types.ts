@@ -122,6 +122,21 @@ export type X402CallIntentView = {
   createdAt: string;
 };
 
+export type X402ApprovalRequest = {
+  approvedAmountUSDC: string;
+};
+
+export type X402ApprovalView = {
+  receiptId: string;
+  intentId: string;
+  actor: string;
+  state: "approved";
+  approvedAmountUSDC: string;
+  executionEnabled: false;
+  nextAction: "payment_adapter_not_enabled";
+  approvedAt: string;
+};
+
 export type BindProfileRequest = {
   chainId: string;
   agentId: string;

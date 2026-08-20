@@ -11,7 +11,7 @@ export type X402ReceiptState =
   | "unknown";
 
 export type X402ReceiptEvent =
-  | { type: "approve" }
+  | { type: "approve"; approvedAmountUSDC: string }
   | { type: "payment_required"; quoteHash: string }
   | { type: "authorization_submitted"; authorizationHash: string }
   | { type: "settlement_submitted"; settlementRef: string }
@@ -22,6 +22,7 @@ export type X402ReceiptEvent =
   | { type: "mark_unknown"; failureCode: string; failureMessage: string };
 
 export type X402ReceiptEvidencePatch = {
+  approvedAmountUSDC?: string;
   quoteHash?: string;
   authorizationHash?: string;
   settlementRef?: string;
@@ -67,11 +68,23 @@ function requireText(value: string, label: string): string {
   return value;
 }
 
+function requireAmount(value: string): string {
+  if (!/^(0|[1-9]\d*)(\.\d{1,6})?$/.test(value)) {
+    throw new X402ReceiptInvariantError("approved amount must be a USDC amount with up to 6 decimals");
+  }
+  const [whole = "0", fraction = ""] = value.split(".");
+  if (BigInt(whole) * 1_000_000n + BigInt(fraction.padEnd(6, "0")) <= 0n) {
+    throw new X402ReceiptInvariantError("approved amount must be positive");
+  }
+  const trimmed = fraction.replace(/0+$/, "");
+  return trimmed ? `${whole}.${trimmed}` : whole;
+}
+
 export function transitionX402Receipt(current: X402ReceiptState, event: X402ReceiptEvent): X402ReceiptTransition {
   let to: X402ReceiptState;
   let patch: X402ReceiptEvidencePatch = {};
   switch (event.type) {
-    case "approve": to = "approved"; break;
+    case "approve": to = "approved"; patch = { approvedAmountUSDC: requireAmount(event.approvedAmountUSDC) }; break;
     case "payment_required": to = "payment_required"; patch = { quoteHash: requireHash(event.quoteHash, "quote hash") }; break;
     case "authorization_submitted": to = "authorization_submitted"; patch = { authorizationHash: requireHash(event.authorizationHash, "authorization hash") }; break;
     case "settlement_submitted": to = "settlement_submitted"; patch = { settlementRef: requireText(event.settlementRef, "settlement reference") }; break;

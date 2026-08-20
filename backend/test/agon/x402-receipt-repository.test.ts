@@ -60,12 +60,23 @@ test("creates one receipt per intent and reuses it on retry", async () => {
   assert.equal(rows.rows[0]?.count, 1);
 });
 
+test("approves the receipt atomically and reuses the same approval on retry", async () => {
+  const first = await repository.approveX402CallReceipt(intent.intentId, "0.01");
+  const retry = await repository.approveX402CallReceipt(intent.intentId, "0.01");
+  assert.equal(first.receiptId, retry.receiptId);
+  assert.equal(first.state, "approved");
+  assert.equal(retry.approvedAmountUSDC, "0.01");
+  await assert.rejects(
+    () => repository.approveX402CallReceipt(intent.intentId, "0.009"),
+    /different spend limit/,
+  );
+});
+
 test("persists evidence through the lifecycle and retains opaque settlement refs", async () => {
   const quoteHash = `0x${"22".repeat(32)}`;
   const authHash = `0x${"33".repeat(32)}`;
   const responseHash = `0x${"44".repeat(32)}`;
-  let current = await repository.advanceX402CallReceipt(intent.intentId, { type: "approve" });
-  current = await repository.advanceX402CallReceipt(current.intentId, { type: "payment_required", quoteHash });
+  let current = await repository.advanceX402CallReceipt(intent.intentId, { type: "payment_required", quoteHash });
   current = await repository.advanceX402CallReceipt(current.intentId, { type: "authorization_submitted", authorizationHash: authHash });
   current = await repository.advanceX402CallReceipt(current.intentId, { type: "settlement_submitted", settlementRef: "gateway-settlement-001" });
   assert.equal(current.settlementRef, "gateway-settlement-001");

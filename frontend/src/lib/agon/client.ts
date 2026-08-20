@@ -9,6 +9,8 @@ import type {
   SubmittedOperation,
   X402CallIntentRequest,
   X402CallIntentView,
+  X402ApprovalRequest,
+  X402ApprovalView,
 } from "./types";
 import { AGON_PREVIEW_HEALTH, AGON_PREVIEW_LISTINGS } from "./preview";
 
@@ -117,7 +119,44 @@ export function prepareX402CallIntent(
   reference: string,
   payload: X402CallIntentRequest,
 ): Promise<X402CallIntentView> {
+  if (AGON_PREVIEW_MODE) {
+    return Promise.resolve({
+      intentId: "00000000-0000-4000-8000-000000000099",
+      actor: "0x0000000000000000000000000000000000000000",
+      idempotencyKey: payload.idempotencyKey,
+      listingReference: reference,
+      listingVersion: "1",
+      inputHash: `0x${"99".repeat(32)}`,
+      maxAmountUSDC: payload.maxAmountUSDC,
+      state: "prepared",
+      executionEnabled: false,
+      nextAction: "execution_adapter_not_enabled",
+      createdAt: "2026-08-20T12:00:00.000Z",
+    });
+  }
   return request<X402CallIntentView>(`/listings/${encodeURIComponent(reference)}/call-intents`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function approveX402CallIntent(
+  intentId: string,
+  payload: X402ApprovalRequest,
+): Promise<X402ApprovalView> {
+  if (AGON_PREVIEW_MODE) {
+    return Promise.resolve({
+      receiptId: "00000000-0000-4000-8000-000000000100",
+      intentId,
+      actor: "0x0000000000000000000000000000000000000000",
+      state: "approved",
+      approvedAmountUSDC: payload.approvedAmountUSDC,
+      executionEnabled: false,
+      nextAction: "payment_adapter_not_enabled",
+      approvedAt: "2026-08-20T12:01:00.000Z",
+    });
+  }
+  return request<X402ApprovalView>(`/call-intents/${encodeURIComponent(intentId)}/approve`, {
     method: "POST",
     body: JSON.stringify(payload),
   });

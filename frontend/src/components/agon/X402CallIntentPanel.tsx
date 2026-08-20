@@ -5,9 +5,9 @@ import { useEffect, useMemo, useState } from "react";
 import { LoginModal } from "@/components/pengu/LoginModal";
 import { TagButton } from "@/components/redesign/TagButton";
 import { useAuth } from "@/hooks/useAuth";
-import { AGON_PREVIEW_MODE, prepareX402CallIntent } from "@/lib/agon/client";
+import { AGON_PREVIEW_MODE, approveX402CallIntent, prepareX402CallIntent } from "@/lib/agon/client";
 import { assessX402Readiness, buildCallIntentRequest, newCallIntentKey } from "@/lib/agon/call-intent";
-import type { AgonListing, X402CallIntentView } from "@/lib/agon/types";
+import type { AgonListing, X402ApprovalView, X402CallIntentView } from "@/lib/agon/types";
 
 type Props = {
   listing: AgonListing;
@@ -22,6 +22,7 @@ export function X402CallIntentPanel({ listing, defaultAmount }: Props) {
   const [input, setInput] = useState("{\n  \n}");
   const [maxAmountUSDC, setMaxAmountUSDC] = useState(defaultAmount ?? "0.01");
   const [intent, setIntent] = useState<X402CallIntentView | null>(null);
+  const [approval, setApproval] = useState<X402ApprovalView | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [preparing, setPreparing] = useState(false);
   const [idempotencyKey, setIdempotencyKey] = useState("");
@@ -33,12 +34,9 @@ export function X402CallIntentPanel({ listing, defaultAmount }: Props) {
   async function prepare() {
     setMessage(null);
     setIntent(null);
-    if (!me) {
+    setApproval(null);
+    if (!me && !AGON_PREVIEW_MODE) {
       setLoginOpen(true);
-      return;
-    }
-    if (AGON_PREVIEW_MODE) {
-      setMessage("Inspection preview only. No authenticated call is sent from this deployment.");
       return;
     }
     const key = idempotencyKey || newCallIntentKey();
@@ -58,6 +56,19 @@ export function X402CallIntentPanel({ listing, defaultAmount }: Props) {
     }
   }
 
+  async function approve() {
+    if (!intent || (!me && !AGON_PREVIEW_MODE)) return;
+    setMessage(null);
+    setPreparing(true);
+    try {
+      setApproval(await approveX402CallIntent(intent.intentId, { approvedAmountUSDC: intent.maxAmountUSDC }));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Agon could not record approval.");
+    } finally {
+      setPreparing(false);
+    }
+  }
+
   return (
     <div className="mt-7 border-t border-current pt-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -71,6 +82,8 @@ export function X402CallIntentPanel({ listing, defaultAmount }: Props) {
           {readiness.label}
         </span>
       </div>
+
+      {AGON_PREVIEW_MODE ? <p className="mt-4 border-l-2 border-[color:var(--warn)] pl-3 font-mono text-[10px] leading-relaxed text-[color:var(--warn)]">PREVIEW MODE · the approval state below is local fixture data. No wallet, API, or provider is contacted.</p> : null}
 
       {!readiness.eligible ? (
         <p className="mt-4 border-l-2 border-[color:var(--err)] pl-3 font-mono text-[10px] leading-relaxed opacity-75">{readiness.reason}</p>
@@ -94,7 +107,7 @@ export function X402CallIntentPanel({ listing, defaultAmount }: Props) {
             <textarea value={input} onChange={(event) => setInput(event.target.value)} rows={4} spellCheck={false} className="mt-2 w-full resize-y border border-current bg-transparent p-3 font-mono text-[11px] leading-relaxed text-current" />
           </label>
           <div className="mt-4 flex flex-wrap items-center gap-3">
-            {me ? (
+            {me || AGON_PREVIEW_MODE ? (
               <TagButton variant="primary" size="sm" onClick={prepare} disabled={preparing}>{preparing ? "PREPARING..." : "REVIEW CALL →"}</TagButton>
             ) : (
               <TagButton variant="primary" size="sm" onClick={() => setLoginOpen(true)}>SIGN IN TO CONTINUE →</TagButton>
@@ -107,8 +120,16 @@ export function X402CallIntentPanel({ listing, defaultAmount }: Props) {
       {message ? <p role="alert" className="mt-4 border-l-2 border-[color:var(--warn)] pl-3 font-mono text-[10px] leading-relaxed">{message}</p> : null}
       {intent ? (
         <div className="mt-5 border border-[color:var(--ok)] p-4 font-mono text-[10px] leading-relaxed">
-          <div className="flex items-center justify-between gap-3 uppercase tracking-[0.12em] text-[color:var(--ok)]"><span>INTENT PREPARED</span><span>EXECUTION OFF</span></div>
-          <div className="mt-3 space-y-1 opacity-75"><div>INPUT HASH · {intent.inputHash}</div><div>MAX SPEND · {intent.maxAmountUSDC} USDC</div><div>NEXT · {intent.nextAction.replaceAll("_", " ")}</div></div>
+          <div className="flex items-center justify-between gap-3 uppercase tracking-[0.12em] text-[color:var(--ok)]"><span>{approval ? "SPEND APPROVED" : "INTENT PREPARED"}</span><span>EXECUTION OFF</span></div>
+          <div className="mt-3 space-y-1 opacity-75"><div>INPUT HASH · {intent.inputHash}</div><div>MAX SPEND · {intent.maxAmountUSDC} USDC</div><div>NEXT · {approval ? approval.nextAction.replaceAll("_", " ") : intent.nextAction.replaceAll("_", " ")}</div></div>
+          {approval ? (
+            <div className="mt-4 border-t border-current pt-3 uppercase tracking-[0.1em] text-[color:var(--ok)]">APPROVED LIMIT · {approval.approvedAmountUSDC} USDC</div>
+          ) : (
+            <div className="mt-4 border-t border-current pt-3">
+              <p className="mb-3 opacity-75">This records your maximum spend permission. It does not sign, pay, or contact the provider.</p>
+              <TagButton variant="primary" size="sm" onClick={approve} disabled={preparing}>{preparing ? "RECORDING..." : `APPROVE ${intent.maxAmountUSDC} USDC →`}</TagButton>
+            </div>
+          )}
         </div>
       ) : null}
 

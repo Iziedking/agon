@@ -15,6 +15,8 @@ import type {
   ListingQuery,
   PublishListingRequest,
   SubmittedOperation,
+  X402ApprovalRequest,
+  X402ApprovalView,
   X402CallIntentRequest,
   X402CallIntentView,
 } from "../../src/agon/http/api-types.ts";
@@ -169,6 +171,26 @@ class FakeAgonService implements AgonMarketService {
         executionEnabled: false,
         nextAction: "execution_adapter_not_enabled",
         createdAt: "2026-08-20T10:00:00.000Z",
+      },
+    };
+  }
+
+  async approveX402Call(
+    _actor: string,
+    _intentId: string,
+    request: X402ApprovalRequest,
+  ): Promise<Result<X402ApprovalView, ServiceError>> {
+    return {
+      ok: true,
+      value: {
+        receiptId: "00000000-0000-4000-8000-000000000002",
+        intentId: "00000000-0000-4000-8000-000000000001",
+        actor: ADDRESS,
+        state: "approved",
+        approvedAmountUSDC: request.approvedAmountUSDC,
+        executionEnabled: false,
+        nextAction: "payment_adapter_not_enabled",
+        approvedAt: "2026-08-20T10:01:00.000Z",
       },
     };
   }
@@ -338,4 +360,29 @@ test("returns a durable execution-disabled x402 intent after auth", async () => 
   assert.equal(body.state, "prepared");
   assert.equal(body.executionEnabled, false);
   assert.equal(body.nextAction, "execution_adapter_not_enabled");
+});
+
+test("requires authentication before approving an x402 spend", async () => {
+  const app = testApp(new FakeAgonService());
+  const response = await app.request("/agon/call-intents/00000000-0000-4000-8000-000000000001/approve", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ approvedAmountUSDC: "0.01" }),
+  });
+  assert.equal(response.status, 401);
+});
+
+test("returns an execution-disabled approval after authentication", async () => {
+  const app = testApp(new FakeAgonService());
+  const response = await app.request("/agon/call-intents/00000000-0000-4000-8000-000000000001/approve", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-test-address": ADDRESS },
+    body: JSON.stringify({ approvedAmountUSDC: "0.01" }),
+  });
+  assert.equal(response.status, 200);
+  const body = (await response.json()) as X402ApprovalView;
+  assert.equal(body.state, "approved");
+  assert.equal(body.approvedAmountUSDC, "0.01");
+  assert.equal(body.executionEnabled, false);
+  assert.equal(body.nextAction, "payment_adapter_not_enabled");
 });

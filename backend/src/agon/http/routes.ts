@@ -10,6 +10,8 @@ import type {
   ListingQuery,
   PublishListingRequest,
   SubmittedOperation,
+  X402ApprovalRequest,
+  X402ApprovalView,
   X402CallIntentRequest,
   X402CallIntentView,
 } from "./api-types.ts";
@@ -50,6 +52,11 @@ export type AgonMarketService = {
     reference: string,
     request: X402CallIntentRequest,
   ): Promise<Result<X402CallIntentView, AgonServiceError>>;
+  approveX402Call(
+    actor: string,
+    intentId: string,
+    request: X402ApprovalRequest,
+  ): Promise<Result<X402ApprovalView, AgonServiceError>>;
   getCapabilities(): Promise<AgonCapabilities>;
 };
 
@@ -93,6 +100,10 @@ const x402CallIntentSchema = z.object({
   method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]),
   input: z.unknown().default(null),
   maxAmountUSDC: z.string().regex(/^(0|[1-9]\d*)(\.\d{1,6})?$/, "must be a USDC amount with up to 6 decimals"),
+}).strict();
+
+const x402ApprovalSchema = z.object({
+  approvedAmountUSDC: z.string().regex(/^(0|[1-9]\d*)(\.\d{1,6})?$/, "must be a USDC amount with up to 6 decimals"),
 }).strict();
 
 function validationResponse(error: ZodError): ApiErrorResponse {
@@ -204,6 +215,19 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
       { ...parsed.data, input: parsed.data.input ?? null },
     );
     return result.ok ? context.json(result.value, 201) : serviceErrorResponse(context, result.error);
+  });
+
+  app.post("/call-intents/:intentId/approve", options.requireAuth, async (context) => {
+    const body = await parseJson(context);
+    if (isApiError(body)) return context.json(body, 400);
+    const parsed = x402ApprovalSchema.safeParse(body);
+    if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
+    const result = await options.service.approveX402Call(
+      context.get("address"),
+      context.req.param("intentId"),
+      parsed.data,
+    );
+    return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
   });
 
   app.post("/profiles/bind", options.requireAuth, async (context) => {

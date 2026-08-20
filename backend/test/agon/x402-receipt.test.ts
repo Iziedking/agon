@@ -6,12 +6,12 @@ import { transitionX402Receipt, X402ReceiptInvariantError } from "../../src/agon
 const hash = `0x${"11".repeat(32)}`;
 
 test("requires explicit approval before a payment requirement can be recorded", () => {
-  assert.equal(transitionX402Receipt("prepared", { type: "approve" }).to, "approved");
+  assert.equal(transitionX402Receipt("prepared", { type: "approve", approvedAmountUSDC: "0.01" }).to, "approved");
   assert.throws(() => transitionX402Receipt("prepared", { type: "payment_required", quoteHash: hash }), X402ReceiptInvariantError);
 });
 
 test("models the Circle x402 lifecycle without treating settlement as final", () => {
-  let state = transitionX402Receipt("prepared", { type: "approve" });
+  let state = transitionX402Receipt("prepared", { type: "approve", approvedAmountUSDC: "0.01" });
   state = transitionX402Receipt(state.to, { type: "payment_required", quoteHash: hash });
   state = transitionX402Receipt(state.to, { type: "authorization_submitted", authorizationHash: `0x${"22".repeat(32)}` });
   state = transitionX402Receipt(state.to, { type: "settlement_submitted", settlementRef: "gateway-settlement-123" });

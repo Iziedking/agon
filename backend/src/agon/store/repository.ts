@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 import { transitionX402Receipt, type X402ReceiptEvent, type X402ReceiptState } from "../execution/x402-receipt.ts";
 
@@ -110,6 +111,7 @@ export type X402CallReceiptProjection = {
   receiptId: string;
   intentId: string;
   state: X402ReceiptState;
+  approvedAmountUSDC?: string | null;
   quoteHash: string | null;
   authorizationHash: string | null;
   settlementRef: string | null;
@@ -257,6 +259,7 @@ type X402CallReceiptRow = QueryResultRow & {
   receipt_id: string;
   intent_id: string;
   state: X402ReceiptState;
+  approved_amount_usdc: string | null;
   quote_hash: string | null;
   authorization_hash: string | null;
   settlement_ref: string | null;
@@ -427,6 +430,7 @@ function mapX402CallReceipt(row: X402CallReceiptRow): StoredX402CallReceipt {
     receiptId: row.receipt_id,
     intentId: row.intent_id,
     state: row.state,
+    approvedAmountUSDC: row.approved_amount_usdc,
     quoteHash: row.quote_hash,
     authorizationHash: row.authorization_hash,
     settlementRef: row.settlement_ref,
@@ -470,7 +474,7 @@ const X402_INTENT_COLUMNS = `
   input, input_hash, max_amount_usdc, state, created_at, updated_at`;
 
 const X402_RECEIPT_COLUMNS = `
-  receipt_id, intent_id, state, quote_hash, authorization_hash, settlement_ref,
+  receipt_id, intent_id, state, approved_amount_usdc, quote_hash, authorization_hash, settlement_ref,
   service_status, payment_response_hash, charged_amount_usdc, failure_code,
   failure_message, created_at, updated_at`;
 
@@ -512,6 +516,14 @@ export class PostgresAgonRepository {
       [requirePositive(key.chainId, "chain id"), normalizeAddress(key.serviceRegistry), requirePositive(key.listingId, "listing id")],
     );
     return result.rows[0] ? mapListing(result.rows[0]) : null;
+  }
+
+  async getX402CallIntent(intentId: string): Promise<StoredX402CallIntent | null> {
+    const result = await this.pool.query<X402CallIntentRow>(
+      `select ${X402_INTENT_COLUMNS} from agon_x402_call_intents where intent_id = $1`,
+      [intentId],
+    );
+    return result.rows[0] ? mapX402CallIntent(result.rows[0]) : null;
   }
 
   async prepareX402CallIntent(input: X402CallIntentProjection): Promise<StoredX402CallIntent> {
@@ -571,13 +583,13 @@ export class PostgresAgonRepository {
     if (input.state !== "prepared") throw new AgonStoreInvariantError("new x402 receipts must start prepared");
     const inserted = await this.pool.query<X402CallReceiptRow>(
       `insert into agon_x402_call_receipts (
-         receipt_id, intent_id, state, quote_hash, authorization_hash, settlement_ref,
+         receipt_id, intent_id, state, approved_amount_usdc, quote_hash, authorization_hash, settlement_ref,
          service_status, payment_response_hash, charged_amount_usdc, failure_code,
          failure_message, created_at, updated_at
-       ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
+       ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13)
        on conflict (intent_id) do nothing
        returning ${X402_RECEIPT_COLUMNS}`,
-      [input.receiptId, input.intentId, input.state, input.quoteHash, input.authorizationHash, input.settlementRef, input.serviceStatus, input.paymentResponseHash, input.chargedAmountUSDC, input.failureCode, input.failureMessage, input.createdAt ?? new Date()],
+      [input.receiptId, input.intentId, input.state, input.approvedAmountUSDC, input.quoteHash, input.authorizationHash, input.settlementRef, input.serviceStatus, input.paymentResponseHash, input.chargedAmountUSDC, input.failureCode, input.failureMessage, input.createdAt ?? new Date()],
     );
     if (inserted.rows[0]) return mapX402CallReceipt(inserted.rows[0]);
     const existing = await this.pool.query<X402CallReceiptRow>(
@@ -602,15 +614,58 @@ export class PostgresAgonRepository {
       const transition = transitionX402Receipt(row.state, event);
       const updated = await client.query<X402CallReceiptRow>(
         `update agon_x402_call_receipts set
-           state = $2, quote_hash = coalesce($3, quote_hash),
-           authorization_hash = coalesce($4, authorization_hash),
-           settlement_ref = coalesce($5, settlement_ref),
-           service_status = coalesce($6, service_status),
-           payment_response_hash = coalesce($7, payment_response_hash),
-           failure_code = coalesce($8, failure_code),
-           failure_message = coalesce($9, failure_message), updated_at = now()
+           state = $2, approved_amount_usdc = coalesce($3, approved_amount_usdc),
+           quote_hash = coalesce($4, quote_hash),
+           authorization_hash = coalesce($5, authorization_hash),
+           settlement_ref = coalesce($6, settlement_ref),
+           service_status = coalesce($7, service_status),
+           payment_response_hash = coalesce($8, payment_response_hash),
+           failure_code = coalesce($9, failure_code),
+           failure_message = coalesce($10, failure_message), updated_at = now()
          where intent_id = $1 returning ${X402_RECEIPT_COLUMNS}`,
-        [intentId, transition.to, transition.patch.quoteHash ?? null, transition.patch.authorizationHash ?? null, transition.patch.settlementRef ?? null, transition.patch.serviceStatus ?? null, transition.patch.paymentResponseHash ?? null, transition.patch.failureCode ?? null, transition.patch.failureMessage ?? null],
+        [intentId, transition.to, transition.patch.approvedAmountUSDC ?? null, transition.patch.quoteHash ?? null, transition.patch.authorizationHash ?? null, transition.patch.settlementRef ?? null, transition.patch.serviceStatus ?? null, transition.patch.paymentResponseHash ?? null, transition.patch.failureCode ?? null, transition.patch.failureMessage ?? null],
+      );
+      await client.query("commit");
+      return mapX402CallReceipt(updated.rows[0]!);
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async approveX402CallReceipt(intentId: string, approvedAmountUSDC: string): Promise<StoredX402CallReceipt> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("begin");
+      const existing = await client.query<X402CallReceiptRow>(
+        `select ${X402_RECEIPT_COLUMNS} from agon_x402_call_receipts where intent_id = $1 for update`, [intentId],
+      );
+      let row = existing.rows[0];
+      if (!row) {
+        const inserted = await client.query<X402CallReceiptRow>(
+          `insert into agon_x402_call_receipts (receipt_id, intent_id, state, created_at, updated_at)
+           values ($1, $2, 'prepared', now(), now()) returning ${X402_RECEIPT_COLUMNS}`,
+          [randomUUID(), intentId],
+        );
+        row = inserted.rows[0];
+      }
+      if (!row) throw new AgonStoreInvariantError("x402 receipt could not be created");
+      const approval = transitionX402Receipt("prepared", { type: "approve", approvedAmountUSDC });
+      if (row.state === "approved") {
+        if (row.approved_amount_usdc !== approval.patch.approvedAmountUSDC) {
+          throw new AgonStoreInvariantError("x402 approval already recorded with a different spend limit");
+        }
+        await client.query("commit");
+        return mapX402CallReceipt(row);
+      }
+      const transition = transitionX402Receipt(row.state, { type: "approve", approvedAmountUSDC });
+      const updated = await client.query<X402CallReceiptRow>(
+        `update agon_x402_call_receipts
+         set state = 'approved', approved_amount_usdc = $2, updated_at = now()
+         where intent_id = $1 returning ${X402_RECEIPT_COLUMNS}`,
+        [intentId, transition.patch.approvedAmountUSDC],
       );
       await client.query("commit");
       return mapX402CallReceipt(updated.rows[0]!);

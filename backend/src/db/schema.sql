@@ -1309,6 +1309,7 @@ create table if not exists agon_x402_call_receipts (
     'settlement_submitted', 'service_delivered', 'reconciled', 'rejected',
     'failed', 'unknown'
   )),
+  approved_amount_usdc      text check (approved_amount_usdc is null or approved_amount_usdc ~ '^(0|[1-9][0-9]*)(\.[0-9]{1,6})?$'),
   quote_hash                text check (quote_hash is null or quote_hash ~ '^0x[0-9a-f]{64}$'),
   authorization_hash        text check (authorization_hash is null or authorization_hash ~ '^0x[0-9a-f]{64}$'),
   settlement_ref             text,

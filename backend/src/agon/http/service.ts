@@ -9,10 +9,13 @@ import {
   type StoredVerificationEvidence,
 } from "../store/repository.ts";
 import { callIntentView, prepareX402Call } from "../execution/x402-intent.ts";
+import { validateX402Approval } from "../execution/x402-approval.ts";
 import type {
   AgonCapabilities,
   AgonEndpointQa,
   AgonListingView,
+  X402ApprovalRequest,
+  X402ApprovalView,
   BindProfileRequest,
   ListingPage,
   ListingQuery,
@@ -351,6 +354,52 @@ export class PostgresAgonMarketService implements AgonMarketService {
       };
     } catch (error) {
       if (error instanceof AgonStoreInvariantError && error.message.includes("idempotency key")) {
+        return { ok: false, error: { code: "conflict", message: error.message } };
+      }
+      return internalError(error);
+    }
+  }
+
+  async approveX402Call(
+    actor: string,
+    intentId: string,
+    request: X402ApprovalRequest,
+  ): Promise<Result<X402ApprovalView, AgonServiceError>> {
+    const intent = await this.repository.getX402CallIntent(intentId);
+    if (!intent) return { ok: false, error: { code: "not_found", message: "x402 call intent not found" } };
+    if (intent.actor !== actor.toLowerCase()) {
+      return { ok: false, error: { code: "not_owner", message: "only the intent owner can approve this spend" } };
+    }
+    const approval = validateX402Approval(intent.maxAmountUSDC, request);
+    if (!approval.ok) {
+      return {
+        ok: false,
+        error: {
+          code: approval.error.code === "limit_exceeded" ? "validation_failed" : "validation_failed",
+          message: approval.error.message,
+        },
+      };
+    }
+    try {
+      const receipt = await this.repository.approveX402CallReceipt(intent.intentId, approval.value.approvedAmountUSDC);
+      if (receipt.state !== "approved" || !receipt.approvedAmountUSDC) {
+        return { ok: false, error: { code: "conflict", message: `x402 receipt is ${receipt.state}, not approved` } };
+      }
+      return {
+        ok: true,
+        value: {
+          receiptId: receipt.receiptId,
+          intentId: receipt.intentId,
+          actor: intent.actor,
+          state: "approved",
+          approvedAmountUSDC: receipt.approvedAmountUSDC,
+          executionEnabled: false,
+          nextAction: "payment_adapter_not_enabled",
+          approvedAt: receipt.updatedAt.toISOString(),
+        },
+      };
+    } catch (error) {
+      if (error instanceof AgonStoreInvariantError) {
         return { ok: false, error: { code: "conflict", message: error.message } };
       }
       return internalError(error);
