@@ -13,6 +13,8 @@ import type {
   X402ApprovalView,
   X402QuoteView,
   X402AuthorizationView,
+  X402AuthorizationSignatureRequest,
+  X402AuthorizationSubmittedView,
 } from "./types";
 import { AGON_PREVIEW_HEALTH, AGON_PREVIEW_LISTINGS } from "./preview";
 
@@ -218,4 +220,27 @@ export function prepareX402Authorization(intentId: string): Promise<X402Authoriz
     });
   }
   return request<X402AuthorizationView>(`/call-intents/${encodeURIComponent(intentId)}/authorization`, { method: "POST" });
+}
+
+/** Submit a wallet-produced signature for validation only. This endpoint never settles or calls the provider. */
+export function submitX402AuthorizationSignature(
+  intentId: string,
+  body: X402AuthorizationSignatureRequest,
+): Promise<X402AuthorizationSubmittedView> {
+  if (AGON_PREVIEW_MODE) {
+    return Promise.resolve({
+      receiptId: "00000000-0000-4000-8000-000000000100",
+      intentId,
+      state: "authorization_submitted",
+      authorizationHash: `0x${"de".repeat(32)}`,
+      signatureAccepted: true,
+      executionEnabled: false,
+      nextAction: "settlement_not_enabled",
+      submittedAt: "2026-08-20T12:04:00.000Z",
+    });
+  }
+  return request<X402AuthorizationSubmittedView>(`/call-intents/${encodeURIComponent(intentId)}/authorization/signature`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }

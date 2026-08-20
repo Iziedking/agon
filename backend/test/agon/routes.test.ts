@@ -21,6 +21,8 @@ import type {
   X402CallIntentView,
   X402QuoteView,
   X402AuthorizationView,
+  X402AuthorizationSignatureRequest,
+  X402AuthorizationSubmittedView,
 } from "../../src/agon/http/api-types.ts";
 import type { Result } from "../../src/agon/core/result.ts";
 
@@ -242,6 +244,26 @@ class FakeAgonService implements AgonMarketService {
         executionEnabled: false,
         nextAction: "user_signature_required",
         preparedAt: "2026-08-20T10:03:00.000Z",
+      },
+    };
+  }
+
+  async submitX402Authorization(
+    _actor: string,
+    intentId: string,
+    _request: X402AuthorizationSignatureRequest,
+  ): Promise<Result<X402AuthorizationSubmittedView, ServiceError>> {
+    return {
+      ok: true,
+      value: {
+        receiptId: "00000000-0000-4000-8000-000000000002",
+        intentId,
+        state: "authorization_submitted",
+        authorizationHash: `0x${"ab".repeat(32)}`,
+        signatureAccepted: true,
+        executionEnabled: false,
+        nextAction: "settlement_not_enabled",
+        submittedAt: "2026-08-20T10:04:00.000Z",
       },
     };
   }
@@ -468,4 +490,29 @@ test("returns a reviewable unsigned authorization payload after authentication",
   assert.equal(body.state, "authorization_ready");
   assert.equal(body.executionEnabled, false);
   assert.equal(body.nextAction, "user_signature_required");
+});
+
+test("requires authentication before accepting an authorization signature", async () => {
+  const app = testApp(new FakeAgonService());
+  const response = await app.request("/agon/call-intents/00000000-0000-4000-8000-000000000001/authorization/signature", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ payloadHash: `0x${"99".repeat(32)}`, signature: `0x${"11".repeat(65)}` }),
+  });
+  assert.equal(response.status, 401);
+});
+
+test("records a validated signature handoff without enabling settlement", async () => {
+  const app = testApp(new FakeAgonService());
+  const response = await app.request("/agon/call-intents/00000000-0000-4000-8000-000000000001/authorization/signature", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-test-address": ADDRESS },
+    body: JSON.stringify({ payloadHash: `0x${"99".repeat(32)}`, signature: `0x${"11".repeat(65)}` }),
+  });
+  assert.equal(response.status, 200);
+  const body = (await response.json()) as X402AuthorizationSubmittedView;
+  assert.equal(body.state, "authorization_submitted");
+  assert.equal(body.signatureAccepted, true);
+  assert.equal(body.executionEnabled, false);
+  assert.equal(body.nextAction, "settlement_not_enabled");
 });

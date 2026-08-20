@@ -184,6 +184,22 @@ export type X402AuthorizationView = {
   preparedAt: string;
 };
 
+export type X402AuthorizationSignatureRequest = {
+  payloadHash: string;
+  signature: `0x${string}`;
+};
+
+export type X402AuthorizationSubmittedView = {
+  receiptId: string;
+  intentId: string;
+  state: "authorization_submitted";
+  authorizationHash: string;
+  signatureAccepted: true;
+  executionEnabled: false;
+  nextAction: "settlement_not_enabled";
+  submittedAt: string;
+};
+
 export type BindProfileRequest = {
   chainId: string;
   agentId: string;

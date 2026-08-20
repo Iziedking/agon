@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
+import { keccak256 } from "viem";
 import type { Result } from "../core/result.ts";
 import {
   PostgresAgonRepository,
@@ -11,6 +12,7 @@ import {
 import { callIntentView, prepareX402Call } from "../execution/x402-intent.ts";
 import { validateX402Approval } from "../execution/x402-approval.ts";
 import { parsePaymentRequiredHeader, type X402QuoteSnapshot } from "../execution/x402-quote.ts";
+import { buildX402Authorization, validateX402AuthorizationSignature, type X402AuthorizationPayload } from "../execution/x402-authorization.ts";
 import type {
   AgonCapabilities,
   AgonEndpointQa,
@@ -25,6 +27,9 @@ import type {
   X402CallIntentRequest,
   X402CallIntentView,
   X402QuoteView,
+  X402AuthorizationView,
+  X402AuthorizationSignatureRequest,
+  X402AuthorizationSubmittedView,
 } from "./api-types.ts";
 import type { AgonMarketService, AgonServiceError } from "./routes.ts";
 import type { AgonReadiness } from "../write/readiness.ts";
@@ -245,6 +250,42 @@ function quoteView(
     executionEnabled: false,
     nextAction: "authorization_not_enabled",
     capturedAt: receipt.updatedAt.toISOString(),
+  };
+}
+
+function authorizationView(
+  intentId: string,
+  receipt: { receiptId: string; updatedAt: Date },
+  payload: X402AuthorizationPayload,
+  payloadHash: string,
+): X402AuthorizationView {
+  return {
+    receiptId: receipt.receiptId,
+    intentId,
+    state: "authorization_ready",
+    payloadHash,
+    payload: payload as unknown as X402AuthorizationView["payload"],
+    expiresAt: new Date(Number(payload.message.validBefore) * 1000).toISOString(),
+    executionEnabled: false,
+    nextAction: "user_signature_required",
+    preparedAt: receipt.updatedAt.toISOString(),
+  };
+}
+
+function authorizationSubmittedView(
+  intentId: string,
+  receipt: { receiptId: string; authorizationHash: string | null; updatedAt: Date },
+): X402AuthorizationSubmittedView {
+  if (!receipt.authorizationHash) throw new Error("authorization receipt has no signature hash");
+  return {
+    receiptId: receipt.receiptId,
+    intentId,
+    state: "authorization_submitted",
+    authorizationHash: receipt.authorizationHash,
+    signatureAccepted: true,
+    executionEnabled: false,
+    nextAction: "settlement_not_enabled",
+    submittedAt: receipt.updatedAt.toISOString(),
   };
 }
 
@@ -492,6 +533,77 @@ export class PostgresAgonMarketService implements AgonMarketService {
         quoteSnapshot: parsed.value.snapshot,
       });
       return { ok: true, value: quoteView(intent, stored, parsed.value.snapshot, parsed.value.quoteHash) };
+    } catch (error) {
+      if (error instanceof AgonStoreInvariantError) return { ok: false, error: { code: "conflict", message: error.message } };
+      return internalError(error);
+    }
+  }
+
+  async prepareX402Authorization(
+    actor: string,
+    intentId: string,
+  ): Promise<Result<X402AuthorizationView, AgonServiceError>> {
+    const intent = await this.repository.getX402CallIntent(intentId);
+    if (!intent) return { ok: false, error: { code: "not_found", message: "x402 call intent not found" } };
+    if (intent.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the intent owner can prepare authorization" } };
+    const receipt = await this.repository.getX402CallReceipt(intentId);
+    if (!receipt) return { ok: false, error: { code: "receipt_unavailable", message: "x402 receipt has not been created" } };
+    if (receipt.state === "authorization_ready" && receipt.authorizationPayload && receipt.authorizationPayloadHash) {
+      return { ok: true, value: authorizationView(intentId, receipt, receipt.authorizationPayload as X402AuthorizationPayload, receipt.authorizationPayloadHash) };
+    }
+    if (receipt.state !== "payment_required" || !receipt.quoteSnapshot) {
+      return { ok: false, error: { code: "conflict", message: `x402 receipt is ${receipt.state}; capture a payment quote first` } };
+    }
+    const built = buildX402Authorization(actor, intent.chainId.toString(), receipt.quoteSnapshot as X402QuoteSnapshot);
+    if (!built.ok) return { ok: false, error: { code: "receipt_invalid", message: built.error.message } };
+    try {
+      const stored = await this.repository.advanceX402CallReceipt(intentId, {
+        type: "authorization_ready",
+        authorizationPayloadHash: built.value.payloadHash,
+        authorizationPayload: built.value.payload,
+      });
+      return { ok: true, value: authorizationView(intentId, stored, built.value.payload, built.value.payloadHash) };
+    } catch (error) {
+      if (error instanceof AgonStoreInvariantError) return { ok: false, error: { code: "conflict", message: error.message } };
+      return internalError(error);
+    }
+  }
+
+  async submitX402Authorization(
+    actor: string,
+    intentId: string,
+    request: X402AuthorizationSignatureRequest,
+  ): Promise<Result<X402AuthorizationSubmittedView, AgonServiceError>> {
+    const intent = await this.repository.getX402CallIntent(intentId);
+    if (!intent) return { ok: false, error: { code: "not_found", message: "x402 call intent not found" } };
+    if (intent.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the intent owner can submit authorization" } };
+    const receipt = await this.repository.getX402CallReceipt(intentId);
+    if (!receipt) return { ok: false, error: { code: "receipt_unavailable", message: "x402 receipt has not been created" } };
+    if (receipt.state === "authorization_submitted" && receipt.authorizationHash) {
+      const submittedHash = keccak256(request.signature as `0x${string}`);
+      if (submittedHash.toLowerCase() !== receipt.authorizationHash.toLowerCase()) {
+        return { ok: false, error: { code: "conflict", message: "a different authorization signature was already recorded" } };
+      }
+      return { ok: true, value: authorizationSubmittedView(intentId, receipt) };
+    }
+    if (receipt.state !== "authorization_ready" || !receipt.authorizationPayload || !receipt.authorizationPayloadHash) {
+      return { ok: false, error: { code: "conflict", message: `x402 receipt is ${receipt.state}; prepare an authorization payload first` } };
+    }
+    if (request.payloadHash.toLowerCase() !== receipt.authorizationPayloadHash.toLowerCase()) {
+      return { ok: false, error: { code: "signature_invalid", message: "payload hash does not match the prepared authorization" } };
+    }
+    const checked = await validateX402AuthorizationSignature(
+      receipt.authorizationPayload as X402AuthorizationPayload,
+      request.signature,
+      actor,
+    );
+    if (!checked.ok) return { ok: false, error: { code: "signature_invalid", message: checked.error.message } };
+    try {
+      const stored = await this.repository.advanceX402CallReceipt(intentId, {
+        type: "authorization_submitted",
+        authorizationHash: checked.value.signatureHash,
+      });
+      return { ok: true, value: authorizationSubmittedView(intentId, stored) };
     } catch (error) {
       if (error instanceof AgonStoreInvariantError) return { ok: false, error: { code: "conflict", message: error.message } };
       return internalError(error);

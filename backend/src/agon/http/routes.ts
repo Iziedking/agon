@@ -15,6 +15,9 @@ import type {
   X402CallIntentRequest,
   X402CallIntentView,
   X402QuoteView,
+  X402AuthorizationView,
+  X402AuthorizationSignatureRequest,
+  X402AuthorizationSubmittedView,
 } from "./api-types.ts";
 
 export type AgonRouteVariables = { address: string };
@@ -28,6 +31,7 @@ export type AgonServiceError = {
     | "capability_unavailable"
     | "receipt_unavailable"
     | "receipt_invalid"
+    | "signature_invalid"
     | "internal";
   message: string;
 };
@@ -62,6 +66,15 @@ export type AgonMarketService = {
     actor: string,
     intentId: string,
   ): Promise<Result<X402QuoteView, AgonServiceError>>;
+  prepareX402Authorization(
+    actor: string,
+    intentId: string,
+  ): Promise<Result<X402AuthorizationView, AgonServiceError>>;
+  submitX402Authorization(
+    actor: string,
+    intentId: string,
+    request: X402AuthorizationSignatureRequest,
+  ): Promise<Result<X402AuthorizationSubmittedView, AgonServiceError>>;
   getCapabilities(): Promise<AgonCapabilities>;
 };
 
@@ -110,6 +123,11 @@ const x402CallIntentSchema = z.object({
 
 const x402ApprovalSchema = z.object({
   approvedAmountUSDC: z.string().regex(/^(0|[1-9]\d*)(\.\d{1,6})?$/, "must be a USDC amount with up to 6 decimals"),
+}).strict();
+
+const x402AuthorizationSignatureSchema = z.object({
+  payloadHash: bytes32,
+  signature: z.string().regex(/^0x[0-9a-fA-F]{130}$/, "must be a 65-byte ECDSA signature"),
 }).strict();
 
 function validationResponse(error: ZodError): ApiErrorResponse {
@@ -240,6 +258,27 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
     const result = await options.service.captureX402Quote(
       context.get("address"),
       context.req.param("intentId"),
+    );
+    return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  app.post("/call-intents/:intentId/authorization", options.requireAuth, async (context) => {
+    const result = await options.service.prepareX402Authorization(
+      context.get("address"),
+      context.req.param("intentId"),
+    );
+    return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  app.post("/call-intents/:intentId/authorization/signature", options.requireAuth, async (context) => {
+    const body = await parseJson(context);
+    if (isApiError(body)) return context.json(body, 400);
+    const parsed = x402AuthorizationSignatureSchema.safeParse(body);
+    if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
+    const result = await options.service.submitX402Authorization(
+      context.get("address"),
+      context.req.param("intentId"),
+      parsed.data as X402AuthorizationSignatureRequest,
     );
     return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
   });

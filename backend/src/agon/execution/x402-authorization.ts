@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { GATEWAY_AUTH_VALIDITY_WINDOW_SECONDS } from "@circle-fin/x402-batching";
-import { getAddress, keccak256, stringToHex } from "viem";
+import { getAddress, keccak256, recoverTypedDataAddress, stringToHex } from "viem";
 import type { X402QuoteSnapshot } from "./x402-quote.ts";
 
 const AUTHORIZATION_TYPES = {
@@ -30,6 +30,11 @@ export type X402AuthorizationPayload = {
 };
 
 export type X402AuthorizationError = { code: "invalid_authorization"; message: string };
+
+export type X402AuthorizationSignatureCheck = {
+  signatureHash: `0x${string}`;
+  recoveredAddress: `0x${string}`;
+};
 
 function canonicalize(value: unknown): string {
   if (value === null || typeof value === "boolean" || typeof value === "string") return JSON.stringify(value);
@@ -79,5 +84,56 @@ export function buildX402Authorization(
     return { ok: true, value: { payload, payloadHash: keccak256(stringToHex(canonicalize(payload))) } };
   } catch (error) {
     return { ok: false, error: { code: "invalid_authorization", message: error instanceof Error ? error.message : "authorization payload is invalid" } };
+  }
+}
+
+/**
+ * Validate a signature at the trust boundary, before any facilitator or
+ * provider call is even considered. The raw signature is deliberately not
+ * persisted by this slice; only its hash is attached to the receipt.
+ */
+export async function validateX402AuthorizationSignature(
+  payload: X402AuthorizationPayload,
+  signature: string,
+  expectedActor: string,
+  nowSeconds = Math.floor(Date.now() / 1000),
+): Promise<{ ok: true; value: X402AuthorizationSignatureCheck } | { ok: false; error: X402AuthorizationError }> {
+  if (!/^0x[0-9a-fA-F]{130}$/.test(signature)) {
+    return { ok: false, error: { code: "invalid_authorization", message: "signature must be a 65-byte ECDSA signature" } };
+  }
+  if (!/^0x[0-9a-fA-F]{40}$/.test(expectedActor)) {
+    return { ok: false, error: { code: "invalid_authorization", message: "buyer actor is not an EVM address" } };
+  }
+  try {
+    const validAfter = BigInt(payload.message.validAfter);
+    const validBefore = BigInt(payload.message.validBefore);
+    if (validAfter > validBefore || BigInt(nowSeconds) < validAfter || BigInt(nowSeconds) > validBefore) {
+      return { ok: false, error: { code: "invalid_authorization", message: "authorization is outside its validity window" } };
+    }
+    const recoveredAddress = await recoverTypedDataAddress({
+      domain: payload.domain,
+      types: payload.types,
+      primaryType: payload.primaryType,
+      message: {
+        from: payload.message.from,
+        to: payload.message.to,
+        value: BigInt(payload.message.value),
+        validAfter: BigInt(payload.message.validAfter),
+        validBefore: BigInt(payload.message.validBefore),
+        nonce: payload.message.nonce,
+      },
+      signature: signature as `0x${string}`,
+    });
+    const expected = getAddress(expectedActor);
+    const declared = getAddress(payload.message.from);
+    if (recoveredAddress !== expected || declared !== expected) {
+      return { ok: false, error: { code: "invalid_authorization", message: "signature does not authorize the intent owner" } };
+    }
+    return {
+      ok: true,
+      value: { signatureHash: keccak256(signature as `0x${string}`), recoveredAddress },
+    };
+  } catch {
+    return { ok: false, error: { code: "invalid_authorization", message: "signature could not be recovered for this authorization" } };
   }
 }
