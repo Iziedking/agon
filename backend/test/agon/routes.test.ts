@@ -50,6 +50,9 @@ const listing: AgonListingView = {
     endpointStatus: null,
     evidenceHash: null,
     reason: "Agon has not run endpoint verification for this listing yet.",
+    attempts: 0,
+    passedAttempts: 0,
+    successRate: null,
   },
   payment: { rail: "X402", directX402: true, escrowEligible: false },
   provenance: {

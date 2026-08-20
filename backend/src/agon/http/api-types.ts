@@ -45,6 +45,9 @@ export type AgonEndpointQa = {
   endpointStatus: number | null;
   evidenceHash: string | null;
   reason: string;
+  attempts: number;
+  passedAttempts: number;
+  successRate: number | null;
 };
 
 export type AgonListingView = {

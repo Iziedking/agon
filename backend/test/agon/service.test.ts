@@ -106,6 +106,9 @@ test("maps filters and explicit unverified risk from stored listings", async () 
     endpointStatus: 402,
     evidenceHash: `0x${"ab".repeat(32)}`,
     reason: "Agon observed the service endpoint returning HTTP 402.",
+    attempts: 1,
+    passedAttempts: 1,
+    successRate: 100,
   });
 });
 
@@ -116,4 +119,5 @@ test("keeps direct x402 declared when no endpoint evidence exists", async () => 
   assert.equal(result.value.payment.directX402, true);
   assert.equal(result.value.endpointQa.status, "not_checked");
   assert.equal(result.value.endpointQa.endpointStatus, null);
+  assert.equal(result.value.endpointQa.attempts, 0);
 });

@@ -78,6 +78,8 @@ export type StoredVerificationEvidence = {
   evidenceHash: string;
   evidence: unknown;
   createdAt: Date;
+  attempts: number;
+  passedAttempts: number;
 };
 
 export type ListingCursor = {
@@ -184,6 +186,8 @@ type VerificationEvidenceRow = QueryResultRow & {
   evidence_hash: string;
   evidence: unknown;
   created_at: Date;
+  attempts: string;
+  passed_attempts: string;
 };
 
 type VersionRow = QueryResultRow & {
@@ -394,7 +398,9 @@ export class PostgresAgonRepository {
     });
     const result = await this.pool.query<VerificationEvidenceRow>(
       `select distinct on (e.listing_id, e.agent_id)
-         e.listing_id::text, e.agent_id::text, e.passed, e.evidence_hash, e.evidence, e.created_at
+         e.listing_id::text, e.agent_id::text, e.passed, e.evidence_hash, e.evidence, e.created_at,
+         count(*) over (partition by e.listing_id, e.agent_id)::text as attempts,
+         (count(*) filter (where e.passed) over (partition by e.listing_id, e.agent_id))::text as passed_attempts
        from agon_verification_evidence e
        join (values ${values.join(", ")}) as requested(listing_id, agent_id)
          on requested.listing_id = e.listing_id and requested.agent_id = e.agent_id
@@ -410,6 +416,8 @@ export class PostgresAgonRepository {
         evidenceHash: row.evidence_hash,
         evidence: row.evidence,
         createdAt: row.created_at,
+        attempts: Number(row.attempts),
+        passedAttempts: Number(row.passed_attempts),
       },
     ]));
   }

@@ -107,6 +107,9 @@ function endpointQa(evidence: StoredVerificationEvidence | undefined): AgonEndpo
       endpointStatus: null,
       evidenceHash: null,
       reason: "Agon has not run endpoint verification for this listing yet.",
+      attempts: 0,
+      passedAttempts: 0,
+      successRate: null,
     };
   }
   const body = record(evidence.evidence);
@@ -119,6 +122,10 @@ function endpointQa(evidence: StoredVerificationEvidence | undefined): AgonEndpo
     ? new Date(body.checkedAt).toISOString()
     : evidence.createdAt.toISOString();
   const passed = evidence.passed && x402?.passed === true;
+  const attempts = Number.isSafeInteger(evidence.attempts) && evidence.attempts > 0 ? evidence.attempts : 1;
+  const passedAttempts = Number.isSafeInteger(evidence.passedAttempts) && evidence.passedAttempts >= 0
+    ? Math.min(evidence.passedAttempts, attempts)
+    : (evidence.passed ? 1 : 0);
   const reason = passed
     ? "Agon observed the service endpoint returning HTTP 402."
     : typeof body?.error === "string" && body.error
@@ -132,6 +139,9 @@ function endpointQa(evidence: StoredVerificationEvidence | undefined): AgonEndpo
     endpointStatus,
     evidenceHash: evidence.evidenceHash,
     reason,
+    attempts,
+    passedAttempts,
+    successRate: Math.round((passedAttempts / attempts) * 100),
   };
 }
 
