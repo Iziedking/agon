@@ -1297,6 +1297,33 @@ create table if not exists agon_x402_call_intents (
 create index if not exists agon_x402_call_intents_actor_idx
   on agon_x402_call_intents(actor_address, created_at desc);
 
+-- Durable Circle/x402 receipt boundary. This records evidence and opaque
+-- settlement references without storing raw EIP-3009 signatures or keys.
+-- A settlement reference is not assumed to be an explorer transaction hash;
+-- reconciliation must verify it before a receipt becomes final.
+create table if not exists agon_x402_call_receipts (
+  receipt_id                uuid primary key,
+  intent_id                 uuid not null references agon_x402_call_intents(intent_id),
+  state                     text not null check (state in (
+    'prepared', 'approved', 'payment_required', 'authorization_submitted',
+    'settlement_submitted', 'service_delivered', 'reconciled', 'rejected',
+    'failed', 'unknown'
+  )),
+  quote_hash                text check (quote_hash is null or quote_hash ~ '^0x[0-9a-f]{64}$'),
+  authorization_hash        text check (authorization_hash is null or authorization_hash ~ '^0x[0-9a-f]{64}$'),
+  settlement_ref             text,
+  service_status             int check (service_status is null or service_status between 200 and 299),
+  payment_response_hash      text check (payment_response_hash is null or payment_response_hash ~ '^0x[0-9a-f]{64}$'),
+  charged_amount_usdc        text check (charged_amount_usdc is null or charged_amount_usdc ~ '^(0|[1-9][0-9]*)(\.[0-9]{1,6})?$'),
+  failure_code               text,
+  failure_message            text,
+  created_at                 timestamptz not null default now(),
+  updated_at                 timestamptz not null default now(),
+  unique (intent_id)
+);
+create index if not exists agon_x402_call_receipts_state_idx
+  on agon_x402_call_receipts(state, updated_at desc);
+
 create table if not exists agon_indexer_state (
   stream_name                 text not null check (char_length(stream_name) > 0),
   chain_id                    numeric(78, 0) not null check (chain_id > 0),
