@@ -5,9 +5,9 @@ import { useEffect, useMemo, useState } from "react";
 import { LoginModal } from "@/components/pengu/LoginModal";
 import { TagButton } from "@/components/redesign/TagButton";
 import { useAuth } from "@/hooks/useAuth";
-import { AGON_PREVIEW_MODE, approveX402CallIntent, captureX402Quote, prepareX402CallIntent } from "@/lib/agon/client";
+import { AGON_PREVIEW_MODE, approveX402CallIntent, captureX402Quote, prepareX402Authorization, prepareX402CallIntent } from "@/lib/agon/client";
 import { assessX402Readiness, buildCallIntentRequest, newCallIntentKey } from "@/lib/agon/call-intent";
-import type { AgonListing, X402ApprovalView, X402CallIntentView, X402QuoteView } from "@/lib/agon/types";
+import type { AgonListing, X402ApprovalView, X402AuthorizationView, X402CallIntentView, X402QuoteView } from "@/lib/agon/types";
 
 type Props = {
   listing: AgonListing;
@@ -25,6 +25,7 @@ export function X402CallIntentPanel({ listing, defaultAmount, endpointUrl }: Pro
   const [intent, setIntent] = useState<X402CallIntentView | null>(null);
   const [approval, setApproval] = useState<X402ApprovalView | null>(null);
   const [quote, setQuote] = useState<X402QuoteView | null>(null);
+  const [authorization, setAuthorization] = useState<X402AuthorizationView | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [preparing, setPreparing] = useState(false);
   const [idempotencyKey, setIdempotencyKey] = useState("");
@@ -38,6 +39,7 @@ export function X402CallIntentPanel({ listing, defaultAmount, endpointUrl }: Pro
     setIntent(null);
     setApproval(null);
     setQuote(null);
+    setAuthorization(null);
     if (!me && !AGON_PREVIEW_MODE) {
       setLoginOpen(true);
       return;
@@ -80,6 +82,19 @@ export function X402CallIntentPanel({ listing, defaultAmount, endpointUrl }: Pro
       setQuote(await captureX402Quote(intent.intentId));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Agon could not read the provider payment quote.");
+    } finally {
+      setPreparing(false);
+    }
+  }
+
+  async function prepareAuthorization() {
+    if (!quote || !intent) return;
+    setMessage(null);
+    setPreparing(true);
+    try {
+      setAuthorization(await prepareX402Authorization(intent.intentId));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Agon could not prepare the authorization payload.");
     } finally {
       setPreparing(false);
     }
@@ -142,7 +157,7 @@ export function X402CallIntentPanel({ listing, defaultAmount, endpointUrl }: Pro
             <div className="mt-4 border-t border-current pt-3">
               <div className="uppercase tracking-[0.1em] text-[color:var(--ok)]">APPROVED LIMIT · {approval.approvedAmountUSDC} USDC</div>
               {!quote ? <TagButton variant="primary" size="sm" className="mt-3" onClick={readQuote} disabled={preparing}>{preparing ? "READING QUOTE..." : "READ PAYMENT QUOTE →"}</TagButton> : null}
-              {quote ? <div className="mt-4 border-t border-current pt-3 space-y-1 opacity-80"><div className="text-[color:var(--warn)]">HTTP 402 · PAYMENT REQUIRED</div><div>QUOTE HASH · {quote.quoteHash}</div>{quote.accepts.map((option) => <div key={`${option.network}-${option.payTo}`}>OPTION · {option.network} · {option.amount} USDC · {option.gateway ? "GATEWAY BATCHED" : "UNSUPPORTED"}</div>)}<div className="pt-2 uppercase tracking-[0.08em]">NEXT · authorization not enabled</div></div> : null}
+              {quote ? <div className="mt-4 border-t border-current pt-3 space-y-1 opacity-80"><div className="text-[color:var(--warn)]">HTTP 402 · PAYMENT REQUIRED</div><div>QUOTE HASH · {quote.quoteHash}</div>{quote.accepts.map((option) => <div key={`${option.network}-${option.payTo}`}>OPTION · {option.network} · {option.amount} USDC BASE UNITS · {option.gateway ? "GATEWAY BATCHED" : "UNSUPPORTED"}</div>)}<div className="pt-2 uppercase tracking-[0.08em]">NEXT · {authorization ? "user signature required" : "prepare authorization for review"}</div>{!authorization ? <TagButton variant="primary" size="sm" className="mt-3" onClick={prepareAuthorization} disabled={preparing}>{preparing ? "PREPARING AUTH..." : "PREPARE AUTHORIZATION →"}</TagButton> : <div className="mt-3 border-t border-current pt-3 space-y-1"><div>AUTHORIZATION READY · UNSIGNED</div><div>PAYLOAD HASH · {authorization.payloadHash}</div><div>FROM · {authorization.payload.message.from}</div><div>TO · {authorization.payload.message.to}</div><div>VALUE · {authorization.payload.message.value} USDC BASE UNITS</div><div>EXPIRES · {authorization.expiresAt}</div><div className="pt-2 text-[color:var(--warn)]">NO SIGNATURE CREATED · NO PAYMENT SENT</div></div>}</div> : null}
             </div>
           ) : (
             <div className="mt-4 border-t border-current pt-3">

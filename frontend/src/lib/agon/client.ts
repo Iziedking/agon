@@ -12,6 +12,7 @@ import type {
   X402ApprovalRequest,
   X402ApprovalView,
   X402QuoteView,
+  X402AuthorizationView,
 } from "./types";
 import { AGON_PREVIEW_HEALTH, AGON_PREVIEW_LISTINGS } from "./preview";
 
@@ -179,7 +180,7 @@ export function captureX402Quote(intentId: string): Promise<X402QuoteView> {
         scheme: "exact",
         network: "eip155:5042002",
         asset: `0x${"11".repeat(20)}`,
-        amount: "0.001",
+        amount: "1000",
         payTo: `0x${"22".repeat(20)}`,
         maxTimeoutSeconds: 600,
         gateway: true,
@@ -190,4 +191,31 @@ export function captureX402Quote(intentId: string): Promise<X402QuoteView> {
     });
   }
   return request<X402QuoteView>(`/call-intents/${encodeURIComponent(intentId)}/payment-required`, { method: "POST" });
+}
+
+export function prepareX402Authorization(intentId: string): Promise<X402AuthorizationView> {
+  if (AGON_PREVIEW_MODE) {
+    const address = `0x${"aa".repeat(20)}` as `0x${string}`;
+    return Promise.resolve({
+      receiptId: "00000000-0000-4000-8000-000000000100",
+      intentId,
+      state: "authorization_ready",
+      payloadHash: `0x${"cd".repeat(32)}`,
+      payload: {
+        x402Version: 2,
+        domain: { name: "GatewayWalletBatched", version: "1", chainId: 5042002, verifyingContract: address },
+        types: { TransferWithAuthorization: [
+          { name: "from", type: "address" }, { name: "to", type: "address" }, { name: "value", type: "uint256" },
+          { name: "validAfter", type: "uint256" }, { name: "validBefore", type: "uint256" }, { name: "nonce", type: "bytes32" },
+        ] },
+        primaryType: "TransferWithAuthorization",
+        message: { from: address, to: address, value: "1000", validAfter: "1787240000", validBefore: "1787844900", nonce: `0x${"bb".repeat(32)}` },
+      },
+      expiresAt: "2026-08-27T10:15:00.000Z",
+      executionEnabled: false,
+      nextAction: "user_signature_required",
+      preparedAt: "2026-08-20T12:03:00.000Z",
+    });
+  }
+  return request<X402AuthorizationView>(`/call-intents/${encodeURIComponent(intentId)}/authorization`, { method: "POST" });
 }

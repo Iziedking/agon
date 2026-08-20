@@ -20,6 +20,7 @@ import type {
   X402CallIntentRequest,
   X402CallIntentView,
   X402QuoteView,
+  X402AuthorizationView,
 } from "../../src/agon/http/api-types.ts";
 import type { Result } from "../../src/agon/core/result.ts";
 
@@ -215,6 +216,32 @@ class FakeAgonService implements AgonMarketService {
         executionEnabled: false,
         nextAction: "authorization_not_enabled",
         capturedAt: "2026-08-20T10:02:00.000Z",
+      },
+    };
+  }
+
+  async prepareX402Authorization(
+    _actor: string,
+    intentId: string,
+  ): Promise<Result<X402AuthorizationView, ServiceError>> {
+    return {
+      ok: true,
+      value: {
+        receiptId: "00000000-0000-4000-8000-000000000002",
+        intentId,
+        state: "authorization_ready",
+        payloadHash: `0x${"99".repeat(32)}`,
+        payload: {
+          x402Version: 2,
+          domain: { name: "GatewayWalletBatched", version: "1", chainId: 5042002, verifyingContract: ADDRESS },
+          types: { TransferWithAuthorization: [{ name: "from", type: "address" }] },
+          primaryType: "TransferWithAuthorization",
+          message: { from: ADDRESS, to: ADDRESS, value: "1000", validAfter: "1", validBefore: "2", nonce: `0x${"aa".repeat(32)}` },
+        },
+        expiresAt: "2026-08-27T10:00:00.000Z",
+        executionEnabled: false,
+        nextAction: "user_signature_required",
+        preparedAt: "2026-08-20T10:03:00.000Z",
       },
     };
   }
@@ -428,4 +455,17 @@ test("returns a non-spending HTTP 402 quote after authentication", async () => {
   assert.equal(body.status, 402);
   assert.equal(body.executionEnabled, false);
   assert.equal(body.nextAction, "authorization_not_enabled");
+});
+
+test("returns a reviewable unsigned authorization payload after authentication", async () => {
+  const app = testApp(new FakeAgonService());
+  const response = await app.request("/agon/call-intents/00000000-0000-4000-8000-000000000001/authorization", {
+    method: "POST",
+    headers: { "x-test-address": ADDRESS },
+  });
+  assert.equal(response.status, 200);
+  const body = (await response.json()) as X402AuthorizationView;
+  assert.equal(body.state, "authorization_ready");
+  assert.equal(body.executionEnabled, false);
+  assert.equal(body.nextAction, "user_signature_required");
 });

@@ -13,7 +13,7 @@ function quoteHeader() {
   return Buffer.from(JSON.stringify({
     x402Version: 2,
     resource: { url: TARGET, description: "test", mimeType: "application/json" },
-    accepts: [{ scheme: "exact", network: "eip155:5042002", asset: ASSET, amount: "0.001", maxTimeoutSeconds: 600, payTo: PAY_TO, extra: { name: "GatewayWalletBatched", version: "1" } }],
+    accepts: [{ scheme: "exact", network: "eip155:5042002", asset: ASSET, amount: "1000", maxTimeoutSeconds: 600, payTo: PAY_TO, extra: { name: "GatewayWalletBatched", version: "1", verifyingContract: ASSET } }],
   })).toString("base64");
 }
 

@@ -3,7 +3,7 @@ import { keccak256, stringToHex } from "viem";
 const MAX_HEADER_BYTES = 64 * 1024;
 const MAX_ACCEPTS = 16;
 const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
-const AMOUNT = /^(0|[1-9][0-9]*)(\.[0-9]{1,6})?$/;
+const AMOUNT = /^(0|[1-9][0-9]*)$/;
 
 export type X402QuoteRequirement = {
   scheme: "exact";
@@ -60,7 +60,7 @@ function canonicalize(value: unknown): string {
 }
 
 function microUsdc(value: string): bigint {
-  if (!AMOUNT.test(value)) throw new Error("invalid USDC amount");
+  if (!/^(0|[1-9][0-9]*)(\.[0-9]{1,6})?$/.test(value)) throw new Error("invalid USDC amount");
   const [whole, fraction = ""] = value.split(".");
   return BigInt(whole!) * 1_000_000n + BigInt(fraction.padEnd(6, "0"));
 }
@@ -98,16 +98,16 @@ export function parsePaymentRequiredHeader(
     const extra = record(value?.extra);
     if (!value || value.scheme !== "exact" || typeof value.network !== "string" || value.network !== `eip155:${chainId}`) return fail("quote must use the prepared EVM network and exact scheme");
     if (typeof value.asset !== "string" || !ADDRESS.test(value.asset) || typeof value.payTo !== "string" || !ADDRESS.test(value.payTo)) return fail("quote asset and payTo must be EVM addresses");
-    if (typeof value.amount !== "string" || !AMOUNT.test(value.amount)) return fail("quote amount must be a canonical USDC amount");
+    if (typeof value.amount !== "string" || !AMOUNT.test(value.amount)) return fail("quote amount must be an integer in USDC base units");
     let amount: bigint;
-    try { amount = microUsdc(value.amount); } catch { return fail("quote amount is invalid"); }
+    try { amount = BigInt(value.amount); } catch { return fail("quote amount is invalid"); }
     if (amount <= 0n || amount > approved) return fail("quote amount exceeds the approved spend limit");
     const maxTimeoutSeconds = value.maxTimeoutSeconds;
     if (typeof maxTimeoutSeconds !== "number" || !Number.isSafeInteger(maxTimeoutSeconds) || maxTimeoutSeconds <= 0 || maxTimeoutSeconds > 31_536_000) return fail("quote timeout is outside the supported range");
-    if (!extra || extra.name !== "GatewayWalletBatched") return fail("quote is missing Circle Gateway batching metadata");
+    if (!extra || extra.name !== "GatewayWalletBatched" || extra.version !== "1") return fail("quote is missing Circle Gateway batching metadata");
     const extraCopy: Record<string, unknown> & { name: "GatewayWalletBatched" } = { ...extra, name: "GatewayWalletBatched" };
     const verifyingContract = extraCopy["verifyingContract"];
-    if (verifyingContract !== undefined && (typeof verifyingContract !== "string" || !ADDRESS.test(verifyingContract))) return fail("Gateway verifyingContract must be an EVM address");
+    if (typeof verifyingContract !== "string" || !ADDRESS.test(verifyingContract)) return fail("Gateway verifyingContract must be an EVM address");
     normalized.push({
       scheme: "exact",
       network: value.network,

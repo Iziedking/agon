@@ -183,6 +183,24 @@ export type X402QuoteView = {
   capturedAt: string;
 };
 
+export type X402AuthorizationView = {
+  receiptId: string;
+  intentId: string;
+  state: "authorization_ready";
+  payloadHash: string;
+  payload: {
+    x402Version: 2;
+    domain: { name: "GatewayWalletBatched"; version: "1"; chainId: number; verifyingContract: `0x${string}` };
+    types: Record<string, Array<{ name: string; type: string }>>;
+    primaryType: "TransferWithAuthorization";
+    message: { from: `0x${string}`; to: `0x${string}`; value: string; validAfter: string; validBefore: string; nonce: `0x${string}` };
+  };
+  expiresAt: string;
+  executionEnabled: false;
+  nextAction: "user_signature_required";
+  preparedAt: string;
+};
+
 export type AgonHealth = {
   ok: boolean;
   service: "agon";

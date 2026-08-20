@@ -12,8 +12,8 @@ function header(overrides: Record<string, unknown> = {}) {
     x402Version: 2,
     resource: { url: target, description: "test", mimeType: "application/json" },
     accepts: [{
-      scheme: "exact", network: "eip155:5042002", asset, amount: "0.001",
-      maxTimeoutSeconds: 600, payTo, extra: { name: "GatewayWalletBatched", version: "1" },
+      scheme: "exact", network: "eip155:5042002", asset, amount: "1000",
+      maxTimeoutSeconds: 600, payTo, extra: { name: "GatewayWalletBatched", version: "1", verifyingContract: asset },
     }],
     ...overrides,
   };
@@ -33,8 +33,8 @@ test("parses and hashes a Circle Gateway x402 v2 quote", () => {
 
 test("fails closed for wrong network, missing Gateway metadata, or over-limit amount", () => {
   assert.equal(parsePaymentRequiredHeader(header({ accepts: [{ scheme: "exact", network: "eip155:1" }] }), target, "5042002", "0.01").ok, false);
-  assert.equal(parsePaymentRequiredHeader(header({ accepts: [{ scheme: "exact", network: "eip155:5042002", asset, amount: "0.001", maxTimeoutSeconds: 600, payTo, extra: {} }] }), target, "5042002", "0.01").ok, false);
-  assert.equal(parsePaymentRequiredHeader(header({ accepts: [{ scheme: "exact", network: "eip155:5042002", asset, amount: "0.011", maxTimeoutSeconds: 600, payTo, extra: { name: "GatewayWalletBatched" } }] }), target, "5042002", "0.01").ok, false);
+  assert.equal(parsePaymentRequiredHeader(header({ accepts: [{ scheme: "exact", network: "eip155:5042002", asset, amount: "1000", maxTimeoutSeconds: 600, payTo, extra: {} }] }), target, "5042002", "0.01").ok, false);
+  assert.equal(parsePaymentRequiredHeader(header({ accepts: [{ scheme: "exact", network: "eip155:5042002", asset, amount: "10001", maxTimeoutSeconds: 600, payTo, extra: { name: "GatewayWalletBatched", version: "1", verifyingContract: asset } }] }), target, "5042002", "0.01").ok, false);
 });
 
 test("rejects missing, malformed, and mismatched resource quotes", () => {
