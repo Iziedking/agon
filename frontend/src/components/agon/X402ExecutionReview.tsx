@@ -2,28 +2,55 @@
 
 import { useEffect, useState } from "react";
 
-import { getX402ExecutionReadiness } from "@/lib/agon/client";
-import { executionReadinessLabel, executionReadinessTone, formatExecutionTimestamp, formatUSDCBaseUnits } from "@/lib/agon/execution-review";
-import type { X402ExecutionReadinessView } from "@/lib/agon/types";
+import { approveX402Execution, getX402ExecutionReadiness, AGON_PREVIEW_MODE } from "@/lib/agon/client";
+import { executionReadinessLabel, executionReadinessTone, formatExecutionTimestamp, formatUSDCBaseUnits, newExecutionApprovalKey } from "@/lib/agon/execution-review";
+import type { X402ExecutionApprovalView, X402ExecutionReadinessView } from "@/lib/agon/types";
+import { TagButton } from "@/components/redesign/TagButton";
 
 type Props = { intentId: string; refreshKey?: string | number };
 
 export function X402ExecutionReview({ intentId, refreshKey }: Props) {
   const [readiness, setReadiness] = useState<X402ExecutionReadinessView | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [confirmation, setConfirmation] = useState("");
+  const [approval, setApproval] = useState<X402ExecutionApprovalView | null>(null);
+  const [approvalError, setApprovalError] = useState<string | null>(null);
+  const [approving, setApproving] = useState(false);
+  const [approvalKey] = useState(newExecutionApprovalKey);
 
   useEffect(() => {
     let live = true;
     setReadiness(null);
     setError(null);
     getX402ExecutionReadiness(intentId)
-      .then((value) => { if (live) setReadiness(value); })
+      .then((value) => { if (live) { setReadiness(value); setApproval(value.approval); } })
       .catch((failure) => {
         if (!live) return;
         setError(failure instanceof Error ? failure.message : "Execution review is not available yet.");
       });
     return () => { live = false; };
   }, [intentId, refreshKey]);
+
+  async function approve() {
+    if (!readiness || confirmation !== "APPROVE_ARC_TESTNET_X402") return;
+    setApproving(true);
+    setApprovalError(null);
+    try {
+      const result = await approveX402Execution(intentId, {
+        planHash: readiness.plan.planHash,
+        approvalIdempotencyKey: approvalKey,
+        confirmation: "APPROVE_ARC_TESTNET_X402",
+      });
+      setApproval(result);
+      const refreshed = await getX402ExecutionReadiness(intentId);
+      setReadiness(refreshed);
+      setApproval(refreshed.approval ?? result);
+    } catch (failure) {
+      setApprovalError(failure instanceof Error ? failure.message : "Agon could not record this execution approval.");
+    } finally {
+      setApproving(false);
+    }
+  }
 
   return (
     <section aria-labelledby="x402-execution-review" className="mt-4 border-t border-current pt-4">
@@ -64,6 +91,21 @@ export function X402ExecutionReview({ intentId, refreshKey }: Props) {
             <div className="uppercase tracking-[0.1em]">NO PAYMENT WILL BE SENT</div>
             <p className="mt-1 text-current/80">The Circle testnet adapter is disabled. This review does not create or display a wallet signature.</p>
           </div>
+
+          {readiness.status === "approval_required" && !approval ? (
+            <div className="mt-4 border border-current p-3">
+              <div className="font-mono text-[9px] uppercase tracking-[0.12em]">EXPLICIT EXECUTION APPROVAL</div>
+              <p className="mt-2 font-mono text-[10px] leading-relaxed opacity-75">Confirm the exact plan above. This approval expires with the authorization and still cannot settle while the adapter is disabled.</p>
+              <label className="mt-3 block font-mono text-[9px] uppercase tracking-[0.1em] opacity-70" htmlFor="agon-execution-confirmation">TYPE TO CONFIRM</label>
+              <input id="agon-execution-confirmation" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} placeholder="APPROVE_ARC_TESTNET_X402" autoComplete="off" spellCheck={false} className="mt-2 h-10 w-full border border-current bg-transparent px-3 font-mono text-[10px] text-current placeholder:opacity-40" />
+              <div className="mt-2 font-mono text-[9px] uppercase tracking-[0.08em] opacity-50">RETRY-SAFE APPROVAL KEY · {approvalKey}</div>
+              {AGON_PREVIEW_MODE ? <p className="mt-2 font-mono text-[10px] text-[color:var(--warn)]">PREVIEW MODE · approval is local fixture state only.</p> : null}
+              <TagButton variant="primary" size="sm" className="mt-3" onClick={approve} disabled={approving || confirmation !== "APPROVE_ARC_TESTNET_X402"}>{approving ? "RECORDING APPROVAL..." : "APPROVE EXACT PLAN →"}</TagButton>
+              {approvalError ? <p role="alert" className="mt-3 border-l-2 border-[color:var(--err)] pl-3 font-mono text-[10px] leading-relaxed text-[color:var(--err)]">{approvalError}</p> : null}
+            </div>
+          ) : null}
+
+          {approval ? <div className="mt-4 border-l-2 border-[color:var(--ok)] pl-3 font-mono text-[10px] leading-relaxed text-[color:var(--ok)]"><div className="uppercase tracking-[0.1em]">APPROVED · ADAPTER OFF</div><p className="mt-1 text-current/80">Approval {approval.approvalHash} is bound to this plan and expires {formatExecutionTimestamp(approval.expiresAt)}. No payment was sent.</p></div> : null}
         </>
       ) : null}
     </section>

@@ -292,6 +292,22 @@ export function prepareX402ExecutionPlan(intentId: string): Promise<X402Executio
 }
 
 export function approveX402Execution(intentId: string, body: X402ExecutionApprovalRequest): Promise<X402ExecutionApprovalView> {
+  if (AGON_PREVIEW_MODE) {
+    return prepareX402ExecutionPlan(intentId).then((plan) => ({
+      approvalHash: `0x${"fa".repeat(32)}`,
+      receiptId: plan.receiptId,
+      intentId,
+      actor: plan.plan.paymentPayloadPreview.payload.authorization.from,
+      planHash: plan.plan.planHash,
+      authorizationHash: plan.plan.authorizationHash,
+      approvalIdempotencyKey: body.approvalIdempotencyKey,
+      testnetOnly: true as const,
+      approvedAt: "2026-08-20T12:06:00.000Z",
+      expiresAt: "2026-08-27T12:11:00.000Z",
+      executionEnabled: false as const,
+      nextAction: "execution_adapter_not_enabled" as const,
+    }));
+  }
   return request<X402ExecutionApprovalView>(`/call-intents/${encodeURIComponent(intentId)}/execution-approval`, {
     method: "POST",
     body: JSON.stringify(body),

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { executionReadinessLabel, executionReadinessTone, formatExecutionTimestamp, formatUSDCBaseUnits } from "./execution-review.ts";
+import { executionReadinessLabel, executionReadinessTone, formatExecutionTimestamp, formatUSDCBaseUnits, newExecutionApprovalKey } from "./execution-review.ts";
 
 test("formats integer USDC base units without floating point math", () => {
   assert.equal(formatUSDCBaseUnits("0"), "0 USDC");
@@ -23,4 +23,9 @@ test("maps readiness states to honest UI labels and tones", () => {
 test("keeps invalid timestamps visible and normalizes valid UTC timestamps", () => {
   assert.equal(formatExecutionTimestamp("not-a-date"), "not-a-date");
   assert.equal(formatExecutionTimestamp("2026-08-20T12:00:00.000Z"), "2026-08-20 12:00:00 UTC");
+});
+
+test("creates a retry-safe execution approval key", () => {
+  const key = newExecutionApprovalKey();
+  assert.match(key, /^agon-execution-[A-Za-z0-9-]+$/);
 });
