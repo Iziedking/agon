@@ -27,6 +27,7 @@ import type {
   X402ExecutionApprovalRequest,
   X402ExecutionApprovalView,
   X402ExecutionReadinessView,
+  X402SettlementReadinessView,
 } from "../../src/agon/http/api-types.ts";
 import type { Result } from "../../src/agon/core/result.ts";
 
@@ -363,6 +364,27 @@ class FakeAgonService implements AgonMarketService {
     };
   }
 
+  async getX402SettlementReadiness(
+    _actor: string,
+    intentId: string,
+  ) {
+    return {
+      ok: true as const,
+      value: {
+        receiptId: "00000000-0000-4000-8000-000000000002",
+        intentId,
+        state: "authorization_submitted" as const,
+        network: "eip155:5042002" as const,
+        settlementRef: null,
+        status: "ready_but_disabled" as const,
+        reason: "Authorization is valid, but Circle settlement is disabled by policy.",
+        executionEnabled: false as const,
+        nextAction: "execution_adapter_not_enabled" as const,
+        checkedAt: new Date().toISOString(),
+      },
+    };
+  }
+
   async getCapabilities(): Promise<AgonCapabilities> {
     return capabilities;
   }
@@ -653,4 +675,19 @@ test("returns disabled execution readiness without calling Circle", async () => 
   assert.equal(body.approval, null);
   assert.equal(body.executionEnabled, false);
   assert.equal(body.nextAction, "explicit_execution_approval");
+});
+
+test("returns authenticated settlement readiness without enabling Circle", async () => {
+  const app = testApp(new FakeAgonService());
+  const response = await app.request("/agon/call-intents/00000000-0000-4000-8000-000000000001/settlement-readiness", {
+    headers: { "x-test-address": ADDRESS },
+  });
+  assert.equal(response.status, 200);
+  const body = (await response.json()) as X402SettlementReadinessView;
+  assert.equal(body.state, "authorization_submitted");
+  assert.equal(body.network, "eip155:5042002");
+  assert.equal(body.settlementRef, null);
+  assert.equal(body.status, "ready_but_disabled");
+  assert.equal(body.executionEnabled, false);
+  assert.equal(body.nextAction, "execution_adapter_not_enabled");
 });

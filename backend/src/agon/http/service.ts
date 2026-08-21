@@ -35,6 +35,7 @@ import type {
   X402ExecutionPlanView,
   X402ExecutionApprovalView,
   X402ExecutionReadinessView,
+  X402SettlementReadinessView,
 } from "./api-types.ts";
 import type { AgonMarketService, AgonServiceError } from "./routes.ts";
 import type { AgonReadiness } from "../write/readiness.ts";
@@ -68,6 +69,7 @@ export type PostgresAgonMarketServiceOptions = {
   identityReads?: boolean;
   endpointQa?: boolean;
   directX402?: boolean;
+  x402ExecutionEnabled?: boolean;
   fetchImpl?: typeof fetch;
 };
 
@@ -762,6 +764,79 @@ export class PostgresAgonMarketService implements AgonMarketService {
             : "Approval evidence is valid, but Circle settlement remains disabled by policy.",
         executionEnabled: false,
         nextAction: !stored || expired ? "explicit_execution_approval" : "execution_adapter_not_enabled",
+        checkedAt: new Date().toISOString(),
+      },
+    };
+  }
+
+  async getX402SettlementReadiness(
+    actor: string,
+    intentId: string,
+  ): Promise<Result<X402SettlementReadinessView, AgonServiceError>> {
+    const intent = await this.repository.getX402CallIntent(intentId);
+    if (!intent) return { ok: false, error: { code: "not_found", message: "x402 call intent not found" } };
+    if (intent.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the intent owner can inspect settlement readiness" } };
+    const receipt = await this.repository.getX402CallReceipt(intentId);
+    if (!receipt) return { ok: false, error: { code: "receipt_unavailable", message: "x402 receipt has not been created" } };
+      const executionPolicyRequested = this.options.x402ExecutionEnabled === true;
+    const transactionRef = receipt.settlementRef && /^0x[0-9a-f]{64}$/i.test(receipt.settlementRef)
+      ? receipt.settlementRef
+      : null;
+    let status: X402SettlementReadinessView["status"];
+    let reason: string;
+    let nextAction: X402SettlementReadinessView["nextAction"];
+    switch (receipt.state) {
+        case "authorization_submitted":
+          status = "ready_but_disabled";
+          reason = executionPolicyRequested
+            ? "Settlement policy is configured, but no facilitator route is wired in this service instance."
+            : "Authorization is valid, but Circle settlement is disabled by policy.";
+        nextAction = "execution_adapter_not_enabled";
+        break;
+      case "settlement_submitted":
+        status = "service_delivery_pending";
+        reason = transactionRef
+          ? "Arc Testnet payment submission is recorded. Service delivery must be confirmed separately."
+          : "A settlement attempt is recorded. A trusted transaction receipt is still required.";
+        nextAction = "deliver_service";
+        break;
+      case "unknown":
+        status = "reconciliation_required";
+        reason = "The settlement outcome is ambiguous. Reconcile the Arc Testnet receipt before retrying.";
+        nextAction = "reconcile_settlement";
+        break;
+      case "service_delivered":
+        status = "service_delivery_pending";
+        reason = "The provider response is recorded. Reconciliation is required before final receipt completion.";
+        nextAction = "reconcile_settlement";
+        break;
+      case "reconciled":
+      case "rejected":
+      case "failed":
+        status = "terminal";
+        reason = receipt.state === "reconciled"
+          ? "This x402 receipt is complete and immutable."
+          : `This x402 receipt is terminal: ${receipt.state}.`;
+        nextAction = "none";
+        break;
+      default:
+        status = "authorization_required";
+        reason = `x402 receipt is ${receipt.state}; complete authorization before settlement can be considered.`;
+        nextAction = "complete_authorization";
+        break;
+    }
+    return {
+      ok: true,
+      value: {
+        receiptId: receipt.receiptId,
+        intentId,
+        state: receipt.state,
+        network: "eip155:5042002",
+        settlementRef: transactionRef,
+        status,
+        reason,
+        executionEnabled: false,
+        nextAction,
         checkedAt: new Date().toISOString(),
       },
     };
