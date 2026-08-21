@@ -17,6 +17,7 @@ export type X402ReceiptEvent =
   | { type: "authorization_ready"; authorizationPayloadHash: string; authorizationPayload: unknown }
   | { type: "authorization_submitted"; authorizationHash: string }
   | { type: "settlement_submitted"; settlementRef: string }
+  | { type: "settlement_receipt"; settlementRef: string }
   | { type: "service_delivered"; serviceStatus: number; paymentResponseHash: string }
   | { type: "reconcile"; settlementRef?: string }
   | { type: "reject"; failureCode: string; failureMessage: string }
@@ -56,7 +57,7 @@ const ALLOWED: Record<X402ReceiptState, readonly X402ReceiptState[]> = {
   payment_required: ["authorization_ready", "rejected", "failed"],
   authorization_ready: ["authorization_submitted", "rejected", "failed"],
   authorization_submitted: ["settlement_submitted", "failed", "unknown"],
-  settlement_submitted: ["service_delivered", "failed", "unknown"],
+  settlement_submitted: ["settlement_submitted", "service_delivered", "failed", "unknown"],
   service_delivered: ["reconciled", "unknown"],
   reconciled: [],
   rejected: [],
@@ -117,6 +118,7 @@ export function transitionX402Receipt(current: X402ReceiptState, event: X402Rece
     case "authorization_ready": to = "authorization_ready"; patch = { authorizationPayloadHash: requireHash(event.authorizationPayloadHash, "authorization payload hash"), authorizationPayload: requireAuthorizationPayload(event.authorizationPayload) }; break;
     case "authorization_submitted": to = "authorization_submitted"; patch = { authorizationHash: requireHash(event.authorizationHash, "authorization hash") }; break;
     case "settlement_submitted": to = "settlement_submitted"; patch = { settlementRef: requireText(event.settlementRef, "settlement reference") }; break;
+    case "settlement_receipt": to = "settlement_submitted"; patch = { settlementRef: requireText(event.settlementRef, "settlement reference") }; break;
     case "service_delivered":
       if (!Number.isInteger(event.serviceStatus) || event.serviceStatus < 200 || event.serviceStatus > 299) {
         throw new X402ReceiptInvariantError("service status must be a successful HTTP status");

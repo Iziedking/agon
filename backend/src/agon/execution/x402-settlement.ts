@@ -119,9 +119,9 @@ function approvalHashMatches(approval: X402StoredApprovalEvidence): boolean {
   }
 }
 
-type ValidatedSettlement = { ok: true; signature: `0x${string}` } | { ok: false; error: { code: X402SettlementErrorCode; message: string } };
+export type ValidatedSettlement = { ok: true; signature: `0x${string}` } | { ok: false; error: { code: X402SettlementErrorCode; message: string } };
 
-function validateRequest(input: X402SettlementRequest): ValidatedSettlement {
+export function validateX402SettlementRequest(input: X402SettlementRequest): ValidatedSettlement {
   const { approval, plan } = input;
   if (input.confirmation !== X402_EXECUTION_CONFIRMATION_PHRASE) return fail("execution_not_ready", "explicit Arc Testnet execution confirmation is required");
   if (!isSignature(input.signature)) return fail("execution_not_ready", "a 65-byte authorization signature is required at execution time");
@@ -153,7 +153,7 @@ export function createX402FacilitatorAdapter(options: {
 } = {}) {
   return {
     async settle(input: X402SettlementRequest): Promise<X402SettlementResult> {
-      const checked = validateRequest(input);
+      const checked = validateX402SettlementRequest(input);
       if (!checked.ok) return { ok: false, error: checked.error };
       if (options.enabled !== true) return fail("execution_disabled", "x402 execution adapter is disabled by policy");
       if (!options.policy) return fail("execution_disabled", "x402 execution requires an explicit spend policy");
