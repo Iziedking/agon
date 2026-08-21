@@ -42,6 +42,10 @@ const envSchema = z.object({
   AGON_DEPLOYMENTS_FILE: z.string().default("../contracts/deployments/agon-arc-testnet.json"),
   AGON_WRITES_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
   AGON_READINESS_CACHE_MS: z.coerce.number().int().min(1_000).max(300_000).default(30_000),
+  // Circle x402 settlement is a separately gated rail. Keep it disabled until
+  // the facilitator, recipient allowlist, and reconciliation path are approved.
+  AGON_X402_EXECUTION_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
+  AGON_X402_EXECUTION_MAX_BASE_UNITS: z.string().regex(/^(0|[1-9]\d*)$/).default("0"),
 
   // Auth service
   JWT_SECRET: z.string().default("dev-insecure-secret-change-me"),
@@ -635,6 +639,11 @@ export const config = {
     deploymentError: agonDeployment.error,
     deploymentPath: agonDeployment.path,
     readinessCacheMs: env.AGON_READINESS_CACHE_MS,
+    x402: {
+      executionEnabled: env.AGON_X402_EXECUTION_ENABLED,
+      network: "eip155:5042002" as const,
+      maxAmountBaseUnits: BigInt(env.AGON_X402_EXECUTION_MAX_BASE_UNITS),
+    },
   },
   adminToken: env.ADMIN_TOKEN,
   supportToken: env.SUPPORT_TOKEN,

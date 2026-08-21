@@ -4,6 +4,7 @@ import { keccak256 } from "viem";
 import { buildX402ExecutionApproval, X402_EXECUTION_APPROVAL_PHRASE } from "../../src/agon/execution/x402-execution-approval.ts";
 import { buildX402ExecutionPlan, type X402ExecutionPlan } from "../../src/agon/execution/x402-facilitator.ts";
 import { createX402FacilitatorAdapter, X402_EXECUTION_CONFIRMATION_PHRASE, type X402StoredApprovalEvidence } from "../../src/agon/execution/x402-settlement.ts";
+import { createX402ExecutionPolicy } from "../../src/agon/execution/x402-policy.ts";
 
 const ACTOR = "0x1111111111111111111111111111111111111111";
 const PAY_TO = "0x2222222222222222222222222222222222222222";
@@ -66,9 +67,35 @@ test("rejects a changed plan, stale approval, or mismatched signature before Cir
 test("enabled adapter forwards only the validated in-memory payload to an injected client", async () => {
   const input = fixture();
   let received: unknown;
-  const adapter = createX402FacilitatorAdapter({ enabled: true, client: { settle: async (payload, requirements) => { received = { payload, requirements }; return { success: true, transaction: `0x${"ef".repeat(32)}`, network: "eip155:5042002", payer: ACTOR }; } } });
+  const adapter = createX402FacilitatorAdapter({
+    enabled: true,
+    policy: createX402ExecutionPolicy({ enabled: true, maxAmountBaseUnits: "1000" }),
+    client: { settle: async (payload, requirements) => { received = { payload, requirements }; return { success: true, transaction: `0x${"ef".repeat(32)}`, network: "eip155:5042002", payer: ACTOR }; } },
+  });
   const result = await adapter.settle({ ...input, confirmation: X402_EXECUTION_CONFIRMATION_PHRASE, nowSeconds: NOW });
   assert.equal(result.ok, true);
   assert.equal((result.value as { executionEnabled: true }).executionEnabled, true);
   assert.equal((received as { payload: { payload: { signature: string } } }).payload.payload.signature, input.signature);
+});
+
+test("refuses an enabled adapter without an explicit policy", async () => {
+  const input = fixture();
+  let calls = 0;
+  const adapter = createX402FacilitatorAdapter({ enabled: true, client: { settle: async () => { calls += 1; throw new Error("must not call"); } } });
+  const result = await adapter.settle({ ...input, confirmation: X402_EXECUTION_CONFIRMATION_PHRASE, nowSeconds: NOW });
+  assert.deepEqual(result, { ok: false, error: { code: "execution_disabled", message: "x402 execution requires an explicit spend policy" } });
+  assert.equal(calls, 0);
+});
+
+test("fails closed when the plan exceeds the policy cap", async () => {
+  const input = fixture();
+  let calls = 0;
+  const adapter = createX402FacilitatorAdapter({
+    enabled: true,
+    policy: createX402ExecutionPolicy({ enabled: true, maxAmountBaseUnits: "999" }),
+    client: { settle: async () => { calls += 1; throw new Error("must not call"); } },
+  });
+  const result = await adapter.settle({ ...input, confirmation: X402_EXECUTION_CONFIRMATION_PHRASE, nowSeconds: NOW });
+  assert.deepEqual(result, { ok: false, error: { code: "execution_not_ready", message: "x402 amount exceeds the configured spend cap" } });
+  assert.equal(calls, 0);
 });

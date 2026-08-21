@@ -7,6 +7,11 @@ import {
   hashX402ExecutionPlan,
   type X402ExecutionPlan,
 } from "./x402-facilitator.ts";
+import {
+  createX402ExecutionPolicy,
+  evaluateX402ExecutionPolicy,
+  type X402ExecutionPolicy,
+} from "./x402-policy.ts";
 
 export const X402_EXECUTION_CONFIRMATION_PHRASE = "EXECUTE_ARC_TESTNET_X402" as const;
 
@@ -141,12 +146,19 @@ function validateRequest(input: X402SettlementRequest): ValidatedSettlement {
  * disabled and has no facilitator client, so importing this module cannot
  * make a network call. Raw signatures live only in this call frame.
  */
-export function createX402FacilitatorAdapter(options: { enabled?: boolean; client?: X402FacilitatorClient } = {}) {
+export function createX402FacilitatorAdapter(options: {
+  enabled?: boolean;
+  client?: X402FacilitatorClient;
+  policy?: X402ExecutionPolicy;
+} = {}) {
   return {
     async settle(input: X402SettlementRequest): Promise<X402SettlementResult> {
       const checked = validateRequest(input);
       if (!checked.ok) return { ok: false, error: checked.error };
       if (options.enabled !== true) return fail("execution_disabled", "x402 execution adapter is disabled by policy");
+      if (!options.policy) return fail("execution_disabled", "x402 execution requires an explicit spend policy");
+      const policy = evaluateX402ExecutionPolicy(options.policy, input.plan);
+      if (!policy.ok) return fail(policy.code, policy.message);
       if (!options.client) return fail("facilitator_unavailable", "x402 facilitator client is not configured");
       try {
         const result = await options.client.settle(
@@ -172,6 +184,9 @@ export function createX402FacilitatorAdapter(options: { enabled?: boolean; clien
     },
   };
 }
+
+/** Build a policy from env/config values without making a network call. */
+export { createX402ExecutionPolicy };
 
 /** Construct the pinned Circle client without making a request. */
 export function createCircleTestnetFacilitatorClient(): X402FacilitatorClient {
