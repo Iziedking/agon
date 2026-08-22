@@ -53,6 +53,10 @@ const envSchema = z.object({
   AGON_X402_AGENT_POLICY_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
   AGON_X402_AGENT_PER_CALL_MAX_BASE_UNITS: z.string().regex(/^(0|[1-9]\d*)$/).default("0"),
   AGON_X402_AGENT_DAILY_MAX_BASE_UNITS: z.string().regex(/^(0|[1-9]\d*)$/).default("0"),
+  // ERC-8004 Arena verification writes remain disabled until the validator
+  // identity, evidence policy, and external registry adapter are approved.
+  AGON_ARENA_VALIDATION_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
+  AGON_ARENA_VALIDATOR_ADDRESS: z.string().optional(),
 
   // Auth service
   JWT_SECRET: z.string().default("dev-insecure-secret-change-me"),
@@ -657,6 +661,10 @@ export const config = {
         network: "eip155:5042002" as const,
         perCallCapBaseUnits: BigInt(env.AGON_X402_AGENT_PER_CALL_MAX_BASE_UNITS),
         dailyCapBaseUnits: BigInt(env.AGON_X402_AGENT_DAILY_MAX_BASE_UNITS),
+      },
+      validation: {
+        enabled: env.AGON_ARENA_VALIDATION_ENABLED,
+        validatorAddress: env.AGON_ARENA_VALIDATOR_ADDRESS,
       },
     },
   },

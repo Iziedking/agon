@@ -82,6 +82,38 @@ covers disabled and unprovisioned wallets, cap exhaustion, recipient policy,
 idempotency conflicts, unknown outcomes, terminal transitions, disabled
 adapters, and provider exceptions.
 
+## Phase 4: ERC-8004 Arena verification credentials
+
+Phase 4 adds the validation-credential boundary in
+`backend/src/agon/verification-credentials.ts`. A credential binds an Agon
+listing version and manifest hash to a distinct ERC-8004 validator, an
+immutable request URI/hash, and the latest validator response. Responses use
+the ERC-8004 0-100 scale: `100` is verified, `0` is rejected, and intermediate
+values remain pending. Older responses cannot overwrite newer evidence;
+expired and revoked credentials are terminal.
+
+The request payload is canonicalized and hashed before it can be submitted.
+The ledger rejects self-validation, malformed registry/listing identifiers,
+unsafe evidence URIs, invalid hashes, stale responses, validator mismatches,
+and terminal-state mutations. Reusing a request hash with different evidence
+is an explicit conflict.
+
+`AGON_ARENA_VALIDATION_ENABLED` defaults to `false`. The default
+ValidationRegistry adapter is disabled and performs no validator-wallet
+construction, RPC request, signature, or transaction. The external ERC-8004
+ValidationRegistry is a public anchor only until a distinct validator address,
+durable credential persistence, evidence review policy, and an explicit
+testnet transaction approval are all in place. This follows the ERC-8004 draft
+interface, where the agent owner submits `validationRequest` and the selected
+validator later submits `validationResponse`; the standard does not itself
+provide validator incentives or slashing.
+
+The adversarial suite is
+`backend/test/agon/verification-credentials.test.ts`. It covers deterministic
+hashing, self-validation refusal, idempotent requests, request conflicts,
+progressive responses, stale evidence, expiry, revocation, and the disabled
+adapter.
+
 ### Provider receipt source decision
 
 Circle's documented Arc Testnet Gateway base is `https://gateway-api-testnet.circle.com`. The `POST /gateway/v1/x402/settle` response describes `transaction` as a **transfer UUID**, not an on-chain transaction hash. The corresponding read-only source is `GET /v1/x402/transfers/{id}` (or the paginated `GET /gateway/v1/x402/transfers` search endpoint), which returns the UUID, `status`, USDC amount, sender, recipient, CAIP-2 networks, and timestamps. Circle documents these transfer states as `received`, `batched`, `confirmed`, `completed`, and `failed`; `confirmed` means included onchain and `completed` means fully complete. The Gateway flow can serve a resource before batched onchain settlement, so a successful `settle` response is not finality evidence.
