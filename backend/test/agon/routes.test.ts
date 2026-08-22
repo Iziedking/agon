@@ -752,6 +752,32 @@ test("disabled escrow lifecycle routes fail closed before an adapter exists", as
   }
 });
 
+test("escrow transaction approval routes require auth and fail closed without service wiring", async () => {
+  const app = testApp(new FakeAgonService());
+  const unauthenticated = await app.request("/agon/escrow/intents/00000000-0000-4000-8000-000000000001/transaction-approval", {
+    method: "POST",
+    body: JSON.stringify({ operation: "fund", approvalIdempotencyKey: "approval-route-001", confirmation: "APPROVE_FUND_ARC_TESTNET_ESCROW" }),
+  });
+  assert.equal(unauthenticated.status, 401);
+  const invalid = await app.request("/agon/escrow/intents/00000000-0000-4000-8000-000000000001/transaction-approval", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-test-address": ADDRESS },
+    body: JSON.stringify({ operation: "fund", approvalIdempotencyKey: "short", confirmation: "APPROVE_FUND_ARC_TESTNET_ESCROW" }),
+  });
+  assert.equal(invalid.status, 400);
+  const disabled = await app.request("/agon/escrow/intents/00000000-0000-4000-8000-000000000001/transaction-approval", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-test-address": ADDRESS },
+    body: JSON.stringify({ operation: "fund", approvalIdempotencyKey: "approval-route-001", confirmation: "APPROVE_FUND_ARC_TESTNET_ESCROW" }),
+  });
+  assert.equal(disabled.status, 409);
+  assert.equal(((await disabled.json()) as { error: { code: string } }).error.code, "execution_not_ready");
+  const readiness = await app.request("/agon/escrow/intents/00000000-0000-4000-8000-000000000001/transaction-approval", {
+    headers: { "x-test-address": ADDRESS },
+  });
+  assert.equal(readiness.status, 409);
+});
+
 test("requires authentication before preparing an x402 call intent", async () => {
   const app = testApp(new FakeAgonService());
   const response = await app.request(`/agon/listings/${encodeURIComponent(listing.id)}/call-intents`, {

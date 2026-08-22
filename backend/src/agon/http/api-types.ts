@@ -419,6 +419,37 @@ export type AgonEscrowReadinessView = {
   checkedAt: string;
 };
 
+export type AgonEscrowTransactionApprovalRequest = {
+  operation: "fund" | "release" | "refund";
+  approvalIdempotencyKey: string;
+  confirmation: string;
+};
+
+export type AgonEscrowTransactionApprovalView = {
+  status: "approved" | "expired";
+  approvalHash: string;
+  intentId: string;
+  actor: `0x${string}`;
+  operation: "fund" | "release" | "refund";
+  intentHash: string;
+  approvalIdempotencyKey: string;
+  testnetOnly: true;
+  approvedAt: string;
+  expiresAt: string;
+  executionEnabled: false;
+  nextAction: "transaction_adapter_not_enabled" | "refresh_expired_approval";
+};
+
+export type AgonEscrowTransactionApprovalReadinessView = {
+  intentId: string;
+  status: "approval_required" | "preflight_disabled" | "approved" | "expired";
+  reason: string;
+  approval: AgonEscrowTransactionApprovalView | null;
+  executionEnabled: false;
+  nextAction: "explicit_transaction_approval" | "enable_read_only_preflight" | "transaction_adapter_not_enabled" | "refresh_expired_approval";
+  checkedAt: string;
+};
+
 export type BindProfileRequest = {
   chainId: string;
   agentId: string;

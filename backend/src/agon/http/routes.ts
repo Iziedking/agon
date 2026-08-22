@@ -30,6 +30,9 @@ import type {
   AgonEscrowIntentRequest,
   AgonEscrowIntentView,
   AgonEscrowReadinessView,
+  AgonEscrowTransactionApprovalRequest,
+  AgonEscrowTransactionApprovalView,
+  AgonEscrowTransactionApprovalReadinessView,
 } from "./api-types.ts";
 
 export type AgonRouteVariables = { address: string };
@@ -161,6 +164,15 @@ export type AgonMarketService = {
     intentId: string,
     confirmation: string,
   ): Promise<Result<AgonEscrowIntentView, AgonServiceError>>;
+  approveAgonEscrowTransaction?(
+    actor: string,
+    intentId: string,
+    request: AgonEscrowTransactionApprovalRequest,
+  ): Promise<Result<AgonEscrowTransactionApprovalView, AgonServiceError>>;
+  getAgonEscrowTransactionApproval?(
+    actor: string,
+    intentId: string,
+  ): Promise<Result<AgonEscrowTransactionApprovalReadinessView, AgonServiceError>>;
   getCapabilities(): Promise<AgonCapabilities>;
 };
 
@@ -251,6 +263,11 @@ const agonEscrowIntentSchema = z.object({
 const fundAgonEscrowSchema = z.object({ confirmation: z.literal("FUND_ARC_TESTNET_ESCROW") }).strict();
 const releaseAgonEscrowSchema = z.object({ confirmation: z.literal("RELEASE_ARC_TESTNET_ESCROW") }).strict();
 const refundAgonEscrowSchema = z.object({ confirmation: z.literal("REFUND_ARC_TESTNET_ESCROW") }).strict();
+const agonEscrowTransactionApprovalSchema = z.object({
+  operation: z.enum(["fund", "release", "refund"]),
+  approvalIdempotencyKey: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/, "must be 8-128 safe characters"),
+  confirmation: z.string().min(1).max(64),
+}).strict();
 
 function validationResponse(error: ZodError): ApiErrorResponse {
   return {
@@ -382,6 +399,22 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
 
   app.get("/escrow/intents/:intentId/readiness", options.requireAuth, async (context) => {
     const result = await options.service.getAgonEscrowReadiness(context.get("address"), context.req.param("intentId"));
+    return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  app.post("/escrow/intents/:intentId/transaction-approval", options.requireAuth, async (context) => {
+    const body = await parseJson(context);
+    if (isApiError(body)) return context.json(body, 400);
+    const parsed = agonEscrowTransactionApprovalSchema.safeParse(body);
+    if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
+    if (!options.service.approveAgonEscrowTransaction) return serviceErrorResponse(context, { code: "execution_not_ready", message: "escrow transaction approval is not configured" });
+    const result = await options.service.approveAgonEscrowTransaction(context.get("address"), context.req.param("intentId"), parsed.data);
+    return result.ok ? context.json(result.value, 201) : serviceErrorResponse(context, result.error);
+  });
+
+  app.get("/escrow/intents/:intentId/transaction-approval", options.requireAuth, async (context) => {
+    if (!options.service.getAgonEscrowTransactionApproval) return serviceErrorResponse(context, { code: "execution_not_ready", message: "escrow transaction approval is not configured" });
+    const result = await options.service.getAgonEscrowTransactionApproval(context.get("address"), context.req.param("intentId"));
     return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
   });
 

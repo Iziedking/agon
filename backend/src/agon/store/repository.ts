@@ -3,6 +3,7 @@ import type { Pool, PoolClient, QueryResultRow } from "pg";
 import { transitionX402Receipt, type X402ReceiptEvent, type X402ReceiptState } from "../execution/x402-receipt.ts";
 import { hashAgonEscrowTerms, isAgonEscrowTransitionAllowed, type AgonEscrowIntentState, type AgonEscrowTerms } from "../escrow-policy.ts";
 import type { AgonPrizeEscrowPoolBinding } from "../execution/escrow-reconciliation.ts";
+import type { AgonEscrowWriteOperation } from "../execution/escrow-write-preflight.ts";
 
 export type ProfileStatus = "Active" | "Suspended" | "Archived";
 export type ListingStatus = "Listed" | "Suspended" | "Delisted";
@@ -183,6 +184,21 @@ export type AgonEscrowIntentProjection = {
 export type StoredAgonEscrowIntent = AgonEscrowIntentProjection & {
   createdAt: Date;
   updatedAt: Date;
+};
+
+export type AgonEscrowTransactionApprovalProjection = {
+  approvalHash: string;
+  intentId: string;
+  actor: string;
+  operation: AgonEscrowWriteOperation;
+  intentHash: string;
+  approvalIdempotencyKey: string;
+  approvedAt: Date;
+  expiresAt: Date;
+};
+
+export type StoredAgonEscrowTransactionApproval = AgonEscrowTransactionApprovalProjection & {
+  createdAt: Date;
 };
 
 export type ListingCursor = {
@@ -384,6 +400,18 @@ type AgonEscrowIntentRow = QueryResultRow & {
   pool_id: string | null;
   created_at: Date;
   updated_at: Date;
+};
+
+type AgonEscrowTransactionApprovalRow = QueryResultRow & {
+  approval_hash: string;
+  intent_id: string;
+  actor_address: string;
+  operation: AgonEscrowWriteOperation;
+  intent_hash: string;
+  approval_idempotency_key: string;
+  approved_at: Date;
+  expires_at: Date;
+  created_at: Date;
 };
 
 type VersionRow = QueryResultRow & {
@@ -629,6 +657,20 @@ function mapAgonEscrowIntent(row: AgonEscrowIntentRow): StoredAgonEscrowIntent {
   };
 }
 
+function mapAgonEscrowTransactionApproval(row: AgonEscrowTransactionApprovalRow): StoredAgonEscrowTransactionApproval {
+  return {
+    approvalHash: row.approval_hash,
+    intentId: row.intent_id,
+    actor: row.actor_address,
+    operation: row.operation,
+    intentHash: row.intent_hash,
+    approvalIdempotencyKey: row.approval_idempotency_key,
+    approvedAt: row.approved_at,
+    expiresAt: row.expires_at,
+    createdAt: row.created_at,
+  };
+}
+
 function versionsMatch(left: ValidatedListingVersion, right: ValidatedListingVersion): boolean {
   return (
     left.chainId === right.chainId &&
@@ -678,6 +720,10 @@ const AGON_ESCROW_INTENT_COLUMNS = `
   expires_at, state, provider_reference, transaction_hash, pool_contract_address,
   pool_controller_address, pool_id, created_at, updated_at`;
 
+const AGON_ESCROW_TRANSACTION_APPROVAL_COLUMNS = `
+  approval_hash, intent_id, actor_address, operation, intent_hash,
+  approval_idempotency_key, approved_at, expires_at, created_at`;
+
 export class PostgresAgonRepository {
   private readonly pool: Pool;
 
@@ -725,6 +771,57 @@ export class PostgresAgonRepository {
       [intentId],
     );
     return result.rows[0] ? mapAgonEscrowIntent(result.rows[0]) : null;
+  }
+
+  async getAgonEscrowTransactionApproval(intentId: string, approvalIdempotencyKey?: string): Promise<StoredAgonEscrowTransactionApproval | null> {
+    if (!/^[0-9a-f-]{36}$/i.test(intentId)) return null;
+    const result = approvalIdempotencyKey
+      ? await this.pool.query<AgonEscrowTransactionApprovalRow>(
+        `select ${AGON_ESCROW_TRANSACTION_APPROVAL_COLUMNS}
+         from agon_escrow_transaction_approvals
+         where intent_id = $1 and approval_idempotency_key = $2`,
+        [intentId, approvalIdempotencyKey],
+      )
+      : await this.pool.query<AgonEscrowTransactionApprovalRow>(
+        `select ${AGON_ESCROW_TRANSACTION_APPROVAL_COLUMNS}
+         from agon_escrow_transaction_approvals
+         where intent_id = $1 order by approved_at desc limit 1`,
+        [intentId],
+      );
+    return result.rows[0] ? mapAgonEscrowTransactionApproval(result.rows[0]) : null;
+  }
+
+  async prepareAgonEscrowTransactionApproval(input: AgonEscrowTransactionApprovalProjection): Promise<StoredAgonEscrowTransactionApproval> {
+    const actor = normalizeAddress(input.actor);
+    if (!/^[0-9a-f-]{36}$/i.test(input.intentId)) throw new AgonStoreInvariantError("escrow intent id must be a UUID");
+    if (!/^(fund|release|refund)$/.test(input.operation)) throw new AgonStoreInvariantError("escrow approval operation is invalid");
+    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/.test(input.approvalIdempotencyKey)) throw new AgonStoreInvariantError("escrow approval idempotency key is invalid");
+    const approvalHash = normalizeHash(input.approvalHash);
+    const intentHash = normalizeHash(input.intentHash);
+    if (!(input.expiresAt > input.approvedAt)) throw new AgonStoreInvariantError("escrow approval expiry must be after approval time");
+    const inserted = await this.pool.query<AgonEscrowTransactionApprovalRow>(
+      `insert into agon_escrow_transaction_approvals (
+         approval_hash, intent_id, actor_address, operation, intent_hash,
+         approval_idempotency_key, approved_at, expires_at, created_at
+       ) values ($1, $2, $3, $4, $5, $6, $7, $8, $7)
+       on conflict (intent_id, approval_idempotency_key) do nothing
+       returning ${AGON_ESCROW_TRANSACTION_APPROVAL_COLUMNS}`,
+      [approvalHash, input.intentId, actor, input.operation, intentHash, input.approvalIdempotencyKey, input.approvedAt, input.expiresAt],
+    );
+    if (inserted.rows[0]) return mapAgonEscrowTransactionApproval(inserted.rows[0]);
+    const existing = await this.pool.query<AgonEscrowTransactionApprovalRow>(
+      `select ${AGON_ESCROW_TRANSACTION_APPROVAL_COLUMNS}
+       from agon_escrow_transaction_approvals
+       where intent_id = $1 and approval_idempotency_key = $2`,
+      [input.intentId, input.approvalIdempotencyKey],
+    );
+    const row = existing.rows[0];
+    if (!row) throw new AgonStoreInvariantError("escrow approval idempotency conflict could not be loaded");
+    const value = mapAgonEscrowTransactionApproval(row);
+    if (value.approvalHash !== approvalHash || value.actor !== actor || value.operation !== input.operation || value.intentHash !== intentHash) {
+      throw new AgonStoreInvariantError("escrow approval idempotency key already used for different transaction intent");
+    }
+    return value;
   }
 
   async prepareAgonEscrowIntent(input: AgonEscrowIntentProjection): Promise<StoredAgonEscrowIntent> {

@@ -299,6 +299,25 @@ submit a transaction, or broadcast to Arc. Every approval remains
 action. A later phase must add durable approval storage and an independently
 approved transaction adapter before any user-visible write can be enabled.
 
+## Phase 14: durable escrow approval evidence
+
+Escrow transaction approvals are now persisted in
+`agon_escrow_transaction_approvals` with append-only hashes, owner, operation,
+intent hash, idempotency key, approval and expiry timestamps. The authenticated
+`POST /agon/escrow/intents/:intentId/transaction-approval` route requires the
+operation-specific approval phrase and a successful Phase 12 read-only
+preflight before creating the row. Reusing the same key returns the exact
+approval; changing its operation or intent is a conflict. The matching GET
+route exposes approval readiness and expiry without exposing signing material.
+
+The runtime still has no escrow write adapter wired. If the preflight adapter is
+disabled, approval creation fails closed and creates no row. Persisted evidence
+always reports `executionEnabled: false`; no signer, wallet signature,
+`writeContract`, provider call, transaction submission, or broadcast is
+performed. A future write phase must validate this durable approval again and
+obtain separate exact operation/address/amount/recipient approval before any
+testnet transaction.
+
 ## Manifest proof
 
 Manifest hashes use sorted-key JSON canonicalization followed by `keccak256` of the UTF-8 bytes. The pinned foundation fixture hashes to:

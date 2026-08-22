@@ -22,6 +22,8 @@ import { isX402ProviderTransferId, isX402Transaction, validateX402ReceiptLookupR
 import type { X402FacilitatorVerificationRequest as X402FacilitatorVerificationInput, X402FacilitatorVerificationResult, X402SettlementRequest as X402SettlementInput } from "../execution/x402-settlement.ts";
 import { buildX402ExecutionApproval, type X402ExecutionApprovalRequest } from "../execution/x402-execution-approval.ts";
 import { validateAgonPrizeEscrowPoolBinding, type AgonPrizeEscrowPoolBinding, type AgonPrizeEscrowReadAdapter } from "../execution/escrow-reconciliation.ts";
+import { buildAgonEscrowTransactionApproval, type AgonEscrowTransactionApprovalRequest } from "../execution/escrow-transaction-approval.ts";
+import type { AgonEscrowWriteOperation, AgonPrizeEscrowWritePreflightAdapter } from "../execution/escrow-write-preflight.ts";
 import { createAgonEscrowLifecycleOrchestrator, type AgonEscrowLifecycleAction } from "../execution/escrow-orchestrator.ts";
 import { createDisabledAgonEscrowAdapter, evaluateAgonEscrowTerms, hashAgonEscrowTerms, type AgonEscrowAdapter, type AgonEscrowListing } from "../escrow-policy.ts";
 import type {
@@ -55,6 +57,8 @@ import type {
   AgonEscrowIntentRequest,
   AgonEscrowIntentView,
   AgonEscrowReadinessView,
+  AgonEscrowTransactionApprovalView,
+  AgonEscrowTransactionApprovalReadinessView,
 } from "./api-types.ts";
 import type { AgonMarketService, AgonServiceError } from "./routes.ts";
 import type { AgonReadiness } from "../write/readiness.ts";
@@ -103,6 +107,8 @@ export type PostgresAgonMarketServiceOptions = {
   /** Explicitly enabled lifecycle adapter; undefined keeps escrow disabled. */
   escrowExecutionAdapter?: AgonEscrowAdapter;
   escrowExecutionEnabled?: boolean;
+  /** Read-only contract preflight used before durable transaction approval. */
+  escrowWritePreflightAdapter?: AgonPrizeEscrowWritePreflightAdapter;
   fetchImpl?: typeof fetch;
 };
 
@@ -304,6 +310,36 @@ function escrowReadinessView(intent: StoredAgonEscrowIntent, pool: AgonEscrowRea
         : "escrow_adapter_not_enabled",
     pool,
     checkedAt: new Date().toISOString(),
+  };
+}
+
+function escrowTransactionApprovalView(
+  approval: {
+    approvalHash: string;
+    intentId: string;
+    actor: string;
+    operation: AgonEscrowWriteOperation;
+    intentHash: string;
+    approvalIdempotencyKey: string;
+    approvedAt: Date;
+    expiresAt: Date;
+  },
+  now = new Date(),
+): AgonEscrowTransactionApprovalView {
+  const expired = now >= approval.expiresAt;
+  return {
+    status: expired ? "expired" : "approved",
+    approvalHash: approval.approvalHash,
+    intentId: approval.intentId,
+    actor: approval.actor as `0x${string}`,
+    operation: approval.operation,
+    intentHash: approval.intentHash,
+    approvalIdempotencyKey: approval.approvalIdempotencyKey,
+    testnetOnly: true,
+    approvedAt: approval.approvedAt.toISOString(),
+    expiresAt: approval.expiresAt.toISOString(),
+    executionEnabled: false,
+    nextAction: expired ? "refresh_expired_approval" : "transaction_adapter_not_enabled",
   };
 }
 
@@ -670,6 +706,84 @@ export class PostgresAgonMarketService implements AgonMarketService {
       }
     }
     return { ok: true, value: escrowReadinessView(intent, pool) };
+  }
+
+  async approveAgonEscrowTransaction(
+    actor: string,
+    intentId: string,
+    request: AgonEscrowTransactionApprovalRequest,
+  ): Promise<Result<AgonEscrowTransactionApprovalView, AgonServiceError>> {
+    const intent = await this.repository.getAgonEscrowIntent(intentId);
+    if (!intent) return { ok: false, error: { code: "not_found", message: "Agon escrow intent not found" } };
+    if (intent.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the escrow intent owner can approve this transaction" } };
+    const existing = await this.repository.getAgonEscrowTransactionApproval(intentId, request.approvalIdempotencyKey);
+    if (existing) {
+      if (existing.actor !== actor.toLowerCase() || existing.operation !== request.operation) return { ok: false, error: { code: "conflict", message: "approval idempotency key is bound to a different escrow operation" } };
+      return { ok: true, value: escrowTransactionApprovalView(existing) };
+    }
+    const operation = request.operation as AgonEscrowWriteOperation;
+    const readyForOperation = operation === "fund" ? intent.state === "prepared" : intent.state === "funded";
+    if (!readyForOperation) return { ok: false, error: { code: "execution_not_ready", message: `escrow intent is ${intent.state}; ${operation} approval is not ready` } };
+    if (!intent.poolBinding) return { ok: false, error: { code: "execution_not_ready", message: "a bound PrizeEscrow pool is required before transaction approval" } };
+    const preflight = this.options.escrowWritePreflightAdapter;
+    if (!preflight?.enabled) return { ok: false, error: { code: "execution_not_ready", message: "read-only PrizeEscrow write preflight is disabled" } };
+    const participant = operation === "release" ? intent.terms.beneficiary : intent.terms.buyer;
+    let checked;
+    try {
+      checked = await preflight.preflight({
+        network: intent.terms.network,
+        escrowAddress: intent.poolBinding.contractAddress,
+        controller: intent.poolBinding.controller,
+        operation,
+        poolId: intent.poolBinding.poolId,
+        amountBaseUnits: intent.terms.amountBaseUnits,
+        participant,
+        expectedAsset: intent.terms.asset,
+      });
+    } catch (error) {
+      return { ok: false, error: { code: "execution_not_ready", message: error instanceof Error ? error.message : "PrizeEscrow write preflight failed" } };
+    }
+    const approval = buildAgonEscrowTransactionApproval({
+      preflight: checked,
+      request: {
+        intentId,
+        actor,
+        operation,
+        approvalIdempotencyKey: request.approvalIdempotencyKey,
+        confirmation: request.confirmation,
+      },
+    });
+    if (!approval.ok) return { ok: false, error: { code: "validation_failed", message: approval.error.message } };
+    try {
+      const stored = await this.repository.prepareAgonEscrowTransactionApproval({
+        approvalHash: approval.value.approvalHash,
+        intentId: approval.value.intentId,
+        actor: approval.value.actor,
+        operation: approval.value.operation,
+        intentHash: approval.value.intentHash,
+        approvalIdempotencyKey: approval.value.approvalIdempotencyKey,
+        approvedAt: new Date(approval.value.approvedAt),
+        expiresAt: new Date(approval.value.expiresAt),
+      });
+      return { ok: true, value: escrowTransactionApprovalView(stored) };
+    } catch (error) {
+      if (error instanceof AgonStoreInvariantError && error.message.includes("idempotency")) return { ok: false, error: { code: "conflict", message: error.message } };
+      return internalError(error);
+    }
+  }
+
+  async getAgonEscrowTransactionApproval(
+    actor: string,
+    intentId: string,
+  ): Promise<Result<AgonEscrowTransactionApprovalReadinessView, AgonServiceError>> {
+    const intent = await this.repository.getAgonEscrowIntent(intentId);
+    if (!intent) return { ok: false, error: { code: "not_found", message: "Agon escrow intent not found" } };
+    if (intent.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the escrow intent owner can read transaction approval" } };
+    const approval = await this.repository.getAgonEscrowTransactionApproval(intentId);
+    const checkedAt = new Date().toISOString();
+    if (!approval) return { ok: true, value: { intentId, status: this.options.escrowWritePreflightAdapter?.enabled ? "approval_required" : "preflight_disabled", reason: this.options.escrowWritePreflightAdapter?.enabled ? "No durable transaction approval exists for this escrow intent." : "Read-only PrizeEscrow write preflight is disabled.", approval: null, executionEnabled: false, nextAction: this.options.escrowWritePreflightAdapter?.enabled ? "explicit_transaction_approval" : "enable_read_only_preflight", checkedAt } };
+    const view = escrowTransactionApprovalView(approval);
+    return { ok: true, value: { intentId, status: view.status, reason: view.status === "expired" ? "The transaction approval expired and must be refreshed." : "A durable approval is recorded; transaction execution remains disabled.", approval: view, executionEnabled: false, nextAction: view.status === "expired" ? "refresh_expired_approval" : "transaction_adapter_not_enabled", checkedAt } };
   }
 
   private async executeAgonEscrowLifecycle(

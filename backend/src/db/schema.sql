@@ -1415,6 +1415,24 @@ create index if not exists agon_escrow_intents_actor_idx
 create index if not exists agon_escrow_intents_state_idx
   on agon_escrow_intents(state, updated_at desc);
 
+-- Human escrow transaction approvals are append-only evidence. They bind an
+-- approval to the exact preflighted calldata intent; they never authorize a
+-- signer or enable a wallet/provider write.
+create table if not exists agon_escrow_transaction_approvals (
+  approval_hash            text primary key check (approval_hash ~ '^0x[0-9a-f]{64}$'),
+  intent_id                uuid not null references agon_escrow_intents(intent_id),
+  actor_address            text not null check (actor_address ~ '^0x[0-9a-f]{40}$'),
+  operation                text not null check (operation in ('fund','release','refund')),
+  intent_hash              text not null check (intent_hash ~ '^0x[0-9a-f]{64}$'),
+  approval_idempotency_key text not null check (approval_idempotency_key ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$'),
+  approved_at              timestamptz not null,
+  expires_at               timestamptz not null check (expires_at > approved_at),
+  created_at               timestamptz not null default now(),
+  unique (intent_id, approval_idempotency_key)
+);
+create index if not exists agon_escrow_transaction_approvals_intent_idx
+  on agon_escrow_transaction_approvals(intent_id, approved_at desc);
+
 create table if not exists agon_indexer_state (
   stream_name                 text not null check (char_length(stream_name) > 0),
   chain_id                    numeric(78, 0) not null check (chain_id > 0),

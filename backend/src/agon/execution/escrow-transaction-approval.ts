@@ -1,6 +1,6 @@
 import { getAddress, keccak256, stringToHex } from "viem";
-import type { AgonEscrowWriteOperation } from "../escrow-policy.ts";
 import type { AgonPrizeEscrowWriteIntent, AgonPrizeEscrowWritePreflightResult } from "./escrow-write-preflight.ts";
+import type { AgonEscrowWriteOperation } from "./escrow-write-preflight.ts";
 
 export const AGON_ESCROW_TRANSACTION_APPROVAL_PHRASES = {
   fund: "APPROVE_FUND_ARC_TESTNET_ESCROW",
