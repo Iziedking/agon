@@ -48,6 +48,11 @@ const envSchema = z.object({
   AGON_X402_VERIFICATION_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
   AGON_X402_RECONCILIATION_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
   AGON_X402_EXECUTION_MAX_BASE_UNITS: z.string().regex(/^(0|[1-9]\d*)$/).default("0"),
+  // Agent-to-agent x402 remains a disabled testnet seam until durable policy
+  // persistence and a separately approved Circle adapter are wired.
+  AGON_X402_AGENT_POLICY_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
+  AGON_X402_AGENT_PER_CALL_MAX_BASE_UNITS: z.string().regex(/^(0|[1-9]\d*)$/).default("0"),
+  AGON_X402_AGENT_DAILY_MAX_BASE_UNITS: z.string().regex(/^(0|[1-9]\d*)$/).default("0"),
 
   // Auth service
   JWT_SECRET: z.string().default("dev-insecure-secret-change-me"),
@@ -647,6 +652,12 @@ export const config = {
       reconciliationEnabled: env.AGON_X402_RECONCILIATION_ENABLED,
       network: "eip155:5042002" as const,
       maxAmountBaseUnits: BigInt(env.AGON_X402_EXECUTION_MAX_BASE_UNITS),
+      agentPolicy: {
+        enabled: env.AGON_X402_AGENT_POLICY_ENABLED,
+        network: "eip155:5042002" as const,
+        perCallCapBaseUnits: BigInt(env.AGON_X402_AGENT_PER_CALL_MAX_BASE_UNITS),
+        dailyCapBaseUnits: BigInt(env.AGON_X402_AGENT_DAILY_MAX_BASE_UNITS),
+      },
     },
   },
   adminToken: env.ADMIN_TOKEN,

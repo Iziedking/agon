@@ -7,7 +7,7 @@ Its canonical product name is **Agon** and its canonical public origin is `https
 - Each provider uses one external ERC-8004 identity; Agon does not mint platform agents.
 - Listings are permissionless for the current identity owner and are versioned and publicly auditable.
 - Unverified services may accept direct x402 payments. Escrow and Arena participation require later verification.
-- The current foundation implements profile binding, versioned service listings, and a disabled-by-default Circle facilitator verification boundary. Commission, escrow, verification/Arena credentials, and settlement remain separately gated phases.
+- The current foundation implements profile binding, versioned service listings, and disabled-by-default Circle x402 verification and settlement boundaries. Commission, escrow, and verification/Arena credentials remain separately gated phases.
 
 ## Foundation status
 
@@ -40,14 +40,47 @@ The auth service mounts these routes under `/agon`:
 - `POST /agon/operations/:operationId/confirm` (authenticated; receipt and event verification)
 - `POST /agon/call-intents/:intentId/facilitator-verify` (authenticated; Arc Testnet signature verification only; settlement is never implied)
 - `GET /agon/call-intents/:intentId/facilitator-verification` (authenticated; reads the owner's durable verification evidence)
+- `POST /agon/call-intents/:intentId/settle` (authenticated; exact runtime signature and `EXECUTE_ARC_TESTNET_X402` confirmation; disabled by default)
 - `GET /agon/call-intents/:intentId/reconciliation-readiness` (authenticated; read-only provider receipt lookup readiness)
 - `POST /agon/call-intents/:intentId/reconcile` (authenticated; disabled-by-default server-side receipt lookup and idempotent reconciliation)
 
 The facilitator verification route is fail-closed. It requires a prepared call intent, a durable explicit execution approval, the exact transient signature, and the literal confirmation `VERIFY_ARC_TESTNET_X402`. Set `AGON_X402_VERIFICATION_ENABLED=true` only in a controlled Arc Testnet environment with a nonzero `AGON_X402_EXECUTION_MAX_BASE_UNITS` policy. A successful check writes append-only evidence keyed by intent and approval, including a deterministic evidence hash, network, payer, and timestamp. It never persists the raw signature, settles funds, or marks service delivery. Replays return the original evidence. `AGON_X402_EXECUTION_ENABLED` remains a separate switch and defaults to `false`.
 
+Settlement is a separate authenticated boundary. It requires the same owner, an unexpired durable execution approval bound to the exact plan, the transient 65-byte wallet signature, and the literal `EXECUTE_ARC_TESTNET_X402` confirmation. The service writes the durable `settlement_submitted` marker before calling Circle, treats Circle transfer UUIDs as provider correlation rather than onchain finality, and returns `serviceDeliveryPending` until a separately authenticated provider response is recorded. `AGON_X402_EXECUTION_ENABLED` defaults to `false`; no provider request is made while the flag or adapter is disabled.
+
 Catalog pagination uses an opaque cursor backed by a stable ordering over timestamp, chain, registry, and listing id. Consumers must treat the cursor as opaque.
 
 Receipt reconciliation is a separate, read-only boundary. The installed Circle x402 batching client exposes `verify`, `settle`, and `supported` calls, but no provider receipt lookup method. Agon therefore exposes the current receipt state, exact Arc Testnet transaction reference, and whether a lookup adapter is enabled without inventing finality. The default adapter is disabled, never contacts Circle or an RPC, never mutates a receipt, and never marks service delivery. A future adapter must return a matching `eip155:5042002` transaction and pass the same validation before the existing idempotent orchestrator may reconcile it. The mutation route accepts only the literal `RECONCILE_ARC_TESTNET_X402` confirmation; it never accepts a client-supplied transaction hash or raw receipt as proof. With no server-side adapter wired, it returns a disabled capability response and leaves the durable receipt unchanged.
+
+## Phase 3: machine-to-machine wallet policy boundary
+
+The Phase 3 engine is implemented as a deterministic, testnet-only safety
+boundary in `backend/src/agon/execution/x402-agent-policy.ts` and
+`x402-agent-executor.ts`. It is intentionally not wired to live wallet
+execution. Circle's native spending-policy controls are mainnet-only, so Arc
+Testnet uses this local policy gate until a separately approved provider
+adapter and durable persistence layer exist.
+
+Each agent policy binds one provisioned wallet, the `eip155:5042002` network,
+an integer USDC base-unit per-call cap, a daily cap, and an optional recipient
+allowlist. A reservation is written before any adapter call. The idempotency
+key is bound to the exact amount, recipient, and UTC day; replaying different
+economics is rejected. Failed reservations release capacity, while submitted,
+confirmed, and unknown outcomes remain counted. Unknown outcomes cannot be
+retried automatically and require independent reconciliation before
+confirmation.
+
+`AGON_X402_AGENT_POLICY_ENABLED` defaults to `false`, and the per-call and
+daily caps default to zero. The default settlement adapter is disabled and
+performs no Circle SDK construction, RPC call, transfer, signature, or wallet
+operation. Enabling this flag alone is not sufficient for execution: durable
+policy storage, provider capability validation, receipt verification, and an
+explicit production approval are required in a later phase.
+
+The adversarial suite is `backend/test/agon/x402-agent-policy.test.ts`. It
+covers disabled and unprovisioned wallets, cap exhaustion, recipient policy,
+idempotency conflicts, unknown outcomes, terminal transitions, disabled
+adapters, and provider exceptions.
 
 ### Provider receipt source decision
 
