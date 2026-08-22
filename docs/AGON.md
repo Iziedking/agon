@@ -282,6 +282,23 @@ disabled and performs no RPC call. A later phase must add an explicit approval
 and independently tested transaction adapter before any write can be
 considered.
 
+## Phase 13: approval-bound transaction preflight
+
+`backend/src/agon/execution/escrow-transaction-approval.ts` adds the human
+approval evidence boundary that follows Phase 12. Approval is operation
+specific (`fund`, `release`, or `refund`), requires a distinct Arc Testnet
+confirmation phrase, and hashes the complete preflighted calldata intent,
+contract, controller, asset, pool, participant, and amount. Approval evidence
+expires after five minutes and fails closed for changed calldata, actor,
+intent, operation, expiry, or approval hash.
+
+This phase records only deterministic, reviewable approval evidence. It does
+not persist a signer secret, produce a wallet signature, call `writeContract`,
+submit a transaction, or broadcast to Arc. Every approval remains
+`executionEnabled: false` with `transaction_adapter_not_enabled` as its next
+action. A later phase must add durable approval storage and an independently
+approved transaction adapter before any user-visible write can be enabled.
+
 ## Manifest proof
 
 Manifest hashes use sorted-key JSON canonicalization followed by `keccak256` of the UTF-8 bytes. The pinned foundation fixture hashes to:
