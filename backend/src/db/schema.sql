@@ -1375,6 +1375,40 @@ create table if not exists agon_x402_execution_approvals (
 create index if not exists agon_x402_execution_approvals_intent_idx
   on agon_x402_execution_approvals(intent_id, approved_at desc);
 
+-- Durable Agon escrow preparation. This is an ownership and authorization
+-- boundary only: no provider, wallet, RPC, or PrizeEscrow call is made by
+-- creating or reading this row. Terms are stored as columns so retries can
+-- compare exact economics without trusting mutable client JSON.
+create table if not exists agon_escrow_intents (
+  intent_id                 uuid primary key,
+  actor_address             text not null check (actor_address ~ '^0x[0-9a-f]{40}$'),
+  idempotency_key            text not null check (idempotency_key ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$'),
+  listing_reference          text not null check (listing_reference ~ '^[1-9][0-9]*:0x[0-9a-f]{40}:[1-9][0-9]*$'),
+  terms_hash                text not null check (terms_hash ~ '^0x[0-9a-f]{64}$'),
+  network                   text not null check (network = 'eip155:5042002'),
+  asset                     text not null check (asset = '0x3600000000000000000000000000000000000000'),
+  buyer_address             text not null check (buyer_address ~ '^0x[0-9a-f]{40}$'),
+  beneficiary_address       text not null check (beneficiary_address ~ '^0x[0-9a-f]{40}$'),
+  service_registry_address  text not null check (service_registry_address ~ '^0x[0-9a-f]{40}$'),
+  listing_id                numeric(78, 0) not null check (listing_id > 0),
+  agent_id                  numeric(78, 0) not null check (agent_id > 0),
+  listing_version           numeric(78, 0) not null check (listing_version > 0),
+  manifest_hash             text not null check (manifest_hash ~ '^0x[0-9a-f]{64}$'),
+  amount_base_units         numeric(78, 0) not null check (amount_base_units > 0),
+  fee_bps                   integer not null check (fee_bps between 0 and 1000),
+  expires_at                timestamptz not null,
+  state                     text not null default 'prepared' check (state in ('prepared','funding','funded','release_pending','released','refund_pending','refunded','unknown','failed')),
+  provider_reference        text,
+  transaction_hash          text check (transaction_hash is null or transaction_hash ~ '^0x[0-9a-f]{64}$'),
+  created_at                timestamptz not null default now(),
+  updated_at                timestamptz not null default now(),
+  unique (actor_address, idempotency_key)
+);
+create index if not exists agon_escrow_intents_actor_idx
+  on agon_escrow_intents(actor_address, created_at desc);
+create index if not exists agon_escrow_intents_state_idx
+  on agon_escrow_intents(state, updated_at desc);
+
 create table if not exists agon_indexer_state (
   stream_name                 text not null check (char_length(stream_name) > 0),
   chain_id                    numeric(78, 0) not null check (chain_id > 0),

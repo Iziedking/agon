@@ -25,6 +25,9 @@ import type {
   X402ReconciliationReadinessView,
   X402FacilitatorVerificationRequest,
   X402FacilitatorVerificationView,
+  AgonEscrowIntentRequest,
+  AgonEscrowIntentView,
+  AgonEscrowReadinessView,
 } from "./types";
 import { AGON_PREVIEW_HEALTH, AGON_PREVIEW_LISTINGS } from "./preview";
 
@@ -127,6 +130,21 @@ export function confirmAgonOperation(
     method: "POST",
     body: JSON.stringify({ txHash }),
   });
+}
+
+export function prepareAgonEscrowIntent(payload: AgonEscrowIntentRequest): Promise<AgonEscrowIntentView> {
+  return request<AgonEscrowIntentView>("/escrow/intents", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getAgonEscrowIntent(intentId: string): Promise<AgonEscrowIntentView> {
+  return request<AgonEscrowIntentView>(`/escrow/intents/${encodeURIComponent(intentId)}`);
+}
+
+export function getAgonEscrowReadiness(intentId: string): Promise<AgonEscrowReadinessView> {
+  return request<AgonEscrowReadinessView>(`/escrow/intents/${encodeURIComponent(intentId)}/readiness`);
 }
 
 export function prepareX402CallIntent(

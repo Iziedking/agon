@@ -9,6 +9,7 @@ import {
   type StoredListing,
   type StoredVerificationEvidence,
   type StoredX402FacilitatorVerification,
+  type StoredAgonEscrowIntent,
 } from "../store/repository.ts";
 import { callIntentView, prepareX402Call } from "../execution/x402-intent.ts";
 import { validateX402Approval } from "../execution/x402-approval.ts";
@@ -20,6 +21,7 @@ import { createX402ExecutionPolicy } from "../execution/x402-policy.ts";
 import { isX402ProviderTransferId, isX402Transaction, validateX402ReceiptLookupResult, type X402ReceiptLookupAdapter } from "../execution/x402-reconciliation.ts";
 import type { X402FacilitatorVerificationRequest as X402FacilitatorVerificationInput, X402FacilitatorVerificationResult, X402SettlementRequest as X402SettlementInput } from "../execution/x402-settlement.ts";
 import { buildX402ExecutionApproval, type X402ExecutionApprovalRequest } from "../execution/x402-execution-approval.ts";
+import { evaluateAgonEscrowTerms, hashAgonEscrowTerms, type AgonEscrowListing } from "../escrow-policy.ts";
 import type {
   AgonCapabilities,
   AgonEndpointQa,
@@ -48,6 +50,9 @@ import type {
   X402SettlementView,
   X402FacilitatorVerificationView,
   X402FacilitatorVerificationRequest,
+  AgonEscrowIntentRequest,
+  AgonEscrowIntentView,
+  AgonEscrowReadinessView,
 } from "./api-types.ts";
 import type { AgonMarketService, AgonServiceError } from "./routes.ts";
 import type { AgonReadiness } from "../write/readiness.ts";
@@ -237,6 +242,57 @@ function listingView(listing: StoredListing, evidence?: StoredVerificationEviden
       sourceTxHash: listing.sourceTxHash,
       sourceLogIndex: listing.sourceLogIndex,
     },
+  };
+}
+
+function escrowIntentView(intent: StoredAgonEscrowIntent, listingReference: string): AgonEscrowIntentView {
+  const terminal = intent.state === "released" || intent.state === "refunded" || intent.state === "failed";
+  return {
+    intentId: intent.intentId,
+    actor: intent.actor as `0x${string}`,
+    idempotencyKey: intent.idempotencyKey,
+    listingReference,
+    termsHash: intent.termsHash,
+    network: intent.terms.network,
+    asset: intent.terms.asset,
+    buyer: intent.terms.buyer,
+    beneficiary: intent.terms.beneficiary,
+    listing: intent.terms.listing,
+    amountBaseUnits: intent.terms.amountBaseUnits.toString(),
+    feeBps: intent.terms.feeBps,
+    expiresAt: intent.terms.expiresAt.toISOString(),
+    state: intent.state,
+    providerReference: intent.providerReference,
+    transaction: intent.transaction,
+    executionEnabled: false,
+    nextAction: intent.state === "unknown"
+      ? "reconcile_unknown_outcome"
+      : terminal
+        ? "none"
+        : "escrow_adapter_not_enabled",
+    createdAt: intent.createdAt.toISOString(),
+    updatedAt: intent.updatedAt.toISOString(),
+  };
+}
+
+function escrowReadinessView(intent: StoredAgonEscrowIntent): AgonEscrowReadinessView {
+  const terminal = intent.state === "released" || intent.state === "refunded" || intent.state === "failed";
+  return {
+    intentId: intent.intentId,
+    state: intent.state,
+    status: intent.state === "unknown" ? "reconciliation_required" : terminal ? "terminal" : "adapter_disabled",
+    reason: intent.state === "unknown"
+      ? "The previous escrow operation has an unknown outcome and requires independent reconciliation."
+      : terminal
+        ? "The escrow intent is terminal; no further operation is available."
+        : "Agon escrow execution is disabled; the durable intent is ready for a separately approved adapter.",
+    executionEnabled: false,
+    nextAction: intent.state === "unknown"
+      ? "reconcile_unknown_outcome"
+      : terminal
+        ? "none"
+        : "escrow_adapter_not_enabled",
+    checkedAt: new Date().toISOString(),
   };
 }
 
@@ -469,6 +525,80 @@ export class PostgresAgonMarketService implements AgonMarketService {
       };
     }
     return this.options.writer.confirmOperation(actor, operationId, txHash);
+  }
+
+  async prepareAgonEscrowIntent(
+    actor: string,
+    request: AgonEscrowIntentRequest,
+  ): Promise<Result<AgonEscrowIntentView, AgonServiceError>> {
+    const listing = await this.getListing(request.listingReference);
+    if (!listing.ok) return listing;
+    const terms = evaluateAgonEscrowTerms({
+      listing: {
+        serviceRegistry: listing.value.serviceRegistry,
+        listingId: listing.value.listingId,
+        agentId: listing.value.agentId,
+        version: listing.value.version,
+        manifestHash: listing.value.manifest.hash,
+        providerSnapshot: listing.value.providerSnapshot,
+        status: listing.value.status,
+        verification: listing.value.verification.status,
+        paymentRail: listing.value.payment.rail,
+        quarantineReason: listing.value.risk.quarantineReason,
+      } satisfies AgonEscrowListing,
+      buyer: actor,
+      amountBaseUnits: request.amountBaseUnits,
+      feeBps: request.feeBps,
+      expiresAt: new Date(request.expiresAt),
+    });
+    if (!terms.ok) {
+      return {
+        ok: false,
+        error: {
+          code: terms.error.code === "escrow_not_eligible" ? "capability_unavailable" : "validation_failed",
+          message: terms.error.message,
+        },
+      };
+    }
+    try {
+      const stored = await this.repository.prepareAgonEscrowIntent({
+        intentId: randomUUID(),
+        actor,
+        idempotencyKey: request.idempotencyKey,
+        listingReference: request.listingReference,
+        termsHash: hashAgonEscrowTerms(terms.value),
+        terms: terms.value,
+        state: "prepared",
+        providerReference: null,
+        transaction: null,
+      });
+      return { ok: true, value: escrowIntentView(stored, stored.listingReference) };
+    } catch (error) {
+      if (error instanceof AgonStoreInvariantError && error.message.includes("idempotency")) {
+        return { ok: false, error: { code: "conflict", message: error.message } };
+      }
+      return internalError(error);
+    }
+  }
+
+  async getAgonEscrowIntent(
+    actor: string,
+    intentId: string,
+  ): Promise<Result<AgonEscrowIntentView, AgonServiceError>> {
+    const intent = await this.repository.getAgonEscrowIntent(intentId);
+    if (!intent) return { ok: false, error: { code: "not_found", message: "Agon escrow intent not found" } };
+    if (intent.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the escrow intent owner can read this intent" } };
+    return { ok: true, value: escrowIntentView(intent, intent.listingReference) };
+  }
+
+  async getAgonEscrowReadiness(
+    actor: string,
+    intentId: string,
+  ): Promise<Result<AgonEscrowReadinessView, AgonServiceError>> {
+    const intent = await this.repository.getAgonEscrowIntent(intentId);
+    if (!intent) return { ok: false, error: { code: "not_found", message: "Agon escrow intent not found" } };
+    if (intent.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the escrow intent owner can read escrow readiness" } };
+    return { ok: true, value: escrowReadinessView(intent) };
   }
 
   async prepareX402Call(

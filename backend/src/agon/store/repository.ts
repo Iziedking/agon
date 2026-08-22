@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 import { transitionX402Receipt, type X402ReceiptEvent, type X402ReceiptState } from "../execution/x402-receipt.ts";
+import { hashAgonEscrowTerms, isAgonEscrowTransitionAllowed, type AgonEscrowIntentState, type AgonEscrowTerms } from "../escrow-policy.ts";
 
 export type ProfileStatus = "Active" | "Suspended" | "Archived";
 export type ListingStatus = "Listed" | "Suspended" | "Delisted";
@@ -162,6 +163,24 @@ export type X402FacilitatorVerificationProjection = {
 export type StoredX402FacilitatorVerification = X402FacilitatorVerificationProjection & {
   verificationId: string;
   createdAt: Date;
+};
+
+export type AgonEscrowIntentProjection = {
+  intentId: string;
+  actor: string;
+  idempotencyKey: string;
+  listingReference: string;
+  termsHash: string;
+  terms: AgonEscrowTerms;
+  state: AgonEscrowIntentState;
+  providerReference: string | null;
+  transaction: `0x${string}` | null;
+  createdAt?: Date;
+};
+
+export type StoredAgonEscrowIntent = AgonEscrowIntentProjection & {
+  createdAt: Date;
+  updatedAt: Date;
 };
 
 export type ListingCursor = {
@@ -335,6 +354,31 @@ type X402FacilitatorVerificationRow = QueryResultRow & {
   evidence_hash: string;
   verified_at: Date;
   created_at: Date;
+};
+
+type AgonEscrowIntentRow = QueryResultRow & {
+  intent_id: string;
+  actor_address: string;
+  idempotency_key: string;
+  listing_reference: string;
+  terms_hash: string;
+  network: "eip155:5042002";
+  asset: "0x3600000000000000000000000000000000000000";
+  buyer_address: string;
+  beneficiary_address: string;
+  service_registry_address: string;
+  listing_id: string;
+  agent_id: string;
+  listing_version: string;
+  manifest_hash: string;
+  amount_base_units: string;
+  fee_bps: number;
+  expires_at: Date;
+  state: AgonEscrowIntentState;
+  provider_reference: string | null;
+  transaction_hash: `0x${string}` | null;
+  created_at: Date;
+  updated_at: Date;
 };
 
 type VersionRow = QueryResultRow & {
@@ -542,6 +586,37 @@ function mapX402FacilitatorVerification(row: X402FacilitatorVerificationRow): St
   };
 }
 
+function mapAgonEscrowIntent(row: AgonEscrowIntentRow): StoredAgonEscrowIntent {
+  return {
+    intentId: row.intent_id,
+    actor: row.actor_address,
+    idempotencyKey: row.idempotency_key,
+    listingReference: row.listing_reference,
+    termsHash: row.terms_hash,
+    terms: {
+      network: row.network,
+      asset: row.asset,
+      buyer: row.buyer_address as `0x${string}`,
+      beneficiary: row.beneficiary_address as `0x${string}`,
+      listing: {
+        serviceRegistry: row.service_registry_address as `0x${string}`,
+        listingId: row.listing_id,
+        agentId: row.agent_id,
+        version: row.listing_version,
+        manifestHash: row.manifest_hash as `0x${string}`,
+      },
+      amountBaseUnits: BigInt(row.amount_base_units),
+      feeBps: row.fee_bps,
+      expiresAt: row.expires_at,
+    },
+    state: row.state,
+    providerReference: row.provider_reference,
+    transaction: row.transaction_hash,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 function versionsMatch(left: ValidatedListingVersion, right: ValidatedListingVersion): boolean {
   return (
     left.chainId === right.chainId &&
@@ -584,6 +659,12 @@ const X402_FACILITATOR_VERIFICATION_COLUMNS = `
   verification_id, receipt_id, intent_id, approval_hash, network, payer_address,
   evidence_hash, verified_at, created_at`;
 
+const AGON_ESCROW_INTENT_COLUMNS = `
+  intent_id, actor_address, idempotency_key, listing_reference, terms_hash, network, asset,
+  buyer_address, beneficiary_address, service_registry_address, listing_id,
+  agent_id, listing_version, manifest_hash, amount_base_units, fee_bps,
+  expires_at, state, provider_reference, transaction_hash, created_at, updated_at`;
+
 export class PostgresAgonRepository {
   private readonly pool: Pool;
 
@@ -622,6 +703,108 @@ export class PostgresAgonRepository {
       [requirePositive(key.chainId, "chain id"), normalizeAddress(key.serviceRegistry), requirePositive(key.listingId, "listing id")],
     );
     return result.rows[0] ? mapListing(result.rows[0]) : null;
+  }
+
+  async getAgonEscrowIntent(intentId: string): Promise<StoredAgonEscrowIntent | null> {
+    if (!/^[0-9a-f-]{36}$/i.test(intentId)) return null;
+    const result = await this.pool.query<AgonEscrowIntentRow>(
+      `select ${AGON_ESCROW_INTENT_COLUMNS} from agon_escrow_intents where intent_id = $1`,
+      [intentId],
+    );
+    return result.rows[0] ? mapAgonEscrowIntent(result.rows[0]) : null;
+  }
+
+  async prepareAgonEscrowIntent(input: AgonEscrowIntentProjection): Promise<StoredAgonEscrowIntent> {
+    const actor = normalizeAddress(input.actor);
+    if (!/^[0-9a-f-]{36}$/i.test(input.intentId)) throw new AgonStoreInvariantError("escrow intent id must be a UUID");
+    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/.test(input.idempotencyKey)) throw new AgonStoreInvariantError("escrow idempotency key is invalid");
+    const terms = input.terms;
+    if (hashAgonEscrowTerms(terms).toLowerCase() !== input.termsHash.toLowerCase()) throw new AgonStoreInvariantError("escrow terms hash does not match the stored terms");
+    const inserted = await this.pool.query<AgonEscrowIntentRow>(
+      `insert into agon_escrow_intents (
+         intent_id, actor_address, idempotency_key, listing_reference, terms_hash, network, asset,
+         buyer_address, beneficiary_address, service_registry_address, listing_id,
+         agent_id, listing_version, manifest_hash, amount_base_units, fee_bps,
+         expires_at, state, provider_reference, transaction_hash, created_at, updated_at
+       ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $21)
+       on conflict (actor_address, idempotency_key) do nothing
+       returning ${AGON_ESCROW_INTENT_COLUMNS}`,
+      [
+        input.intentId,
+        actor,
+        input.idempotencyKey,
+        input.listingReference,
+        normalizeHash(input.termsHash),
+        terms.network,
+        terms.asset.toLowerCase(),
+        normalizeAddress(terms.buyer),
+        normalizeAddress(terms.beneficiary),
+        normalizeAddress(terms.listing.serviceRegistry),
+        requirePositive(BigInt(terms.listing.listingId), "listing id"),
+        requirePositive(BigInt(terms.listing.agentId), "agent id"),
+        requirePositive(BigInt(terms.listing.version), "listing version"),
+        normalizeHash(terms.listing.manifestHash),
+        requirePositive(terms.amountBaseUnits, "escrow amount"),
+        terms.feeBps,
+        terms.expiresAt,
+        input.state,
+        input.providerReference,
+        input.transaction,
+        input.createdAt ?? new Date(),
+      ],
+    );
+    if (inserted.rows[0]) return mapAgonEscrowIntent(inserted.rows[0]);
+
+    const existing = await this.pool.query<AgonEscrowIntentRow>(
+      `select ${AGON_ESCROW_INTENT_COLUMNS}
+       from agon_escrow_intents where actor_address = $1 and idempotency_key = $2`,
+      [actor, input.idempotencyKey],
+    );
+    const row = existing.rows[0];
+    if (!row) throw new AgonStoreInvariantError("escrow idempotency conflict could not be loaded");
+    const value = mapAgonEscrowIntent(row);
+    if (value.termsHash !== input.termsHash.toLowerCase()) {
+      throw new AgonStoreInvariantError("escrow idempotency key already used for different terms");
+    }
+    return value;
+  }
+
+  async advanceAgonEscrowIntent(input: {
+    intentId: string;
+    state: Exclude<AgonEscrowIntentState, "prepared">;
+    providerReference?: string | null;
+    transaction?: `0x${string}` | null;
+  }): Promise<StoredAgonEscrowIntent> {
+    if (!/^[0-9a-f-]{36}$/i.test(input.intentId)) throw new AgonStoreInvariantError("escrow intent id must be a UUID");
+    const client = await this.pool.connect();
+    try {
+      await client.query("begin");
+      const current = await client.query<AgonEscrowIntentRow>(
+        `select ${AGON_ESCROW_INTENT_COLUMNS} from agon_escrow_intents where intent_id = $1 for update`,
+        [input.intentId],
+      );
+      const row = current.rows[0];
+      if (!row) throw new AgonStoreInvariantError("escrow intent not found");
+      if (!isAgonEscrowTransitionAllowed(row.state, input.state)) {
+        throw new AgonStoreInvariantError(`cannot transition escrow intent from ${row.state} to ${input.state}`);
+      }
+      const updated = await client.query<AgonEscrowIntentRow>(
+        `update agon_escrow_intents set
+           state = $2,
+           provider_reference = case when $3::text is null then provider_reference else $3 end,
+           transaction_hash = case when $4::text is null then transaction_hash else $4 end,
+           updated_at = now()
+         where intent_id = $1 returning ${AGON_ESCROW_INTENT_COLUMNS}`,
+        [input.intentId, input.state, input.providerReference ?? null, input.transaction ?? null],
+      );
+      await client.query("commit");
+      return mapAgonEscrowIntent(updated.rows[0]!);
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async getX402CallIntent(intentId: string): Promise<StoredX402CallIntent | null> {

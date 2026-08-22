@@ -120,6 +120,47 @@ export type SubmittedOperation = {
   proof: { blockNumber: string; logIndex: number } | null;
 };
 
+export type AgonEscrowIntentRequest = {
+  listingReference: string;
+  idempotencyKey: string;
+  amountBaseUnits: string;
+  feeBps: number;
+  expiresAt: string;
+};
+
+export type AgonEscrowIntentView = {
+  intentId: string;
+  actor: `0x${string}`;
+  idempotencyKey: string;
+  listingReference: string;
+  termsHash: string;
+  network: "eip155:5042002";
+  asset: `0x${string}`;
+  buyer: `0x${string}`;
+  beneficiary: `0x${string}`;
+  listing: { serviceRegistry: `0x${string}`; listingId: string; agentId: string; version: string; manifestHash: string };
+  amountBaseUnits: string;
+  feeBps: number;
+  expiresAt: string;
+  state: "prepared" | "funding" | "funded" | "release_pending" | "released" | "refund_pending" | "refunded" | "unknown" | "failed";
+  providerReference: string | null;
+  transaction: `0x${string}` | null;
+  executionEnabled: false;
+  nextAction: "escrow_adapter_not_enabled" | "reconcile_unknown_outcome" | "none";
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AgonEscrowReadinessView = {
+  intentId: string;
+  state: AgonEscrowIntentView["state"];
+  status: "adapter_disabled" | "reconciliation_required" | "terminal";
+  reason: string;
+  executionEnabled: false;
+  nextAction: AgonEscrowIntentView["nextAction"];
+  checkedAt: string;
+};
+
 export type X402CallIntentRequest = {
   idempotencyKey: string;
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";

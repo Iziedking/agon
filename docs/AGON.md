@@ -43,6 +43,9 @@ The auth service mounts these routes under `/agon`:
 - `POST /agon/call-intents/:intentId/settle` (authenticated; exact runtime signature and `EXECUTE_ARC_TESTNET_X402` confirmation; disabled by default)
 - `GET /agon/call-intents/:intentId/reconciliation-readiness` (authenticated; read-only provider receipt lookup readiness)
 - `POST /agon/call-intents/:intentId/reconcile` (authenticated; disabled-by-default server-side receipt lookup and idempotent reconciliation)
+- `POST /agon/escrow/intents` (authenticated; durable escrow preparation only)
+- `GET /agon/escrow/intents/:intentId` (authenticated; owner-scoped durable intent read)
+- `GET /agon/escrow/intents/:intentId/readiness` (authenticated; disabled/reconciliation/terminal readiness)
 
 The facilitator verification route is fail-closed. It requires a prepared call intent, a durable explicit execution approval, the exact transient signature, and the literal confirmation `VERIFY_ARC_TESTNET_X402`. Set `AGON_X402_VERIFICATION_ENABLED=true` only in a controlled Arc Testnet environment with a nonzero `AGON_X402_EXECUTION_MAX_BASE_UNITS` policy. A successful check writes append-only evidence keyed by intent and approval, including a deterministic evidence hash, network, payer, and timestamp. It never persists the raw signature, settles funds, or marks service delivery. Replays return the original evidence. `AGON_X402_EXECUTION_ENABLED` remains a separate switch and defaults to `false`.
 
@@ -145,6 +148,33 @@ The adversarial suite is `backend/test/agon/escrow-policy.test.ts`. It covers
 escrow eligibility, exact terms, idempotency conflicts, guarded transitions,
 unknown outcomes, payout conservation, remainder allocation, duplicate
 winners, and the disabled adapter.
+
+## Phase 6: durable escrow preparation boundary
+
+Phase 6 persists the Phase 5 escrow intent before any future provider call in
+`agon_escrow_intents`. The row stores the owner, listing reference, complete
+terms hash, Arc Testnet USDC economics, expiry, state, and opaque provider
+references as separate validated columns. The owner plus idempotency key is a
+unique boundary, so an exact retry returns the original intent while changed
+terms fail closed.
+
+Authenticated routes are available for local integration work:
+
+- `POST /agon/escrow/intents` prepares an owner-scoped intent.
+- `GET /agon/escrow/intents/:intentId` returns the redacted durable intent.
+- `GET /agon/escrow/intents/:intentId/readiness` reports adapter-disabled,
+  reconciliation-required, or terminal state.
+
+No client route can mark an intent funded, released, or refunded. Guarded
+transitions exist only in the repository seam for a separately approved
+adapter or reconciliation worker. The default runtime remains disabled and
+performs no PrizeEscrow, Circle, RPC, wallet, USDC, release, refund, or claim
+operation. Provider transitions and controller authorization remain a later
+phase after local review.
+
+The Phase 6 adversarial coverage is in
+`backend/test/agon/escrow-intent-repository.test.ts` and the route assertions
+are part of `backend/test/agon/routes.test.ts`.
 
 ### Provider receipt source decision
 

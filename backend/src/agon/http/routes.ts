@@ -27,6 +27,9 @@ import type {
   X402ReconciliationRequest,
   X402SettlementRequest,
   X402FacilitatorVerificationRequest,
+  AgonEscrowIntentRequest,
+  AgonEscrowIntentView,
+  AgonEscrowReadinessView,
 } from "./api-types.ts";
 
 export type AgonRouteVariables = { address: string };
@@ -47,6 +50,7 @@ export type AgonServiceError = {
     | "reconciliation_disabled"
     | "reconciliation_unavailable"
     | "reconciliation_invalid"
+    | "escrow_disabled"
     | "internal";
   message: string;
 };
@@ -130,6 +134,18 @@ export type AgonMarketService = {
     actor: string,
     intentId: string,
   ): Promise<Result<import("./api-types.ts").X402FacilitatorVerificationView, AgonServiceError>>;
+  prepareAgonEscrowIntent(
+    actor: string,
+    request: AgonEscrowIntentRequest,
+  ): Promise<Result<AgonEscrowIntentView, AgonServiceError>>;
+  getAgonEscrowIntent(
+    actor: string,
+    intentId: string,
+  ): Promise<Result<AgonEscrowIntentView, AgonServiceError>>;
+  getAgonEscrowReadiness(
+    actor: string,
+    intentId: string,
+  ): Promise<Result<AgonEscrowReadinessView, AgonServiceError>>;
   getCapabilities(): Promise<AgonCapabilities>;
 };
 
@@ -205,6 +221,14 @@ const x402SettlementSchema = z.object({
   confirmation: z.literal("EXECUTE_ARC_TESTNET_X402"),
 }).strict();
 
+const agonEscrowIntentSchema = z.object({
+  listingReference: z.string().regex(/^[1-9]\d*:0x[0-9a-fA-F]{40}:[1-9]\d*$/, "must be a chain:registry:listing reference"),
+  idempotencyKey: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/, "must be 8-128 safe characters"),
+  amountBaseUnits: z.string().regex(/^[1-9]\d*$/, "must be a positive integer base-unit amount"),
+  feeBps: z.number().int().min(0).max(1000),
+  expiresAt: z.string().datetime({ offset: true }),
+}).strict();
+
 function validationResponse(error: ZodError): ApiErrorResponse {
   return {
     error: {
@@ -253,6 +277,8 @@ function serviceErrorResponse(
       return context.json(body, 422);
     case "execution_not_ready":
       return context.json(body, 409);
+    case "escrow_disabled":
+      return context.json(body, 503);
     case "internal":
       return context.json(body, 500);
   }
@@ -314,6 +340,25 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
 
   app.get("/listings/:reference", async (context) => {
     const result = await options.service.getListing(context.req.param("reference"));
+    return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  app.post("/escrow/intents", options.requireAuth, async (context) => {
+    const body = await parseJson(context);
+    if (isApiError(body)) return context.json(body, 400);
+    const parsed = agonEscrowIntentSchema.safeParse(body);
+    if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
+    const result = await options.service.prepareAgonEscrowIntent(context.get("address"), parsed.data);
+    return result.ok ? context.json(result.value, 201) : serviceErrorResponse(context, result.error);
+  });
+
+  app.get("/escrow/intents/:intentId", options.requireAuth, async (context) => {
+    const result = await options.service.getAgonEscrowIntent(context.get("address"), context.req.param("intentId"));
+    return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  app.get("/escrow/intents/:intentId/readiness", options.requireAuth, async (context) => {
+    const result = await options.service.getAgonEscrowReadiness(context.get("address"), context.req.param("intentId"));
     return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
   });
 

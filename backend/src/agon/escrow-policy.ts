@@ -18,6 +18,7 @@ export type AgonEscrowListing = {
   status: "Listed" | "Suspended" | "Delisted";
   verification: "Unverified" | "Pending" | "Verified" | "Expired" | "Suspended" | "Revoked";
   paymentRail: "X402" | "Escrow";
+  quarantineReason?: string | null;
 };
 
 export type AgonEscrowTerms = {
@@ -120,7 +121,7 @@ function validTerms(terms: AgonEscrowTerms, now: Date): boolean {
     && terms.expiresAt > now;
 }
 
-function transitions(state: AgonEscrowIntentState): readonly AgonEscrowIntentState[] {
+export function isAgonEscrowTransitionAllowed(from: AgonEscrowIntentState, to: AgonEscrowIntentState): boolean {
   const allowed: Record<AgonEscrowIntentState, readonly AgonEscrowIntentState[]> = {
     prepared: ["funding", "failed"],
     funding: ["funded", "unknown", "failed"],
@@ -134,7 +135,7 @@ function transitions(state: AgonEscrowIntentState): readonly AgonEscrowIntentSta
     refunded: ["refunded"],
     failed: ["failed"],
   };
-  return allowed[state];
+  return allowed[from].includes(to);
 }
 
 export function evaluateAgonEscrowTerms(input: {
@@ -153,7 +154,7 @@ export function evaluateAgonEscrowTerms(input: {
     return error("invalid_escrow_terms", "listing, agent, and version identifiers must be positive integers");
   }
   if (!/^0x[a-fA-F0-9]{64}$/.test(input.listing.manifestHash)) return error("invalid_escrow_terms", "manifest hash must be a bytes32 value");
-  if (input.listing.status !== "Listed" || input.listing.verification !== "Verified" || input.listing.paymentRail !== "Escrow") {
+  if (input.listing.status !== "Listed" || input.listing.verification !== "Verified" || input.listing.paymentRail !== "Escrow" || input.listing.quarantineReason) {
     return error("escrow_not_eligible", "escrow requires a listed, verified listing whose payment rail is Escrow");
   }
   const amount = positiveAmount(input.amountBaseUnits);
@@ -240,7 +241,7 @@ export class AgonEscrowIntentLedger {
   }): AgonEscrowResult<AgonEscrowIntent> {
     const intent = this.intents.get(input.idempotencyKey);
     if (!intent) return error("escrow_intent_not_found", "escrow intent does not exist");
-    if (!transitions(intent.state).includes(input.state)) return error("invalid_transition", `cannot transition escrow intent from ${intent.state} to ${input.state}`);
+    if (!isAgonEscrowTransitionAllowed(intent.state, input.state)) return error("invalid_transition", `cannot transition escrow intent from ${intent.state} to ${input.state}`);
     const now = input.now ?? new Date();
     if (!validDate(now)) return error("invalid_escrow_terms", "escrow transition timestamp is invalid");
     intent.state = input.state;

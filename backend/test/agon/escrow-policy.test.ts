@@ -53,6 +53,10 @@ test("accepts only listed, verified Escrow listings on Arc Testnet USDC", () => 
     ok: false,
     error: { code: "escrow_not_eligible", message: "escrow requires a listed, verified listing whose payment rail is Escrow" },
   });
+  assert.deepEqual(evaluateAgonEscrowTerms({ listing: listing({ quarantineReason: "manifest mismatch" }), buyer: BUYER, amountBaseUnits: 1n, feeBps: 0, now: NOW, expiresAt: EXPIRY }), {
+    ok: false,
+    error: { code: "escrow_not_eligible", message: "escrow requires a listed, verified listing whose payment rail is Escrow" },
+  });
 });
 
 test("rejects malformed amounts, fees, addresses, and expired terms", () => {

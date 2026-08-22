@@ -33,6 +33,9 @@ import type {
   X402ReconciliationReadinessView,
   X402FacilitatorVerificationRequest,
   X402FacilitatorVerificationView,
+  AgonEscrowIntentRequest,
+  AgonEscrowIntentView,
+  AgonEscrowReadinessView,
 } from "../../src/agon/http/api-types.ts";
 import type { Result } from "../../src/agon/core/result.ts";
 
@@ -487,6 +490,64 @@ class FakeAgonService implements AgonMarketService {
     };
   }
 
+  async prepareAgonEscrowIntent(
+    _actor: string,
+    request: AgonEscrowIntentRequest,
+  ): Promise<Result<AgonEscrowIntentView, ServiceError>> {
+    return {
+      ok: true,
+      value: {
+        intentId: "00000000-0000-4000-8000-000000000010",
+        actor: ADDRESS,
+        idempotencyKey: request.idempotencyKey,
+        listingReference: request.listingReference,
+        termsHash: `0x${"aa".repeat(32)}`,
+        network: "eip155:5042002",
+        asset: `0x${"36".repeat(20)}`,
+        buyer: ADDRESS,
+        beneficiary: ADDRESS,
+        listing: { serviceRegistry: REGISTRY, listingId: "1", agentId: "42", version: "1", manifestHash: MANIFEST_HASH },
+        amountBaseUnits: request.amountBaseUnits,
+        feeBps: request.feeBps,
+        expiresAt: request.expiresAt,
+        state: "prepared",
+        providerReference: null,
+        transaction: null,
+        executionEnabled: false,
+        nextAction: "escrow_adapter_not_enabled",
+        createdAt: "2026-08-22T12:00:00.000Z",
+        updatedAt: "2026-08-22T12:00:00.000Z",
+      },
+    };
+  }
+
+  async getAgonEscrowIntent(_actor: string, intentId: string): Promise<Result<AgonEscrowIntentView, ServiceError>> {
+    const result = await this.prepareAgonEscrowIntent(ADDRESS, {
+      listingReference: listing.id,
+      idempotencyKey: "escrow-route-001",
+      amountBaseUnits: "1000000",
+      feeBps: 500,
+      expiresAt: "2026-08-23T12:00:00.000Z",
+    });
+    if (result.ok) result.value.intentId = intentId;
+    return result;
+  }
+
+  async getAgonEscrowReadiness(_actor: string, intentId: string): Promise<Result<AgonEscrowReadinessView, ServiceError>> {
+    return {
+      ok: true,
+      value: {
+        intentId,
+        state: "prepared",
+        status: "adapter_disabled",
+        reason: "Agon escrow execution is disabled",
+        executionEnabled: false,
+        nextAction: "escrow_adapter_not_enabled",
+        checkedAt: "2026-08-22T12:00:00.000Z",
+      },
+    };
+  }
+
   async getCapabilities(): Promise<AgonCapabilities> {
     return capabilities;
   }
@@ -628,6 +689,36 @@ test("confirms a prepared operation with a validated transaction hash", async ()
   const operation = (await response.json()) as SubmittedOperation;
   assert.equal(operation.state, "confirmed");
   assert.equal(operation.txHash, txHash);
+});
+
+test("requires authentication and strict validation for Agon escrow preparation", async () => {
+  const app = testApp(new FakeAgonService());
+  const unauthenticated = await app.request("/agon/escrow/intents", { method: "POST", body: "{}" });
+  assert.equal(unauthenticated.status, 401);
+  const invalid = await app.request("/agon/escrow/intents", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-test-address": ADDRESS },
+    body: JSON.stringify({ listingReference: listing.id, idempotencyKey: "short", amountBaseUnits: "0", feeBps: 1001, expiresAt: "not-a-date" }),
+  });
+  assert.equal(invalid.status, 400);
+});
+
+test("prepares and reads an escrow intent without enabling execution", async () => {
+  const app = testApp(new FakeAgonService());
+  const prepared = await app.request("/agon/escrow/intents", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-test-address": ADDRESS },
+    body: JSON.stringify({ listingReference: listing.id, idempotencyKey: "escrow-route-001", amountBaseUnits: "1000000", feeBps: 500, expiresAt: "2026-08-23T12:00:00.000Z" }),
+  });
+  assert.equal(prepared.status, 201);
+  const body = (await prepared.json()) as AgonEscrowIntentView;
+  assert.equal(body.state, "prepared");
+  assert.equal(body.executionEnabled, false);
+  assert.equal(body.nextAction, "escrow_adapter_not_enabled");
+
+  const readiness = await app.request(`/agon/escrow/intents/${body.intentId}/readiness`, { headers: { "x-test-address": ADDRESS } });
+  assert.equal(readiness.status, 200);
+  assert.equal(((await readiness.json()) as AgonEscrowReadinessView).status, "adapter_disabled");
 });
 
 test("requires authentication before preparing an x402 call intent", async () => {
