@@ -126,6 +126,10 @@ export type AgonEscrowIntentRequest = {
   amountBaseUnits: string;
   feeBps: number;
   expiresAt: string;
+  poolBinding?: {
+    controller: `0x${string}`;
+    poolId: string;
+  };
 };
 
 export type AgonEscrowIntentView = {
@@ -145,6 +149,11 @@ export type AgonEscrowIntentView = {
   state: "prepared" | "funding" | "funded" | "release_pending" | "released" | "refund_pending" | "refunded" | "unknown" | "failed";
   providerReference: string | null;
   transaction: `0x${string}` | null;
+  poolBinding: {
+    contractAddress: `0x${string}`;
+    controller: `0x${string}`;
+    poolId: string;
+  } | null;
   executionEnabled: false;
   nextAction: "escrow_adapter_not_enabled" | "reconcile_unknown_outcome" | "none";
   createdAt: string;
@@ -158,6 +167,14 @@ export type AgonEscrowReadinessView = {
   reason: string;
   executionEnabled: false;
   nextAction: AgonEscrowIntentView["nextAction"];
+  pool: {
+    status: "unbound" | "lookup_disabled" | "match" | "mismatch" | "unavailable";
+    contractAddress: `0x${string}` | null;
+    controller: `0x${string}` | null;
+    poolId: string | null;
+    balanceBaseUnits: string | null;
+    checkedAt: string | null;
+  };
   checkedAt: string;
 };
 

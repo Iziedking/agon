@@ -1400,10 +1400,16 @@ create table if not exists agon_escrow_intents (
   state                     text not null default 'prepared' check (state in ('prepared','funding','funded','release_pending','released','refund_pending','refunded','unknown','failed')),
   provider_reference        text,
   transaction_hash          text check (transaction_hash is null or transaction_hash ~ '^0x[0-9a-f]{64}$'),
+  pool_contract_address     text check (pool_contract_address is null or pool_contract_address ~ '^0x[0-9a-f]{40}$'),
+  pool_controller_address   text check (pool_controller_address is null or pool_controller_address ~ '^0x[0-9a-f]{40}$'),
+  pool_id                   numeric(78, 0) check (pool_id is null or pool_id >= 0),
   created_at                timestamptz not null default now(),
   updated_at                timestamptz not null default now(),
   unique (actor_address, idempotency_key)
 );
+alter table agon_escrow_intents add column if not exists pool_contract_address text;
+alter table agon_escrow_intents add column if not exists pool_controller_address text;
+alter table agon_escrow_intents add column if not exists pool_id numeric(78, 0);
 create index if not exists agon_escrow_intents_actor_idx
   on agon_escrow_intents(actor_address, created_at desc);
 create index if not exists agon_escrow_intents_state_idx

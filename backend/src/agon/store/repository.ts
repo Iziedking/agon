@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 import { transitionX402Receipt, type X402ReceiptEvent, type X402ReceiptState } from "../execution/x402-receipt.ts";
 import { hashAgonEscrowTerms, isAgonEscrowTransitionAllowed, type AgonEscrowIntentState, type AgonEscrowTerms } from "../escrow-policy.ts";
+import type { AgonPrizeEscrowPoolBinding } from "../execution/escrow-reconciliation.ts";
 
 export type ProfileStatus = "Active" | "Suspended" | "Archived";
 export type ListingStatus = "Listed" | "Suspended" | "Delisted";
@@ -175,6 +176,7 @@ export type AgonEscrowIntentProjection = {
   state: AgonEscrowIntentState;
   providerReference: string | null;
   transaction: `0x${string}` | null;
+  poolBinding?: AgonPrizeEscrowPoolBinding | null;
   createdAt?: Date;
 };
 
@@ -377,6 +379,9 @@ type AgonEscrowIntentRow = QueryResultRow & {
   state: AgonEscrowIntentState;
   provider_reference: string | null;
   transaction_hash: `0x${string}` | null;
+  pool_contract_address: string | null;
+  pool_controller_address: string | null;
+  pool_id: string | null;
   created_at: Date;
   updated_at: Date;
 };
@@ -612,6 +617,13 @@ function mapAgonEscrowIntent(row: AgonEscrowIntentRow): StoredAgonEscrowIntent {
     state: row.state,
     providerReference: row.provider_reference,
     transaction: row.transaction_hash,
+    poolBinding: row.pool_contract_address && row.pool_controller_address && row.pool_id !== null
+      ? {
+          contractAddress: row.pool_contract_address as `0x${string}`,
+          controller: row.pool_controller_address as `0x${string}`,
+          poolId: row.pool_id,
+        }
+      : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -663,7 +675,8 @@ const AGON_ESCROW_INTENT_COLUMNS = `
   intent_id, actor_address, idempotency_key, listing_reference, terms_hash, network, asset,
   buyer_address, beneficiary_address, service_registry_address, listing_id,
   agent_id, listing_version, manifest_hash, amount_base_units, fee_bps,
-  expires_at, state, provider_reference, transaction_hash, created_at, updated_at`;
+  expires_at, state, provider_reference, transaction_hash, pool_contract_address,
+  pool_controller_address, pool_id, created_at, updated_at`;
 
 export class PostgresAgonRepository {
   private readonly pool: Pool;
@@ -725,8 +738,9 @@ export class PostgresAgonRepository {
          intent_id, actor_address, idempotency_key, listing_reference, terms_hash, network, asset,
          buyer_address, beneficiary_address, service_registry_address, listing_id,
          agent_id, listing_version, manifest_hash, amount_base_units, fee_bps,
-         expires_at, state, provider_reference, transaction_hash, created_at, updated_at
-       ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $21)
+         expires_at, state, provider_reference, transaction_hash, pool_contract_address,
+         pool_controller_address, pool_id, created_at, updated_at
+       ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $24)
        on conflict (actor_address, idempotency_key) do nothing
        returning ${AGON_ESCROW_INTENT_COLUMNS}`,
       [
@@ -750,6 +764,9 @@ export class PostgresAgonRepository {
         input.state,
         input.providerReference,
         input.transaction,
+        input.poolBinding?.contractAddress ?? null,
+        input.poolBinding?.controller ?? null,
+        input.poolBinding?.poolId ?? null,
         input.createdAt ?? new Date(),
       ],
     );
@@ -765,6 +782,11 @@ export class PostgresAgonRepository {
     const value = mapAgonEscrowIntent(row);
     if (value.termsHash !== input.termsHash.toLowerCase()) {
       throw new AgonStoreInvariantError("escrow idempotency key already used for different terms");
+    }
+    const existingBinding = value.poolBinding;
+    const requestedBinding = input.poolBinding ?? null;
+    if (JSON.stringify(existingBinding) !== JSON.stringify(requestedBinding)) {
+      throw new AgonStoreInvariantError("escrow idempotency key already used for different pool binding");
     }
     return value;
   }

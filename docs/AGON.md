@@ -200,6 +200,25 @@ exact identity matching, mismatched balances, malformed identifiers, bounded
 view calls, configuration pinning, and circuit opening after repeated RPC
 failures.
 
+## Phase 8: durable pool binding and owner-scoped readiness
+
+Escrow intents can now carry an optional exact `PrizeEscrow` pool binding:
+the configured contract address, controller address, and non-negative pool id.
+The binding is persisted with the intent and is part of the idempotency
+boundary. Reusing an idempotency key with a different pool is rejected. An
+unbound legacy intent remains valid but is explicitly reported as `unbound`.
+
+The authenticated intent and readiness views expose the binding. When a
+binding exists, readiness may perform the two read-only view calls through the
+server-side adapter and reports `lookup_disabled`, `match`, `mismatch`, or
+`unavailable`. It never advances escrow state and never treats a matching pool
+balance as permission to fund, release, refund, or claim.
+
+`AGON_ESCROW_RECONCILIATION_ENABLED` defaults to `false`. Even when a read
+adapter is enabled, it is read-only and pinned to the configured legacy
+PrizeEscrow address. Controller authorization and all money-moving adapters
+remain deferred until separately approved.
+
 ### Provider receipt source decision
 
 Circle's documented Arc Testnet Gateway base is `https://gateway-api-testnet.circle.com`. The `POST /gateway/v1/x402/settle` response describes `transaction` as a **transfer UUID**, not an on-chain transaction hash. The corresponding read-only source is `GET /v1/x402/transfers/{id}` (or the paginated `GET /gateway/v1/x402/transfers` search endpoint), which returns the UUID, `status`, USDC amount, sender, recipient, CAIP-2 networks, and timestamps. Circle documents these transfer states as `received`, `batched`, `confirmed`, `completed`, and `failed`; `confirmed` means included onchain and `completed` means fully complete. The Gateway flow can serve a resource before batched onchain settlement, so a successful `settle` response is not finality evidence.

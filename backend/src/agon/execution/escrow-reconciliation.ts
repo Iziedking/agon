@@ -7,6 +7,12 @@ const MAX_REASON_LENGTH = 512;
 
 export const AGON_PRIZE_ESCROW_NETWORK = AGON_ESCROW_NETWORK;
 
+export type AgonPrizeEscrowPoolBinding = {
+  contractAddress: `0x${string}`;
+  controller: `0x${string}`;
+  poolId: string;
+};
+
 export type AgonPrizeEscrowReadRequest = {
   network: typeof AGON_PRIZE_ESCROW_NETWORK;
   escrowAddress: `0x${string}`;
@@ -40,6 +46,20 @@ export type AgonPrizeEscrowReadAdapter = {
   readonly enabled: boolean;
   inspect(input: AgonPrizeEscrowReadRequest): Promise<AgonPrizeEscrowReadResult>;
 };
+
+export function validateAgonPrizeEscrowPoolBinding(input: {
+  contractAddress: string;
+  controller: string;
+  poolId: string;
+}, configuredContract?: string): AgonPrizeEscrowPoolBinding {
+  const contractAddress = normalizedAddress(input.contractAddress);
+  const controller = normalizedAddress(input.controller);
+  const poolId = normalizedPoolId(input.poolId);
+  if (configuredContract !== undefined && contractAddress !== normalizedAddress(configuredContract)) {
+    throw new Error("PrizeEscrow pool binding is not pinned to the configured contract");
+  }
+  return { contractAddress, controller, poolId };
+}
 
 export const PRIZE_ESCROW_VIEW_ABI = [
   {

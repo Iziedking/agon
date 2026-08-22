@@ -21,6 +21,7 @@ import { createX402ExecutionPolicy } from "../execution/x402-policy.ts";
 import { isX402ProviderTransferId, isX402Transaction, validateX402ReceiptLookupResult, type X402ReceiptLookupAdapter } from "../execution/x402-reconciliation.ts";
 import type { X402FacilitatorVerificationRequest as X402FacilitatorVerificationInput, X402FacilitatorVerificationResult, X402SettlementRequest as X402SettlementInput } from "../execution/x402-settlement.ts";
 import { buildX402ExecutionApproval, type X402ExecutionApprovalRequest } from "../execution/x402-execution-approval.ts";
+import { validateAgonPrizeEscrowPoolBinding, type AgonPrizeEscrowPoolBinding, type AgonPrizeEscrowReadAdapter } from "../execution/escrow-reconciliation.ts";
 import { evaluateAgonEscrowTerms, hashAgonEscrowTerms, type AgonEscrowListing } from "../escrow-policy.ts";
 import type {
   AgonCapabilities,
@@ -94,6 +95,10 @@ export type PostgresAgonMarketServiceOptions = {
   };
   /** Server-side provider lookup only. Undefined keeps reconciliation disabled. */
   x402ReceiptLookup?: X402ReceiptLookupAdapter;
+  /** Server-side PrizeEscrow view lookup only. Undefined keeps pool reads disabled. */
+  escrowReadAdapter?: AgonPrizeEscrowReadAdapter;
+  /** Configured PrizeEscrow address used to pin any durable pool binding. */
+  escrowPoolContract?: `0x${string}`;
   fetchImpl?: typeof fetch;
 };
 
@@ -264,6 +269,7 @@ function escrowIntentView(intent: StoredAgonEscrowIntent, listingReference: stri
     state: intent.state,
     providerReference: intent.providerReference,
     transaction: intent.transaction,
+    poolBinding: intent.poolBinding ?? null,
     executionEnabled: false,
     nextAction: intent.state === "unknown"
       ? "reconcile_unknown_outcome"
@@ -275,7 +281,7 @@ function escrowIntentView(intent: StoredAgonEscrowIntent, listingReference: stri
   };
 }
 
-function escrowReadinessView(intent: StoredAgonEscrowIntent): AgonEscrowReadinessView {
+function escrowReadinessView(intent: StoredAgonEscrowIntent, pool: AgonEscrowReadinessView["pool"]): AgonEscrowReadinessView {
   const terminal = intent.state === "released" || intent.state === "refunded" || intent.state === "failed";
   return {
     intentId: intent.intentId,
@@ -292,6 +298,7 @@ function escrowReadinessView(intent: StoredAgonEscrowIntent): AgonEscrowReadines
       : terminal
         ? "none"
         : "escrow_adapter_not_enabled",
+    pool,
     checkedAt: new Date().toISOString(),
   };
 }
@@ -561,6 +568,21 @@ export class PostgresAgonMarketService implements AgonMarketService {
       };
     }
     try {
+      let poolBinding: AgonPrizeEscrowPoolBinding | null = null;
+      if (request.poolBinding) {
+        if (!this.options.escrowPoolContract) {
+          return { ok: false, error: { code: "capability_unavailable", message: "PrizeEscrow pool binding is not configured" } };
+        }
+        try {
+          poolBinding = validateAgonPrizeEscrowPoolBinding({
+            contractAddress: this.options.escrowPoolContract,
+            controller: request.poolBinding.controller,
+            poolId: request.poolBinding.poolId,
+          }, this.options.escrowPoolContract);
+        } catch (error) {
+          return { ok: false, error: { code: "validation_failed", message: error instanceof Error ? error.message : "PrizeEscrow pool binding is invalid" } };
+        }
+      }
       const stored = await this.repository.prepareAgonEscrowIntent({
         intentId: randomUUID(),
         actor,
@@ -571,6 +593,7 @@ export class PostgresAgonMarketService implements AgonMarketService {
         state: "prepared",
         providerReference: null,
         transaction: null,
+        poolBinding,
       });
       return { ok: true, value: escrowIntentView(stored, stored.listingReference) };
     } catch (error) {
@@ -598,7 +621,45 @@ export class PostgresAgonMarketService implements AgonMarketService {
     const intent = await this.repository.getAgonEscrowIntent(intentId);
     if (!intent) return { ok: false, error: { code: "not_found", message: "Agon escrow intent not found" } };
     if (intent.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the escrow intent owner can read escrow readiness" } };
-    return { ok: true, value: escrowReadinessView(intent) };
+    let pool: AgonEscrowReadinessView["pool"] = {
+      status: "unbound",
+      contractAddress: null,
+      controller: null,
+      poolId: null,
+      balanceBaseUnits: null,
+      checkedAt: null,
+    };
+    if (intent.poolBinding) {
+      pool = {
+        status: !this.options.escrowReadAdapter?.enabled ? "lookup_disabled" : "unavailable",
+        contractAddress: intent.poolBinding.contractAddress,
+        controller: intent.poolBinding.controller,
+        poolId: intent.poolBinding.poolId,
+        balanceBaseUnits: null,
+        checkedAt: null,
+      };
+      if (this.options.escrowReadAdapter?.enabled) {
+        try {
+          const result = await this.options.escrowReadAdapter.inspect({
+            network: intent.terms.network,
+            escrowAddress: intent.poolBinding.contractAddress,
+            controller: intent.poolBinding.controller,
+            poolId: intent.poolBinding.poolId,
+            expectedAsset: intent.terms.asset,
+            expectedBalanceBaseUnits: intent.terms.amountBaseUnits.toString(),
+          });
+          pool = {
+            ...pool,
+            status: "match",
+            balanceBaseUnits: result.balanceBaseUnits,
+            checkedAt: result.checkedAt ?? new Date().toISOString(),
+          };
+        } catch (error) {
+          if (error instanceof Error && (error.message.includes("does not match") || error.message.includes("different"))) pool.status = "mismatch";
+        }
+      }
+    }
+    return { ok: true, value: escrowReadinessView(intent, pool) };
   }
 
   async prepareX402Call(

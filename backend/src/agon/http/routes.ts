@@ -227,6 +227,10 @@ const agonEscrowIntentSchema = z.object({
   amountBaseUnits: z.string().regex(/^[1-9]\d*$/, "must be a positive integer base-unit amount"),
   feeBps: z.number().int().min(0).max(1000),
   expiresAt: z.string().datetime({ offset: true }),
+  poolBinding: z.object({
+    controller: z.string().regex(/^0x[0-9a-fA-F]{40}$/, "must be an address"),
+    poolId: z.string().regex(/^\d+$/, "must be a non-negative integer"),
+  }).strict().optional(),
 }).strict();
 
 function validationResponse(error: ZodError): ApiErrorResponse {

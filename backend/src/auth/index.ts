@@ -18,6 +18,7 @@ import { PostgresAgonRepository } from "../agon/store/repository.js";
 import { createAgonRoutes } from "../agon/http/routes.js";
 import { createCircleTestnetFacilitatorClient, createX402ExecutionPolicy, createX402FacilitatorAdapter } from "../agon/execution/x402-settlement.js";
 import { createCircleTestnetX402ReceiptLookupAdapter } from "../agon/execution/x402-reconciliation.js";
+import { createViemAgonPrizeEscrowReadAdapter, type AgonPrizeEscrowReadClient } from "../agon/execution/escrow-reconciliation.js";
 import { PostgresAgonMarketService } from "../agon/http/service.js";
 import { PostgresAgonOperationStore } from "../agon/write/repository.js";
 import { CachedAgonReadiness } from "../agon/write/readiness.js";
@@ -161,6 +162,11 @@ const x402SettlementAdapter = createX402FacilitatorAdapter({
   policy: x402ExecutionPolicy,
   client: x402FacilitatorClient,
 });
+const agonEscrowReadAdapter = createViemAgonPrizeEscrowReadAdapter({
+  enabled: config.agon.escrow.reconciliationEnabled,
+  escrowAddress: config.contracts.PrizeEscrow,
+  client: publicClient as unknown as AgonPrizeEscrowReadClient,
+});
 const x402FacilitatorVerifier = createX402FacilitatorAdapter({
   enabled: config.agon.x402.verificationEnabled,
   policy: x402VerificationPolicy,
@@ -175,6 +181,8 @@ const agonService = new PostgresAgonMarketService(agonRepository, {
   x402ReceiptLookup: createCircleTestnetX402ReceiptLookupAdapter({
     enabled: config.agon.x402.reconciliationEnabled,
   }),
+  escrowReadAdapter: agonEscrowReadAdapter,
+  escrowPoolContract: config.contracts.PrizeEscrow,
 });
 app.route("/agon", createAgonRoutes({ service: agonService, requireAuth }));
 

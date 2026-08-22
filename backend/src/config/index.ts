@@ -61,6 +61,7 @@ const envSchema = z.object({
   // intent store, release/refund reconciliation, and approved controller are
   // wired to the deployed PrizeEscrow contracts.
   AGON_ESCROW_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
+  AGON_ESCROW_RECONCILIATION_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
   AGON_ESCROW_MAX_POOL_BASE_UNITS: z.string().regex(/^(0|[1-9]\d*)$/).default("0"),
   AGON_SYNDICATE_PRIZE_POOL_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
 
@@ -672,13 +673,14 @@ export const config = {
         enabled: env.AGON_ARENA_VALIDATION_ENABLED,
         validatorAddress: env.AGON_ARENA_VALIDATOR_ADDRESS,
       },
-      escrow: {
-        enabled: env.AGON_ESCROW_ENABLED,
-        network: "eip155:5042002" as const,
-        asset: "0x3600000000000000000000000000000000000000" as const,
-        maxPoolBaseUnits: BigInt(env.AGON_ESCROW_MAX_POOL_BASE_UNITS),
-        syndicatePrizePoolEnabled: env.AGON_SYNDICATE_PRIZE_POOL_ENABLED,
-      },
+    },
+    escrow: {
+      enabled: env.AGON_ESCROW_ENABLED,
+      reconciliationEnabled: env.AGON_ESCROW_RECONCILIATION_ENABLED,
+      network: "eip155:5042002" as const,
+      asset: "0x3600000000000000000000000000000000000000" as const,
+      maxPoolBaseUnits: BigInt(env.AGON_ESCROW_MAX_POOL_BASE_UNITS),
+      syndicatePrizePoolEnabled: env.AGON_SYNDICATE_PRIZE_POOL_ENABLED,
     },
   },
   adminToken: env.ADMIN_TOKEN,

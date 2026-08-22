@@ -96,3 +96,25 @@ test("guards durable escrow transitions and preserves unknown outcomes", async (
     /cannot transition escrow intent from unknown to funding/i,
   );
 });
+
+test("persists an exact PrizeEscrow pool binding and rejects binding changes on retry", async () => {
+  const binding = {
+    contractAddress: "0x1111111111111111111111111111111111111111" as `0x${string}`,
+    controller: "0x2222222222222222222222222222222222222222" as `0x${string}`,
+    poolId: "7",
+  };
+  const created = await repository.prepareAgonEscrowIntent(input({
+    intentId: "00000000-0000-4000-8000-000000000004",
+    idempotencyKey: "escrow-db-004",
+    poolBinding: binding,
+  }));
+  assert.deepEqual(created.poolBinding, binding);
+  await assert.rejects(
+    () => repository.prepareAgonEscrowIntent(input({
+      intentId: "00000000-0000-4000-8000-000000000005",
+      idempotencyKey: "escrow-db-004",
+      poolBinding: { ...binding, poolId: "8" },
+    })),
+    /different pool binding/i,
+  );
+});
