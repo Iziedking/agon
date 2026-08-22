@@ -318,6 +318,27 @@ performed. A future write phase must validate this durable approval again and
 obtain separate exact operation/address/amount/recipient approval before any
 testnet transaction.
 
+## Phase 15: approval-bound transaction writer seam
+
+`backend/src/agon/execution/escrow-transaction-writer.ts` adds an injected
+viem writer seam for the eventual PrizeEscrow adapter. It is disabled unless
+both an explicit enable flag and a client are supplied, and it is not wired
+into runtime auth or the escrow lifecycle orchestrator. No production
+configuration enables it.
+
+Before calling `writeContract`, the seam revalidates the durable approval,
+expiry, actor, operation, Arc Testnet network, fixed USDC asset, configured
+PrizeEscrow address, authorized controller, and deterministic calldata. It
+writes only the ABI-pinned function and arguments from that preflighted intent
+as the controller account. A receipt must prove the same transaction hash, the
+configured contract as `to`, and a successful status before the result is
+accepted.
+
+Submission exceptions and missing, mismatched, or timed-out receipts return an
+`unknown` outcome and must be reconciled before retrying. A proven reverted
+receipt is terminal. Focused tests use only fake clients; this phase performs
+no RPC call, wallet signing, transaction submission, or Arc Testnet broadcast.
+
 ## Manifest proof
 
 Manifest hashes use sorted-key JSON canonicalization followed by `keccak256` of the UTF-8 bytes. The pinned foundation fixture hashes to:
