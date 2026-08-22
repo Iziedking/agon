@@ -5,6 +5,7 @@ import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { useAccount, useChainId, useSignTypedData, useSwitchChain } from "wagmi";
 
 import { submitX402AuthorizationSignature } from "@/lib/agon/client";
+import { rememberX402Signature } from "@/lib/agon/signature-memory";
 import { getX402SigningGate } from "@/lib/agon/authorization-signing";
 import { arcTestnet } from "@/lib/arc";
 import type { X402AuthorizationSubmittedView, X402AuthorizationView } from "@/lib/agon/types";
@@ -48,6 +49,7 @@ export function X402AuthorizationSigner({ intentId, authorization, preview = fal
         payloadHash: authorization.payloadHash,
         signature,
       });
+      rememberX402Signature(intentId, signature);
       onSubmitted(submitted);
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "The wallet did not sign this authorization.");

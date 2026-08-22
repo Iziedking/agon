@@ -20,6 +20,8 @@ import type {
   X402ExecutionApprovalView,
   X402ExecutionReadinessView,
   X402SettlementReadinessView,
+  X402FacilitatorVerificationRequest,
+  X402FacilitatorVerificationView,
 } from "./types";
 import { AGON_PREVIEW_HEALTH, AGON_PREVIEW_LISTINGS } from "./preview";
 
@@ -351,4 +353,29 @@ export function getX402SettlementReadiness(intentId: string): Promise<X402Settle
     });
   }
   return request<X402SettlementReadinessView>(`/call-intents/${encodeURIComponent(intentId)}/settlement-readiness`, { method: "GET" });
+}
+
+/** Verify a wallet signature with Circle without settling or claiming delivery. */
+export function verifyX402Facilitator(
+  intentId: string,
+  body: X402FacilitatorVerificationRequest,
+): Promise<X402FacilitatorVerificationView> {
+  if (AGON_PREVIEW_MODE) {
+    return Promise.resolve({
+      receiptId: "00000000-0000-4000-8000-000000000100",
+      intentId,
+      state: "facilitator_verified",
+      network: "eip155:5042002",
+      payer: `0x${"aa".repeat(20)}`,
+      approvalHash: `0x${"fa".repeat(32)}`,
+      verified: true,
+      executionEnabled: false,
+      nextAction: "settlement_remains_disabled",
+      verifiedAt: new Date().toISOString(),
+    });
+  }
+  return request<X402FacilitatorVerificationView>(`/call-intents/${encodeURIComponent(intentId)}/facilitator-verify`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }
