@@ -304,6 +304,7 @@ export type X402FacilitatorVerificationView = {
   network: "eip155:5042002";
   payer: `0x${string}` | null;
   approvalHash: string;
+  evidenceHash: string;
   verified: true;
   executionEnabled: false;
   nextAction: "settlement_remains_disabled";

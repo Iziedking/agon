@@ -1336,6 +1336,25 @@ alter table agon_x402_call_receipts add column if not exists quote_snapshot json
 alter table agon_x402_call_receipts add column if not exists authorization_payload_hash text;
 alter table agon_x402_call_receipts add column if not exists authorization_payload jsonb;
 
+-- Append-only evidence returned by the Circle facilitator verify call. This
+-- deliberately stores no raw EIP-3009 signature or wallet key. A verification
+-- proves only that the exact authorization was accepted by the pinned
+-- facilitator; it does not submit a payment or mark service delivery.
+create table if not exists agon_x402_facilitator_verifications (
+  verification_id uuid primary key,
+  intent_id       uuid not null references agon_x402_call_intents(intent_id),
+  receipt_id      uuid not null references agon_x402_call_receipts(receipt_id),
+  approval_hash   text not null check (approval_hash ~ '^0x[0-9a-f]{64}$'),
+  network         text not null check (network = 'eip155:5042002'),
+  payer_address   text check (payer_address is null or payer_address ~ '^0x[0-9a-f]{40}$'),
+  evidence_hash   text not null check (evidence_hash ~ '^0x[0-9a-f]{64}$'),
+  verified_at     timestamptz not null,
+  created_at      timestamptz not null default now(),
+  unique (intent_id, approval_hash)
+);
+create index if not exists agon_x402_facilitator_verifications_intent_idx
+  on agon_x402_facilitator_verifications(intent_id, verified_at desc);
+
 -- Human execution approvals are append-only evidence. They bind one explicit
 -- approval to the exact prepared plan and authorization hash without enabling
 -- settlement or storing the raw signature.

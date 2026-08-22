@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
-import { keccak256 } from "viem";
+import { keccak256, stringToHex } from "viem";
 import type { Result } from "../core/result.ts";
 import {
   PostgresAgonRepository,
@@ -8,6 +8,7 @@ import {
   type ListingCursor,
   type StoredListing,
   type StoredVerificationEvidence,
+  type StoredX402FacilitatorVerification,
 } from "../store/repository.ts";
 import { callIntentView, prepareX402Call } from "../execution/x402-intent.ts";
 import { validateX402Approval } from "../execution/x402-approval.ts";
@@ -230,6 +231,22 @@ function listingView(listing: StoredListing, evidence?: StoredVerificationEviden
 function internalError(error: unknown): Result<never, AgonServiceError> {
   console.error("[agon] service error:", error instanceof Error ? error.message : "unknown failure");
   return { ok: false, error: { code: "internal", message: "Agon service request failed" } };
+}
+
+function facilitatorVerificationView(evidence: StoredX402FacilitatorVerification): X402FacilitatorVerificationView {
+  return {
+    receiptId: evidence.receiptId,
+    intentId: evidence.intentId,
+    state: "facilitator_verified",
+    network: evidence.network,
+    payer: evidence.payer as `0x${string}` | null,
+    approvalHash: evidence.approvalHash,
+    evidenceHash: evidence.evidenceHash,
+    verified: true,
+    executionEnabled: false,
+    nextAction: "settlement_remains_disabled",
+    verifiedAt: evidence.verifiedAt.toISOString(),
+  };
 }
 
 function quoteView(
@@ -874,6 +891,13 @@ export class PostgresAgonMarketService implements AgonMarketService {
     if (!plan.ok) return { ok: false, error: { code: "execution_not_ready", message: plan.error.message } };
     const approval = await this.repository.getLatestX402ExecutionApproval(intentId);
     if (!approval) return { ok: false, error: { code: "execution_not_ready", message: "explicit execution approval is required before facilitator verification" } };
+    const recorded = await this.repository.getLatestX402FacilitatorVerification(intentId);
+    if (recorded) {
+      if (recorded.receiptId !== receipt.receiptId || recorded.approvalHash.toLowerCase() !== approval.approvalHash.toLowerCase()) {
+        return { ok: false, error: { code: "conflict", message: "stored facilitator evidence does not match the current x402 receipt" } };
+      }
+      return { ok: true, value: facilitatorVerificationView(recorded) };
+    }
     const result = await this.options.x402FacilitatorVerifier.verify({
       approval,
       plan: plan.value,
@@ -884,21 +908,41 @@ export class PostgresAgonMarketService implements AgonMarketService {
       const code = result.error.code === "facilitator_rejected" ? "facilitator_rejected" : result.error.code === "facilitator_unavailable" ? "facilitator_unavailable" : "execution_not_ready";
       return { ok: false, error: { code, message: result.error.message } };
     }
-    return {
-      ok: true,
-      value: {
+    const verifiedAt = new Date();
+    const evidenceHash = keccak256(stringToHex(JSON.stringify({
+      intentId,
+      receiptId: receipt.receiptId,
+      approvalHash: result.value.approvalHash,
+      network: result.value.network,
+      payer: result.value.payer,
+      verifiedAt: verifiedAt.toISOString(),
+    })));
+    try {
+      const stored = await this.repository.recordX402FacilitatorVerification({
         receiptId: receipt.receiptId,
         intentId,
-        state: "facilitator_verified",
+        approvalHash: result.value.approvalHash,
         network: result.value.network,
         payer: result.value.payer,
-        approvalHash: result.value.approvalHash,
-        verified: true,
-        executionEnabled: false,
-        nextAction: "settlement_remains_disabled",
-        verifiedAt: new Date().toISOString(),
-      },
-    };
+        evidenceHash,
+        verifiedAt,
+      });
+      return { ok: true, value: facilitatorVerificationView(stored) };
+    } catch (error) {
+      return internalError(error);
+    }
+  }
+
+  async getX402FacilitatorVerification(
+    actor: string,
+    intentId: string,
+  ): Promise<Result<X402FacilitatorVerificationView, AgonServiceError>> {
+    const intent = await this.repository.getX402CallIntent(intentId);
+    if (!intent) return { ok: false, error: { code: "not_found", message: "x402 call intent not found" } };
+    if (intent.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the intent owner can read this verification" } };
+    const evidence = await this.repository.getLatestX402FacilitatorVerification(intentId);
+    if (!evidence) return { ok: false, error: { code: "receipt_unavailable", message: "no facilitator verification has been recorded" } };
+    return { ok: true, value: facilitatorVerificationView(evidence) };
   }
 
   async getCapabilities(): Promise<AgonCapabilities> {

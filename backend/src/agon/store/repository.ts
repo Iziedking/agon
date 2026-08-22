@@ -147,6 +147,22 @@ export type StoredX402ExecutionApproval = X402ExecutionApprovalProjection & {
   createdAt: Date;
 };
 
+export type X402FacilitatorVerificationProjection = {
+  verificationId?: string;
+  receiptId: string;
+  intentId: string;
+  approvalHash: string;
+  network: "eip155:5042002";
+  payer: string | null;
+  evidenceHash: string;
+  verifiedAt: Date;
+};
+
+export type StoredX402FacilitatorVerification = X402FacilitatorVerificationProjection & {
+  verificationId: string;
+  createdAt: Date;
+};
+
 export type ListingCursor = {
   updatedAt: Date;
   chainId: bigint;
@@ -304,6 +320,18 @@ type X402ExecutionApprovalRow = QueryResultRow & {
   approval_idempotency_key: string;
   approved_at: Date;
   expires_at: Date;
+  created_at: Date;
+};
+
+type X402FacilitatorVerificationRow = QueryResultRow & {
+  verification_id: string;
+  receipt_id: string;
+  intent_id: string;
+  approval_hash: string;
+  network: "eip155:5042002";
+  payer_address: string | null;
+  evidence_hash: string;
+  verified_at: Date;
   created_at: Date;
 };
 
@@ -497,6 +525,20 @@ function mapX402ExecutionApproval(row: X402ExecutionApprovalRow): StoredX402Exec
   };
 }
 
+function mapX402FacilitatorVerification(row: X402FacilitatorVerificationRow): StoredX402FacilitatorVerification {
+  return {
+    verificationId: row.verification_id,
+    receiptId: row.receipt_id,
+    intentId: row.intent_id,
+    approvalHash: row.approval_hash,
+    network: row.network,
+    payer: row.payer_address,
+    evidenceHash: row.evidence_hash,
+    verifiedAt: row.verified_at,
+    createdAt: row.created_at,
+  };
+}
+
 function versionsMatch(left: ValidatedListingVersion, right: ValidatedListingVersion): boolean {
   return (
     left.chainId === right.chainId &&
@@ -534,6 +576,10 @@ const X402_RECEIPT_COLUMNS = `
 const X402_EXECUTION_APPROVAL_COLUMNS = `
   approval_hash, intent_id, actor_address, plan_hash, authorization_hash,
   approval_idempotency_key, approved_at, expires_at, created_at`;
+
+const X402_FACILITATOR_VERIFICATION_COLUMNS = `
+  verification_id, receipt_id, intent_id, approval_hash, network, payer_address,
+  evidence_hash, verified_at, created_at`;
 
 export class PostgresAgonRepository {
   private readonly pool: Pool;
@@ -809,6 +855,57 @@ export class PostgresAgonRepository {
       [intentId],
     );
     return result.rows[0] ? mapX402ExecutionApproval(result.rows[0]) : null;
+  }
+
+  async recordX402FacilitatorVerification(input: X402FacilitatorVerificationProjection): Promise<StoredX402FacilitatorVerification> {
+    if (!/^[0-9a-f-]{36}$/i.test(input.intentId) || !/^[0-9a-f-]{36}$/i.test(input.receiptId)) {
+      throw new AgonStoreInvariantError("facilitator verification ids must be UUIDs");
+    }
+    if (input.verificationId && !/^[0-9a-f-]{36}$/i.test(input.verificationId)) {
+      throw new AgonStoreInvariantError("facilitator verification id must be a UUID");
+    }
+    const approvalHash = normalizeHash(input.approvalHash);
+    const evidenceHash = normalizeHash(input.evidenceHash);
+    const payer = input.payer === null ? null : normalizeAddress(input.payer);
+    if (input.network !== "eip155:5042002") throw new AgonStoreInvariantError("facilitator verification network is not Arc Testnet");
+    if (!(input.verifiedAt instanceof Date) || !Number.isFinite(input.verifiedAt.getTime())) {
+      throw new AgonStoreInvariantError("facilitator verification timestamp is invalid");
+    }
+    const inserted = await this.pool.query<X402FacilitatorVerificationRow>(
+      `insert into agon_x402_facilitator_verifications (
+         verification_id, receipt_id, intent_id, approval_hash, network, payer_address,
+         evidence_hash, verified_at
+       ) values ($1, $2, $3, $4, $5, $6, $7, $8)
+       on conflict (intent_id, approval_hash) do nothing
+       returning ${X402_FACILITATOR_VERIFICATION_COLUMNS}`,
+      [input.verificationId ?? randomUUID(), input.receiptId, input.intentId, approvalHash, input.network, payer, evidenceHash, input.verifiedAt],
+    );
+    if (inserted.rows[0]) return mapX402FacilitatorVerification(inserted.rows[0]);
+    const existing = await this.pool.query<X402FacilitatorVerificationRow>(
+      `select ${X402_FACILITATOR_VERIFICATION_COLUMNS}
+       from agon_x402_facilitator_verifications
+       where intent_id = $1 and approval_hash = $2`,
+      [input.intentId, approvalHash],
+    );
+    const row = existing.rows[0];
+    if (!row) throw new AgonStoreInvariantError("facilitator verification conflict could not be loaded");
+    if (row.receipt_id !== input.receiptId || row.network !== input.network || row.payer_address !== payer || row.evidence_hash !== evidenceHash) {
+      throw new AgonStoreInvariantError("facilitator verification conflict does not match the original evidence");
+    }
+    return mapX402FacilitatorVerification(row);
+  }
+
+  async getLatestX402FacilitatorVerification(intentId: string): Promise<StoredX402FacilitatorVerification | null> {
+    if (!/^[0-9a-f-]{36}$/i.test(intentId)) throw new AgonStoreInvariantError("intent id must be a UUID");
+    const result = await this.pool.query<X402FacilitatorVerificationRow>(
+      `select ${X402_FACILITATOR_VERIFICATION_COLUMNS}
+       from agon_x402_facilitator_verifications
+       where intent_id = $1
+       order by verified_at desc, created_at desc
+       limit 1`,
+      [intentId],
+    );
+    return result.rows[0] ? mapX402FacilitatorVerification(result.rows[0]) : null;
   }
 
   async getLatestVerificationEvidence(

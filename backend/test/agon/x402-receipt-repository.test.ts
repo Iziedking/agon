@@ -119,3 +119,25 @@ test("stores explicit execution approval evidence idempotently and only after au
     /different execution plan/,
   );
 });
+
+test("stores facilitator verification evidence without raw signatures and reuses it idempotently", async () => {
+  const verificationIntent = { ...intent, intentId: "00000000-0000-4000-8000-000000000016", idempotencyKey: "receipt-016" };
+  await repository.prepareX402CallIntent(verificationIntent);
+  await repository.createX402CallReceipt({ ...receipt({ receiptId: "00000000-0000-4000-8000-000000000017", intentId: verificationIntent.intentId }) });
+  const input = {
+    receiptId: "00000000-0000-4000-8000-000000000017",
+    intentId: verificationIntent.intentId,
+    approvalHash: `0x${"aa".repeat(32)}`,
+    network: "eip155:5042002" as const,
+    payer: intent.actor,
+    evidenceHash: `0x${"bb".repeat(32)}`,
+    verifiedAt: new Date("2026-08-20T10:20:00.000Z"),
+  };
+  const first = await repository.recordX402FacilitatorVerification(input);
+  const retry = await repository.recordX402FacilitatorVerification({ ...input, verifiedAt: new Date("2026-08-20T10:21:00.000Z") });
+  assert.equal(retry.verificationId, first.verificationId);
+  assert.equal(retry.verifiedAt.toISOString(), first.verifiedAt.toISOString());
+  assert.equal((await repository.getLatestX402FacilitatorVerification(verificationIntent.intentId))?.evidenceHash, input.evidenceHash);
+  const columns = await database.pool.query<{ column_name: string }>(`select column_name from information_schema.columns where table_name = 'agon_x402_facilitator_verifications'`);
+  assert.equal(columns.rows.some((row) => row.column_name === "signature"), false);
+});

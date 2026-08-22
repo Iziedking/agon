@@ -368,6 +368,7 @@ export function verifyX402Facilitator(
       network: "eip155:5042002",
       payer: `0x${"aa".repeat(20)}`,
       approvalHash: `0x${"fa".repeat(32)}`,
+      evidenceHash: `0x${"fb".repeat(32)}`,
       verified: true,
       executionEnabled: false,
       nextAction: "settlement_remains_disabled",
@@ -378,4 +379,11 @@ export function verifyX402Facilitator(
     method: "POST",
     body: JSON.stringify(body),
   });
+}
+
+export function getX402FacilitatorVerification(intentId: string): Promise<X402FacilitatorVerificationView> {
+  if (AGON_PREVIEW_MODE) {
+    return Promise.reject(new AgonApiError("receipt_unavailable", "No facilitator verification is recorded in this preview fixture.", 409));
+  }
+  return request<X402FacilitatorVerificationView>(`/call-intents/${encodeURIComponent(intentId)}/facilitator-verification`, { method: "GET" });
 }

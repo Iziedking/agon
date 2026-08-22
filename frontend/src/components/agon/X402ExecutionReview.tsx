@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { approveX402Execution, getX402ExecutionReadiness, getX402SettlementReadiness, verifyX402Facilitator, AGON_PREVIEW_MODE } from "@/lib/agon/client";
+import { approveX402Execution, getX402ExecutionReadiness, getX402FacilitatorVerification, getX402SettlementReadiness, verifyX402Facilitator, AGON_PREVIEW_MODE } from "@/lib/agon/client";
 import { executionReadinessLabel, executionReadinessTone, formatExecutionTimestamp, formatUSDCBaseUnits, newExecutionApprovalKey } from "@/lib/agon/execution-review";
 import { settlementReadinessLabel, settlementReadinessTone } from "@/lib/agon/settlement-review";
 import { forgetX402Signature, readX402Signature } from "@/lib/agon/signature-memory";
@@ -49,6 +49,9 @@ export function X402ExecutionReview({ intentId, refreshKey }: Props) {
         if (!live) return;
         setSettlementError(failure instanceof Error ? failure.message : "Settlement readiness is not available yet.");
       });
+    getX402FacilitatorVerification(intentId)
+      .then((value) => { if (live) setVerification(value); })
+      .catch(() => { /* no prior verification is an expected first-run state */ });
     return () => { live = false; };
   }, [intentId, refreshKey]);
 
@@ -156,7 +159,7 @@ export function X402ExecutionReview({ intentId, refreshKey }: Props) {
                 <label className="mt-3 block font-mono text-[9px] uppercase tracking-[0.1em] opacity-70" htmlFor="agon-facilitator-verification-confirmation">TYPE TO CONFIRM</label>
                 <input id="agon-facilitator-verification-confirmation" value={verificationConfirmation} onChange={(event) => setVerificationConfirmation(event.target.value)} placeholder="VERIFY_ARC_TESTNET_X402" autoComplete="off" spellCheck={false} className="mt-2 h-10 w-full border border-current bg-transparent px-3 font-mono text-[10px] text-current placeholder:opacity-40" />
                 <TagButton variant="primary" size="sm" className="mt-3" onClick={verifyWithCircle} disabled={verifying || !signature || verificationConfirmation !== "VERIFY_ARC_TESTNET_X402"}>{verifying ? "CHECKING WITH CIRCLE..." : "VERIFY SIGNATURE · NO PAYMENT →"}</TagButton>
-              </> : <div className="mt-3 space-y-1 border-t border-current pt-3 font-mono text-[10px] leading-relaxed text-[color:var(--ok)]"><div>ARC TESTNET · 5042002</div><div>PAYER · {verification.payer ?? "NOT RETURNED"}</div><div>APPROVAL · {verification.approvalHash}</div><div className="text-current/80">SETTLEMENT REMAINS DISABLED · {formatExecutionTimestamp(verification.verifiedAt)}</div></div>}
+              </> : <div className="mt-3 space-y-1 border-t border-current pt-3 font-mono text-[10px] leading-relaxed text-[color:var(--ok)]"><div>ARC TESTNET · 5042002</div><div>PAYER · {verification.payer ?? "NOT RETURNED"}</div><div>APPROVAL · {verification.approvalHash}</div><div>EVIDENCE · {verification.evidenceHash}</div><div className="text-current/80">RECORDED · SETTLEMENT REMAINS DISABLED · {formatExecutionTimestamp(verification.verifiedAt)}</div></div>}
               {verificationError ? <p role="alert" className="mt-3 border-l-2 border-[color:var(--err)] pl-3 font-mono text-[10px] leading-relaxed text-[color:var(--err)]">{verificationError}</p> : null}
             </section>
           ) : null}

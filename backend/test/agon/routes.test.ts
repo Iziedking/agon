@@ -401,6 +401,29 @@ class FakeAgonService implements AgonMarketService {
         network: "eip155:5042002",
         payer: ADDRESS,
         approvalHash: `0x${"ee".repeat(32)}`,
+        evidenceHash: `0x${"ef".repeat(32)}`,
+        verified: true,
+        executionEnabled: false,
+        nextAction: "settlement_remains_disabled",
+        verifiedAt: "2026-08-20T10:08:00.000Z",
+      },
+    };
+  }
+
+  async getX402FacilitatorVerification(
+    _actor: string,
+    intentId: string,
+  ): Promise<Result<X402FacilitatorVerificationView, ServiceError>> {
+    return {
+      ok: true,
+      value: {
+        receiptId: "00000000-0000-4000-8000-000000000002",
+        intentId,
+        state: "facilitator_verified",
+        network: "eip155:5042002",
+        payer: ADDRESS,
+        approvalHash: `0x${"ee".repeat(32)}`,
+        evidenceHash: `0x${"ef".repeat(32)}`,
         verified: true,
         executionEnabled: false,
         nextAction: "settlement_remains_disabled",
@@ -726,7 +749,7 @@ test("requires authentication before facilitator verification", async () => {
   assert.equal(response.status, 401);
 });
 
-test("returns transient facilitator verification evidence and never settlement permission", async () => {
+test("returns durable facilitator verification evidence and never settlement permission", async () => {
   const app = testApp(new FakeAgonService());
   const response = await app.request("/agon/call-intents/00000000-0000-4000-8000-000000000001/facilitator-verify", {
     method: "POST",
@@ -739,4 +762,16 @@ test("returns transient facilitator verification evidence and never settlement p
   assert.equal(body.verified, true);
   assert.equal(body.executionEnabled, false);
   assert.equal(body.nextAction, "settlement_remains_disabled");
+  assert.match(body.evidenceHash, /^0x[0-9a-f]{64}$/);
+});
+
+test("reads facilitator verification evidence through the authenticated owner path", async () => {
+  const app = testApp(new FakeAgonService());
+  const response = await app.request("/agon/call-intents/00000000-0000-4000-8000-000000000001/facilitator-verification", {
+    headers: { "x-test-address": ADDRESS },
+  });
+  assert.equal(response.status, 200);
+  const body = (await response.json()) as X402FacilitatorVerificationView;
+  assert.equal(body.state, "facilitator_verified");
+  assert.match(body.evidenceHash, /^0x[0-9a-f]{64}$/);
 });

@@ -39,8 +39,9 @@ The auth service mounts these routes under `/agon`:
 - `POST /agon/listings` (authenticated; capability gated)
 - `POST /agon/operations/:operationId/confirm` (authenticated; receipt and event verification)
 - `POST /agon/call-intents/:intentId/facilitator-verify` (authenticated; Arc Testnet signature verification only; settlement is never implied)
+- `GET /agon/call-intents/:intentId/facilitator-verification` (authenticated; reads the owner's durable verification evidence)
 
-The facilitator verification route is fail-closed. It requires a prepared call intent, a durable explicit execution approval, the exact transient signature, and the literal confirmation `VERIFY_ARC_TESTNET_X402`. Set `AGON_X402_VERIFICATION_ENABLED=true` only in a controlled Arc Testnet environment with a nonzero `AGON_X402_EXECUTION_MAX_BASE_UNITS` policy. The route forwards the validated payload to Circle's pinned testnet facilitator and returns verification evidence; it does not persist the raw signature, settle funds, or mark service delivery. `AGON_X402_EXECUTION_ENABLED` remains a separate switch and defaults to `false`.
+The facilitator verification route is fail-closed. It requires a prepared call intent, a durable explicit execution approval, the exact transient signature, and the literal confirmation `VERIFY_ARC_TESTNET_X402`. Set `AGON_X402_VERIFICATION_ENABLED=true` only in a controlled Arc Testnet environment with a nonzero `AGON_X402_EXECUTION_MAX_BASE_UNITS` policy. A successful check writes append-only evidence keyed by intent and approval, including a deterministic evidence hash, network, payer, and timestamp. It never persists the raw signature, settles funds, or marks service delivery. Replays return the original evidence. `AGON_X402_EXECUTION_ENABLED` remains a separate switch and defaults to `false`.
 
 Catalog pagination uses an opaque cursor backed by a stable ordering over timestamp, chain, registry, and listing id. Consumers must treat the cursor as opaque.
 

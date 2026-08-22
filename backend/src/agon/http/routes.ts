@@ -106,6 +106,10 @@ export type AgonMarketService = {
     intentId: string,
     request: X402FacilitatorVerificationRequest,
   ): Promise<Result<import("./api-types.ts").X402FacilitatorVerificationView, AgonServiceError>>;
+  getX402FacilitatorVerification(
+    actor: string,
+    intentId: string,
+  ): Promise<Result<import("./api-types.ts").X402FacilitatorVerificationView, AgonServiceError>>;
   getCapabilities(): Promise<AgonCapabilities>;
 };
 
@@ -379,6 +383,14 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
       context.get("address"),
       context.req.param("intentId"),
       parsed.data as X402FacilitatorVerificationRequest,
+    );
+    return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  app.get("/call-intents/:intentId/facilitator-verification", options.requireAuth, async (context) => {
+    const result = await options.service.getX402FacilitatorVerification(
+      context.get("address"),
+      context.req.param("intentId"),
     );
     return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
   });
