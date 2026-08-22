@@ -28,6 +28,7 @@ import type {
   AgonEscrowIntentRequest,
   AgonEscrowIntentView,
   AgonEscrowReadinessView,
+  AgonEscrowLifecycleRequest,
 } from "./types";
 import { AGON_PREVIEW_HEALTH, AGON_PREVIEW_LISTINGS } from "./preview";
 
@@ -145,6 +146,21 @@ export function getAgonEscrowIntent(intentId: string): Promise<AgonEscrowIntentV
 
 export function getAgonEscrowReadiness(intentId: string): Promise<AgonEscrowReadinessView> {
   return request<AgonEscrowReadinessView>(`/escrow/intents/${encodeURIComponent(intentId)}/readiness`);
+}
+
+export function fundAgonEscrow(intentId: string): Promise<AgonEscrowIntentView> {
+  const body: AgonEscrowLifecycleRequest = { confirmation: "FUND_ARC_TESTNET_ESCROW" };
+  return request<AgonEscrowIntentView>(`/escrow/intents/${encodeURIComponent(intentId)}/fund`, { method: "POST", body: JSON.stringify(body) });
+}
+
+export function releaseAgonEscrow(intentId: string): Promise<AgonEscrowIntentView> {
+  const body: AgonEscrowLifecycleRequest = { confirmation: "RELEASE_ARC_TESTNET_ESCROW" };
+  return request<AgonEscrowIntentView>(`/escrow/intents/${encodeURIComponent(intentId)}/release`, { method: "POST", body: JSON.stringify(body) });
+}
+
+export function refundAgonEscrow(intentId: string): Promise<AgonEscrowIntentView> {
+  const body: AgonEscrowLifecycleRequest = { confirmation: "REFUND_ARC_TESTNET_ESCROW" };
+  return request<AgonEscrowIntentView>(`/escrow/intents/${encodeURIComponent(intentId)}/refund`, { method: "POST", body: JSON.stringify(body) });
 }
 
 export function prepareX402CallIntent(

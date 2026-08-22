@@ -721,6 +721,37 @@ test("prepares and reads an escrow intent without enabling execution", async () 
   assert.equal(((await readiness.json()) as AgonEscrowReadinessView).status, "adapter_disabled");
 });
 
+test("requires authentication and exact confirmation for escrow lifecycle routes", async () => {
+  const app = testApp(new FakeAgonService());
+  const unauthenticated = await app.request("/agon/escrow/intents/00000000-0000-4000-8000-000000000001/fund", {
+    method: "POST",
+    body: JSON.stringify({ confirmation: "FUND_ARC_TESTNET_ESCROW" }),
+  });
+  assert.equal(unauthenticated.status, 401);
+
+  const invalid = await app.request("/agon/escrow/intents/00000000-0000-4000-8000-000000000001/fund", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-test-address": ADDRESS },
+    body: JSON.stringify({ confirmation: "EXECUTE_ARC_TESTNET_X402" }),
+  });
+  assert.equal(invalid.status, 400);
+  assert.equal(((await invalid.json()) as { error: { code: string } }).error.code, "invalid_request");
+});
+
+test("disabled escrow lifecycle routes fail closed before an adapter exists", async () => {
+  const app = testApp(new FakeAgonService());
+  for (const action of ["fund", "release", "refund"] as const) {
+    const confirmation = `${action.toUpperCase()}_ARC_TESTNET_ESCROW`;
+    const response = await app.request(`/agon/escrow/intents/00000000-0000-4000-8000-000000000001/${action}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-test-address": ADDRESS },
+      body: JSON.stringify({ confirmation }),
+    });
+    assert.equal(response.status, 503);
+    assert.equal(((await response.json()) as { error: { code: string } }).error.code, "escrow_disabled");
+  }
+});
+
 test("requires authentication before preparing an x402 call intent", async () => {
   const app = testApp(new FakeAgonService());
   const response = await app.request(`/agon/listings/${encodeURIComponent(listing.id)}/call-intents`, {

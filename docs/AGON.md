@@ -46,6 +46,9 @@ The auth service mounts these routes under `/agon`:
 - `POST /agon/escrow/intents` (authenticated; durable escrow preparation only)
 - `GET /agon/escrow/intents/:intentId` (authenticated; owner-scoped durable intent read)
 - `GET /agon/escrow/intents/:intentId/readiness` (authenticated; disabled/reconciliation/terminal readiness)
+- `POST /agon/escrow/intents/:intentId/fund` (authenticated; exact confirmation; disabled by default)
+- `POST /agon/escrow/intents/:intentId/release` (authenticated; exact confirmation; disabled by default)
+- `POST /agon/escrow/intents/:intentId/refund` (authenticated; exact confirmation; disabled by default)
 
 The facilitator verification route is fail-closed. It requires a prepared call intent, a durable explicit execution approval, the exact transient signature, and the literal confirmation `VERIFY_ARC_TESTNET_X402`. Set `AGON_X402_VERIFICATION_ENABLED=true` only in a controlled Arc Testnet environment with a nonzero `AGON_X402_EXECUTION_MAX_BASE_UNITS` policy. A successful check writes append-only evidence keyed by intent and approval, including a deterministic evidence hash, network, payer, and timestamp. It never persists the raw signature, settles funds, or marks service delivery. Replays return the original evidence. `AGON_X402_EXECUTION_ENABLED` remains a separate switch and defaults to `false`.
 
@@ -242,6 +245,16 @@ Any adapter exception, missing evidence, or failed durable completion becomes
 exists. Completed actions are idempotent. The orchestrator is not wired to a
 client action, remains disabled by default, and cannot construct or call a
 PrizeEscrow contract, wallet, Circle provider, RPC signer, or transaction.
+
+## Phase 11: owner-scoped escrow lifecycle routes
+
+The authenticated fund, release, and refund routes now expose the Phase 10
+orchestrator without weakening its gates. Each route requires the exact
+operation confirmation, the intent owner, an enabled lifecycle adapter, a
+bound pool, and an enabled read-only pool check reporting `match` (including
+controller authorization). A disabled adapter returns a typed refusal before
+any state transition or provider call. The frontend client exposes helpers for
+these routes, but no UI action enables them or fabricates a successful result.
 
 ### Provider receipt source decision
 

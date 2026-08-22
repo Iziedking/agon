@@ -22,7 +22,8 @@ import { isX402ProviderTransferId, isX402Transaction, validateX402ReceiptLookupR
 import type { X402FacilitatorVerificationRequest as X402FacilitatorVerificationInput, X402FacilitatorVerificationResult, X402SettlementRequest as X402SettlementInput } from "../execution/x402-settlement.ts";
 import { buildX402ExecutionApproval, type X402ExecutionApprovalRequest } from "../execution/x402-execution-approval.ts";
 import { validateAgonPrizeEscrowPoolBinding, type AgonPrizeEscrowPoolBinding, type AgonPrizeEscrowReadAdapter } from "../execution/escrow-reconciliation.ts";
-import { evaluateAgonEscrowTerms, hashAgonEscrowTerms, type AgonEscrowListing } from "../escrow-policy.ts";
+import { createAgonEscrowLifecycleOrchestrator, type AgonEscrowLifecycleAction } from "../execution/escrow-orchestrator.ts";
+import { createDisabledAgonEscrowAdapter, evaluateAgonEscrowTerms, hashAgonEscrowTerms, type AgonEscrowAdapter, type AgonEscrowListing } from "../escrow-policy.ts";
 import type {
   AgonCapabilities,
   AgonEndpointQa,
@@ -99,6 +100,9 @@ export type PostgresAgonMarketServiceOptions = {
   escrowReadAdapter?: AgonPrizeEscrowReadAdapter;
   /** Configured PrizeEscrow address used to pin any durable pool binding. */
   escrowPoolContract?: `0x${string}`;
+  /** Explicitly enabled lifecycle adapter; undefined keeps escrow disabled. */
+  escrowExecutionAdapter?: AgonEscrowAdapter;
+  escrowExecutionEnabled?: boolean;
   fetchImpl?: typeof fetch;
 };
 
@@ -442,10 +446,16 @@ function executionApprovalView(
 export class PostgresAgonMarketService implements AgonMarketService {
   private readonly repository: PostgresAgonRepository;
   private readonly options: PostgresAgonMarketServiceOptions;
+  private readonly escrowLifecycle: ReturnType<typeof createAgonEscrowLifecycleOrchestrator>;
 
   constructor(repository: PostgresAgonRepository, options: PostgresAgonMarketServiceOptions = {}) {
     this.repository = repository;
     this.options = options;
+    this.escrowLifecycle = createAgonEscrowLifecycleOrchestrator({
+      store: repository,
+      enabled: options.escrowExecutionEnabled === true,
+      adapter: options.escrowExecutionAdapter ?? createDisabledAgonEscrowAdapter(),
+    });
   }
 
   async listListings(query: ListingQuery): Promise<Result<ListingPage, AgonServiceError>> {
@@ -660,6 +670,65 @@ export class PostgresAgonMarketService implements AgonMarketService {
       }
     }
     return { ok: true, value: escrowReadinessView(intent, pool) };
+  }
+
+  private async executeAgonEscrowLifecycle(
+    actor: string,
+    intentId: string,
+    action: AgonEscrowLifecycleAction,
+    confirmation: string,
+  ): Promise<Result<AgonEscrowIntentView, AgonServiceError>> {
+    const expected = {
+      fund: "FUND_ARC_TESTNET_ESCROW",
+      release: "RELEASE_ARC_TESTNET_ESCROW",
+      refund: "REFUND_ARC_TESTNET_ESCROW",
+    }[action];
+    if (confirmation !== expected) return { ok: false, error: { code: "validation_failed", message: "explicit Arc Testnet escrow confirmation is required" } };
+    const intent = await this.repository.getAgonEscrowIntent(intentId);
+    if (!intent) return { ok: false, error: { code: "not_found", message: "Agon escrow intent not found" } };
+    if (intent.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the escrow intent owner can execute this operation" } };
+    if (!this.options.escrowExecutionEnabled || !this.options.escrowExecutionAdapter?.enabled) {
+      return { ok: false, error: { code: "escrow_disabled", message: "Agon escrow execution is disabled by policy" } };
+    }
+    if (!intent.poolBinding || !this.options.escrowReadAdapter?.enabled) {
+      return { ok: false, error: { code: "execution_not_ready", message: "escrow execution requires a bound pool and enabled read-only readiness adapter" } };
+    }
+    const readiness = await this.getAgonEscrowReadiness(actor, intentId);
+    if (!readiness.ok) return readiness;
+    if (readiness.value.pool.status !== "match") {
+      return { ok: false, error: { code: "execution_not_ready", message: `escrow pool is ${readiness.value.pool.status}; an exact authorized pool match is required` } };
+    }
+    const result = await this.escrowLifecycle[action](intentId);
+    if (!result.ok) {
+      if (result.error.code === "escrow_disabled") return { ok: false, error: { code: "escrow_disabled", message: result.error.message } };
+      if (result.error.code === "escrow_unknown") return { ok: false, error: { code: "conflict", message: result.error.message } };
+      return { ok: false, error: { code: "execution_not_ready", message: result.error.message } };
+    }
+    return { ok: true, value: escrowIntentView(result.intent, result.intent.listingReference) };
+  }
+
+  async fundAgonEscrow(
+    actor: string,
+    intentId: string,
+    confirmation: string,
+  ): Promise<Result<AgonEscrowIntentView, AgonServiceError>> {
+    return this.executeAgonEscrowLifecycle(actor, intentId, "fund", confirmation);
+  }
+
+  async releaseAgonEscrow(
+    actor: string,
+    intentId: string,
+    confirmation: string,
+  ): Promise<Result<AgonEscrowIntentView, AgonServiceError>> {
+    return this.executeAgonEscrowLifecycle(actor, intentId, "release", confirmation);
+  }
+
+  async refundAgonEscrow(
+    actor: string,
+    intentId: string,
+    confirmation: string,
+  ): Promise<Result<AgonEscrowIntentView, AgonServiceError>> {
+    return this.executeAgonEscrowLifecycle(actor, intentId, "refund", confirmation);
   }
 
   async prepareX402Call(

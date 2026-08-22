@@ -146,6 +146,21 @@ export type AgonMarketService = {
     actor: string,
     intentId: string,
   ): Promise<Result<AgonEscrowReadinessView, AgonServiceError>>;
+  fundAgonEscrow?(
+    actor: string,
+    intentId: string,
+    confirmation: string,
+  ): Promise<Result<AgonEscrowIntentView, AgonServiceError>>;
+  releaseAgonEscrow?(
+    actor: string,
+    intentId: string,
+    confirmation: string,
+  ): Promise<Result<AgonEscrowIntentView, AgonServiceError>>;
+  refundAgonEscrow?(
+    actor: string,
+    intentId: string,
+    confirmation: string,
+  ): Promise<Result<AgonEscrowIntentView, AgonServiceError>>;
   getCapabilities(): Promise<AgonCapabilities>;
 };
 
@@ -232,6 +247,10 @@ const agonEscrowIntentSchema = z.object({
     poolId: z.string().regex(/^\d+$/, "must be a non-negative integer"),
   }).strict().optional(),
 }).strict();
+
+const fundAgonEscrowSchema = z.object({ confirmation: z.literal("FUND_ARC_TESTNET_ESCROW") }).strict();
+const releaseAgonEscrowSchema = z.object({ confirmation: z.literal("RELEASE_ARC_TESTNET_ESCROW") }).strict();
+const refundAgonEscrowSchema = z.object({ confirmation: z.literal("REFUND_ARC_TESTNET_ESCROW") }).strict();
 
 function validationResponse(error: ZodError): ApiErrorResponse {
   return {
@@ -363,6 +382,36 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
 
   app.get("/escrow/intents/:intentId/readiness", options.requireAuth, async (context) => {
     const result = await options.service.getAgonEscrowReadiness(context.get("address"), context.req.param("intentId"));
+    return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  app.post("/escrow/intents/:intentId/fund", options.requireAuth, async (context) => {
+    const body = await parseJson(context);
+    if (isApiError(body)) return context.json(body, 400);
+    const parsed = fundAgonEscrowSchema.safeParse(body);
+    if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
+    if (!options.service.fundAgonEscrow) return serviceErrorResponse(context, { code: "escrow_disabled", message: "Agon escrow execution is disabled by policy" });
+    const result = await options.service.fundAgonEscrow(context.get("address"), context.req.param("intentId"), parsed.data.confirmation);
+    return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  app.post("/escrow/intents/:intentId/release", options.requireAuth, async (context) => {
+    const body = await parseJson(context);
+    if (isApiError(body)) return context.json(body, 400);
+    const parsed = releaseAgonEscrowSchema.safeParse(body);
+    if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
+    if (!options.service.releaseAgonEscrow) return serviceErrorResponse(context, { code: "escrow_disabled", message: "Agon escrow execution is disabled by policy" });
+    const result = await options.service.releaseAgonEscrow(context.get("address"), context.req.param("intentId"), parsed.data.confirmation);
+    return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  app.post("/escrow/intents/:intentId/refund", options.requireAuth, async (context) => {
+    const body = await parseJson(context);
+    if (isApiError(body)) return context.json(body, 400);
+    const parsed = refundAgonEscrowSchema.safeParse(body);
+    if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
+    if (!options.service.refundAgonEscrow) return serviceErrorResponse(context, { code: "escrow_disabled", message: "Agon escrow execution is disabled by policy" });
+    const result = await options.service.refundAgonEscrow(context.get("address"), context.req.param("intentId"), parsed.data.confirmation);
     return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
   });
 

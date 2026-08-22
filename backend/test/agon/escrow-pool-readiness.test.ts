@@ -116,3 +116,13 @@ test("reports an unapproved controller separately from a balance mismatch", asyn
   if (!result.ok) return;
   assert.equal(result.value.pool.status, "controller_unapproved");
 });
+
+test("keeps owner escrow lifecycle execution behind confirmation and the kill switch", async () => {
+  const service = new PostgresAgonMarketService(repository(intent()) as never);
+  const invalid = await service.fundAgonEscrow(ACTOR, intent().intentId, "EXECUTE_ARC_TESTNET_X402");
+  assert.equal(invalid.ok, false);
+  if (!invalid.ok) assert.equal(invalid.error.code, "validation_failed");
+  const disabled = await service.fundAgonEscrow(ACTOR, intent().intentId, "FUND_ARC_TESTNET_ESCROW");
+  assert.equal(disabled.ok, false);
+  if (!disabled.ok) assert.equal(disabled.error.code, "escrow_disabled");
+});

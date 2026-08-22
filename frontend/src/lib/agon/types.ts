@@ -132,6 +132,13 @@ export type AgonEscrowIntentRequest = {
   };
 };
 
+export type AgonEscrowLifecycleRequest = {
+  confirmation:
+    | "FUND_ARC_TESTNET_ESCROW"
+    | "RELEASE_ARC_TESTNET_ESCROW"
+    | "REFUND_ARC_TESTNET_ESCROW";
+};
+
 export type AgonEscrowIntentView = {
   intentId: string;
   actor: `0x${string}`;
