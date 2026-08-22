@@ -262,6 +262,26 @@ Circle's documented Arc Testnet Gateway base is `https://gateway-api-testnet.cir
 
 The read-only adapter contract now supports this UUID source and the durable receipt stores `providerTransferId` separately from `settlementRef`. The Circle adapter is wired behind `AGON_X402_RECONCILIATION_ENABLED`, which defaults to `false`. It binds the UUID to the exact intent, payer, recipient, amount, both Arc Testnet transfer networks, and `eip155:5042002`, applies bounded timeouts, a 64 KiB response cap, and a circuit breaker, and maps Circle's pending/confirmed/failed states without claiming service delivery. Reconciliation readiness distinguishes `lookup_disabled`, `lookup_required`, `reference_required`, and `terminal`; `lookupEnabled` reports the actual server-side adapter state while execution remains disabled. Production remains disabled by default and makes no provider request unless a controlled testnet configuration explicitly enables the flag.
 
+## Phase 12: read-only PrizeEscrow write preflight
+
+`backend/src/agon/execution/escrow-write-preflight.ts` adds a bounded,
+read-only boundary for the next PrizeEscrow integration step. It pins the
+request to Arc Testnet (`eip155:5042002`), the configured PrizeEscrow address,
+and the fixed Arc Testnet USDC asset. When explicitly enabled with an injected
+read-only client, it checks deployed bytecode, `usdc()`, the exact
+`CONTROLLER_ROLE()` hash, and `hasRole` for the configured controller. It also
+publishes the ABI-pinned mutating signatures and selectors needed by the
+future adapter.
+
+The boundary builds deterministic `depositPrizePool` calldata for funding and
+`payout` calldata for release/refund. The returned intent is explicitly marked
+`execution: "disabled"`; there is no signer, wallet client, simulation write,
+provider call, transaction submission, or broadcast path. Missing code, wrong
+asset/role, or an unauthorized controller fails closed. The default adapter is
+disabled and performs no RPC call. A later phase must add an explicit approval
+and independently tested transaction adapter before any write can be
+considered.
+
 ## Manifest proof
 
 Manifest hashes use sorted-key JSON canonicalization followed by `keccak256` of the UTF-8 bytes. The pinned foundation fixture hashes to:
