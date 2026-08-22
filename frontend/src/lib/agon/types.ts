@@ -279,6 +279,19 @@ export type X402ExecutionReadinessView = {
   checkedAt: string;
 };
 
+export type X402SettlementReadinessView = {
+  receiptId: string;
+  intentId: string;
+  state: "prepared" | "approved" | "payment_required" | "authorization_ready" | "authorization_submitted" | "settlement_submitted" | "service_delivered" | "reconciled" | "rejected" | "failed" | "unknown";
+  network: "eip155:5042002";
+  settlementRef: string | null;
+  status: "authorization_required" | "ready_but_disabled" | "service_delivery_pending" | "reconciliation_required" | "terminal";
+  reason: string;
+  executionEnabled: false;
+  nextAction: "complete_authorization" | "execution_adapter_not_enabled" | "deliver_service" | "reconcile_settlement" | "none";
+  checkedAt: string;
+};
+
 export type AgonHealth = {
   ok: boolean;
   service: "agon";

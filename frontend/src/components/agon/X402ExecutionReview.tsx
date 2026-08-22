@@ -2,16 +2,19 @@
 
 import { useEffect, useState } from "react";
 
-import { approveX402Execution, getX402ExecutionReadiness, AGON_PREVIEW_MODE } from "@/lib/agon/client";
+import { approveX402Execution, getX402ExecutionReadiness, getX402SettlementReadiness, AGON_PREVIEW_MODE } from "@/lib/agon/client";
 import { executionReadinessLabel, executionReadinessTone, formatExecutionTimestamp, formatUSDCBaseUnits, newExecutionApprovalKey } from "@/lib/agon/execution-review";
-import type { X402ExecutionApprovalView, X402ExecutionReadinessView } from "@/lib/agon/types";
+import { settlementReadinessLabel, settlementReadinessTone } from "@/lib/agon/settlement-review";
+import type { X402ExecutionApprovalView, X402ExecutionReadinessView, X402SettlementReadinessView } from "@/lib/agon/types";
 import { TagButton } from "@/components/redesign/TagButton";
 
 type Props = { intentId: string; refreshKey?: string | number };
 
 export function X402ExecutionReview({ intentId, refreshKey }: Props) {
   const [readiness, setReadiness] = useState<X402ExecutionReadinessView | null>(null);
+  const [settlementReadiness, setSettlementReadiness] = useState<X402SettlementReadinessView | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [settlementError, setSettlementError] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState("");
   const [approval, setApproval] = useState<X402ExecutionApprovalView | null>(null);
   const [approvalError, setApprovalError] = useState<string | null>(null);
@@ -21,12 +24,20 @@ export function X402ExecutionReview({ intentId, refreshKey }: Props) {
   useEffect(() => {
     let live = true;
     setReadiness(null);
+    setSettlementReadiness(null);
     setError(null);
+    setSettlementError(null);
     getX402ExecutionReadiness(intentId)
       .then((value) => { if (live) { setReadiness(value); setApproval(value.approval); } })
       .catch((failure) => {
         if (!live) return;
         setError(failure instanceof Error ? failure.message : "Execution review is not available yet.");
+      });
+    getX402SettlementReadiness(intentId)
+      .then((value) => { if (live) setSettlementReadiness(value); })
+      .catch((failure) => {
+        if (!live) return;
+        setSettlementError(failure instanceof Error ? failure.message : "Settlement readiness is not available yet.");
       });
     return () => { live = false; };
   }, [intentId, refreshKey]);
@@ -45,6 +56,7 @@ export function X402ExecutionReview({ intentId, refreshKey }: Props) {
       const refreshed = await getX402ExecutionReadiness(intentId);
       setReadiness(refreshed);
       setApproval(refreshed.approval ?? result);
+      setSettlementReadiness(await getX402SettlementReadiness(intentId));
     } catch (failure) {
       setApprovalError(failure instanceof Error ? failure.message : "Agon could not record this execution approval.");
     } finally {
@@ -106,6 +118,25 @@ export function X402ExecutionReview({ intentId, refreshKey }: Props) {
           ) : null}
 
           {approval ? <div className="mt-4 border-l-2 border-[color:var(--ok)] pl-3 font-mono text-[10px] leading-relaxed text-[color:var(--ok)]"><div className="uppercase tracking-[0.1em]">APPROVED · ADAPTER OFF</div><p className="mt-1 text-current/80">Approval {approval.approvalHash} is bound to this plan and expires {formatExecutionTimestamp(approval.expiresAt)}. No payment was sent.</p></div> : null}
+          <section aria-labelledby="x402-settlement-readiness" className="mt-4 border-t border-current pt-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h4 id="x402-settlement-readiness" className="font-mono text-[9px] uppercase tracking-[0.14em] opacity-70">SETTLEMENT READINESS</h4>
+              {settlementReadiness ? <span className="font-mono text-[9px] uppercase tracking-[0.1em]" style={{ color: readinessToneColor(settlementReadinessTone(settlementReadiness.status)) }}>{settlementReadinessLabel(settlementReadiness.status)}</span> : null}
+            </div>
+            {settlementError ? <p className="mt-3 border-l-2 border-[color:var(--warn)] pl-3 font-mono text-[10px] leading-relaxed opacity-75">{settlementError}</p> : null}
+            {!settlementReadiness && !settlementError ? <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.08em] opacity-60">CHECKING DURABLE RECEIPT...</p> : null}
+            {settlementReadiness ? (
+              <>
+                <p className="mt-2 font-mono text-[10px] leading-relaxed opacity-75">{settlementReadiness.reason}</p>
+                <dl className="mt-3 grid gap-px bg-current/20 sm:grid-cols-2">
+                  <ReviewFact label="NETWORK" value="ARC TESTNET · 5042002" />
+                  <ReviewFact label="NEXT ACTION" value={settlementReadiness.nextAction.replaceAll("_", " ")} />
+                  <ReviewFact label="SETTLEMENT REF" value={settlementReadiness.settlementRef ?? "NOT RECORDED"} mono={Boolean(settlementReadiness.settlementRef)} />
+                  <ReviewFact label="CHECKED" value={formatExecutionTimestamp(settlementReadiness.checkedAt)} />
+                </dl>
+              </>
+            ) : null}
+          </section>
         </>
       ) : null}
     </section>

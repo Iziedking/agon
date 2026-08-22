@@ -19,6 +19,7 @@ import type {
   X402ExecutionApprovalRequest,
   X402ExecutionApprovalView,
   X402ExecutionReadinessView,
+  X402SettlementReadinessView,
 } from "./types";
 import { AGON_PREVIEW_HEALTH, AGON_PREVIEW_LISTINGS } from "./preview";
 
@@ -331,4 +332,23 @@ export function getX402ExecutionReadiness(intentId: string): Promise<X402Executi
     }));
   }
   return request<X402ExecutionReadinessView>(`/call-intents/${encodeURIComponent(intentId)}/execution-readiness`, { method: "GET" });
+}
+
+/** Inspect durable settlement state without contacting Circle or settling. */
+export function getX402SettlementReadiness(intentId: string): Promise<X402SettlementReadinessView> {
+  if (AGON_PREVIEW_MODE) {
+    return Promise.resolve({
+      receiptId: "00000000-0000-4000-8000-000000000100",
+      intentId,
+      state: "authorization_submitted",
+      network: "eip155:5042002",
+      settlementRef: null,
+      status: "ready_but_disabled",
+      reason: "Authorization is valid, but Circle settlement is disabled by policy.",
+      executionEnabled: false,
+      nextAction: "execution_adapter_not_enabled",
+      checkedAt: new Date().toISOString(),
+    });
+  }
+  return request<X402SettlementReadinessView>(`/call-intents/${encodeURIComponent(intentId)}/settlement-readiness`, { method: "GET" });
 }
