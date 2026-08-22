@@ -29,6 +29,7 @@ export function X402CallIntentPanel({ listing, defaultAmount, endpointUrl }: Pro
   const [quote, setQuote] = useState<X402QuoteView | null>(null);
   const [authorization, setAuthorization] = useState<X402AuthorizationView | null>(null);
   const [submittedAuthorization, setSubmittedAuthorization] = useState<X402AuthorizationSubmittedView | null>(null);
+  const [authorizationSignature, setAuthorizationSignature] = useState<`0x${string}` | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [preparing, setPreparing] = useState(false);
   const [idempotencyKey, setIdempotencyKey] = useState("");
@@ -44,6 +45,7 @@ export function X402CallIntentPanel({ listing, defaultAmount, endpointUrl }: Pro
     setQuote(null);
     setAuthorization(null);
     setSubmittedAuthorization(null);
+    setAuthorizationSignature(null);
     if (!me && !AGON_PREVIEW_MODE) {
       setLoginOpen(true);
       return;
