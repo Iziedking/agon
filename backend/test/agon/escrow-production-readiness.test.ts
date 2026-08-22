@@ -22,6 +22,7 @@ function readyInput(overrides: Partial<Parameters<typeof evaluateAgonEscrowProdu
     asset: AGON_ESCROW_USDC,
     deployment: DEPLOYMENT,
     controller: CONTROLLER,
+    signerAddress: CONTROLLER,
     controllerPolicyConfigured: true,
     flags: {
       writesEnabled: true,
@@ -156,4 +157,13 @@ test("refuses an inferred controller when explicit policy is absent", () => {
   });
   assert.equal(result.ready, false);
   assert.deepEqual(result.reasons, ["controller_policy_unconfigured"]);
+});
+
+test("refuses a controller that does not match the configured signer identity", () => {
+  const result = evaluateAgonEscrowProductionReadiness({
+    ...readyInput(),
+    signerAddress: PROFILE,
+  });
+  assert.equal(result.ready, false);
+  assert.deepEqual(result.reasons, ["controller_signer_mismatch"]);
 });

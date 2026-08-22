@@ -44,6 +44,7 @@ export function evaluateAgonEscrowProductionReadiness(input: {
   deployment: DeploymentShape | null | undefined;
   prizeEscrowAddress?: string | null;
   controller?: string | null;
+  signerAddress?: string | null;
   controllerPolicyConfigured: boolean;
   flags: {
     writesEnabled: boolean;
@@ -108,6 +109,12 @@ export function evaluateAgonEscrowProductionReadiness(input: {
 
   if (!input.exactTransactionPlanBound) reasons.push("exact_transaction_plan_not_bound");
   if (!input.signerAvailable) reasons.push("signer_unavailable");
+  if (input.signerAvailable) {
+    const signer = validAddress(input.signerAddress) ? getAddress(input.signerAddress!).toLowerCase() : null;
+    const controller = validAddress(input.controller) ? getAddress(input.controller!).toLowerCase() : null;
+    if (!signer) reasons.push("signer_identity_unconfigured");
+    else if (controller && signer !== controller) reasons.push("controller_signer_mismatch");
+  }
   if (!input.providerFinalityConfigured) reasons.push("provider_finality_not_configured");
 
   return {

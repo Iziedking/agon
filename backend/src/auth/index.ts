@@ -183,6 +183,7 @@ const agonEscrowProductionReadiness = () => evaluateAgonEscrowProductionReadines
   // registries live in the separate canonical Agon receipt.
   prizeEscrowAddress: config.contracts.PrizeEscrow,
   controller: config.agon.escrow.controllerAddress,
+  signerAddress: config.coordinator.address,
   controllerPolicyConfigured: config.agon.escrow.controllerAddress !== undefined,
   flags: {
     writesEnabled: config.agon.writesEnabled,

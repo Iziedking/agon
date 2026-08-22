@@ -409,6 +409,10 @@ Escrow lifecycle and transaction execution now have separate kill switches:
 default to `false`; enabling the lifecycle flag alone cannot authorize a
 PrizeEscrow transaction.
 
+The readiness gate also requires the explicit controller address to match the
+configured signer identity. A controller policy and a signer key are never
+treated as interchangeable configuration values.
+
 ## Manifest proof
 
 Manifest hashes use sorted-key JSON canonicalization followed by `keccak256` of the UTF-8 bytes. The pinned foundation fixture hashes to:
