@@ -229,6 +229,20 @@ balance but an unauthorized controller is reported as
 retains the role hash and authorization boolean for audit display, while the
 adapter remains strictly read-only and disabled by default.
 
+## Phase 10: disabled escrow lifecycle orchestration
+
+`backend/src/agon/execution/escrow-orchestrator.ts` adds the durable lifecycle
+seam for a future approved PrizeEscrow adapter. Funding writes `funding` before
+the adapter call; release and refund write their corresponding pending marker
+first. A trusted provider reference or Arc Testnet transaction is required
+before the intent can advance to `funded`, `released`, or `refunded`.
+
+Any adapter exception, missing evidence, or failed durable completion becomes
+`unknown` and blocks automatic retry until an independent reconciliation result
+exists. Completed actions are idempotent. The orchestrator is not wired to a
+client action, remains disabled by default, and cannot construct or call a
+PrizeEscrow contract, wallet, Circle provider, RPC signer, or transaction.
+
 ### Provider receipt source decision
 
 Circle's documented Arc Testnet Gateway base is `https://gateway-api-testnet.circle.com`. The `POST /gateway/v1/x402/settle` response describes `transaction` as a **transfer UUID**, not an on-chain transaction hash. The corresponding read-only source is `GET /v1/x402/transfers/{id}` (or the paginated `GET /gateway/v1/x402/transfers` search endpoint), which returns the UUID, `status`, USDC amount, sender, recipient, CAIP-2 networks, and timestamps. Circle documents these transfer states as `received`, `batched`, `confirmed`, `completed`, and `failed`; `confirmed` means included onchain and `completed` means fully complete. The Gateway flow can serve a resource before batched onchain settlement, so a successful `settle` response is not finality evidence.
