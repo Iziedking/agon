@@ -1,4 +1,4 @@
-import { getAddress } from "viem";
+import { getAddress, keccak256, stringToHex } from "viem";
 import { AGON_ESCROW_NETWORK, AGON_ESCROW_USDC } from "../escrow-policy.ts";
 
 const ADDRESS = /^0x[0-9a-f]{40}$/i;
@@ -6,6 +6,7 @@ const NON_NEGATIVE_INTEGER = /^(0|[1-9]\d*)$/;
 const MAX_REASON_LENGTH = 512;
 
 export const AGON_PRIZE_ESCROW_NETWORK = AGON_ESCROW_NETWORK;
+export const AGON_PRIZE_ESCROW_CONTROLLER_ROLE = keccak256(stringToHex("CONTROLLER_ROLE"));
 
 export type AgonPrizeEscrowPoolBinding = {
   contractAddress: `0x${string}`;
@@ -29,6 +30,8 @@ export type AgonPrizeEscrowReadResult = {
   controller: `0x${string}`;
   poolId: string;
   balanceBaseUnits: string;
+  controllerRole: `0x${string}`;
+  controllerAuthorized: boolean;
   checkedAt?: string;
   reason?: string;
 };
@@ -37,8 +40,8 @@ export type AgonPrizeEscrowReadClient = {
   readContract(input: {
     address: `0x${string}`;
     abi: typeof PRIZE_ESCROW_VIEW_ABI;
-    functionName: "usdc" | "poolBalance";
-    args: readonly [] | readonly [`0x${string}`, bigint];
+    functionName: "usdc" | "poolBalance" | "CONTROLLER_ROLE" | "hasRole";
+    args: readonly [] | readonly [`0x${string}`, bigint] | readonly [`0x${string}`, `0x${string}`];
   }): Promise<unknown>;
 };
 
@@ -104,6 +107,11 @@ function normalizedAmount(value: unknown, label: string): string {
   return BigInt(value).toString();
 }
 
+function normalizedBytes32(value: unknown, label: string): `0x${string}` {
+  if (typeof value !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(value)) throw new Error(`${label} must be a bytes32 value`);
+  return value.toLowerCase() as `0x${string}`;
+}
+
 function validateRequest(input: AgonPrizeEscrowReadRequest): AgonPrizeEscrowReadRequest {
   if (input.network !== AGON_PRIZE_ESCROW_NETWORK) throw new Error("PrizeEscrow inspection must remain on Arc Testnet");
   const escrowAddress = normalizedAddress(input.escrowAddress);
@@ -124,6 +132,9 @@ export function validateAgonPrizeEscrowReadResult(input: AgonPrizeEscrowReadResu
   if (normalizedPoolId(input.poolId) !== expected.poolId) throw new Error("PrizeEscrow result returned a different pool");
   if (normalizedAddress(input.asset) !== expected.expectedAsset) throw new Error("PrizeEscrow result returned a different USDC asset");
   const balanceBaseUnits = normalizedAmount(input.balanceBaseUnits, "pool balance");
+  const controllerRole = normalizedBytes32(input.controllerRole, "PrizeEscrow controller role");
+  if (controllerRole !== AGON_PRIZE_ESCROW_CONTROLLER_ROLE.toLowerCase()) throw new Error("PrizeEscrow result returned a different controller role");
+  if (typeof input.controllerAuthorized !== "boolean") throw new Error("PrizeEscrow controller authorization is invalid");
   if (expected.expectedBalanceBaseUnits !== undefined && expected.expectedBalanceBaseUnits !== null && balanceBaseUnits !== expected.expectedBalanceBaseUnits) {
     throw new Error("PrizeEscrow pool balance does not match the escrow intent");
   }
@@ -137,6 +148,8 @@ export function validateAgonPrizeEscrowReadResult(input: AgonPrizeEscrowReadResu
     poolId: expected.poolId,
     asset: expected.expectedAsset,
     balanceBaseUnits,
+    controllerRole,
+    controllerAuthorized: input.controllerAuthorized,
   };
 }
 
@@ -178,10 +191,15 @@ export function createViemAgonPrizeEscrowReadAdapter(options: {
       if (request.expectedAsset !== expectedAsset) throw new Error("PrizeEscrow request is not pinned to the configured USDC asset");
       if (Date.now() < openedUntil) throw new Error("PrizeEscrow inspection circuit is open");
       try {
-        const [asset, balance] = await withTimeout(Promise.all([
+        const [asset, balance, controllerRole, controllerAuthorized] = await withTimeout(Promise.all([
           options.client.readContract({ address: escrowAddress, abi: PRIZE_ESCROW_VIEW_ABI, functionName: "usdc", args: [] }),
           options.client.readContract({ address: escrowAddress, abi: PRIZE_ESCROW_VIEW_ABI, functionName: "poolBalance", args: [request.controller, BigInt(request.poolId)] }),
+          options.client.readContract({ address: escrowAddress, abi: PRIZE_ESCROW_VIEW_ABI, functionName: "CONTROLLER_ROLE", args: [] }),
+          options.client.readContract({ address: escrowAddress, abi: PRIZE_ESCROW_VIEW_ABI, functionName: "hasRole", args: [AGON_PRIZE_ESCROW_CONTROLLER_ROLE, request.controller] }),
         ]), timeoutMs);
+        if (typeof controllerAuthorized !== "boolean") {
+          throw new Error("PrizeEscrow controller authorization is invalid");
+        }
         const result = validateAgonPrizeEscrowReadResult({
           network: AGON_PRIZE_ESCROW_NETWORK,
           escrowAddress,
@@ -189,6 +207,8 @@ export function createViemAgonPrizeEscrowReadAdapter(options: {
           controller: request.controller,
           poolId: request.poolId,
           balanceBaseUnits: normalizedAmount(balance, "pool balance"),
+          controllerRole: normalizedBytes32(controllerRole, "PrizeEscrow controller role"),
+          controllerAuthorized,
           checkedAt: new Date().toISOString(),
           reason: "PrizeEscrow view read",
         }, request);

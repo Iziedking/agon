@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   AGON_PRIZE_ESCROW_NETWORK,
+  AGON_PRIZE_ESCROW_CONTROLLER_ROLE,
   createDisabledAgonPrizeEscrowReadAdapter,
   createViemAgonPrizeEscrowReadAdapter,
   validateAgonPrizeEscrowReadResult,
@@ -37,6 +38,8 @@ test("validates exact contract, controller, pool, asset, and balance identity", 
     controller: CONTROLLER,
     poolId: "7",
     balanceBaseUnits: "1000000",
+    controllerRole: AGON_PRIZE_ESCROW_CONTROLLER_ROLE,
+    controllerAuthorized: true,
   }, request());
   assert.equal(result.balanceBaseUnits, "1000000");
   assert.equal(result.poolId, "7");
@@ -50,26 +53,35 @@ test("rejects a different pool balance instead of treating it as funded", () => 
     controller: CONTROLLER,
     poolId: "7",
     balanceBaseUnits: "999999",
+    controllerRole: AGON_PRIZE_ESCROW_CONTROLLER_ROLE,
+    controllerAuthorized: true,
   }, request()), /does not match/);
 });
 
 test("rejects wrong network, asset, controller, and malformed identifiers", () => {
-  assert.throws(() => validateAgonPrizeEscrowReadResult({ network: "eip155:1" as never, escrowAddress: ESCROW, asset: USDC, controller: CONTROLLER, poolId: "7", balanceBaseUnits: "1000000" }, request()), /Arc Testnet/);
-  assert.throws(() => validateAgonPrizeEscrowReadResult({ network: AGON_PRIZE_ESCROW_NETWORK, escrowAddress: ESCROW, asset: ESCROW, controller: CONTROLLER, poolId: "7", balanceBaseUnits: "1000000" }, request()), /different USDC/);
-  assert.throws(() => validateAgonPrizeEscrowReadResult({ network: AGON_PRIZE_ESCROW_NETWORK, escrowAddress: ESCROW, asset: USDC, controller: ESCROW, poolId: "7", balanceBaseUnits: "1000000" }, request()), /different controller/);
-  assert.throws(() => validateAgonPrizeEscrowReadResult({ network: AGON_PRIZE_ESCROW_NETWORK, escrowAddress: ESCROW, asset: USDC, controller: CONTROLLER, poolId: "-1", balanceBaseUnits: "1000000" }, request()), /non-negative/);
+  const valid = { controllerRole: AGON_PRIZE_ESCROW_CONTROLLER_ROLE, controllerAuthorized: true };
+  assert.throws(() => validateAgonPrizeEscrowReadResult({ network: "eip155:1" as never, escrowAddress: ESCROW, asset: USDC, controller: CONTROLLER, poolId: "7", balanceBaseUnits: "1000000", ...valid }, request()), /Arc Testnet/);
+  assert.throws(() => validateAgonPrizeEscrowReadResult({ network: AGON_PRIZE_ESCROW_NETWORK, escrowAddress: ESCROW, asset: ESCROW, controller: CONTROLLER, poolId: "7", balanceBaseUnits: "1000000", ...valid }, request()), /different USDC/);
+  assert.throws(() => validateAgonPrizeEscrowReadResult({ network: AGON_PRIZE_ESCROW_NETWORK, escrowAddress: ESCROW, asset: USDC, controller: ESCROW, poolId: "7", balanceBaseUnits: "1000000", ...valid }, request()), /different controller/);
+  assert.throws(() => validateAgonPrizeEscrowReadResult({ network: AGON_PRIZE_ESCROW_NETWORK, escrowAddress: ESCROW, asset: USDC, controller: CONTROLLER, poolId: "-1", balanceBaseUnits: "1000000", ...valid }, request()), /non-negative/);
 });
 
-test("enabled adapter performs only the two bounded view calls and normalizes result", async () => {
+test("enabled adapter performs only the four bounded view calls and normalizes result", async () => {
   const calls: string[] = [];
   const adapter = createViemAgonPrizeEscrowReadAdapter({
     enabled: true,
     escrowAddress: ESCROW,
-    client: { readContract: async (input) => { calls.push(input.functionName); return input.functionName === "usdc" ? USDC : 1000000n; } },
+    client: { readContract: async (input) => {
+      calls.push(input.functionName);
+      if (input.functionName === "usdc") return USDC;
+      if (input.functionName === "CONTROLLER_ROLE") return AGON_PRIZE_ESCROW_CONTROLLER_ROLE;
+      if (input.functionName === "hasRole") return true;
+      return 1000000n;
+    } },
   });
   const result = await adapter.inspect(request());
   assert.equal(adapter.enabled, true);
-  assert.deepEqual(calls.sort(), ["poolBalance", "usdc"]);
+  assert.deepEqual(calls.sort(), ["CONTROLLER_ROLE", "hasRole", "poolBalance", "usdc"]);
   assert.equal(result.balanceBaseUnits, "1000000");
   assert.equal(result.asset, USDC.toLowerCase());
 });
@@ -94,3 +106,32 @@ test("adapter opens its circuit after repeated read failures", async () => {
   await assert.rejects(() => adapter.inspect(request()), /circuit is open/);
 });
 
+test("does not treat an unauthorized controller as a ready pool", async () => {
+  const adapter = createViemAgonPrizeEscrowReadAdapter({
+    enabled: true,
+    escrowAddress: ESCROW,
+    client: { readContract: async (input) => {
+      if (input.functionName === "usdc") return USDC;
+      if (input.functionName === "CONTROLLER_ROLE") return AGON_PRIZE_ESCROW_CONTROLLER_ROLE;
+      if (input.functionName === "hasRole") return false;
+      return 1000000n;
+    } },
+  });
+  const result = await adapter.inspect(request());
+  assert.equal(result.controllerAuthorized, false);
+  assert.equal(result.balanceBaseUnits, "1000000");
+});
+
+test("rejects a malformed controller authorization response", async () => {
+  const adapter = createViemAgonPrizeEscrowReadAdapter({
+    enabled: true,
+    escrowAddress: ESCROW,
+    client: { readContract: async (input) => {
+      if (input.functionName === "usdc") return USDC;
+      if (input.functionName === "CONTROLLER_ROLE") return AGON_PRIZE_ESCROW_CONTROLLER_ROLE;
+      if (input.functionName === "hasRole") return "true";
+      return 1000000n;
+    } },
+  });
+  await assert.rejects(() => adapter.inspect(request()), /controller authorization is invalid/);
+});

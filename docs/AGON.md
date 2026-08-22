@@ -180,7 +180,8 @@ are part of `backend/test/agon/routes.test.ts`.
 
 `backend/src/agon/execution/escrow-reconciliation.ts` defines the next safe
 boundary for escrow. It reads only the deployed `PrizeEscrow.usdc()` asset
-pointer and `PrizeEscrow.poolBalance(controller, poolId)` view. The adapter
+pointer, `PrizeEscrow.poolBalance(controller, poolId)` view, the exact
+`CONTROLLER_ROLE()` value, and `hasRole(CONTROLLER_ROLE, controller)`. The adapter
 pins the request and result to Arc Testnet `eip155:5042002`, the configured
 PrizeEscrow address, the fixed USDC asset, the exact controller and pool id,
 and the expected integer balance from the escrow intent. A mismatched pool,
@@ -209,7 +210,7 @@ boundary. Reusing an idempotency key with a different pool is rejected. An
 unbound legacy intent remains valid but is explicitly reported as `unbound`.
 
 The authenticated intent and readiness views expose the binding. When a
-binding exists, readiness may perform the two read-only view calls through the
+binding exists, readiness may perform the four read-only view calls through the
 server-side adapter and reports `lookup_disabled`, `match`, `mismatch`, or
 `unavailable`. It never advances escrow state and never treats a matching pool
 balance as permission to fund, release, refund, or claim.
@@ -218,6 +219,15 @@ balance as permission to fund, release, refund, or claim.
 adapter is enabled, it is read-only and pinned to the configured legacy
 PrizeEscrow address. Controller authorization and all money-moving adapters
 remain deferred until separately approved.
+
+## Phase 9: controller authorization readiness
+
+Bound-pool inspection now also reads the exact `CONTROLLER_ROLE()` value and
+`hasRole(CONTROLLER_ROLE, controller)` from PrizeEscrow. A pool with a matching
+balance but an unauthorized controller is reported as
+`controller_unapproved`; it is never treated as fundable. The read result
+retains the role hash and authorization boolean for audit display, while the
+adapter remains strictly read-only and disabled by default.
 
 ### Provider receipt source decision
 

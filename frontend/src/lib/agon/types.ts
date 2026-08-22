@@ -168,7 +168,7 @@ export type AgonEscrowReadinessView = {
   executionEnabled: false;
   nextAction: AgonEscrowIntentView["nextAction"];
   pool: {
-    status: "unbound" | "lookup_disabled" | "match" | "mismatch" | "unavailable";
+    status: "unbound" | "lookup_disabled" | "controller_unapproved" | "match" | "mismatch" | "unavailable";
     contractAddress: `0x${string}` | null;
     controller: `0x${string}` | null;
     poolId: string | null;

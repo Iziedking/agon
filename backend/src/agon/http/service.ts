@@ -650,7 +650,7 @@ export class PostgresAgonMarketService implements AgonMarketService {
           });
           pool = {
             ...pool,
-            status: "match",
+            status: result.controllerAuthorized ? "match" : "controller_unapproved",
             balanceBaseUnits: result.balanceBaseUnits,
             checkedAt: result.checkedAt ?? new Date().toISOString(),
           };

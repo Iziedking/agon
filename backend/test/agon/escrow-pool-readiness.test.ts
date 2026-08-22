@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { PostgresAgonMarketService } from "../../src/agon/http/service.ts";
 import type { StoredAgonEscrowIntent } from "../../src/agon/store/repository.ts";
+import { AGON_PRIZE_ESCROW_CONTROLLER_ROLE } from "../../src/agon/execution/escrow-reconciliation.ts";
 
 const ACTOR = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const CONTRACT = "0x1111111111111111111111111111111111111111" as `0x${string}`;
@@ -69,6 +70,8 @@ test("reports an exact on-chain pool match without enabling execution", async ()
         controller: request.controller,
         poolId: request.poolId,
         balanceBaseUnits: request.expectedBalanceBaseUnits!,
+        controllerRole: AGON_PRIZE_ESCROW_CONTROLLER_ROLE,
+        controllerAuthorized: true,
         checkedAt: "2026-08-22T12:01:00.000Z",
       }),
     },
@@ -92,3 +95,24 @@ test("classifies a strict pool identity or amount mismatch without mutating stat
   assert.equal(result.value.state, "prepared");
 });
 
+test("reports an unapproved controller separately from a balance mismatch", async () => {
+  const service = new PostgresAgonMarketService(repository(intent()) as never, {
+    escrowReadAdapter: {
+      enabled: true,
+      inspect: async (request) => ({
+        network: request.network,
+        escrowAddress: request.escrowAddress,
+        asset: USDC,
+        controller: request.controller,
+        poolId: request.poolId,
+        balanceBaseUnits: request.expectedBalanceBaseUnits!,
+        controllerRole: AGON_PRIZE_ESCROW_CONTROLLER_ROLE,
+        controllerAuthorized: false,
+      }),
+    },
+  });
+  const result = await service.getAgonEscrowReadiness(ACTOR, intent().intentId);
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.value.pool.status, "controller_unapproved");
+});
