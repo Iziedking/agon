@@ -410,6 +410,28 @@ class FakeAgonService implements AgonMarketService {
     };
   }
 
+  async reconcileX402Receipt(
+    _actor: string,
+    intentId: string,
+    _request: { confirmation: "RECONCILE_ARC_TESTNET_X402" },
+  ): Promise<Result<import("../../src/agon/http/api-types.ts").X402ReconciliationView, ServiceError>> {
+    return {
+      ok: true,
+      value: {
+        receiptId: "00000000-0000-4000-8000-000000000002",
+        intentId,
+        state: "settlement_submitted",
+        network: "eip155:5042002",
+        status: "confirmed",
+        transaction: `0x${"ab".repeat(32)}`,
+        executionEnabled: false,
+        serviceDeliveryPending: true,
+        nextAction: "deliver_service",
+        recordedAt: new Date().toISOString(),
+      },
+    };
+  }
+
   async verifyX402Facilitator(
     _actor: string,
     intentId: string,
@@ -774,6 +796,31 @@ test("returns authenticated reconciliation readiness without enabling a provider
   assert.equal(body.lookupEnabled, false);
   assert.equal(body.executionEnabled, false);
   assert.equal(body.nextAction, "enable_receipt_lookup");
+});
+
+test("keeps reconciliation mutation behind authentication and explicit confirmation", async () => {
+  const app = testApp(new FakeAgonService());
+  const unauthenticated = await app.request("/agon/call-intents/00000000-0000-4000-8000-000000000001/reconcile", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ confirmation: "RECONCILE_ARC_TESTNET_X402" }),
+  });
+  assert.equal(unauthenticated.status, 401);
+  const invalid = await app.request("/agon/call-intents/00000000-0000-4000-8000-000000000001/reconcile", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-test-address": ADDRESS },
+    body: JSON.stringify({ confirmation: "RECONCILE" }),
+  });
+  assert.equal(invalid.status, 400);
+  const response = await app.request("/agon/call-intents/00000000-0000-4000-8000-000000000001/reconcile", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-test-address": ADDRESS },
+    body: JSON.stringify({ confirmation: "RECONCILE_ARC_TESTNET_X402" }),
+  });
+  assert.equal(response.status, 200);
+  const body = await response.json() as { executionEnabled: boolean; nextAction: string };
+  assert.equal(body.executionEnabled, false);
+  assert.equal(body.nextAction, "deliver_service");
 });
 
 test("requires authentication before facilitator verification", async () => {

@@ -290,6 +290,23 @@ export type X402ReconciliationReadinessView = {
   checkedAt: string;
 };
 
+export type X402ReconciliationRequest = {
+  confirmation: "RECONCILE_ARC_TESTNET_X402";
+};
+
+export type X402ReconciliationView = {
+  receiptId: string;
+  intentId: string;
+  state: X402SettlementReadinessView["state"];
+  network: "eip155:5042002";
+  status: "confirmed" | "pending" | "failed";
+  transaction: `0x${string}`;
+  executionEnabled: false;
+  serviceDeliveryPending: boolean;
+  nextAction: "deliver_service" | "reconcile_receipt" | "none";
+  recordedAt: string;
+};
+
 export type X402FacilitatorVerificationRequest = {
   signature: `0x${string}`;
   confirmation: "VERIFY_ARC_TESTNET_X402";

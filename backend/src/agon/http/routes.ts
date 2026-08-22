@@ -24,6 +24,7 @@ import type {
   X402ExecutionReadinessView,
   X402SettlementReadinessView,
   X402ReconciliationReadinessView,
+  X402ReconciliationRequest,
   X402FacilitatorVerificationRequest,
 } from "./api-types.ts";
 
@@ -42,6 +43,9 @@ export type AgonServiceError = {
     | "execution_not_ready"
     | "facilitator_rejected"
     | "facilitator_unavailable"
+    | "reconciliation_disabled"
+    | "reconciliation_unavailable"
+    | "reconciliation_invalid"
     | "internal";
   message: string;
 };
@@ -106,6 +110,11 @@ export type AgonMarketService = {
     actor: string,
     intentId: string,
   ): Promise<Result<X402ReconciliationReadinessView, AgonServiceError>>;
+  reconcileX402Receipt(
+    actor: string,
+    intentId: string,
+    request: X402ReconciliationRequest,
+  ): Promise<Result<import("./api-types.ts").X402ReconciliationView, AgonServiceError>>;
   verifyX402Facilitator(
     actor: string,
     intentId: string,
@@ -181,6 +190,10 @@ const x402FacilitatorVerificationSchema = z.object({
   confirmation: z.literal("VERIFY_ARC_TESTNET_X402"),
 }).strict();
 
+const x402ReconciliationSchema = z.object({
+  confirmation: z.literal("RECONCILE_ARC_TESTNET_X402"),
+}).strict();
+
 function validationResponse(error: ZodError): ApiErrorResponse {
   return {
     error: {
@@ -214,6 +227,12 @@ function serviceErrorResponse(
     case "facilitator_unavailable":
       return context.json(body, 503);
     case "facilitator_rejected":
+      return context.json(body, 422);
+    case "reconciliation_disabled":
+      return context.json(body, 503);
+    case "reconciliation_unavailable":
+      return context.json(body, 503);
+    case "reconciliation_invalid":
       return context.json(body, 422);
     case "receipt_unavailable":
       return context.json(body, 409);
@@ -383,6 +402,19 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
     const result = await options.service.getX402ReconciliationReadiness(
       context.get("address"),
       context.req.param("intentId"),
+    );
+    return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  app.post("/call-intents/:intentId/reconcile", options.requireAuth, async (context) => {
+    const body = await parseJson(context);
+    if (isApiError(body)) return context.json(body, 400);
+    const parsed = x402ReconciliationSchema.safeParse(body);
+    if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
+    const result = await options.service.reconcileX402Receipt(
+      context.get("address"),
+      context.req.param("intentId"),
+      parsed.data,
     );
     return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
   });

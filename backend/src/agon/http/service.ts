@@ -15,6 +15,9 @@ import { validateX402Approval } from "../execution/x402-approval.ts";
 import { parsePaymentRequiredHeader, type X402QuoteSnapshot } from "../execution/x402-quote.ts";
 import { buildX402Authorization, validateX402AuthorizationSignature, type X402AuthorizationPayload } from "../execution/x402-authorization.ts";
 import { buildX402ExecutionPlan } from "../execution/x402-facilitator.ts";
+import { createX402SettlementOrchestrator } from "../execution/x402-orchestrator.ts";
+import { createX402ExecutionPolicy } from "../execution/x402-policy.ts";
+import { isX402Transaction, validateX402ReceiptLookupResult, type X402ReceiptLookupAdapter } from "../execution/x402-reconciliation.ts";
 import type { X402FacilitatorVerificationRequest as X402FacilitatorVerificationInput, X402FacilitatorVerificationResult } from "../execution/x402-settlement.ts";
 import { buildX402ExecutionApproval, type X402ExecutionApprovalRequest } from "../execution/x402-execution-approval.ts";
 import type {
@@ -39,6 +42,8 @@ import type {
   X402ExecutionReadinessView,
   X402SettlementReadinessView,
   X402ReconciliationReadinessView,
+  X402ReconciliationRequest,
+  X402ReconciliationView,
   X402FacilitatorVerificationView,
   X402FacilitatorVerificationRequest,
 } from "./api-types.ts";
@@ -78,6 +83,8 @@ export type PostgresAgonMarketServiceOptions = {
   x402FacilitatorVerifier?: {
     verify(input: X402FacilitatorVerificationInput): Promise<X402FacilitatorVerificationResult>;
   };
+  /** Server-side provider lookup only. Undefined keeps reconciliation disabled. */
+  x402ReceiptLookup?: X402ReceiptLookupAdapter;
   fetchImpl?: typeof fetch;
 };
 
@@ -927,6 +934,65 @@ export class PostgresAgonMarketService implements AgonMarketService {
         executionEnabled: false,
         nextAction,
         checkedAt: new Date().toISOString(),
+      },
+    };
+  }
+
+  async reconcileX402Receipt(
+    actor: string,
+    intentId: string,
+    request: X402ReconciliationRequest,
+  ): Promise<Result<X402ReconciliationView, AgonServiceError>> {
+    const adapter = this.options.x402ReceiptLookup;
+    if (!adapter || adapter.enabled !== true) {
+      return { ok: false, error: { code: "reconciliation_disabled", message: "Arc Testnet receipt reconciliation is disabled by policy" } };
+    }
+    if (request.confirmation !== "RECONCILE_ARC_TESTNET_X402") {
+      return { ok: false, error: { code: "validation_failed", message: "explicit Arc Testnet reconciliation confirmation is required" } };
+    }
+    const intent = await this.repository.getX402CallIntent(intentId);
+    if (!intent) return { ok: false, error: { code: "not_found", message: "x402 call intent not found" } };
+    if (intent.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the intent owner can reconcile this receipt" } };
+    const receipt = await this.repository.getX402CallReceipt(intentId);
+    if (!receipt) return { ok: false, error: { code: "receipt_unavailable", message: "x402 receipt has not been created" } };
+    if (!receipt.settlementRef || !isX402Transaction(receipt.settlementRef)) {
+      return { ok: false, error: { code: "reconciliation_invalid", message: "x402 receipt has no valid Arc Testnet transaction reference" } };
+    }
+    if (receipt.state !== "unknown" && receipt.state !== "settlement_submitted") {
+      return { ok: false, error: { code: "conflict", message: `x402 receipt is ${receipt.state}; reconciliation is not applicable` } };
+    }
+
+    let lookup: Awaited<ReturnType<X402ReceiptLookupAdapter["lookup"]>>;
+    try {
+      lookup = await adapter.lookup({ network: "eip155:5042002", transaction: receipt.settlementRef });
+      lookup = validateX402ReceiptLookupResult(lookup, { network: "eip155:5042002", transaction: receipt.settlementRef });
+    } catch (error) {
+      return { ok: false, error: { code: "reconciliation_unavailable", message: error instanceof Error ? error.message : "provider receipt lookup failed without trusted evidence" } };
+    }
+
+    const orchestrator = createX402SettlementOrchestrator({
+      store: this.repository,
+      adapter: { settle: async () => ({ ok: false, error: { code: "execution_disabled", message: "settlement is not part of reconciliation" } }) },
+      policy: createX402ExecutionPolicy({ enabled: false, maxAmountBaseUnits: 0n }),
+    });
+    const reconciled = await orchestrator.reconcile(intentId, lookup);
+    if (!reconciled.ok) {
+      return { ok: false, error: { code: "reconciliation_invalid", message: reconciled.error.message } };
+    }
+    const nextState = reconciled.receipt.state;
+    return {
+      ok: true,
+      value: {
+        receiptId: reconciled.receipt.receiptId,
+        intentId,
+        state: nextState,
+        network: "eip155:5042002",
+        status: lookup.status,
+        transaction: lookup.transaction,
+        executionEnabled: false,
+        serviceDeliveryPending: nextState === "settlement_submitted",
+        nextAction: nextState === "failed" ? "none" : lookup.status === "pending" ? "reconcile_receipt" : "deliver_service",
+        recordedAt: reconciled.receipt.updatedAt.toISOString(),
       },
     };
   }
