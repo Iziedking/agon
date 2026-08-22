@@ -17,7 +17,7 @@ import { buildX402Authorization, validateX402AuthorizationSignature, type X402Au
 import { buildX402ExecutionPlan } from "../execution/x402-facilitator.ts";
 import { createX402SettlementOrchestrator } from "../execution/x402-orchestrator.ts";
 import { createX402ExecutionPolicy } from "../execution/x402-policy.ts";
-import { isX402Transaction, validateX402ReceiptLookupResult, type X402ReceiptLookupAdapter } from "../execution/x402-reconciliation.ts";
+import { isX402ProviderTransferId, isX402Transaction, validateX402ReceiptLookupResult, type X402ReceiptLookupAdapter } from "../execution/x402-reconciliation.ts";
 import type { X402FacilitatorVerificationRequest as X402FacilitatorVerificationInput, X402FacilitatorVerificationResult } from "../execution/x402-settlement.ts";
 import { buildX402ExecutionApproval, type X402ExecutionApprovalRequest } from "../execution/x402-execution-approval.ts";
 import type {
@@ -864,6 +864,7 @@ export class PostgresAgonMarketService implements AgonMarketService {
         state: receipt.state,
         network: "eip155:5042002",
         settlementRef: transactionRef,
+        providerTransferId: receipt.providerTransferId ?? null,
         status,
         reason,
         executionEnabled: false,
@@ -886,6 +887,9 @@ export class PostgresAgonMarketService implements AgonMarketService {
     const transaction = receipt.settlementRef && /^0x[0-9a-f]{64}$/i.test(receipt.settlementRef)
       ? receipt.settlementRef.toLowerCase() as `0x${string}`
       : null;
+    const providerTransferId = receipt.providerTransferId && isX402ProviderTransferId(receipt.providerTransferId)
+      ? receipt.providerTransferId.toLowerCase()
+      : null;
     let status: X402ReconciliationReadinessView["status"];
     let reason: string;
     let nextAction: X402ReconciliationReadinessView["nextAction"];
@@ -893,16 +897,16 @@ export class PostgresAgonMarketService implements AgonMarketService {
       case "unknown":
       case "service_delivered":
         status = "lookup_disabled";
-        reason = transaction
-          ? "A provider receipt is required for this Arc Testnet transaction, but the read-only lookup adapter is disabled."
-          : "The settlement outcome is ambiguous and has no valid transaction reference. Enable a read-only receipt lookup before retrying.";
+        reason = transaction || providerTransferId
+          ? "A provider receipt is required for this Arc Testnet settlement, but the read-only lookup adapter is disabled."
+          : "The settlement outcome is ambiguous and has no valid provider reference. Enable a read-only receipt lookup before retrying.";
         nextAction = "enable_receipt_lookup";
         break;
       case "settlement_submitted":
         status = "lookup_required";
-        reason = transaction
+        reason = transaction || providerTransferId
           ? "A settlement reference exists. Query the provider receipt and reconcile only matching Arc Testnet evidence."
-          : "Settlement was recorded without a valid transaction reference; a provider receipt lookup is required.";
+          : "Settlement was recorded without a valid provider reference; a provider receipt lookup is required.";
         nextAction = "reconcile_receipt";
         break;
       case "reconciled":
@@ -928,6 +932,7 @@ export class PostgresAgonMarketService implements AgonMarketService {
         state: receipt.state,
         network: "eip155:5042002",
         transaction,
+        providerTransferId,
         status,
         reason,
         lookupEnabled: false,
@@ -955,8 +960,10 @@ export class PostgresAgonMarketService implements AgonMarketService {
     if (intent.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the intent owner can reconcile this receipt" } };
     const receipt = await this.repository.getX402CallReceipt(intentId);
     if (!receipt) return { ok: false, error: { code: "receipt_unavailable", message: "x402 receipt has not been created" } };
-    if (!receipt.settlementRef || !isX402Transaction(receipt.settlementRef)) {
-      return { ok: false, error: { code: "reconciliation_invalid", message: "x402 receipt has no valid Arc Testnet transaction reference" } };
+    const transaction = receipt.settlementRef && isX402Transaction(receipt.settlementRef) ? receipt.settlementRef.toLowerCase() as `0x${string}` : null;
+    const providerTransferId = receipt.providerTransferId && isX402ProviderTransferId(receipt.providerTransferId) ? receipt.providerTransferId.toLowerCase() : null;
+    if (!transaction && !providerTransferId) {
+      return { ok: false, error: { code: "reconciliation_invalid", message: "x402 receipt has no valid Arc Testnet transaction or provider transfer reference" } };
     }
     if (receipt.state !== "unknown" && receipt.state !== "settlement_submitted") {
       return { ok: false, error: { code: "conflict", message: `x402 receipt is ${receipt.state}; reconciliation is not applicable` } };
@@ -964,8 +971,27 @@ export class PostgresAgonMarketService implements AgonMarketService {
 
     let lookup: Awaited<ReturnType<X402ReceiptLookupAdapter["lookup"]>>;
     try {
-      lookup = await adapter.lookup({ network: "eip155:5042002", transaction: receipt.settlementRef });
-      lookup = validateX402ReceiptLookupResult(lookup, { network: "eip155:5042002", transaction: receipt.settlementRef });
+      const authorization = receipt.authorizationPayload as { message?: { from?: string; to?: string; value?: string } } | null;
+      const quote = receipt.quoteSnapshot as { accepts?: Array<{ payTo?: string; amount?: string }> } | null;
+      const payer = typeof authorization?.message?.from === "string" && /^0x[0-9a-f]{40}$/i.test(authorization.message.from) ? authorization.message.from as `0x${string}` : undefined;
+      const recipientValue = authorization?.message?.to ?? quote?.accepts?.[0]?.payTo;
+      const recipient = typeof recipientValue === "string" && /^0x[0-9a-f]{40}$/i.test(recipientValue) ? recipientValue as `0x${string}` : undefined;
+      const amountAtomicUnits = authorization?.message?.value ?? quote?.accepts?.[0]?.amount;
+      lookup = await adapter.lookup({
+        network: "eip155:5042002",
+        transaction,
+        providerTransferId,
+        expected: {
+          payer,
+          recipient,
+          amountAtomicUnits,
+        },
+      });
+      lookup = validateX402ReceiptLookupResult(lookup, { network: "eip155:5042002", transaction, providerTransferId, expected: {
+        payer,
+        recipient,
+        amountAtomicUnits,
+      } });
     } catch (error) {
       return { ok: false, error: { code: "reconciliation_unavailable", message: error instanceof Error ? error.message : "provider receipt lookup failed without trusted evidence" } };
     }
@@ -988,7 +1014,8 @@ export class PostgresAgonMarketService implements AgonMarketService {
         state: nextState,
         network: "eip155:5042002",
         status: lookup.status,
-        transaction: lookup.transaction,
+        transaction: lookup.transaction ?? null,
+        providerTransferId: lookup.providerTransferId ?? null,
         executionEnabled: false,
         serviceDeliveryPending: nextState === "settlement_submitted",
         nextAction: nextState === "failed" ? "none" : lookup.status === "pending" ? "reconcile_receipt" : "deliver_service",

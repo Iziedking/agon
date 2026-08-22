@@ -77,7 +77,8 @@ export type X402SettlementResult =
       value: {
         intentId: string;
         approvalHash: `0x${string}`;
-        transaction: `0x${string}`;
+        transaction: `0x${string}` | null;
+        providerTransferId?: string | null;
         network: typeof AGON_X402_TESTNET_NETWORK;
         payer: `0x${string}` | null;
         executionEnabled: true;
@@ -232,13 +233,16 @@ export function createX402FacilitatorAdapter(options: {
           input.plan.requirements,
         );
         if (!result.success) return fail("facilitator_rejected", result.errorReason ?? "Circle facilitator rejected settlement");
-        if (result.network !== AGON_X402_TESTNET_NETWORK || !isTransaction(result.transaction)) return fail("facilitator_rejected", "Circle facilitator returned an invalid Arc Testnet receipt");
+        const transaction = isTransaction(result.transaction) ? result.transaction : null;
+        const providerTransferId = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(result.transaction) ? result.transaction.toLowerCase() : null;
+        if (result.network !== AGON_X402_TESTNET_NETWORK || (!transaction && !providerTransferId)) return fail("facilitator_rejected", "Circle facilitator returned an invalid Arc Testnet receipt reference");
         return {
           ok: true,
           value: {
             intentId: input.approval.intentId,
             approvalHash: input.approval.approvalHash as `0x${string}`,
-            transaction: result.transaction,
+            transaction,
+            providerTransferId,
             network: AGON_X402_TESTNET_NETWORK,
             payer: result.payer && sameAddress(result.payer, input.plan.authorization.from) ? (getAddress(result.payer) as `0x${string}`) : null,
             executionEnabled: true,

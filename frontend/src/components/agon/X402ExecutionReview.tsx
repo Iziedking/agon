@@ -186,6 +186,7 @@ export function X402ExecutionReview({ intentId, refreshKey }: Props) {
                   <ReviewFact label="NETWORK" value="ARC TESTNET · 5042002" />
                   <ReviewFact label="NEXT ACTION" value={settlementReadiness.nextAction.replaceAll("_", " ")} />
                   <ReviewFact label="SETTLEMENT REF" value={settlementReadiness.settlementRef ?? "NOT RECORDED"} mono={Boolean(settlementReadiness.settlementRef)} />
+                  <ReviewFact label="PROVIDER TRANSFER" value={settlementReadiness.providerTransferId ?? "NOT RECORDED"} mono={Boolean(settlementReadiness.providerTransferId)} />
                   <ReviewFact label="CHECKED" value={formatExecutionTimestamp(settlementReadiness.checkedAt)} />
                 </dl>
               </>
@@ -196,6 +197,7 @@ export function X402ExecutionReview({ intentId, refreshKey }: Props) {
                 <p className="mt-2 font-mono text-[10px] leading-relaxed opacity-75">{reconciliationReadiness.reason}</p>
                 <div className="mt-2 font-mono text-[9px] uppercase tracking-[0.08em] opacity-60">LOOKUP DISABLED · NO PROVIDER REQUEST · NO SETTLEMENT</div>
                 {reconciliationReadiness.transaction ? <div className="mt-2 break-all font-mono text-[10px]">TX · {reconciliationReadiness.transaction}</div> : null}
+                {reconciliationReadiness.providerTransferId ? <div className="mt-2 break-all font-mono text-[10px]">TRANSFER · {reconciliationReadiness.providerTransferId}</div> : null}
               </div>
             ) : null}
           </section>

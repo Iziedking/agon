@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  createCircleTestnetX402ReceiptLookupAdapter,
   createDisabledX402ReceiptLookupAdapter,
   validateX402ReceiptLookupResult,
 } from "../../src/agon/execution/x402-reconciliation.ts";
@@ -31,4 +32,71 @@ test("the default lookup adapter is disabled and performs no provider call", asy
   const adapter = createDisabledX402ReceiptLookupAdapter();
   assert.equal(adapter.enabled, false);
   await assert.rejects(adapter.lookup(request), /disabled by policy/);
+});
+
+test("looks up a Circle transfer UUID read-only and maps finality states", async () => {
+  const transferId = "3c90c3cc-0d44-4b50-8888-8dd25736052a";
+  let called = 0;
+  const adapter = createCircleTestnetX402ReceiptLookupAdapter({
+    enabled: true,
+    fetchImpl: async (url) => {
+      called += 1;
+      assert.equal(url, `https://gateway-api-testnet.circle.com/v1/x402/transfers/${transferId}`);
+      return new Response(JSON.stringify({
+        id: transferId,
+        status: "confirmed",
+        token: "USDC",
+        sendingNetwork: "eip155:5042002",
+        recipientNetwork: "eip155:5042002",
+        fromAddress: "0x1111111111111111111111111111111111111111",
+        toAddress: "0x2222222222222222222222222222222222222222",
+        amount: "10000",
+        createdAt: "2026-08-22T10:00:00.000Z",
+        updatedAt: "2026-08-22T10:00:01.000Z",
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    },
+  });
+  const result = await adapter.lookup({
+    network: "eip155:5042002",
+    providerTransferId: transferId,
+    expected: {
+      payer: "0x1111111111111111111111111111111111111111",
+      recipient: "0x2222222222222222222222222222222222222222",
+      amountAtomicUnits: "10000",
+    },
+  });
+  assert.equal(called, 1);
+  assert.equal(result.providerTransferId, transferId);
+  assert.equal(result.transaction, null);
+  assert.equal(result.status, "confirmed");
+});
+
+test("fails closed on Circle network mismatch and opens its circuit after repeated failures", async () => {
+  const transferId = "3c90c3cc-0d44-4b50-8888-8dd25736052a";
+  let called = 0;
+  const adapter = createCircleTestnetX402ReceiptLookupAdapter({
+    enabled: true,
+    failureThreshold: 2,
+    cooldownMs: 60_000,
+    fetchImpl: async () => {
+      called += 1;
+      return new Response(JSON.stringify({
+        id: transferId,
+        status: "completed",
+        token: "USDC",
+        sendingNetwork: "eip155:1",
+        recipientNetwork: "eip155:1",
+        fromAddress: "0x1111111111111111111111111111111111111111",
+        toAddress: "0x2222222222222222222222222222222222222222",
+        amount: "10000",
+        createdAt: "2026-08-22T10:00:00.000Z",
+        updatedAt: "2026-08-22T10:00:01.000Z",
+      }), { status: 200 });
+    },
+  });
+  const input = { network: "eip155:5042002" as const, providerTransferId: transferId };
+  await assert.rejects(adapter.lookup(input), /Arc Testnet/);
+  await assert.rejects(adapter.lookup(input), /Arc Testnet/);
+  await assert.rejects(adapter.lookup(input), /circuit is open/);
+  assert.equal(called, 2);
 });

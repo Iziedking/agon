@@ -125,6 +125,21 @@ test("enabled adapter forwards only the validated in-memory payload to an inject
   assert.equal((received as { payload: { payload: { signature: string } } }).payload.payload.signature, input.signature);
 });
 
+test("accepts Circle's transfer UUID as a provider reference without treating it as a tx hash", async () => {
+  const input = fixture();
+  const transferId = "3c90c3cc-0d44-4b50-8888-8dd25736052a";
+  const adapter = createX402FacilitatorAdapter({
+    enabled: true,
+    policy: createX402ExecutionPolicy({ enabled: true, maxAmountBaseUnits: "1000" }),
+    client: { settle: async () => ({ success: true, transaction: transferId, network: "eip155:5042002", payer: ACTOR }) },
+  });
+  const result = await adapter.settle({ ...input, confirmation: X402_EXECUTION_CONFIRMATION_PHRASE, nowSeconds: NOW });
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.value.transaction, null);
+  assert.equal(result.value.providerTransferId, transferId);
+});
+
 test("refuses an enabled adapter without an explicit policy", async () => {
   const input = fixture();
   let calls = 0;

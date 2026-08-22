@@ -269,6 +269,7 @@ export type X402SettlementReadinessView = {
   state: "prepared" | "approved" | "payment_required" | "authorization_ready" | "authorization_submitted" | "settlement_submitted" | "service_delivered" | "reconciled" | "rejected" | "failed" | "unknown";
   network: "eip155:5042002";
   settlementRef: string | null;
+  providerTransferId: string | null;
   status: "authorization_required" | "ready_but_disabled" | "service_delivery_pending" | "reconciliation_required" | "terminal";
   reason: string;
   executionEnabled: false;
@@ -282,6 +283,7 @@ export type X402ReconciliationReadinessView = {
   state: X402SettlementReadinessView["state"];
   network: "eip155:5042002";
   transaction: `0x${string}` | null;
+  providerTransferId: string | null;
   status: "not_required" | "lookup_disabled" | "lookup_required" | "terminal";
   reason: string;
   lookupEnabled: false;
@@ -300,7 +302,8 @@ export type X402ReconciliationView = {
   state: X402SettlementReadinessView["state"];
   network: "eip155:5042002";
   status: "confirmed" | "pending" | "failed";
-  transaction: `0x${string}`;
+  transaction: `0x${string}` | null;
+  providerTransferId: string | null;
   executionEnabled: false;
   serviceDeliveryPending: boolean;
   nextAction: "deliver_service" | "reconcile_receipt" | "none";

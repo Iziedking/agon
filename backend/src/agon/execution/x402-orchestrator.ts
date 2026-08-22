@@ -19,7 +19,8 @@ export type X402SettlementAdapter = {
 export type X402ReceiptVerification = {
   status: "confirmed" | "pending" | "failed";
   network: string;
-  transaction: string;
+  transaction?: string | null;
+  providerTransferId?: string | null;
 };
 
 export type X402OrchestrationErrorCode =
@@ -127,7 +128,7 @@ export function createX402SettlementOrchestrator(options: {
       return failure("settlement_unknown", "facilitator outcome is ambiguous; reconcile before retrying", unknown);
     }
 
-    if (!isTransaction(result.value.transaction) || result.value.network !== options.policy.network) {
+    if ((!isTransaction(result.value.transaction ?? "") && !result.value.providerTransferId) || result.value.network !== options.policy.network) {
       let unknown = marked;
       try {
         unknown = await options.store.advanceX402CallReceipt(input.approval.intentId, {
@@ -144,7 +145,8 @@ export function createX402SettlementOrchestrator(options: {
     try {
       const receipt = await options.store.advanceX402CallReceipt(input.approval.intentId, {
         type: "settlement_receipt",
-        settlementRef: result.value.transaction,
+        ...(result.value.transaction ? { settlementRef: result.value.transaction } : {}),
+        ...(result.value.providerTransferId ? { providerTransferId: result.value.providerTransferId } : {}),
       });
       return { ok: true, state: "settlement_submitted", receipt, transaction: result.value.transaction, serviceDeliveryPending: true };
     } catch {
@@ -159,11 +161,14 @@ export function createX402SettlementOrchestrator(options: {
     if (current.state !== "unknown" && current.state !== "settlement_submitted") {
       return { ok: false, error: { code: "execution_not_ready", message: `x402 receipt is ${current.state}; settlement reconciliation is not applicable` }, receipt: current };
     }
-    if (verification.network !== options.policy.network || !isTransaction(verification.transaction)) {
-      return { ok: false, error: { code: "execution_not_ready", message: "reconciliation receipt is not a valid Arc Testnet transaction" }, receipt: current };
+    if (verification.network !== options.policy.network || (!isTransaction(verification.transaction ?? "") && !verification.providerTransferId)) {
+      return { ok: false, error: { code: "execution_not_ready", message: "reconciliation receipt is not valid Arc Testnet evidence" }, receipt: current };
     }
-    if (current.settlementRef && isTransaction(current.settlementRef) && current.settlementRef.toLowerCase() !== verification.transaction.toLowerCase()) {
+    if (current.settlementRef && isTransaction(current.settlementRef) && (!verification.transaction || current.settlementRef.toLowerCase() !== verification.transaction.toLowerCase())) {
       return { ok: false, error: { code: "execution_not_ready", message: "reconciliation transaction does not match the recorded settlement" }, receipt: current };
+    }
+    if (current.providerTransferId && current.providerTransferId.toLowerCase() !== (verification.providerTransferId ?? "").toLowerCase()) {
+      return { ok: false, error: { code: "execution_not_ready", message: "reconciliation provider transfer does not match the recorded settlement" }, receipt: current };
     }
     try {
       if (verification.status === "pending") return { ok: true, state: current.state, receipt: current };
@@ -171,7 +176,11 @@ export function createX402SettlementOrchestrator(options: {
         const failed = await options.store.advanceX402CallReceipt(intentId, { type: "fail", failureCode: "settlement_failed", failureMessage: "Arc Testnet reconciliation confirmed settlement failure" });
         return { ok: true, state: "failed", receipt: failed };
       }
-      const confirmed = await options.store.advanceX402CallReceipt(intentId, { type: "settlement_receipt", settlementRef: verification.transaction });
+      const confirmed = await options.store.advanceX402CallReceipt(intentId, {
+        type: "settlement_receipt",
+        ...(verification.transaction ? { settlementRef: verification.transaction } : {}),
+        ...(verification.providerTransferId ? { providerTransferId: verification.providerTransferId } : {}),
+      });
       return { ok: true, state: "settlement_submitted", receipt: confirmed };
     } catch {
       return { ok: false, error: { code: "reconciliation_required", message: "reconciliation evidence could not be recorded; retry safely" }, receipt: current };

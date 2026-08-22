@@ -1321,6 +1321,7 @@ create table if not exists agon_x402_call_receipts (
   authorization_payload     jsonb,
   authorization_hash        text check (authorization_hash is null or authorization_hash ~ '^0x[0-9a-f]{64}$'),
   settlement_ref             text,
+  provider_transfer_id       text,
   service_status             int check (service_status is null or service_status between 200 and 299),
   payment_response_hash      text check (payment_response_hash is null or payment_response_hash ~ '^0x[0-9a-f]{64}$'),
   charged_amount_usdc        text check (charged_amount_usdc is null or charged_amount_usdc ~ '^(0|[1-9][0-9]*)(\.[0-9]{1,6})?$'),
@@ -1335,6 +1336,7 @@ create index if not exists agon_x402_call_receipts_state_idx
 alter table agon_x402_call_receipts add column if not exists quote_snapshot jsonb;
 alter table agon_x402_call_receipts add column if not exists authorization_payload_hash text;
 alter table agon_x402_call_receipts add column if not exists authorization_payload jsonb;
+alter table agon_x402_call_receipts add column if not exists provider_transfer_id text;
 
 -- Append-only evidence returned by the Circle facilitator verify call. This
 -- deliberately stores no raw EIP-3009 signature or wallet key. A verification

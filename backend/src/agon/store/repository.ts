@@ -119,6 +119,7 @@ export type X402CallReceiptProjection = {
   authorizationPayload?: unknown | null;
   authorizationHash: string | null;
   settlementRef: string | null;
+  providerTransferId?: string | null;
   serviceStatus: number | null;
   paymentResponseHash: string | null;
   chargedAmountUSDC: string | null;
@@ -302,6 +303,7 @@ type X402CallReceiptRow = QueryResultRow & {
   authorization_payload: unknown | null;
   authorization_hash: string | null;
   settlement_ref: string | null;
+  provider_transfer_id: string | null;
   service_status: number | null;
   payment_response_hash: string | null;
   charged_amount_usdc: string | null;
@@ -501,6 +503,7 @@ function mapX402CallReceipt(row: X402CallReceiptRow): StoredX402CallReceipt {
     authorizationPayload: row.authorization_payload,
     authorizationHash: row.authorization_hash,
     settlementRef: row.settlement_ref,
+    providerTransferId: row.provider_transfer_id,
     serviceStatus: row.service_status,
     paymentResponseHash: row.payment_response_hash,
     chargedAmountUSDC: row.charged_amount_usdc,
@@ -569,7 +572,7 @@ const X402_INTENT_COLUMNS = `
   input, input_hash, max_amount_usdc, target_url, state, created_at, updated_at`;
 
 const X402_RECEIPT_COLUMNS = `
-  receipt_id, intent_id, state, approved_amount_usdc, quote_hash, quote_snapshot, authorization_payload_hash, authorization_payload, authorization_hash, settlement_ref,
+  receipt_id, intent_id, state, approved_amount_usdc, quote_hash, quote_snapshot, authorization_payload_hash, authorization_payload, authorization_hash, settlement_ref, provider_transfer_id,
   service_status, payment_response_hash, charged_amount_usdc, failure_code,
   failure_message, created_at, updated_at`;
 
@@ -696,13 +699,13 @@ export class PostgresAgonRepository {
     if (input.state !== "prepared") throw new AgonStoreInvariantError("new x402 receipts must start prepared");
     const inserted = await this.pool.query<X402CallReceiptRow>(
       `insert into agon_x402_call_receipts (
-         receipt_id, intent_id, state, approved_amount_usdc, quote_hash, quote_snapshot, authorization_payload_hash, authorization_payload, authorization_hash, settlement_ref,
+         receipt_id, intent_id, state, approved_amount_usdc, quote_hash, quote_snapshot, authorization_payload_hash, authorization_payload, authorization_hash, settlement_ref, provider_transfer_id,
          service_status, payment_response_hash, charged_amount_usdc, failure_code,
          failure_message, created_at, updated_at
-       ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $16)
+       ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $17)
        on conflict (intent_id) do nothing
        returning ${X402_RECEIPT_COLUMNS}`,
-      [input.receiptId, input.intentId, input.state, input.approvedAmountUSDC, input.quoteHash, input.quoteSnapshot, input.authorizationPayloadHash, input.authorizationPayload, input.authorizationHash, input.settlementRef, input.serviceStatus, input.paymentResponseHash, input.chargedAmountUSDC, input.failureCode, input.failureMessage, input.createdAt ?? new Date()],
+      [input.receiptId, input.intentId, input.state, input.approvedAmountUSDC, input.quoteHash, input.quoteSnapshot, input.authorizationPayloadHash, input.authorizationPayload, input.authorizationHash, input.settlementRef, input.providerTransferId, input.serviceStatus, input.paymentResponseHash, input.chargedAmountUSDC, input.failureCode, input.failureMessage, input.createdAt ?? new Date()],
     );
     if (inserted.rows[0]) return mapX402CallReceipt(inserted.rows[0]);
     const existing = await this.pool.query<X402CallReceiptRow>(
@@ -734,12 +737,13 @@ export class PostgresAgonRepository {
            authorization_payload = coalesce($7, authorization_payload),
            authorization_hash = coalesce($8, authorization_hash),
            settlement_ref = coalesce($9, settlement_ref),
-           service_status = coalesce($10, service_status),
-           payment_response_hash = coalesce($11, payment_response_hash),
-           failure_code = coalesce($12, failure_code),
-           failure_message = coalesce($13, failure_message), updated_at = now()
+           provider_transfer_id = coalesce($10, provider_transfer_id),
+           service_status = coalesce($11, service_status),
+           payment_response_hash = coalesce($12, payment_response_hash),
+           failure_code = coalesce($13, failure_code),
+           failure_message = coalesce($14, failure_message), updated_at = now()
          where intent_id = $1 returning ${X402_RECEIPT_COLUMNS}`,
-        [intentId, transition.to, transition.patch.approvedAmountUSDC ?? null, transition.patch.quoteHash ?? null, transition.patch.quoteSnapshot ?? null, transition.patch.authorizationPayloadHash ?? null, transition.patch.authorizationPayload ?? null, transition.patch.authorizationHash ?? null, transition.patch.settlementRef ?? null, transition.patch.serviceStatus ?? null, transition.patch.paymentResponseHash ?? null, transition.patch.failureCode ?? null, transition.patch.failureMessage ?? null],
+        [intentId, transition.to, transition.patch.approvedAmountUSDC ?? null, transition.patch.quoteHash ?? null, transition.patch.quoteSnapshot ?? null, transition.patch.authorizationPayloadHash ?? null, transition.patch.authorizationPayload ?? null, transition.patch.authorizationHash ?? null, transition.patch.settlementRef ?? null, transition.patch.providerTransferId ?? null, transition.patch.serviceStatus ?? null, transition.patch.paymentResponseHash ?? null, transition.patch.failureCode ?? null, transition.patch.failureMessage ?? null],
       );
       await client.query("commit");
       return mapX402CallReceipt(updated.rows[0]!);

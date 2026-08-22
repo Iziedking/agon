@@ -46,6 +46,7 @@ const envSchema = z.object({
   // the facilitator, recipient allowlist, and reconciliation path are approved.
   AGON_X402_EXECUTION_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
   AGON_X402_VERIFICATION_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
+  AGON_X402_RECONCILIATION_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
   AGON_X402_EXECUTION_MAX_BASE_UNITS: z.string().regex(/^(0|[1-9]\d*)$/).default("0"),
 
   // Auth service
@@ -643,6 +644,7 @@ export const config = {
     x402: {
       executionEnabled: env.AGON_X402_EXECUTION_ENABLED,
       verificationEnabled: env.AGON_X402_VERIFICATION_ENABLED,
+      reconciliationEnabled: env.AGON_X402_RECONCILIATION_ENABLED,
       network: "eip155:5042002" as const,
       maxAmountBaseUnits: BigInt(env.AGON_X402_EXECUTION_MAX_BASE_UNITS),
     },

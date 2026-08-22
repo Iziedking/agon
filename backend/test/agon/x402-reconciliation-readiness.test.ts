@@ -83,3 +83,29 @@ test("uses an explicitly enabled server-side lookup and records matching evidenc
   assert.equal(result.value.serviceDeliveryPending, true);
   assert.equal(result.value.executionEnabled, false);
 });
+
+test("reconciles a Circle provider transfer UUID without pretending it is an on-chain hash", async () => {
+  const transferId = "3c90c3cc-0d44-4b50-8888-8dd25736052a";
+  let current = receipt("settlement_submitted", null) as any;
+  current.providerTransferId = transferId;
+  const store = {
+    getX402CallIntent: async () => ({ intentId: INTENT_ID, actor: ACTOR, listingReference: "arc:0xabc:1" }),
+    getX402CallReceipt: async () => current,
+    advanceX402CallReceipt: async (_intentId: string, event: { type: string; providerTransferId?: string }) => {
+      if (event.type === "settlement_receipt" && event.providerTransferId) current = { ...current, providerTransferId: event.providerTransferId, updatedAt: new Date("2026-08-22T10:01:00.000Z") };
+      return current;
+    },
+  };
+  const service = new PostgresAgonMarketService(store as never, {
+    x402ReceiptLookup: {
+      enabled: true,
+      lookup: async (request) => ({ network: request.network, providerTransferId: request.providerTransferId, transaction: null, status: "confirmed" as const }),
+    },
+  });
+  const result = await service.reconcileX402Receipt(ACTOR, INTENT_ID, { confirmation: "RECONCILE_ARC_TESTNET_X402" });
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.value.providerTransferId, transferId);
+  assert.equal(result.value.transaction, null);
+  assert.equal(result.value.status, "confirmed");
+});

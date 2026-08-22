@@ -16,10 +16,10 @@ export type X402ReceiptEvent =
   | { type: "payment_required"; quoteHash: string; quoteSnapshot: unknown }
   | { type: "authorization_ready"; authorizationPayloadHash: string; authorizationPayload: unknown }
   | { type: "authorization_submitted"; authorizationHash: string }
-  | { type: "settlement_submitted"; settlementRef: string }
-  | { type: "settlement_receipt"; settlementRef: string }
+  | { type: "settlement_submitted"; settlementRef?: string; providerTransferId?: string }
+  | { type: "settlement_receipt"; settlementRef?: string; providerTransferId?: string }
   | { type: "service_delivered"; serviceStatus: number; paymentResponseHash: string }
-  | { type: "reconcile"; settlementRef?: string }
+  | { type: "reconcile"; settlementRef?: string; providerTransferId?: string }
   | { type: "reject"; failureCode: string; failureMessage: string }
   | { type: "fail"; failureCode: string; failureMessage: string }
   | { type: "mark_unknown"; failureCode: string; failureMessage: string };
@@ -32,6 +32,7 @@ export type X402ReceiptEvidencePatch = {
   authorizationPayload?: unknown;
   authorizationHash?: string;
   settlementRef?: string;
+  providerTransferId?: string;
   serviceStatus?: number;
   paymentResponseHash?: string;
   failureCode?: string;
@@ -117,8 +118,18 @@ export function transitionX402Receipt(current: X402ReceiptState, event: X402Rece
     case "payment_required": to = "payment_required"; patch = { quoteHash: requireHash(event.quoteHash, "quote hash"), quoteSnapshot: requireQuoteSnapshot(event.quoteSnapshot) }; break;
     case "authorization_ready": to = "authorization_ready"; patch = { authorizationPayloadHash: requireHash(event.authorizationPayloadHash, "authorization payload hash"), authorizationPayload: requireAuthorizationPayload(event.authorizationPayload) }; break;
     case "authorization_submitted": to = "authorization_submitted"; patch = { authorizationHash: requireHash(event.authorizationHash, "authorization hash") }; break;
-    case "settlement_submitted": to = "settlement_submitted"; patch = { settlementRef: requireText(event.settlementRef, "settlement reference") }; break;
-    case "settlement_receipt": to = "settlement_submitted"; patch = { settlementRef: requireText(event.settlementRef, "settlement reference") }; break;
+    case "settlement_submitted":
+    case "settlement_receipt": {
+      if (!event.settlementRef && !event.providerTransferId) {
+        throw new X402ReceiptInvariantError("settlement requires a settlement reference or provider transfer id");
+      }
+      to = "settlement_submitted";
+      patch = {
+        ...(event.settlementRef ? { settlementRef: requireText(event.settlementRef, "settlement reference") } : {}),
+        ...(event.providerTransferId ? { providerTransferId: requireText(event.providerTransferId, "provider transfer id") } : {}),
+      };
+      break;
+    }
     case "service_delivered":
       if (!Number.isInteger(event.serviceStatus) || event.serviceStatus < 200 || event.serviceStatus > 299) {
         throw new X402ReceiptInvariantError("service status must be a successful HTTP status");
@@ -128,7 +139,10 @@ export function transitionX402Receipt(current: X402ReceiptState, event: X402Rece
       break;
     case "reconcile":
       to = "reconciled";
-      patch = event.settlementRef ? { settlementRef: requireText(event.settlementRef, "settlement reference") } : {};
+      patch = {
+        ...(event.settlementRef ? { settlementRef: requireText(event.settlementRef, "settlement reference") } : {}),
+        ...(event.providerTransferId ? { providerTransferId: requireText(event.providerTransferId, "provider transfer id") } : {}),
+      };
       break;
     case "reject": to = "rejected"; patch = { failureCode: requireText(event.failureCode, "failure code"), failureMessage: requireText(event.failureMessage, "failure message") }; break;
     case "fail": to = "failed"; patch = { failureCode: requireText(event.failureCode, "failure code"), failureMessage: requireText(event.failureMessage, "failure message") }; break;

@@ -17,6 +17,7 @@ import { pool, query } from "../db/pool.js";
 import { PostgresAgonRepository } from "../agon/store/repository.js";
 import { createAgonRoutes } from "../agon/http/routes.js";
 import { createCircleTestnetFacilitatorClient, createX402ExecutionPolicy, createX402FacilitatorAdapter } from "../agon/execution/x402-settlement.js";
+import { createCircleTestnetX402ReceiptLookupAdapter } from "../agon/execution/x402-reconciliation.js";
 import { PostgresAgonMarketService } from "../agon/http/service.js";
 import { PostgresAgonOperationStore } from "../agon/write/repository.js";
 import { CachedAgonReadiness } from "../agon/write/readiness.js";
@@ -150,6 +151,9 @@ const agonService = new PostgresAgonMarketService(agonRepository, {
     enabled: config.agon.x402.verificationEnabled,
     policy: createX402ExecutionPolicy({ enabled: config.agon.x402.verificationEnabled, maxAmountBaseUnits: config.agon.x402.maxAmountBaseUnits }),
     client: config.agon.x402.verificationEnabled ? createCircleTestnetFacilitatorClient() : undefined,
+  }),
+  x402ReceiptLookup: createCircleTestnetX402ReceiptLookupAdapter({
+    enabled: config.agon.x402.reconciliationEnabled,
   }),
 });
 app.route("/agon", createAgonRoutes({ service: agonService, requireAuth }));
