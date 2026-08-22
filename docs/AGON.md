@@ -374,6 +374,28 @@ writer calldata, successful receipt, timeout-to-unknown, and disabled-flag
 no-call behavior. This proves the runtime boundary without using a signer or
 broadcasting to Arc Testnet.
 
+## Phase 18: production-readiness gate (testnet-only)
+
+`backend/src/agon/execution/escrow-production-readiness.ts` is the release
+gate for a future controlled Arc Testnet escrow transaction. It validates the
+chain, fixed USDC, the canonical Agon registries and ERC-8004 IdentityRegistry,
+an explicit PrizeEscrow deployment, controller identity, every escrow/write/
+reconciliation kill switch, exact per-transaction approval phrases, fresh plan
+binding, signer availability, and provider finality configuration.
+
+The evaluator is pure and always returns `executionEnabled: false`; it performs
+no RPC request, signer construction, provider request, wallet action, payment,
+signature, or transaction submission. A `ready` result means only that a
+controlled testnet review may be considered after a separate exact
+transaction approval. It is not a production or mainnet authorization.
+
+The current canonical receipt intentionally contains only
+`AgonProfileRegistry` and `AgonServiceRegistry`, so this gate reports
+`prize_escrow_not_deployed`. All escrow execution, reconciliation, and writer
+flags remain false by default. Do not add a PrizeEscrow address, signer, or
+provider credentials until the contract deployment, controller policy, and
+one-transaction approval are reviewed separately.
+
 ## Manifest proof
 
 Manifest hashes use sorted-key JSON canonicalization followed by `keccak256` of the UTF-8 bytes. The pinned foundation fixture hashes to:
