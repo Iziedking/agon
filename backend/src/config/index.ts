@@ -57,6 +57,12 @@ const envSchema = z.object({
   // identity, evidence policy, and external registry adapter are approved.
   AGON_ARENA_VALIDATION_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
   AGON_ARENA_VALIDATOR_ADDRESS: z.string().optional(),
+  // Escrow and syndicate prize writes remain disabled until a durable Agon
+  // intent store, release/refund reconciliation, and approved controller are
+  // wired to the deployed PrizeEscrow contracts.
+  AGON_ESCROW_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
+  AGON_ESCROW_MAX_POOL_BASE_UNITS: z.string().regex(/^(0|[1-9]\d*)$/).default("0"),
+  AGON_SYNDICATE_PRIZE_POOL_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
 
   // Auth service
   JWT_SECRET: z.string().default("dev-insecure-secret-change-me"),
@@ -665,6 +671,13 @@ export const config = {
       validation: {
         enabled: env.AGON_ARENA_VALIDATION_ENABLED,
         validatorAddress: env.AGON_ARENA_VALIDATOR_ADDRESS,
+      },
+      escrow: {
+        enabled: env.AGON_ESCROW_ENABLED,
+        network: "eip155:5042002" as const,
+        asset: "0x3600000000000000000000000000000000000000" as const,
+        maxPoolBaseUnits: BigInt(env.AGON_ESCROW_MAX_POOL_BASE_UNITS),
+        syndicatePrizePoolEnabled: env.AGON_SYNDICATE_PRIZE_POOL_ENABLED,
       },
     },
   },

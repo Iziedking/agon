@@ -114,6 +114,38 @@ hashing, self-validation refusal, idempotent requests, request conflicts,
 progressive responses, stale evidence, expiry, revocation, and the disabled
 adapter.
 
+## Phase 5: escrow, syndicate pools, and prize-vault boundary
+
+Phase 5 adds exact escrow terms and prize allocation in
+`backend/src/agon/escrow-policy.ts`. Escrow is eligible only when the listing
+is Listed, Verified, and explicitly uses the Escrow rail. Terms pin Arc
+Testnet, the deployed USDC address, the listing version and manifest hash, the
+buyer, the provider beneficiary, integer base-unit amount, capped fee, and a
+future expiry.
+
+Escrow intents use an idempotency key bound to the complete terms hash. The
+state machine writes a prepared marker before any future provider call and
+distinguishes funding, funded, release/refund pending, terminal completion,
+failure, and unknown outcomes. Unknown outcomes cannot be retried as a new
+funding call; they require an independent reconciliation result first.
+
+Syndicate prize allocation uses integer basis points, rejects duplicate
+beneficiaries and non-conserving weights, and assigns any division remainder
+deterministically to the highest-ranked winner. The allocation result proves
+that platform fee plus winner shares equal the original pool.
+
+`AGON_ESCROW_ENABLED` and `AGON_SYNDICATE_PRIZE_POOL_ENABLED` default to
+`false`, with the pool cap defaulting to zero. The default adapter is disabled
+and performs no PrizeEscrow, Circle, RPC, USDC transfer, release, refund, or
+claim operation. The deployed legacy `PrizeEscrow` and `SyndicateFactory`
+contracts remain read-only/parallel until durable Agon persistence, controller
+authorization, and release/refund reconciliation are separately approved.
+
+The adversarial suite is `backend/test/agon/escrow-policy.test.ts`. It covers
+escrow eligibility, exact terms, idempotency conflicts, guarded transitions,
+unknown outcomes, payout conservation, remainder allocation, duplicate
+winners, and the disabled adapter.
+
 ### Provider receipt source decision
 
 Circle's documented Arc Testnet Gateway base is `https://gateway-api-testnet.circle.com`. The `POST /gateway/v1/x402/settle` response describes `transaction` as a **transfer UUID**, not an on-chain transaction hash. The corresponding read-only source is `GET /v1/x402/transfers/{id}` (or the paginated `GET /gateway/v1/x402/transfers` search endpoint), which returns the UUID, `status`, USDC amount, sender, recipient, CAIP-2 networks, and timestamps. Circle documents these transfer states as `received`, `batched`, `confirmed`, `completed`, and `failed`; `confirmed` means included onchain and `completed` means fully complete. The Gateway flow can serve a resource before batched onchain settlement, so a successful `settle` response is not finality evidence.
