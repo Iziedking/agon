@@ -14,6 +14,7 @@ import { validateX402Approval } from "../execution/x402-approval.ts";
 import { parsePaymentRequiredHeader, type X402QuoteSnapshot } from "../execution/x402-quote.ts";
 import { buildX402Authorization, validateX402AuthorizationSignature, type X402AuthorizationPayload } from "../execution/x402-authorization.ts";
 import { buildX402ExecutionPlan } from "../execution/x402-facilitator.ts";
+import type { X402FacilitatorVerificationRequest as X402FacilitatorVerificationInput, X402FacilitatorVerificationResult } from "../execution/x402-settlement.ts";
 import { buildX402ExecutionApproval, type X402ExecutionApprovalRequest } from "../execution/x402-execution-approval.ts";
 import type {
   AgonCapabilities,
@@ -36,6 +37,8 @@ import type {
   X402ExecutionApprovalView,
   X402ExecutionReadinessView,
   X402SettlementReadinessView,
+  X402FacilitatorVerificationView,
+  X402FacilitatorVerificationRequest,
 } from "./api-types.ts";
 import type { AgonMarketService, AgonServiceError } from "./routes.ts";
 import type { AgonReadiness } from "../write/readiness.ts";
@@ -70,6 +73,9 @@ export type PostgresAgonMarketServiceOptions = {
   endpointQa?: boolean;
   directX402?: boolean;
   x402ExecutionEnabled?: boolean;
+  x402FacilitatorVerifier?: {
+    verify(input: X402FacilitatorVerificationInput): Promise<X402FacilitatorVerificationResult>;
+  };
   fetchImpl?: typeof fetch;
 };
 
@@ -838,6 +844,59 @@ export class PostgresAgonMarketService implements AgonMarketService {
         executionEnabled: false,
         nextAction,
         checkedAt: new Date().toISOString(),
+      },
+    };
+  }
+
+  async verifyX402Facilitator(
+    actor: string,
+    intentId: string,
+    request: X402FacilitatorVerificationRequest,
+  ): Promise<Result<X402FacilitatorVerificationView, AgonServiceError>> {
+    if (!this.options.x402FacilitatorVerifier) {
+      return { ok: false, error: { code: "facilitator_unavailable", message: "Circle facilitator verification is disabled by policy" } };
+    }
+    const intent = await this.repository.getX402CallIntent(intentId);
+    if (!intent) return { ok: false, error: { code: "not_found", message: "x402 call intent not found" } };
+    if (intent.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the intent owner can verify this authorization" } };
+    const receipt = await this.repository.getX402CallReceipt(intentId);
+    if (!receipt) return { ok: false, error: { code: "receipt_unavailable", message: "x402 receipt has not been created" } };
+    if (receipt.state !== "authorization_submitted" || !receipt.quoteSnapshot || !receipt.authorizationPayload || !receipt.authorizationPayloadHash || !receipt.authorizationHash || !receipt.approvedAmountUSDC) {
+      return { ok: false, error: { code: "conflict", message: `x402 receipt is ${receipt.state}; submit a valid authorization first` } };
+    }
+    const plan = buildX402ExecutionPlan({
+      snapshot: receipt.quoteSnapshot as X402QuoteSnapshot,
+      authorization: receipt.authorizationPayload as X402AuthorizationPayload,
+      authorizationPayloadHash: receipt.authorizationPayloadHash,
+      authorizationHash: receipt.authorizationHash,
+      approvedAmountUSDC: receipt.approvedAmountUSDC,
+    });
+    if (!plan.ok) return { ok: false, error: { code: "execution_not_ready", message: plan.error.message } };
+    const approval = await this.repository.getLatestX402ExecutionApproval(intentId);
+    if (!approval) return { ok: false, error: { code: "execution_not_ready", message: "explicit execution approval is required before facilitator verification" } };
+    const result = await this.options.x402FacilitatorVerifier.verify({
+      approval,
+      plan: plan.value,
+      signature: request.signature,
+      confirmation: request.confirmation,
+    } as X402FacilitatorVerificationInput);
+    if (!result.ok) {
+      const code = result.error.code === "facilitator_rejected" ? "facilitator_rejected" : result.error.code === "facilitator_unavailable" ? "facilitator_unavailable" : "execution_not_ready";
+      return { ok: false, error: { code, message: result.error.message } };
+    }
+    return {
+      ok: true,
+      value: {
+        receiptId: receipt.receiptId,
+        intentId,
+        state: "facilitator_verified",
+        network: result.value.network,
+        payer: result.value.payer,
+        approvalHash: result.value.approvalHash,
+        verified: true,
+        executionEnabled: false,
+        nextAction: "settlement_remains_disabled",
+        verifiedAt: new Date().toISOString(),
       },
     };
   }

@@ -16,6 +16,7 @@ import { usdcMinimalAbi } from "../chain/abi.js";
 import { pool, query } from "../db/pool.js";
 import { PostgresAgonRepository } from "../agon/store/repository.js";
 import { createAgonRoutes } from "../agon/http/routes.js";
+import { createCircleTestnetFacilitatorClient, createX402ExecutionPolicy, createX402FacilitatorAdapter } from "../agon/execution/x402-settlement.js";
 import { PostgresAgonMarketService } from "../agon/http/service.js";
 import { PostgresAgonOperationStore } from "../agon/write/repository.js";
 import { CachedAgonReadiness } from "../agon/write/readiness.js";
@@ -145,6 +146,11 @@ const agonWriter = config.agon.deployment
   : undefined;
 const agonService = new PostgresAgonMarketService(agonRepository, {
   writer: agonWriter,
+  x402FacilitatorVerifier: createX402FacilitatorAdapter({
+    enabled: config.agon.x402.verificationEnabled,
+    policy: createX402ExecutionPolicy({ enabled: config.agon.x402.verificationEnabled, maxAmountBaseUnits: config.agon.x402.maxAmountBaseUnits }),
+    client: config.agon.x402.verificationEnabled ? createCircleTestnetFacilitatorClient() : undefined,
+  }),
 });
 app.route("/agon", createAgonRoutes({ service: agonService, requireAuth }));
 

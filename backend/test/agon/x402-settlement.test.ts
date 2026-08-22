@@ -3,7 +3,7 @@ import test from "node:test";
 import { keccak256 } from "viem";
 import { buildX402ExecutionApproval, X402_EXECUTION_APPROVAL_PHRASE } from "../../src/agon/execution/x402-execution-approval.ts";
 import { buildX402ExecutionPlan, type X402ExecutionPlan } from "../../src/agon/execution/x402-facilitator.ts";
-import { createX402FacilitatorAdapter, X402_EXECUTION_CONFIRMATION_PHRASE, type X402StoredApprovalEvidence } from "../../src/agon/execution/x402-settlement.ts";
+import { createX402FacilitatorAdapter, X402_EXECUTION_CONFIRMATION_PHRASE, X402_VERIFY_CONFIRMATION_PHRASE, type X402StoredApprovalEvidence } from "../../src/agon/execution/x402-settlement.ts";
 import { createX402ExecutionPolicy } from "../../src/agon/execution/x402-policy.ts";
 
 const ACTOR = "0x1111111111111111111111111111111111111111";
@@ -60,7 +60,7 @@ test("disabled verification validates but never calls an injected facilitator", 
       settle: async () => { throw new Error("must not call"); },
     },
   });
-  const result = await adapter.verify({ ...input, confirmation: X402_EXECUTION_CONFIRMATION_PHRASE, nowSeconds: NOW });
+  const result = await adapter.verify({ ...input, confirmation: X402_VERIFY_CONFIRMATION_PHRASE, nowSeconds: NOW });
   assert.deepEqual(result, { ok: false, error: { code: "execution_disabled", message: "x402 verification adapter is disabled by policy" } });
   assert.equal(calls, 0);
 });
@@ -79,7 +79,7 @@ test("enabled verification forwards the validated payload and enforces payer ide
       settle: async () => { throw new Error("settlement is not part of verification"); },
     },
   });
-  const result = await adapter.verify({ ...input, confirmation: X402_EXECUTION_CONFIRMATION_PHRASE, nowSeconds: NOW });
+  const result = await adapter.verify({ ...input, confirmation: X402_VERIFY_CONFIRMATION_PHRASE, nowSeconds: NOW });
   assert.equal(result.ok, true);
   if (!result.ok) return;
   assert.equal(result.value.verified, true);
@@ -94,7 +94,7 @@ test("enabled verification forwards the validated payload and enforces payer ide
       settle: async () => { throw new Error("settlement is not part of verification"); },
     },
   });
-  const rejected = await rejecting.verify({ ...input, confirmation: X402_EXECUTION_CONFIRMATION_PHRASE, nowSeconds: NOW });
+  const rejected = await rejecting.verify({ ...input, confirmation: X402_VERIFY_CONFIRMATION_PHRASE, nowSeconds: NOW });
   assert.deepEqual(rejected, { ok: false, error: { code: "facilitator_rejected", message: "Circle facilitator payer does not match the authorization owner" } });
 });
 

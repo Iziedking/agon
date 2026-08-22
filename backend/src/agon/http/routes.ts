@@ -23,6 +23,7 @@ import type {
   X402ExecutionApprovalView,
   X402ExecutionReadinessView,
   X402SettlementReadinessView,
+  X402FacilitatorVerificationRequest,
 } from "./api-types.ts";
 
 export type AgonRouteVariables = { address: string };
@@ -38,6 +39,8 @@ export type AgonServiceError = {
     | "receipt_invalid"
     | "signature_invalid"
     | "execution_not_ready"
+    | "facilitator_rejected"
+    | "facilitator_unavailable"
     | "internal";
   message: string;
 };
@@ -98,6 +101,11 @@ export type AgonMarketService = {
     actor: string,
     intentId: string,
   ): Promise<Result<X402SettlementReadinessView, AgonServiceError>>;
+  verifyX402Facilitator(
+    actor: string,
+    intentId: string,
+    request: X402FacilitatorVerificationRequest,
+  ): Promise<Result<import("./api-types.ts").X402FacilitatorVerificationView, AgonServiceError>>;
   getCapabilities(): Promise<AgonCapabilities>;
 };
 
@@ -159,6 +167,11 @@ const x402ExecutionApprovalSchema = z.object({
   confirmation: z.literal("APPROVE_ARC_TESTNET_X402"),
 }).strict();
 
+const x402FacilitatorVerificationSchema = z.object({
+  signature: z.string().regex(/^0x[0-9a-fA-F]{130}$/, "must be a 65-byte ECDSA signature"),
+  confirmation: z.literal("VERIFY_ARC_TESTNET_X402"),
+}).strict();
+
 function validationResponse(error: ZodError): ApiErrorResponse {
   return {
     error: {
@@ -189,6 +202,10 @@ function serviceErrorResponse(
       return context.json(body, 422);
     case "capability_unavailable":
       return context.json(body, 503);
+    case "facilitator_unavailable":
+      return context.json(body, 503);
+    case "facilitator_rejected":
+      return context.json(body, 422);
     case "receipt_unavailable":
       return context.json(body, 409);
     case "receipt_invalid":
@@ -349,6 +366,19 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
     const result = await options.service.getX402SettlementReadiness(
       context.get("address"),
       context.req.param("intentId"),
+    );
+    return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  app.post("/call-intents/:intentId/facilitator-verify", options.requireAuth, async (context) => {
+    const body = await parseJson(context);
+    if (isApiError(body)) return context.json(body, 400);
+    const parsed = x402FacilitatorVerificationSchema.safeParse(body);
+    if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
+    const result = await options.service.verifyX402Facilitator(
+      context.get("address"),
+      context.req.param("intentId"),
+      parsed.data as X402FacilitatorVerificationRequest,
     );
     return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
   });

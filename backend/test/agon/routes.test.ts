@@ -28,6 +28,8 @@ import type {
   X402ExecutionApprovalView,
   X402ExecutionReadinessView,
   X402SettlementReadinessView,
+  X402FacilitatorVerificationRequest,
+  X402FacilitatorVerificationView,
 } from "../../src/agon/http/api-types.ts";
 import type { Result } from "../../src/agon/core/result.ts";
 
@@ -385,6 +387,28 @@ class FakeAgonService implements AgonMarketService {
     };
   }
 
+  async verifyX402Facilitator(
+    _actor: string,
+    intentId: string,
+    _request: X402FacilitatorVerificationRequest,
+  ): Promise<Result<X402FacilitatorVerificationView, ServiceError>> {
+    return {
+      ok: true,
+      value: {
+        receiptId: "00000000-0000-4000-8000-000000000002",
+        intentId,
+        state: "facilitator_verified",
+        network: "eip155:5042002",
+        payer: ADDRESS,
+        approvalHash: `0x${"ee".repeat(32)}`,
+        verified: true,
+        executionEnabled: false,
+        nextAction: "settlement_remains_disabled",
+        verifiedAt: "2026-08-20T10:08:00.000Z",
+      },
+    };
+  }
+
   async getCapabilities(): Promise<AgonCapabilities> {
     return capabilities;
   }
@@ -690,4 +714,29 @@ test("returns authenticated settlement readiness without enabling Circle", async
   assert.equal(body.status, "ready_but_disabled");
   assert.equal(body.executionEnabled, false);
   assert.equal(body.nextAction, "execution_adapter_not_enabled");
+});
+
+test("requires authentication before facilitator verification", async () => {
+  const app = testApp(new FakeAgonService());
+  const response = await app.request("/agon/call-intents/00000000-0000-4000-8000-000000000001/facilitator-verify", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ signature: `0x${"11".repeat(65)}`, confirmation: "VERIFY_ARC_TESTNET_X402" }),
+  });
+  assert.equal(response.status, 401);
+});
+
+test("returns transient facilitator verification evidence and never settlement permission", async () => {
+  const app = testApp(new FakeAgonService());
+  const response = await app.request("/agon/call-intents/00000000-0000-4000-8000-000000000001/facilitator-verify", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-test-address": ADDRESS },
+    body: JSON.stringify({ signature: `0x${"11".repeat(65)}`, confirmation: "VERIFY_ARC_TESTNET_X402" }),
+  });
+  assert.equal(response.status, 200);
+  const body = (await response.json()) as X402FacilitatorVerificationView;
+  assert.equal(body.state, "facilitator_verified");
+  assert.equal(body.verified, true);
+  assert.equal(body.executionEnabled, false);
+  assert.equal(body.nextAction, "settlement_remains_disabled");
 });

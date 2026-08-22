@@ -276,6 +276,24 @@ export type X402SettlementReadinessView = {
   checkedAt: string;
 };
 
+export type X402FacilitatorVerificationRequest = {
+  signature: `0x${string}`;
+  confirmation: "VERIFY_ARC_TESTNET_X402";
+};
+
+export type X402FacilitatorVerificationView = {
+  receiptId: string;
+  intentId: string;
+  state: "facilitator_verified";
+  network: "eip155:5042002";
+  payer: `0x${string}` | null;
+  approvalHash: string;
+  verified: true;
+  executionEnabled: false;
+  nextAction: "settlement_remains_disabled";
+  verifiedAt: string;
+};
+
 export type BindProfileRequest = {
   chainId: string;
   agentId: string;

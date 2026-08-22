@@ -14,6 +14,7 @@ import {
 } from "./x402-policy.ts";
 
 export const X402_EXECUTION_CONFIRMATION_PHRASE = "EXECUTE_ARC_TESTNET_X402" as const;
+export const X402_VERIFY_CONFIRMATION_PHRASE = "VERIFY_ARC_TESTNET_X402" as const;
 
 export type X402FacilitatorPayload = {
   x402Version: 2;
@@ -64,6 +65,10 @@ export type X402SettlementRequest = {
   signature: string;
   confirmation: typeof X402_EXECUTION_CONFIRMATION_PHRASE;
   nowSeconds?: number;
+};
+
+export type X402FacilitatorVerificationRequest = Omit<X402SettlementRequest, "confirmation"> & {
+  confirmation: typeof X402_VERIFY_CONFIRMATION_PHRASE;
 };
 
 export type X402SettlementResult =
@@ -143,9 +148,9 @@ function approvalHashMatches(approval: X402StoredApprovalEvidence): boolean {
 
 export type ValidatedSettlement = { ok: true; signature: `0x${string}` } | { ok: false; error: { code: X402SettlementErrorCode; message: string } };
 
-export function validateX402SettlementRequest(input: X402SettlementRequest): ValidatedSettlement {
+function validateX402Request(input: X402SettlementRequest | X402FacilitatorVerificationRequest, confirmation: string): ValidatedSettlement {
   const { approval, plan } = input;
-  if (input.confirmation !== X402_EXECUTION_CONFIRMATION_PHRASE) return fail("execution_not_ready", "explicit Arc Testnet execution confirmation is required");
+  if (input.confirmation !== confirmation) return fail("execution_not_ready", "explicit Arc Testnet confirmation is required");
   if (!isSignature(input.signature)) return fail("execution_not_ready", "a 65-byte authorization signature is required at execution time");
   if (!approvalHashMatches(approval)) return fail("execution_not_ready", "durable execution approval evidence is invalid");
   if (!isBytes32(plan.planHash) || plan.planHash.toLowerCase() !== hashX402ExecutionPlan(plan).toLowerCase()) return fail("execution_not_ready", "execution plan hash does not match the reviewed plan");
@@ -163,6 +168,14 @@ export function validateX402SettlementRequest(input: X402SettlementRequest): Val
   return { ok: true, signature: input.signature };
 }
 
+export function validateX402SettlementRequest(input: X402SettlementRequest): ValidatedSettlement {
+  return validateX402Request(input, X402_EXECUTION_CONFIRMATION_PHRASE);
+}
+
+export function validateX402FacilitatorVerificationRequest(input: X402FacilitatorVerificationRequest): ValidatedSettlement {
+  return validateX402Request(input, X402_VERIFY_CONFIRMATION_PHRASE);
+}
+
 /**
  * Create the only settlement seam. The default adapter is deliberately
  * disabled and has no facilitator client, so importing this module cannot
@@ -174,8 +187,8 @@ export function createX402FacilitatorAdapter(options: {
   policy?: X402ExecutionPolicy;
 } = {}) {
   return {
-    async verify(input: X402SettlementRequest): Promise<X402FacilitatorVerificationResult> {
-      const checked = validateX402SettlementRequest(input);
+    async verify(input: X402FacilitatorVerificationRequest): Promise<X402FacilitatorVerificationResult> {
+      const checked = validateX402FacilitatorVerificationRequest(input);
       if (!checked.ok) return { ok: false, error: checked.error };
       if (options.enabled !== true) return fail("execution_disabled", "x402 verification adapter is disabled by policy");
       if (!options.policy) return fail("execution_disabled", "x402 verification requires an explicit spend policy");
