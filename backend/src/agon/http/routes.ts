@@ -25,6 +25,7 @@ import type {
   X402SettlementReadinessView,
   X402ReconciliationReadinessView,
   X402ReconciliationRequest,
+  X402SettlementRequest,
   X402FacilitatorVerificationRequest,
 } from "./api-types.ts";
 
@@ -115,6 +116,11 @@ export type AgonMarketService = {
     intentId: string,
     request: X402ReconciliationRequest,
   ): Promise<Result<import("./api-types.ts").X402ReconciliationView, AgonServiceError>>;
+  settleX402Call(
+    actor: string,
+    intentId: string,
+    request: X402SettlementRequest,
+  ): Promise<Result<import("./api-types.ts").X402SettlementView, AgonServiceError>>;
   verifyX402Facilitator(
     actor: string,
     intentId: string,
@@ -192,6 +198,11 @@ const x402FacilitatorVerificationSchema = z.object({
 
 const x402ReconciliationSchema = z.object({
   confirmation: z.literal("RECONCILE_ARC_TESTNET_X402"),
+}).strict();
+
+const x402SettlementSchema = z.object({
+  signature: z.string().regex(/^0x[0-9a-fA-F]{130}$/, "must be a 65-byte ECDSA signature"),
+  confirmation: z.literal("EXECUTE_ARC_TESTNET_X402"),
 }).strict();
 
 function validationResponse(error: ZodError): ApiErrorResponse {
@@ -415,6 +426,19 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
       context.get("address"),
       context.req.param("intentId"),
       parsed.data,
+    );
+    return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  app.post("/call-intents/:intentId/settle", options.requireAuth, async (context) => {
+    const body = await parseJson(context);
+    if (isApiError(body)) return context.json(body, 400);
+    const parsed = x402SettlementSchema.safeParse(body);
+    if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
+    const result = await options.service.settleX402Call(
+      context.get("address"),
+      context.req.param("intentId"),
+      parsed.data as X402SettlementRequest,
     );
     return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
   });

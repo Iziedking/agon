@@ -145,13 +145,33 @@ const agonWriter = config.agon.deployment
       operations: agonOperations,
     })
   : undefined;
+const x402ExecutionPolicy = createX402ExecutionPolicy({
+  enabled: config.agon.x402.executionEnabled,
+  maxAmountBaseUnits: config.agon.x402.maxAmountBaseUnits,
+});
+const x402VerificationPolicy = createX402ExecutionPolicy({
+  enabled: config.agon.x402.verificationEnabled,
+  maxAmountBaseUnits: config.agon.x402.maxAmountBaseUnits,
+});
+const x402FacilitatorClient = config.agon.x402.executionEnabled || config.agon.x402.verificationEnabled
+  ? createCircleTestnetFacilitatorClient()
+  : undefined;
+const x402SettlementAdapter = createX402FacilitatorAdapter({
+  enabled: config.agon.x402.executionEnabled,
+  policy: x402ExecutionPolicy,
+  client: x402FacilitatorClient,
+});
+const x402FacilitatorVerifier = createX402FacilitatorAdapter({
+  enabled: config.agon.x402.verificationEnabled,
+  policy: x402VerificationPolicy,
+  client: x402FacilitatorClient,
+});
 const agonService = new PostgresAgonMarketService(agonRepository, {
   writer: agonWriter,
-  x402FacilitatorVerifier: createX402FacilitatorAdapter({
-    enabled: config.agon.x402.verificationEnabled,
-    policy: createX402ExecutionPolicy({ enabled: config.agon.x402.verificationEnabled, maxAmountBaseUnits: config.agon.x402.maxAmountBaseUnits }),
-    client: config.agon.x402.verificationEnabled ? createCircleTestnetFacilitatorClient() : undefined,
-  }),
+  x402ExecutionEnabled: config.agon.x402.executionEnabled,
+  x402ExecutionPolicy,
+  x402SettlementAdapter,
+  x402FacilitatorVerifier,
   x402ReceiptLookup: createCircleTestnetX402ReceiptLookupAdapter({
     enabled: config.agon.x402.reconciliationEnabled,
   }),

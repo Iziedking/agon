@@ -15,10 +15,10 @@ import { validateX402Approval } from "../execution/x402-approval.ts";
 import { parsePaymentRequiredHeader, type X402QuoteSnapshot } from "../execution/x402-quote.ts";
 import { buildX402Authorization, validateX402AuthorizationSignature, type X402AuthorizationPayload } from "../execution/x402-authorization.ts";
 import { buildX402ExecutionPlan } from "../execution/x402-facilitator.ts";
-import { createX402SettlementOrchestrator } from "../execution/x402-orchestrator.ts";
+import { createX402SettlementOrchestrator, type X402SettlementAdapter } from "../execution/x402-orchestrator.ts";
 import { createX402ExecutionPolicy } from "../execution/x402-policy.ts";
 import { isX402ProviderTransferId, isX402Transaction, validateX402ReceiptLookupResult, type X402ReceiptLookupAdapter } from "../execution/x402-reconciliation.ts";
-import type { X402FacilitatorVerificationRequest as X402FacilitatorVerificationInput, X402FacilitatorVerificationResult } from "../execution/x402-settlement.ts";
+import type { X402FacilitatorVerificationRequest as X402FacilitatorVerificationInput, X402FacilitatorVerificationResult, X402SettlementRequest as X402SettlementInput } from "../execution/x402-settlement.ts";
 import { buildX402ExecutionApproval, type X402ExecutionApprovalRequest } from "../execution/x402-execution-approval.ts";
 import type {
   AgonCapabilities,
@@ -44,6 +44,8 @@ import type {
   X402ReconciliationReadinessView,
   X402ReconciliationRequest,
   X402ReconciliationView,
+  X402SettlementRequest,
+  X402SettlementView,
   X402FacilitatorVerificationView,
   X402FacilitatorVerificationRequest,
 } from "./api-types.ts";
@@ -80,6 +82,8 @@ export type PostgresAgonMarketServiceOptions = {
   endpointQa?: boolean;
   directX402?: boolean;
   x402ExecutionEnabled?: boolean;
+  x402ExecutionPolicy?: import("../execution/x402-policy.ts").X402ExecutionPolicy;
+  x402SettlementAdapter?: X402SettlementAdapter;
   x402FacilitatorVerifier?: {
     verify(input: X402FacilitatorVerificationInput): Promise<X402FacilitatorVerificationResult>;
   };
@@ -1041,6 +1045,72 @@ export class PostgresAgonMarketService implements AgonMarketService {
         serviceDeliveryPending: nextState === "settlement_submitted",
         nextAction: nextState === "failed" ? "none" : lookup.status === "pending" ? "reconcile_receipt" : "deliver_service",
         recordedAt: reconciled.receipt.updatedAt.toISOString(),
+      },
+    };
+  }
+
+  async settleX402Call(
+    actor: string,
+    intentId: string,
+    request: X402SettlementRequest,
+  ): Promise<Result<X402SettlementView, AgonServiceError>> {
+    if (this.options.x402ExecutionEnabled !== true || !this.options.x402SettlementAdapter) {
+      return { ok: false, error: { code: "execution_not_ready", message: "Circle x402 settlement is disabled by policy" } };
+    }
+    if (request.confirmation !== "EXECUTE_ARC_TESTNET_X402") {
+      return { ok: false, error: { code: "validation_failed", message: "explicit Arc Testnet settlement confirmation is required" } };
+    }
+    const intent = await this.repository.getX402CallIntent(intentId);
+    if (!intent) return { ok: false, error: { code: "not_found", message: "x402 call intent not found" } };
+    if (intent.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the intent owner can settle this call" } };
+    const receipt = await this.repository.getX402CallReceipt(intentId);
+    if (!receipt) return { ok: false, error: { code: "receipt_unavailable", message: "x402 receipt has not been created" } };
+    if (receipt.state !== "authorization_submitted" && receipt.state !== "settlement_submitted" && receipt.state !== "unknown") {
+      return { ok: false, error: { code: "conflict", message: `x402 receipt is ${receipt.state}; submit a valid authorization first` } };
+    }
+    if (!receipt.quoteSnapshot || !receipt.authorizationPayload || !receipt.authorizationPayloadHash || !receipt.authorizationHash || !receipt.approvedAmountUSDC) {
+      return { ok: false, error: { code: "execution_not_ready", message: "x402 receipt is missing the exact execution evidence" } };
+    }
+    const plan = buildX402ExecutionPlan({
+      snapshot: receipt.quoteSnapshot as X402QuoteSnapshot,
+      authorization: receipt.authorizationPayload as X402AuthorizationPayload,
+      authorizationPayloadHash: receipt.authorizationPayloadHash,
+      authorizationHash: receipt.authorizationHash,
+      approvedAmountUSDC: receipt.approvedAmountUSDC,
+    });
+    if (!plan.ok) return { ok: false, error: { code: "execution_not_ready", message: plan.error.message } };
+    const approval = await this.repository.getLatestX402ExecutionApproval(intentId);
+    if (!approval) return { ok: false, error: { code: "execution_not_ready", message: "explicit execution approval is required before settlement" } };
+    const policy = this.options.x402ExecutionPolicy ?? createX402ExecutionPolicy({ enabled: false, maxAmountBaseUnits: 0n });
+    const settled = await createX402SettlementOrchestrator({
+      store: this.repository,
+      adapter: this.options.x402SettlementAdapter,
+      policy,
+    }).settle({
+      approval,
+      plan: plan.value,
+      signature: request.signature,
+      confirmation: request.confirmation,
+    } as X402SettlementInput);
+    if (!settled.ok) {
+      if (settled.error.code === "reconciliation_required") return { ok: false, error: { code: "conflict", message: settled.error.message } };
+      if (settled.error.code === "settlement_unknown") return { ok: false, error: { code: "facilitator_unavailable", message: settled.error.message } };
+      return { ok: false, error: { code: "execution_not_ready", message: settled.error.message } };
+    }
+    return {
+      ok: true,
+      value: {
+        receiptId: settled.receipt.receiptId,
+        intentId,
+        state: "settlement_submitted",
+        network: "eip155:5042002",
+        transaction: settled.transaction,
+        providerTransferId: settled.receipt.providerTransferId ?? null,
+        payer: null,
+        executionEnabled: true,
+        serviceDeliveryPending: true,
+        nextAction: "deliver_service",
+        recordedAt: settled.receipt.updatedAt.toISOString(),
       },
     };
   }
