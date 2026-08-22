@@ -42,9 +42,35 @@ test("requires a provider lookup for a submitted receipt and stays read-only", a
   const result = await service.getX402ReconciliationReadiness(ACTOR, INTENT_ID);
   assert.equal(result.ok, true);
   if (!result.ok) return;
+  assert.equal(result.value.status, "lookup_disabled");
+  assert.equal(result.value.lookupEnabled, false);
+  assert.equal(result.value.nextAction, "enable_receipt_lookup");
+  assert.equal(result.value.executionEnabled, false);
+});
+
+test("reports an enabled read-only lookup without implying settlement or delivery", async () => {
+  const service = new PostgresAgonMarketService(repository(receipt("settlement_submitted", TX)) as never, {
+    x402ReceiptLookup: { enabled: true, lookup: async () => { throw new Error("not called by readiness"); } },
+  });
+  const result = await service.getX402ReconciliationReadiness(ACTOR, INTENT_ID);
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.value.lookupEnabled, true);
   assert.equal(result.value.status, "lookup_required");
   assert.equal(result.value.nextAction, "reconcile_receipt");
   assert.equal(result.value.executionEnabled, false);
+});
+
+test("reports a missing provider reference separately from a disabled lookup", async () => {
+  const service = new PostgresAgonMarketService(repository(receipt("settlement_submitted")) as never, {
+    x402ReceiptLookup: { enabled: true, lookup: async () => { throw new Error("not called by readiness"); } },
+  });
+  const result = await service.getX402ReconciliationReadiness(ACTOR, INTENT_ID);
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.value.lookupEnabled, true);
+  assert.equal(result.value.status, "reference_required");
+  assert.equal(result.value.nextAction, "record_provider_reference");
 });
 
 test("does not expose reconciliation as an action for terminal receipts", async () => {

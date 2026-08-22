@@ -195,7 +195,7 @@ export function X402ExecutionReview({ intentId, refreshKey }: Props) {
               <div className="mt-4 border-l-2 border-[color:var(--warn)] pl-3">
                 <div className="font-mono text-[9px] uppercase tracking-[0.12em]">PROVIDER RECEIPT LOOKUP · {reconciliationReadiness.status.replaceAll("_", " ")}</div>
                 <p className="mt-2 font-mono text-[10px] leading-relaxed opacity-75">{reconciliationReadiness.reason}</p>
-                <div className="mt-2 font-mono text-[9px] uppercase tracking-[0.08em] opacity-60">LOOKUP DISABLED · NO PROVIDER REQUEST · NO SETTLEMENT</div>
+                <div className="mt-2 font-mono text-[9px] uppercase tracking-[0.08em] opacity-60">{reconciliationReadiness.lookupEnabled ? "READ-ONLY LOOKUP ENABLED · NO SETTLEMENT" : "LOOKUP DISABLED · NO PROVIDER REQUEST · NO SETTLEMENT"}</div>
                 {reconciliationReadiness.transaction ? <div className="mt-2 break-all font-mono text-[10px]">TX · {reconciliationReadiness.transaction}</div> : null}
                 {reconciliationReadiness.providerTransferId ? <div className="mt-2 break-all font-mono text-[10px]">TRANSFER · {reconciliationReadiness.providerTransferId}</div> : null}
               </div>

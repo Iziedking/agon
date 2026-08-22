@@ -284,11 +284,11 @@ export type X402ReconciliationReadinessView = {
   network: "eip155:5042002";
   transaction: `0x${string}` | null;
   providerTransferId: string | null;
-  status: "not_required" | "lookup_disabled" | "lookup_required" | "terminal";
+  status: "not_required" | "lookup_disabled" | "lookup_required" | "reference_required" | "terminal";
   reason: string;
-  lookupEnabled: false;
+  lookupEnabled: boolean;
   executionEnabled: false;
-  nextAction: "complete_authorization" | "enable_receipt_lookup" | "reconcile_receipt" | "none";
+  nextAction: "complete_authorization" | "enable_receipt_lookup" | "record_provider_reference" | "reconcile_receipt" | "none";
   checkedAt: string;
 };
 

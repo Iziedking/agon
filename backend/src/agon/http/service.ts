@@ -893,21 +893,42 @@ export class PostgresAgonMarketService implements AgonMarketService {
     let status: X402ReconciliationReadinessView["status"];
     let reason: string;
     let nextAction: X402ReconciliationReadinessView["nextAction"];
+    const lookupEnabled = this.options.x402ReceiptLookup?.enabled === true;
     switch (receipt.state) {
       case "unknown":
       case "service_delivered":
-        status = "lookup_disabled";
-        reason = transaction || providerTransferId
-          ? "A provider receipt is required for this Arc Testnet settlement, but the read-only lookup adapter is disabled."
-          : "The settlement outcome is ambiguous and has no valid provider reference. Enable a read-only receipt lookup before retrying.";
-        nextAction = "enable_receipt_lookup";
+        if (!transaction && !providerTransferId) {
+          status = "reference_required";
+          reason = lookupEnabled
+            ? "The read-only lookup adapter is enabled, but this receipt has no valid provider reference to query."
+            : "The settlement outcome is ambiguous and has no valid provider reference. Enable a read-only receipt lookup after recording the provider reference.";
+          nextAction = "record_provider_reference";
+        } else if (!lookupEnabled) {
+          status = "lookup_disabled";
+          reason = "A provider receipt is required for this Arc Testnet settlement, but the read-only lookup adapter is disabled.";
+          nextAction = "enable_receipt_lookup";
+        } else {
+          status = "lookup_required";
+          reason = "A provider reference exists and the read-only lookup adapter is enabled. Reconcile matching Arc Testnet evidence.";
+          nextAction = "reconcile_receipt";
+        }
         break;
       case "settlement_submitted":
-        status = "lookup_required";
-        reason = transaction || providerTransferId
-          ? "A settlement reference exists. Query the provider receipt and reconcile only matching Arc Testnet evidence."
-          : "Settlement was recorded without a valid provider reference; a provider receipt lookup is required.";
-        nextAction = "reconcile_receipt";
+        if (!transaction && !providerTransferId) {
+          status = "reference_required";
+          reason = lookupEnabled
+            ? "The read-only lookup adapter is enabled, but settlement was recorded without a valid provider reference."
+            : "Settlement was recorded without a valid provider reference. Enable lookup only after a provider reference is recorded.";
+          nextAction = "record_provider_reference";
+        } else if (!lookupEnabled) {
+          status = "lookup_disabled";
+          reason = "A settlement reference exists, but the read-only lookup adapter is disabled.";
+          nextAction = "enable_receipt_lookup";
+        } else {
+          status = "lookup_required";
+          reason = "A settlement reference exists and the read-only lookup adapter is enabled. Reconcile only matching Arc Testnet evidence.";
+          nextAction = "reconcile_receipt";
+        }
         break;
       case "reconciled":
       case "rejected":
@@ -935,7 +956,7 @@ export class PostgresAgonMarketService implements AgonMarketService {
         providerTransferId,
         status,
         reason,
-        lookupEnabled: false,
+        lookupEnabled,
         executionEnabled: false,
         nextAction,
         checkedAt: new Date().toISOString(),
