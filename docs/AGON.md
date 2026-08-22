@@ -359,6 +359,21 @@ is checked again immediately before lifecycle execution. This phase therefore
 adds no signer construction, provider request, wallet action, transaction, or
 Arc Testnet broadcast.
 
+## Phase 17: local runtime readiness hardening
+
+`backend/src/agon/execution/escrow-runtime-readiness.ts` provides a pure
+operator gate for the complete escrow runtime configuration: Arc Testnet
+network, fixed USDC, contract and controller identities, execution/preflight/
+writer/lifecycle flags, and signer availability. It reports all refusal
+reasons together and always reports `executionEnabled: false`; it performs no
+RPC or wallet work.
+
+The Postgres-backed integration tests exercise the full local sequence with
+fake viem clients: prepared intent, durable approval, fresh preflight, exact
+writer calldata, successful receipt, timeout-to-unknown, and disabled-flag
+no-call behavior. This proves the runtime boundary without using a signer or
+broadcasting to Arc Testnet.
+
 ## Manifest proof
 
 Manifest hashes use sorted-key JSON canonicalization followed by `keccak256` of the UTF-8 bytes. The pinned foundation fixture hashes to:
