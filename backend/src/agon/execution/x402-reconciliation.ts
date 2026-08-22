@@ -1,6 +1,7 @@
 import { AGON_X402_TESTNET_NETWORK } from "./x402-facilitator.ts";
 
 const CIRCLE_TESTNET_GATEWAY = "https://gateway-api-testnet.circle.com";
+const MAX_CIRCLE_RESPONSE_BYTES = 64 * 1024;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const ADDRESS = /^0x[0-9a-f]{40}$/i;
 
@@ -66,6 +67,42 @@ function parseCircleTransfer(value: unknown): CircleX402Transfer {
   return value as CircleX402Transfer;
 }
 
+async function readBoundedResponseBody(response: Response, maxBytes: number): Promise<string> {
+  const contentLength = response.headers.get("content-length");
+  if (contentLength !== null) {
+    const declaredLength = Number(contentLength);
+    if (!Number.isSafeInteger(declaredLength) || declaredLength < 0 || declaredLength > maxBytes) {
+      throw new Error("Circle receipt lookup response exceeds 64 KiB");
+    }
+  }
+
+  if (!response.body) {
+    const text = await response.text();
+    if (Buffer.byteLength(text, "utf8") > maxBytes) throw new Error("Circle receipt lookup response exceeds 64 KiB");
+    return text;
+  }
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const part = await reader.read();
+      if (part.done) break;
+      if (!part.value) continue;
+      total += part.value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel().catch(() => undefined);
+        throw new Error("Circle receipt lookup response exceeds 64 KiB");
+      }
+      chunks.push(part.value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))).toString("utf8");
+}
+
 /** No provider or RPC call is made by this default adapter. */
 export function createDisabledX402ReceiptLookupAdapter(): X402ReceiptLookupAdapter { return { enabled: false, async lookup(): Promise<X402ReceiptLookupResult> { throw new Error("Arc Testnet receipt lookup is disabled by policy"); } }; }
 
@@ -85,12 +122,13 @@ export function createCircleTestnetX402ReceiptLookupAdapter(options: { enabled: 
     const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await fetchImpl(`${baseUrl}/v1/x402/transfers/${encodeURIComponent(input.providerTransferId)}`, { method: "GET", headers: { accept: "application/json" }, signal: controller.signal });
-      const text = await response.text();
+      const text = await readBoundedResponseBody(response, MAX_CIRCLE_RESPONSE_BYTES);
       if (!response.ok) throw new Error(`Circle receipt lookup returned HTTP ${response.status}`);
-      if (Buffer.byteLength(text, "utf8") > 64 * 1024) throw new Error("Circle receipt lookup response exceeds 64 KiB");
       const transfer = parseCircleTransfer(JSON.parse(text));
-      const network = transfer.sendingNetwork === AGON_X402_TESTNET_NETWORK && transfer.recipientNetwork === AGON_X402_TESTNET_NETWORK ? AGON_X402_TESTNET_NETWORK : transfer.sendingNetwork as typeof AGON_X402_TESTNET_NETWORK;
-      const result = validateX402ReceiptLookupResult({ network, providerTransferId: transfer.id, transaction: null, status: mapCircleStatus(transfer.status), payer: transfer.fromAddress as `0x${string}`, recipient: transfer.toAddress as `0x${string}`, amountAtomicUnits: transfer.amount, reason: `Circle transfer status: ${transfer.status}` }, input);
+      if (transfer.sendingNetwork !== AGON_X402_TESTNET_NETWORK || transfer.recipientNetwork !== AGON_X402_TESTNET_NETWORK) {
+        throw new Error("Circle transfer networks must both be Arc Testnet");
+      }
+      const result = validateX402ReceiptLookupResult({ network: AGON_X402_TESTNET_NETWORK, providerTransferId: transfer.id, transaction: null, status: mapCircleStatus(transfer.status), payer: transfer.fromAddress as `0x${string}`, recipient: transfer.toAddress as `0x${string}`, amountAtomicUnits: transfer.amount, reason: `Circle transfer status: ${transfer.status}` }, input);
       failures = 0; openedUntil = 0; return result;
     } catch (error) {
       failures += 1; if (failures >= failureThreshold) openedUntil = Date.now() + cooldownMs;

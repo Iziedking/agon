@@ -100,3 +100,49 @@ test("fails closed on Circle network mismatch and opens its circuit after repeat
   await assert.rejects(adapter.lookup(input), /circuit is open/);
   assert.equal(called, 2);
 });
+
+test("rejects a transfer whose recipient network is not Arc Testnet", async () => {
+  const transferId = "3c90c3cc-0d44-4b50-8888-8dd25736052a";
+  const adapter = createCircleTestnetX402ReceiptLookupAdapter({
+    enabled: true,
+    fetchImpl: async () => new Response(JSON.stringify({
+      id: transferId,
+      status: "confirmed",
+      token: "USDC",
+      sendingNetwork: "eip155:5042002",
+      recipientNetwork: "eip155:1",
+      fromAddress: "0x1111111111111111111111111111111111111111",
+      toAddress: "0x2222222222222222222222222222222222222222",
+      amount: "10000",
+      createdAt: "2026-08-22T10:00:00.000Z",
+      updatedAt: "2026-08-22T10:00:01.000Z",
+    }), { status: 200 }),
+  });
+  await assert.rejects(
+    adapter.lookup({ network: "eip155:5042002", providerTransferId: transferId }),
+    /both be Arc Testnet/,
+  );
+});
+
+test("rejects an oversized Circle response before parsing it", async () => {
+  const transferId = "3c90c3cc-0d44-4b50-8888-8dd25736052a";
+  let bodyRead = false;
+  const adapter = createCircleTestnetX402ReceiptLookupAdapter({
+    enabled: true,
+    fetchImpl: async () => {
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          bodyRead = true;
+          controller.enqueue(new Uint8Array(65 * 1024));
+          controller.close();
+        },
+      });
+      return new Response(body, { status: 200 });
+    },
+  });
+  await assert.rejects(
+    adapter.lookup({ network: "eip155:5042002", providerTransferId: transferId }),
+    /exceeds 64 KiB/,
+  );
+  assert.equal(bodyRead, true);
+});
