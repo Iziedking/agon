@@ -413,6 +413,71 @@ The readiness gate also requires the explicit controller address to match the
 configured signer identity. A controller policy and a signer key are never
 treated as interchangeable configuration values.
 
+## Phase 19: readiness capabilities in the public health surface
+
+The authenticated Agon health response now exposes the escrow production
+readiness snapshot as machine-readable capability data. It reports the
+testnet-only scope, every refusal reason, and the approval operations still
+required. A `ready` snapshot is an operator signal for a controlled review;
+it never enables a signer, provider, lifecycle adapter, or transaction.
+
+The health wiring keeps deployment records separate: the canonical Agon
+receipt supplies `AgonProfileRegistry` and `AgonServiceRegistry`, while the
+platform PrizeEscrow receipt supplies the optional escrow address. A platform
+contract is therefore never mistaken for part of the Agon registry receipt.
+
+## Phase 20: explicit escrow controller policy
+
+Escrow readiness requires `AGON_ESCROW_CONTROLLER_ADDRESS` and an explicit
+controller policy. The address is validated as a canonical EVM identity and
+recorded as the controller for the configured Arc Testnet PrizeEscrow
+deployment. Missing policy is a named refusal
+(`controller_policy_unconfigured`); there is no implicit controller fallback
+and no admin-only shortcut.
+
+## Phase 21: separate escrow lifecycle and execution switches
+
+Escrow lifecycle preparation and transaction execution are independent
+capabilities:
+
+- `AGON_ESCROW_ENABLED` gates the owner-scoped lifecycle boundary.
+- `AGON_ESCROW_EXECUTION_ENABLED` gates transaction-writer eligibility.
+
+Both default to `false`. Enabling the lifecycle switch alone cannot authorize
+a fund, release, or refund transaction. The writer, preflight, reconciliation,
+approval, and provider-finality gates remain separate requirements.
+
+## Phase 22: controller identity bound to the signer
+
+The production-readiness evaluator now compares the explicit controller with
+the configured coordinator signer. A mismatch returns
+`controller_signer_mismatch`; an unavailable or malformed signer returns a
+separate refusal. This prevents a controller policy from being treated as
+proof that the server can safely sign or submit a transaction.
+
+The evaluator remains pure and returns `executionEnabled: false` even when all
+configuration checks pass. No signer is constructed and no RPC, provider,
+wallet, payment, signature, or transaction action occurs during readiness
+evaluation.
+
+## Current release status
+
+The dedicated-schema release fix is committed locally. The local release gate
+has passed with 215/215 Agon backend tests, the foundation proof command,
+backend and frontend typechecks, 19/19 marketplace tests, a successful
+frontend production build, 108/108 Forge tests, `forge fmt --check`, and the
+Agon boundary check. The proof fixture currently hashes to:
+
+`0xaec806c6d6a862aaf6e06998f0618dd4b721975b18dbacceec10ecaa8648e339`
+
+Production is not enabled. Profile/listing writes, Circle x402 execution and
+reconciliation, Arena validation, agent-wallet execution, and escrow writes
+remain disabled by default. Before production, complete an explicitly
+approved Arc Testnet wallet smoke, select and verify the controller/signer
+policy, validate the real Circle and escrow adapters, then run staging
+migrations and authenticated API/UI smoke tests with monitoring, backups, and
+a rollback plan.
+
 ## Manifest proof
 
 Manifest hashes use sorted-key JSON canonicalization followed by `keccak256` of the UTF-8 bytes. The pinned foundation fixture hashes to:
