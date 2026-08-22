@@ -22,6 +22,7 @@ function readyInput(overrides: Partial<Parameters<typeof evaluateAgonEscrowProdu
     asset: AGON_ESCROW_USDC,
     deployment: DEPLOYMENT,
     controller: CONTROLLER,
+    controllerPolicyConfigured: true,
     flags: {
       writesEnabled: true,
       escrowEnabled: true,
@@ -146,4 +147,13 @@ test("approval phrase drift is surfaced per operation", () => {
   assert.equal(result.ready, false);
   assert.deepEqual(result.requiredApprovals, ["release"]);
   assert.deepEqual(result.reasons, ["approval_phrase_required"]);
+});
+
+test("refuses an inferred controller when explicit policy is absent", () => {
+  const result = evaluateAgonEscrowProductionReadiness({
+    ...readyInput(),
+    controllerPolicyConfigured: false,
+  });
+  assert.equal(result.ready, false);
+  assert.deepEqual(result.reasons, ["controller_policy_unconfigured"]);
 });

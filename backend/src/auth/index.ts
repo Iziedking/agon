@@ -182,7 +182,8 @@ const agonEscrowProductionReadiness = () => evaluateAgonEscrowProductionReadines
   // PrizeEscrow is deployed by the platform receipt, while the Agon
   // registries live in the separate canonical Agon receipt.
   prizeEscrowAddress: config.contracts.PrizeEscrow,
-  controller: config.coordinator.address,
+  controller: config.agon.escrow.controllerAddress,
+  controllerPolicyConfigured: config.agon.escrow.controllerAddress !== undefined,
   flags: {
     writesEnabled: config.agon.writesEnabled,
     escrowEnabled: config.agon.escrow.enabled,

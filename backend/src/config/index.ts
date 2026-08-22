@@ -62,6 +62,7 @@ const envSchema = z.object({
   // wired to the deployed PrizeEscrow contracts.
   AGON_ESCROW_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
   AGON_ESCROW_RECONCILIATION_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
+  AGON_ESCROW_CONTROLLER_ADDRESS: z.string().regex(/^0x[a-fA-F0-9]{40}$/, "expected an escrow controller address").optional(),
   AGON_ESCROW_MAX_POOL_BASE_UNITS: z.string().regex(/^(0|[1-9]\d*)$/).default("0"),
   AGON_SYNDICATE_PRIZE_POOL_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
 
@@ -677,6 +678,7 @@ export const config = {
     escrow: {
       enabled: env.AGON_ESCROW_ENABLED,
       reconciliationEnabled: env.AGON_ESCROW_RECONCILIATION_ENABLED,
+      controllerAddress: env.AGON_ESCROW_CONTROLLER_ADDRESS as `0x${string}` | undefined,
       network: "eip155:5042002" as const,
       asset: "0x3600000000000000000000000000000000000000" as const,
       maxPoolBaseUnits: BigInt(env.AGON_ESCROW_MAX_POOL_BASE_UNITS),

@@ -379,7 +379,7 @@ broadcasting to Arc Testnet.
 `backend/src/agon/execution/escrow-production-readiness.ts` is the release
 gate for a future controlled Arc Testnet escrow transaction. It validates the
 chain, fixed USDC, the canonical Agon registries and ERC-8004 IdentityRegistry,
-an explicit PrizeEscrow deployment, controller identity, every escrow/write/
+an explicit PrizeEscrow deployment, explicit controller policy and identity, every escrow/write/
 reconciliation kill switch, exact per-transaction approval phrases, fresh plan
 binding, signer availability, and provider finality configuration.
 

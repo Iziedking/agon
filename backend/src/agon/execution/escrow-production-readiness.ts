@@ -44,6 +44,7 @@ export function evaluateAgonEscrowProductionReadiness(input: {
   deployment: DeploymentShape | null | undefined;
   prizeEscrowAddress?: string | null;
   controller?: string | null;
+  controllerPolicyConfigured: boolean;
   flags: {
     writesEnabled: boolean;
     escrowEnabled: boolean;
@@ -84,6 +85,7 @@ export function evaluateAgonEscrowProductionReadiness(input: {
   const escrowAddress = input.prizeEscrowAddress ?? deployment?.contracts?.PrizeEscrow;
   if (!validAddress(escrowAddress)) reasons.push("prize_escrow_not_deployed");
   if (!validAddress(input.controller)) reasons.push("escrow_controller_unconfigured");
+  if (!input.controllerPolicyConfigured) reasons.push("controller_policy_unconfigured");
 
   if (!input.flags.writesEnabled) reasons.push("writes_flag_disabled");
   if (!input.flags.escrowEnabled) reasons.push("escrow_flag_disabled");
