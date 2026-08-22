@@ -176,6 +176,30 @@ The Phase 6 adversarial coverage is in
 `backend/test/agon/escrow-intent-repository.test.ts` and the route assertions
 are part of `backend/test/agon/routes.test.ts`.
 
+## Phase 7: read-only PrizeEscrow pool reconciliation boundary
+
+`backend/src/agon/execution/escrow-reconciliation.ts` defines the next safe
+boundary for escrow. It reads only the deployed `PrizeEscrow.usdc()` asset
+pointer and `PrizeEscrow.poolBalance(controller, poolId)` view. The adapter
+pins the request and result to Arc Testnet `eip155:5042002`, the configured
+PrizeEscrow address, the fixed USDC asset, the exact controller and pool id,
+and the expected integer balance from the escrow intent. A mismatched pool,
+asset, controller, amount, or network is an error and cannot be interpreted
+as funded.
+
+The default adapter is disabled and has no RPC or contract side effect. The
+optional viem adapter is read-only, has bounded calls, a timeout, a response
+normalization layer, and a circuit breaker. It has no fund, release, refund,
+approve, signer, or transaction method. This boundary is intentionally not
+wired to a client action yet because the durable intent still needs an
+approved controller/pool binding and an explicit reconciliation worker.
+
+The adversarial coverage is in
+`backend/test/agon/escrow-reconciliation.test.ts`. It covers disabled safety,
+exact identity matching, mismatched balances, malformed identifiers, bounded
+view calls, configuration pinning, and circuit opening after repeated RPC
+failures.
+
 ### Provider receipt source decision
 
 Circle's documented Arc Testnet Gateway base is `https://gateway-api-testnet.circle.com`. The `POST /gateway/v1/x402/settle` response describes `transaction` as a **transfer UUID**, not an on-chain transaction hash. The corresponding read-only source is `GET /v1/x402/transfers/{id}` (or the paginated `GET /gateway/v1/x402/transfers` search endpoint), which returns the UUID, `status`, USDC amount, sender, recipient, CAIP-2 networks, and timestamps. Circle documents these transfer states as `received`, `batched`, `confirmed`, `completed`, and `failed`; `confirmed` means included onchain and `completed` means fully complete. The Gateway flow can serve a resource before batched onchain settlement, so a successful `settle` response is not finality evidence.
