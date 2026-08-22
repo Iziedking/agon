@@ -20,6 +20,8 @@ import type {
   X402ExecutionApprovalView,
   X402ExecutionReadinessView,
   X402SettlementReadinessView,
+  X402SettlementRequest,
+  X402SettlementView,
   X402ReconciliationReadinessView,
   X402FacilitatorVerificationRequest,
   X402FacilitatorVerificationView,
@@ -355,6 +357,17 @@ export function getX402SettlementReadiness(intentId: string): Promise<X402Settle
     });
   }
   return request<X402SettlementReadinessView>(`/call-intents/${encodeURIComponent(intentId)}/settlement-readiness`, { method: "GET" });
+}
+
+/** Submit the runtime wallet signature to the disabled-by-default settlement seam. */
+export function settleX402Call(intentId: string, body: X402SettlementRequest): Promise<X402SettlementView> {
+  if (AGON_PREVIEW_MODE) {
+    return Promise.reject(new AgonApiError("execution_not_ready", "Settlement is disabled in preview mode; no payment was sent.", 409));
+  }
+  return request<X402SettlementView>(`/call-intents/${encodeURIComponent(intentId)}/settle`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }
 
 /** Inspect whether a provider receipt lookup is available; this never calls a provider. */

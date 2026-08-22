@@ -293,6 +293,25 @@ export type X402SettlementReadinessView = {
   checkedAt: string;
 };
 
+export type X402SettlementRequest = {
+  signature: `0x${string}`;
+  confirmation: "EXECUTE_ARC_TESTNET_X402";
+};
+
+export type X402SettlementView = {
+  receiptId: string;
+  intentId: string;
+  state: "settlement_submitted" | "unknown" | "failed";
+  network: "eip155:5042002";
+  transaction: `0x${string}` | null;
+  providerTransferId: string | null;
+  payer: `0x${string}` | null;
+  executionEnabled: boolean;
+  serviceDeliveryPending: boolean;
+  nextAction: "deliver_service" | "reconcile_receipt" | "none";
+  recordedAt: string;
+};
+
 export type X402ReconciliationReadinessView = {
   receiptId: string;
   intentId: string;

@@ -28,6 +28,8 @@ import type {
   X402ExecutionApprovalView,
   X402ExecutionReadinessView,
   X402SettlementReadinessView,
+  X402SettlementRequest,
+  X402SettlementView,
   X402ReconciliationReadinessView,
   X402FacilitatorVerificationRequest,
   X402FacilitatorVerificationView,
@@ -107,7 +109,7 @@ function preparedOperation(operationId: string): SubmittedOperation {
 }
 
 type ServiceError = {
-  code: "not_found" | "not_owner" | "conflict" | "capability_unavailable";
+  code: "not_found" | "not_owner" | "conflict" | "capability_unavailable" | "execution_not_ready";
   message: string;
 };
 
@@ -386,6 +388,14 @@ class FakeAgonService implements AgonMarketService {
         checkedAt: new Date().toISOString(),
       },
     };
+  }
+
+  async settleX402Call(
+    _actor: string,
+    _intentId: string,
+    _request: X402SettlementRequest,
+  ): Promise<Result<X402SettlementView, ServiceError>> {
+    return { ok: false, error: { code: "execution_not_ready", message: "Circle x402 settlement is disabled by policy" } };
   }
 
   async getX402ReconciliationReadiness(
@@ -782,6 +792,30 @@ test("returns authenticated settlement readiness without enabling Circle", async
   assert.equal(body.status, "ready_but_disabled");
   assert.equal(body.executionEnabled, false);
   assert.equal(body.nextAction, "execution_adapter_not_enabled");
+});
+
+test("keeps settlement submission behind authentication, strict signature validation, and the kill switch", async () => {
+  const app = testApp(new FakeAgonService());
+  const unauthenticated = await app.request("/agon/call-intents/00000000-0000-4000-8000-000000000001/settle", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ signature: `0x${"11".repeat(65)}`, confirmation: "EXECUTE_ARC_TESTNET_X402" }),
+  });
+  assert.equal(unauthenticated.status, 401);
+  const invalid = await app.request("/agon/call-intents/00000000-0000-4000-8000-000000000001/settle", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-test-address": ADDRESS },
+    body: JSON.stringify({ signature: "0x12", confirmation: "EXECUTE_ARC_TESTNET_X402" }),
+  });
+  assert.equal(invalid.status, 400);
+  const disabled = await app.request("/agon/call-intents/00000000-0000-4000-8000-000000000001/settle", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-test-address": ADDRESS },
+    body: JSON.stringify({ signature: `0x${"11".repeat(65)}`, confirmation: "EXECUTE_ARC_TESTNET_X402" }),
+  });
+  assert.equal(disabled.status, 409);
+  const body = await disabled.json() as { error: { code: string } };
+  assert.equal(body.error.code, "execution_not_ready");
 });
 
 test("returns authenticated reconciliation readiness without enabling a provider lookup", async () => {
