@@ -20,6 +20,7 @@ import type {
   X402ExecutionApprovalView,
   X402ExecutionReadinessView,
   X402SettlementReadinessView,
+  X402ReconciliationReadinessView,
   X402FacilitatorVerificationRequest,
   X402FacilitatorVerificationView,
 } from "./types";
@@ -353,6 +354,26 @@ export function getX402SettlementReadiness(intentId: string): Promise<X402Settle
     });
   }
   return request<X402SettlementReadinessView>(`/call-intents/${encodeURIComponent(intentId)}/settlement-readiness`, { method: "GET" });
+}
+
+/** Inspect whether a provider receipt lookup is available; this never calls a provider. */
+export function getX402ReconciliationReadiness(intentId: string): Promise<X402ReconciliationReadinessView> {
+  if (AGON_PREVIEW_MODE) {
+    return Promise.resolve({
+      receiptId: "00000000-0000-4000-8000-000000000100",
+      intentId,
+      state: "authorization_submitted",
+      network: "eip155:5042002",
+      transaction: null,
+      status: "not_required",
+      reason: "Complete authorization before a provider receipt lookup is required.",
+      lookupEnabled: false,
+      executionEnabled: false,
+      nextAction: "complete_authorization",
+      checkedAt: new Date().toISOString(),
+    });
+  }
+  return request<X402ReconciliationReadinessView>(`/call-intents/${encodeURIComponent(intentId)}/reconciliation-readiness`, { method: "GET" });
 }
 
 /** Verify a wallet signature with Circle without settling or claiming delivery. */

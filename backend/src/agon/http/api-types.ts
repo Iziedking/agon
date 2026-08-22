@@ -276,6 +276,20 @@ export type X402SettlementReadinessView = {
   checkedAt: string;
 };
 
+export type X402ReconciliationReadinessView = {
+  receiptId: string;
+  intentId: string;
+  state: X402SettlementReadinessView["state"];
+  network: "eip155:5042002";
+  transaction: `0x${string}` | null;
+  status: "not_required" | "lookup_disabled" | "lookup_required" | "terminal";
+  reason: string;
+  lookupEnabled: false;
+  executionEnabled: false;
+  nextAction: "complete_authorization" | "enable_receipt_lookup" | "reconcile_receipt" | "none";
+  checkedAt: string;
+};
+
 export type X402FacilitatorVerificationRequest = {
   signature: `0x${string}`;
   confirmation: "VERIFY_ARC_TESTNET_X402";

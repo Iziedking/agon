@@ -28,6 +28,7 @@ import type {
   X402ExecutionApprovalView,
   X402ExecutionReadinessView,
   X402SettlementReadinessView,
+  X402ReconciliationReadinessView,
   X402FacilitatorVerificationRequest,
   X402FacilitatorVerificationView,
 } from "../../src/agon/http/api-types.ts";
@@ -387,6 +388,28 @@ class FakeAgonService implements AgonMarketService {
     };
   }
 
+  async getX402ReconciliationReadiness(
+    _actor: string,
+    intentId: string,
+  ): Promise<Result<X402ReconciliationReadinessView, ServiceError>> {
+    return {
+      ok: true,
+      value: {
+        receiptId: "00000000-0000-4000-8000-000000000002",
+        intentId,
+        state: "unknown",
+        network: "eip155:5042002",
+        transaction: `0x${"ab".repeat(32)}`,
+        status: "lookup_disabled",
+        reason: "The read-only provider receipt lookup adapter is disabled.",
+        lookupEnabled: false,
+        executionEnabled: false,
+        nextAction: "enable_receipt_lookup",
+        checkedAt: new Date().toISOString(),
+      },
+    };
+  }
+
   async verifyX402Facilitator(
     _actor: string,
     intentId: string,
@@ -737,6 +760,20 @@ test("returns authenticated settlement readiness without enabling Circle", async
   assert.equal(body.status, "ready_but_disabled");
   assert.equal(body.executionEnabled, false);
   assert.equal(body.nextAction, "execution_adapter_not_enabled");
+});
+
+test("returns authenticated reconciliation readiness without enabling a provider lookup", async () => {
+  const app = testApp(new FakeAgonService());
+  const response = await app.request("/agon/call-intents/00000000-0000-4000-8000-000000000001/reconciliation-readiness", {
+    headers: { "x-test-address": ADDRESS },
+  });
+  assert.equal(response.status, 200);
+  const body = (await response.json()) as X402ReconciliationReadinessView;
+  assert.equal(body.status, "lookup_disabled");
+  assert.equal(body.network, "eip155:5042002");
+  assert.equal(body.lookupEnabled, false);
+  assert.equal(body.executionEnabled, false);
+  assert.equal(body.nextAction, "enable_receipt_lookup");
 });
 
 test("requires authentication before facilitator verification", async () => {

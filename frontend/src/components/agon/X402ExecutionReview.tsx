@@ -2,11 +2,11 @@
 
 import { useEffect, useState } from "react";
 
-import { approveX402Execution, getX402ExecutionReadiness, getX402FacilitatorVerification, getX402SettlementReadiness, verifyX402Facilitator, AGON_PREVIEW_MODE } from "@/lib/agon/client";
+import { approveX402Execution, getX402ExecutionReadiness, getX402FacilitatorVerification, getX402ReconciliationReadiness, getX402SettlementReadiness, verifyX402Facilitator, AGON_PREVIEW_MODE } from "@/lib/agon/client";
 import { executionReadinessLabel, executionReadinessTone, formatExecutionTimestamp, formatUSDCBaseUnits, newExecutionApprovalKey } from "@/lib/agon/execution-review";
 import { settlementReadinessLabel, settlementReadinessTone } from "@/lib/agon/settlement-review";
 import { forgetX402Signature, readX402Signature } from "@/lib/agon/signature-memory";
-import type { X402ExecutionApprovalView, X402ExecutionReadinessView, X402FacilitatorVerificationView, X402SettlementReadinessView } from "@/lib/agon/types";
+import type { X402ExecutionApprovalView, X402ExecutionReadinessView, X402FacilitatorVerificationView, X402ReconciliationReadinessView, X402SettlementReadinessView } from "@/lib/agon/types";
 import { TagButton } from "@/components/redesign/TagButton";
 
 type Props = { intentId: string; refreshKey?: string | number };
@@ -14,6 +14,7 @@ type Props = { intentId: string; refreshKey?: string | number };
 export function X402ExecutionReview({ intentId, refreshKey }: Props) {
   const [readiness, setReadiness] = useState<X402ExecutionReadinessView | null>(null);
   const [settlementReadiness, setSettlementReadiness] = useState<X402SettlementReadinessView | null>(null);
+  const [reconciliationReadiness, setReconciliationReadiness] = useState<X402ReconciliationReadinessView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [settlementError, setSettlementError] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState("");
@@ -31,6 +32,7 @@ export function X402ExecutionReview({ intentId, refreshKey }: Props) {
     let live = true;
     setReadiness(null);
     setSettlementReadiness(null);
+    setReconciliationReadiness(null);
     setError(null);
     setSettlementError(null);
     setSignature(readX402Signature(intentId));
@@ -48,6 +50,12 @@ export function X402ExecutionReview({ intentId, refreshKey }: Props) {
       .catch((failure) => {
         if (!live) return;
         setSettlementError(failure instanceof Error ? failure.message : "Settlement readiness is not available yet.");
+      });
+    getX402ReconciliationReadiness(intentId)
+      .then((value) => { if (live) setReconciliationReadiness(value); })
+      .catch((failure) => {
+        if (!live) return;
+        setSettlementError(failure instanceof Error ? failure.message : "Receipt reconciliation readiness is not available yet.");
       });
     getX402FacilitatorVerification(intentId)
       .then((value) => { if (live) setVerification(value); })
@@ -70,6 +78,7 @@ export function X402ExecutionReview({ intentId, refreshKey }: Props) {
       setReadiness(refreshed);
       setApproval(refreshed.approval ?? result);
       setSettlementReadiness(await getX402SettlementReadiness(intentId));
+      setReconciliationReadiness(await getX402ReconciliationReadiness(intentId));
     } catch (failure) {
       setApprovalError(failure instanceof Error ? failure.message : "Agon could not record this execution approval.");
     } finally {
@@ -180,6 +189,14 @@ export function X402ExecutionReview({ intentId, refreshKey }: Props) {
                   <ReviewFact label="CHECKED" value={formatExecutionTimestamp(settlementReadiness.checkedAt)} />
                 </dl>
               </>
+            ) : null}
+            {reconciliationReadiness ? (
+              <div className="mt-4 border-l-2 border-[color:var(--warn)] pl-3">
+                <div className="font-mono text-[9px] uppercase tracking-[0.12em]">PROVIDER RECEIPT LOOKUP · {reconciliationReadiness.status.replaceAll("_", " ")}</div>
+                <p className="mt-2 font-mono text-[10px] leading-relaxed opacity-75">{reconciliationReadiness.reason}</p>
+                <div className="mt-2 font-mono text-[9px] uppercase tracking-[0.08em] opacity-60">LOOKUP DISABLED · NO PROVIDER REQUEST · NO SETTLEMENT</div>
+                {reconciliationReadiness.transaction ? <div className="mt-2 break-all font-mono text-[10px]">TX · {reconciliationReadiness.transaction}</div> : null}
+              </div>
             ) : null}
           </section>
         </>

@@ -38,6 +38,7 @@ import type {
   X402ExecutionApprovalView,
   X402ExecutionReadinessView,
   X402SettlementReadinessView,
+  X402ReconciliationReadinessView,
   X402FacilitatorVerificationView,
   X402FacilitatorVerificationRequest,
 } from "./api-types.ts";
@@ -858,6 +859,71 @@ export class PostgresAgonMarketService implements AgonMarketService {
         settlementRef: transactionRef,
         status,
         reason,
+        executionEnabled: false,
+        nextAction,
+        checkedAt: new Date().toISOString(),
+      },
+    };
+  }
+
+  async getX402ReconciliationReadiness(
+    actor: string,
+    intentId: string,
+  ): Promise<Result<X402ReconciliationReadinessView, AgonServiceError>> {
+    const intent = await this.repository.getX402CallIntent(intentId);
+    if (!intent) return { ok: false, error: { code: "not_found", message: "x402 call intent not found" } };
+    if (intent.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the intent owner can inspect receipt reconciliation" } };
+    const receipt = await this.repository.getX402CallReceipt(intentId);
+    if (!receipt) return { ok: false, error: { code: "receipt_unavailable", message: "x402 receipt has not been created" } };
+
+    const transaction = receipt.settlementRef && /^0x[0-9a-f]{64}$/i.test(receipt.settlementRef)
+      ? receipt.settlementRef.toLowerCase() as `0x${string}`
+      : null;
+    let status: X402ReconciliationReadinessView["status"];
+    let reason: string;
+    let nextAction: X402ReconciliationReadinessView["nextAction"];
+    switch (receipt.state) {
+      case "unknown":
+      case "service_delivered":
+        status = "lookup_disabled";
+        reason = transaction
+          ? "A provider receipt is required for this Arc Testnet transaction, but the read-only lookup adapter is disabled."
+          : "The settlement outcome is ambiguous and has no valid transaction reference. Enable a read-only receipt lookup before retrying.";
+        nextAction = "enable_receipt_lookup";
+        break;
+      case "settlement_submitted":
+        status = "lookup_required";
+        reason = transaction
+          ? "A settlement reference exists. Query the provider receipt and reconcile only matching Arc Testnet evidence."
+          : "Settlement was recorded without a valid transaction reference; a provider receipt lookup is required.";
+        nextAction = "reconcile_receipt";
+        break;
+      case "reconciled":
+      case "rejected":
+      case "failed":
+        status = "terminal";
+        reason = receipt.state === "reconciled"
+          ? "This receipt is reconciled and terminal. No provider lookup is required."
+          : `This x402 receipt is terminal: ${receipt.state}.`;
+        nextAction = "none";
+        break;
+      default:
+        status = "not_required";
+        reason = `x402 receipt is ${receipt.state}; complete authorization before receipt reconciliation can begin.`;
+        nextAction = "complete_authorization";
+        break;
+    }
+    return {
+      ok: true,
+      value: {
+        receiptId: receipt.receiptId,
+        intentId,
+        state: receipt.state,
+        network: "eip155:5042002",
+        transaction,
+        status,
+        reason,
+        lookupEnabled: false,
         executionEnabled: false,
         nextAction,
         checkedAt: new Date().toISOString(),

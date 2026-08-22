@@ -23,6 +23,7 @@ import type {
   X402ExecutionApprovalView,
   X402ExecutionReadinessView,
   X402SettlementReadinessView,
+  X402ReconciliationReadinessView,
   X402FacilitatorVerificationRequest,
 } from "./api-types.ts";
 
@@ -101,6 +102,10 @@ export type AgonMarketService = {
     actor: string,
     intentId: string,
   ): Promise<Result<X402SettlementReadinessView, AgonServiceError>>;
+  getX402ReconciliationReadiness(
+    actor: string,
+    intentId: string,
+  ): Promise<Result<X402ReconciliationReadinessView, AgonServiceError>>;
   verifyX402Facilitator(
     actor: string,
     intentId: string,
@@ -368,6 +373,14 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
 
   app.get("/call-intents/:intentId/settlement-readiness", options.requireAuth, async (context) => {
     const result = await options.service.getX402SettlementReadiness(
+      context.get("address"),
+      context.req.param("intentId"),
+    );
+    return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  app.get("/call-intents/:intentId/reconciliation-readiness", options.requireAuth, async (context) => {
+    const result = await options.service.getX402ReconciliationReadiness(
       context.get("address"),
       context.req.param("intentId"),
     );
