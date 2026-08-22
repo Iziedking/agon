@@ -92,6 +92,14 @@ const capabilities: AgonCapabilities = {
   directX402: false,
   escrow: false,
   writeReadiness: { checkedAt: null, reasons: ["adapter_unconfigured"] },
+  escrowReadiness: {
+    testnetOnly: true,
+    ready: false,
+    executionEnabled: false,
+    checkedAt: null,
+    reasons: ["readiness_unconfigured"],
+    requiredApprovals: [],
+  },
 };
 
 function preparedOperation(operationId: string): SubmittedOperation {
@@ -675,6 +683,7 @@ test("reports granular Agon capabilities and keeps escrow disabled", async () =>
   assert.equal(body.capabilities.listingWrites, false);
   assert.equal(body.capabilities.escrow, false);
   assert.deepEqual(body.capabilities.writeReadiness.reasons, ["adapter_unconfigured"]);
+  assert.deepEqual(body.capabilities.escrowReadiness.reasons, ["readiness_unconfigured"]);
 });
 
 test("confirms a prepared operation with a validated transaction hash", async () => {

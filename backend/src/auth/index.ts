@@ -19,6 +19,8 @@ import { createAgonRoutes } from "../agon/http/routes.js";
 import { createCircleTestnetFacilitatorClient, createX402ExecutionPolicy, createX402FacilitatorAdapter } from "../agon/execution/x402-settlement.js";
 import { createCircleTestnetX402ReceiptLookupAdapter } from "../agon/execution/x402-reconciliation.js";
 import { createViemAgonPrizeEscrowReadAdapter, type AgonPrizeEscrowReadClient } from "../agon/execution/escrow-reconciliation.js";
+import { evaluateAgonEscrowProductionReadiness } from "../agon/execution/escrow-production-readiness.js";
+import { AGON_ESCROW_TRANSACTION_APPROVAL_PHRASES } from "../agon/execution/escrow-transaction-approval.js";
 import { PostgresAgonMarketService } from "../agon/http/service.js";
 import { PostgresAgonOperationStore } from "../agon/write/repository.js";
 import { CachedAgonReadiness } from "../agon/write/readiness.js";
@@ -172,6 +174,30 @@ const x402FacilitatorVerifier = createX402FacilitatorAdapter({
   policy: x402VerificationPolicy,
   client: x402FacilitatorClient,
 });
+const agonEscrowProductionReadiness = () => evaluateAgonEscrowProductionReadiness({
+  chainId: config.chainId,
+  network: config.agon.escrow.network,
+  asset: config.agon.escrow.asset,
+  deployment: config.agon.deployment,
+  // PrizeEscrow is deployed by the platform receipt, while the Agon
+  // registries live in the separate canonical Agon receipt.
+  prizeEscrowAddress: config.contracts.PrizeEscrow,
+  controller: config.coordinator.address,
+  flags: {
+    writesEnabled: config.agon.writesEnabled,
+    escrowEnabled: config.agon.escrow.enabled,
+    executionEnabled: config.agon.escrow.enabled,
+    preflightEnabled: false,
+    writerEnabled: false,
+    lifecycleAdapterEnabled: false,
+    reconciliationEnabled: config.agon.escrow.reconciliationEnabled,
+  },
+  approvalRequired: true,
+  approvalPhrases: AGON_ESCROW_TRANSACTION_APPROVAL_PHRASES,
+  exactTransactionPlanBound: false,
+  signerAvailable: config.coordinator.address !== null,
+  providerFinalityConfigured: false,
+});
 const agonService = new PostgresAgonMarketService(agonRepository, {
   writer: agonWriter,
   x402ExecutionEnabled: config.agon.x402.executionEnabled,
@@ -183,6 +209,7 @@ const agonService = new PostgresAgonMarketService(agonRepository, {
   }),
   escrowReadAdapter: agonEscrowReadAdapter,
   escrowPoolContract: config.contracts.PrizeEscrow,
+  escrowProductionReadiness: agonEscrowProductionReadiness,
 });
 app.route("/agon", createAgonRoutes({ service: agonService, requireAuth }));
 

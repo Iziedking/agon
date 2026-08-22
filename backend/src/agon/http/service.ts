@@ -62,6 +62,7 @@ import type {
   AgonEscrowTransactionApprovalView,
   AgonEscrowTransactionApprovalReadinessView,
 } from "./api-types.ts";
+import type { AgonEscrowProductionReadiness } from "../execution/escrow-production-readiness.ts";
 import type { AgonMarketService, AgonServiceError } from "./routes.ts";
 import type { AgonReadiness } from "../write/readiness.ts";
 
@@ -113,6 +114,8 @@ export type PostgresAgonMarketServiceOptions = {
   escrowWritePreflightAdapter?: AgonPrizeEscrowWritePreflightAdapter;
   /** Injected writer seam; runtime remains disabled unless both this and the execution flag are enabled. */
   escrowTransactionWriter?: AgonEscrowTransactionWriter;
+  /** Pure release-gate snapshot; no provider or wallet work is performed. */
+  escrowProductionReadiness?: () => AgonEscrowProductionReadiness;
   fetchImpl?: typeof fetch;
 };
 
@@ -1593,6 +1596,14 @@ export class PostgresAgonMarketService implements AgonMarketService {
   async getCapabilities(): Promise<AgonCapabilities> {
     const readiness = this.options.writer ? await this.options.writer.getReadiness() : null;
     const writesReady = readiness?.ready ?? false;
+    const escrowReadiness = this.options.escrowProductionReadiness?.() ?? {
+      testnetOnly: true as const,
+      ready: false,
+      executionEnabled: false as const,
+      checkedAt: null,
+      reasons: ["readiness_unconfigured"],
+      requiredApprovals: [],
+    };
     return {
       identityReads: this.options.identityReads ?? false,
       profileWrites: writesReady,
@@ -1605,6 +1616,7 @@ export class PostgresAgonMarketService implements AgonMarketService {
         checkedAt: readiness?.checkedAt ?? null,
         reasons: readiness?.reasons ?? ["adapter_unconfigured"],
       },
+      escrowReadiness,
     };
   }
 }

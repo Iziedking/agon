@@ -201,6 +201,14 @@ export const AGON_PREVIEW_CAPABILITIES: AgonCapabilities = {
     checkedAt: null,
     reasons: ["preview_read_only"],
   },
+  escrowReadiness: {
+    testnetOnly: true,
+    ready: false,
+    executionEnabled: false,
+    checkedAt: null,
+    reasons: ["preview_read_only"],
+    requiredApprovals: [],
+  },
 };
 
 export const AGON_PREVIEW_HEALTH: AgonHealth = {

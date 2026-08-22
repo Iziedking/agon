@@ -724,6 +724,7 @@ export const config = {
   },
   coordinator: {
     privateKey: normalizePrivateKey(env.COORDINATOR_PRIVATE_KEY),
+    address: addressOfKey(env.COORDINATOR_PRIVATE_KEY, "COORDINATOR_PRIVATE_KEY"),
     wsPort: env.WS_PORT,
   },
   treasury: {

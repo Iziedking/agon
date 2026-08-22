@@ -90,6 +90,20 @@ test("canonical Agon receipt is blocked until a PrizeEscrow deployment is added"
   assert.deepEqual(result.reasons, ["prize_escrow_not_deployed"]);
 });
 
+test("accepts a separately deployed platform PrizeEscrow when explicitly composed", () => {
+  const result = evaluateAgonEscrowProductionReadiness({
+    ...readyInput(),
+    deployment: {
+      chainId: 5_042_002,
+      contracts: { AgonProfileRegistry: PROFILE, AgonServiceRegistry: SERVICE },
+      external: DEPLOYMENT.external,
+    },
+    prizeEscrowAddress: ESCROW,
+  });
+  assert.equal(result.reasons.includes("prize_escrow_not_deployed"), false);
+  assert.equal(result.ready, true);
+});
+
 test("wrong chain and malformed deployment identities fail closed", () => {
   const result = evaluateAgonEscrowProductionReadiness({
     ...readyInput(),

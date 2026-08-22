@@ -389,12 +389,19 @@ signature, or transaction submission. A `ready` result means only that a
 controlled testnet review may be considered after a separate exact
 transaction approval. It is not a production or mainnet authorization.
 
-The current canonical receipt intentionally contains only
-`AgonProfileRegistry` and `AgonServiceRegistry`, so this gate reports
-`prize_escrow_not_deployed`. All escrow execution, reconciliation, and writer
-flags remain false by default. Do not add a PrizeEscrow address, signer, or
-provider credentials until the contract deployment, controller policy, and
-one-transaction approval are reviewed separately.
+The current canonical Agon receipt intentionally contains only
+`AgonProfileRegistry` and `AgonServiceRegistry`. Evaluating that receipt alone
+therefore reports `prize_escrow_not_deployed`; all escrow execution,
+reconciliation, and writer flags remain false by default. The live auth wiring
+explicitly composes the separately deployed platform PrizeEscrow address, but
+that does not authorize it for Agon use without controller and transaction
+policy review.
+
+The live `/agon/health` capability payload now includes the same readiness
+snapshot. It composes the canonical Agon receipt with the existing platform
+PrizeEscrow receipt, so an already deployed platform contract is not mistaken
+for an Agon registry deployment. The snapshot remains informational and does
+not enable a writer, signer, provider, or lifecycle adapter.
 
 ## Manifest proof
 

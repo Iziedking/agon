@@ -20,6 +20,14 @@ export type AgonCapabilities = {
     checkedAt: string | null;
     reasons: string[];
   };
+  escrowReadiness: {
+    testnetOnly: true;
+    ready: boolean;
+    executionEnabled: false;
+    checkedAt: string | null;
+    reasons: string[];
+    requiredApprovals: string[];
+  };
 };
 
 export type AgonEndpointQa = {
