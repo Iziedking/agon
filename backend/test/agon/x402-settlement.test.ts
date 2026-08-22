@@ -51,6 +51,53 @@ test("disabled adapter validates but never calls an injected facilitator", async
   assert.equal(calls, 0);
 });
 
+test("disabled verification validates but never calls an injected facilitator", async () => {
+  const input = fixture();
+  let calls = 0;
+  const adapter = createX402FacilitatorAdapter({
+    client: {
+      verify: async () => { calls += 1; throw new Error("must not call"); },
+      settle: async () => { throw new Error("must not call"); },
+    },
+  });
+  const result = await adapter.verify({ ...input, confirmation: X402_EXECUTION_CONFIRMATION_PHRASE, nowSeconds: NOW });
+  assert.deepEqual(result, { ok: false, error: { code: "execution_disabled", message: "x402 verification adapter is disabled by policy" } });
+  assert.equal(calls, 0);
+});
+
+test("enabled verification forwards the validated payload and enforces payer identity", async () => {
+  const input = fixture();
+  let received: unknown;
+  const adapter = createX402FacilitatorAdapter({
+    enabled: true,
+    policy: createX402ExecutionPolicy({ enabled: true, maxAmountBaseUnits: "1000" }),
+    client: {
+      verify: async (payload, requirements) => {
+        received = { payload, requirements };
+        return { isValid: true, payer: ACTOR };
+      },
+      settle: async () => { throw new Error("settlement is not part of verification"); },
+    },
+  });
+  const result = await adapter.verify({ ...input, confirmation: X402_EXECUTION_CONFIRMATION_PHRASE, nowSeconds: NOW });
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.value.verified, true);
+  assert.equal(result.value.payer, ACTOR);
+  assert.equal((received as { payload: { payload: { signature: string } } }).payload.payload.signature, input.signature);
+
+  const rejecting = createX402FacilitatorAdapter({
+    enabled: true,
+    policy: createX402ExecutionPolicy({ enabled: true, maxAmountBaseUnits: "1000" }),
+    client: {
+      verify: async () => ({ isValid: true, payer: PAY_TO }),
+      settle: async () => { throw new Error("settlement is not part of verification"); },
+    },
+  });
+  const rejected = await rejecting.verify({ ...input, confirmation: X402_EXECUTION_CONFIRMATION_PHRASE, nowSeconds: NOW });
+  assert.deepEqual(rejected, { ok: false, error: { code: "facilitator_rejected", message: "Circle facilitator payer does not match the authorization owner" } });
+});
+
 test("rejects a changed plan, stale approval, or mismatched signature before Circle", async () => {
   const input = fixture();
   let calls = 0;

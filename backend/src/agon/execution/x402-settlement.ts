@@ -26,6 +26,15 @@ export type X402FacilitatorPayload = {
 export type X402FacilitatorRequirements = X402ExecutionPlan["requirements"];
 
 export type X402FacilitatorClient = {
+  /** Verify a signed payment without submitting or settling it. */
+  verify?(
+    paymentPayload: X402FacilitatorPayload,
+    paymentRequirements: X402FacilitatorRequirements,
+  ): Promise<{
+    isValid: boolean;
+    payer?: string;
+    invalidReason?: string;
+  }>;
   settle(
     paymentPayload: X402FacilitatorPayload,
     paymentRequirements: X402FacilitatorRequirements,
@@ -67,6 +76,19 @@ export type X402SettlementResult =
         network: typeof AGON_X402_TESTNET_NETWORK;
         payer: `0x${string}` | null;
         executionEnabled: true;
+      };
+    }
+  | { ok: false; error: { code: X402SettlementErrorCode; message: string } };
+
+export type X402FacilitatorVerificationResult =
+  | {
+      ok: true;
+      value: {
+        intentId: string;
+        approvalHash: `0x${string}`;
+        network: typeof AGON_X402_TESTNET_NETWORK;
+        payer: `0x${string}` | null;
+        verified: true;
       };
     }
   | { ok: false; error: { code: X402SettlementErrorCode; message: string } };
@@ -152,6 +174,37 @@ export function createX402FacilitatorAdapter(options: {
   policy?: X402ExecutionPolicy;
 } = {}) {
   return {
+    async verify(input: X402SettlementRequest): Promise<X402FacilitatorVerificationResult> {
+      const checked = validateX402SettlementRequest(input);
+      if (!checked.ok) return { ok: false, error: checked.error };
+      if (options.enabled !== true) return fail("execution_disabled", "x402 verification adapter is disabled by policy");
+      if (!options.policy) return fail("execution_disabled", "x402 verification requires an explicit spend policy");
+      const policy = evaluateX402ExecutionPolicy(options.policy, input.plan);
+      if (!policy.ok) return fail(policy.code, policy.message);
+      if (!options.client?.verify) return fail("facilitator_unavailable", "x402 facilitator verification is not configured");
+      try {
+        const result = await options.client.verify(
+          { x402Version: 2, payload: { authorization: input.plan.authorization, signature: checked.signature } },
+          input.plan.requirements,
+        );
+        if (!result.isValid) return fail("facilitator_rejected", result.invalidReason ?? "Circle facilitator rejected verification");
+        if (result.payer && !sameAddress(result.payer, input.plan.authorization.from)) {
+          return fail("facilitator_rejected", "Circle facilitator payer does not match the authorization owner");
+        }
+        return {
+          ok: true,
+          value: {
+            intentId: input.approval.intentId,
+            approvalHash: input.approval.approvalHash as `0x${string}`,
+            network: AGON_X402_TESTNET_NETWORK,
+            payer: result.payer ? (getAddress(result.payer) as `0x${string}`) : null,
+            verified: true,
+          },
+        };
+      } catch {
+        return fail("facilitator_unavailable", "Circle facilitator verification failed without a trusted result");
+      }
+    },
     async settle(input: X402SettlementRequest): Promise<X402SettlementResult> {
       const checked = validateX402SettlementRequest(input);
       if (!checked.ok) return { ok: false, error: checked.error };
@@ -192,6 +245,7 @@ export { createX402ExecutionPolicy };
 export function createCircleTestnetFacilitatorClient(): X402FacilitatorClient {
   const client = new BatchFacilitatorClient({ url: AGON_X402_TESTNET_FACILITATOR });
   return {
+    verify: (paymentPayload, paymentRequirements) => client.verify(paymentPayload, paymentRequirements),
     settle: (paymentPayload, paymentRequirements) => client.settle(paymentPayload, paymentRequirements),
   };
 }
