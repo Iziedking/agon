@@ -327,10 +327,11 @@ into runtime auth or the escrow lifecycle orchestrator. No production
 configuration enables it.
 
 Before calling `writeContract`, the seam revalidates the durable approval,
-expiry, actor, operation, Arc Testnet network, fixed USDC asset, configured
-PrizeEscrow address, authorized controller, and deterministic calldata. It
-writes only the ABI-pinned function and arguments from that preflighted intent
-as the controller account. A receipt must prove the same transaction hash, the
+expiry, approving actor, operation, Arc Testnet network, fixed USDC asset,
+configured PrizeEscrow address, authorized controller, and deterministic
+calldata. It writes only the ABI-pinned function and arguments from that
+preflighted intent as the controller account; the approving actor remains
+separately bound to the durable approval. A receipt must prove the same transaction hash, the
 configured contract as `to`, and a successful status before the result is
 accepted.
 
@@ -338,6 +339,25 @@ Submission exceptions and missing, mismatched, or timed-out receipts return an
 `unknown` outcome and must be reconciled before retrying. A proven reverted
 receipt is terminal. Focused tests use only fake clients; this phase performs
 no RPC call, wallet signing, transaction submission, or Arc Testnet broadcast.
+
+## Phase 16: disabled runtime integration boundary
+
+`backend/src/agon/execution/escrow-transaction-adapter.ts` now bridges the
+durable escrow lifecycle to the Phase 15 writer seam without introducing a
+second write path. For each lifecycle action it reloads the intent and latest
+approval, rejects missing/expired/operation-mismatched evidence, performs a
+fresh read-only PrizeEscrow preflight, and passes the exact approval actor and
+preflight result to the writer. The existing lifecycle orchestrator still
+writes its pending marker before the adapter call and records ambiguous writer
+outcomes as `unknown`.
+
+The market service can construct this adapter only when an injected writer and
+preflight adapter are supplied. The explicit `escrowExecutionEnabled` flag,
+the preflight kill switch, and the writer kill switch must all be enabled; the
+default auth wiring supplies none of these live dependencies. Durable approval
+is checked again immediately before lifecycle execution. This phase therefore
+adds no signer construction, provider request, wallet action, transaction, or
+Arc Testnet broadcast.
 
 ## Manifest proof
 

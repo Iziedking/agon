@@ -149,9 +149,8 @@ export function createViemAgonEscrowTransactionWriter(options: {
       if (!checked.ok) return failure("transaction_not_ready", checked.error.message);
 
       const intent = input.preflight.intent;
-      const actor = address(input.actor);
       const controller = address(intent.controller);
-      if (!actor || !controller || actor !== controller) return failure("transaction_not_ready", "the approved actor must be the authorized PrizeEscrow controller");
+      if (!controller) return failure("transaction_not_ready", "the preflighted PrizeEscrow controller is invalid");
       if (address(intent.escrowAddress) !== configuredContract) return failure("transaction_not_ready", "transaction intent is not pinned to the configured PrizeEscrow contract");
 
       let transactionHash: `0x${string}`;

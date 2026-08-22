@@ -14,6 +14,7 @@ import { createViemAgonEscrowTransactionWriter } from "../../src/agon/execution/
 
 const ESCROW = "0x1111111111111111111111111111111111111111";
 const CONTROLLER = "0x2222222222222222222222222222222222222222";
+const ACTOR = "0x4444444444444444444444444444444444444444";
 const PARTICIPANT = "0x3333333333333333333333333333333333333333";
 const USDC = "0x3600000000000000000000000000000000000000";
 const TX = `0x${"ab".repeat(32)}` as `0x${string}`;
@@ -45,7 +46,7 @@ function approval() {
     preflight: preflight(),
     request: {
       intentId: "escrow-intent-001",
-      actor: CONTROLLER,
+      actor: ACTOR,
       operation: "fund",
       approvalIdempotencyKey: "writer-approval-001",
       confirmation: AGON_ESCROW_TRANSACTION_APPROVAL_PHRASES.fund,
@@ -58,7 +59,7 @@ function approval() {
 }
 
 function input(overrides: Record<string, unknown> = {}) {
-  return { intentId: "escrow-intent-001", actor: CONTROLLER, preflight: preflight(), approval: approval(), nowSeconds: 1_700_000_001, ...overrides };
+  return { intentId: "escrow-intent-001", actor: ACTOR, preflight: preflight(), approval: approval(), nowSeconds: 1_700_000_001, ...overrides };
 }
 
 test("disabled writer makes no client calls even with an otherwise valid approval", async () => {

@@ -16,6 +16,7 @@ export type AgonEscrowLifecycleAction = "fund" | "release" | "refund";
 export type AgonEscrowLifecycleErrorCode =
   | "escrow_disabled"
   | "escrow_not_ready"
+  | "escrow_failed"
   | "escrow_unknown";
 
 export type AgonEscrowLifecycleResult =
@@ -110,6 +111,15 @@ export function createAgonEscrowLifecycleOrchestrator(options: {
       else result = await options.adapter.refund({ intentId, buyer: current.terms.buyer, amountBaseUnits: current.terms.amountBaseUnits });
     } catch {
       result = { ok: false, error: { code: "escrow_unavailable", message: "escrow adapter call failed" } };
+    }
+
+    if (!result.ok && result.error.code === "escrow_reverted") {
+      try {
+        const failed = await options.store.advanceAgonEscrowIntent({ intentId, state: "failed" });
+        return failure(action, "escrow_failed", result.error.message, failed);
+      } catch {
+        return failure(action, "escrow_unknown", "escrow reverted but its terminal failure could not be durably recorded", marked);
+      }
     }
 
     if (!result.ok || !hasProviderEvidence(result.value)) {

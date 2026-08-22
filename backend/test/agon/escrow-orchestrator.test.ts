@@ -167,3 +167,17 @@ test("successful adapter output without provider evidence becomes unknown", asyn
   if (!result.ok) assert.equal(result.error.code, "escrow_unknown");
   assert.equal(memory.current().state, "unknown");
 });
+
+test("a proven transaction revert becomes a durable terminal failure", async () => {
+  const memory = store(intent());
+  const orchestrator = createAgonEscrowLifecycleOrchestrator({
+    enabled: true,
+    store: memory.store,
+    adapter: adapter({ fund: async () => ({ ok: false, error: { code: "escrow_reverted", message: "PrizeEscrow transaction reverted" } }) }),
+  });
+  const result = await orchestrator.fund(intent().intentId);
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.error.code, "escrow_failed");
+  assert.equal(memory.current().state, "failed");
+  assert.deepEqual(memory.transitions, ["funding", "failed"]);
+});

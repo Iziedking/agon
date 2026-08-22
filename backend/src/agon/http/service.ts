@@ -24,6 +24,8 @@ import { buildX402ExecutionApproval, type X402ExecutionApprovalRequest } from ".
 import { validateAgonPrizeEscrowPoolBinding, type AgonPrizeEscrowPoolBinding, type AgonPrizeEscrowReadAdapter } from "../execution/escrow-reconciliation.ts";
 import { buildAgonEscrowTransactionApproval, type AgonEscrowTransactionApprovalRequest } from "../execution/escrow-transaction-approval.ts";
 import type { AgonEscrowWriteOperation, AgonPrizeEscrowWritePreflightAdapter } from "../execution/escrow-write-preflight.ts";
+import { createApprovalBoundAgonEscrowTransactionAdapter } from "../execution/escrow-transaction-adapter.ts";
+import type { AgonEscrowTransactionWriter } from "../execution/escrow-transaction-writer.ts";
 import { createAgonEscrowLifecycleOrchestrator, type AgonEscrowLifecycleAction } from "../execution/escrow-orchestrator.ts";
 import { createDisabledAgonEscrowAdapter, evaluateAgonEscrowTerms, hashAgonEscrowTerms, type AgonEscrowAdapter, type AgonEscrowListing } from "../escrow-policy.ts";
 import type {
@@ -109,6 +111,8 @@ export type PostgresAgonMarketServiceOptions = {
   escrowExecutionEnabled?: boolean;
   /** Read-only contract preflight used before durable transaction approval. */
   escrowWritePreflightAdapter?: AgonPrizeEscrowWritePreflightAdapter;
+  /** Injected writer seam; runtime remains disabled unless both this and the execution flag are enabled. */
+  escrowTransactionWriter?: AgonEscrowTransactionWriter;
   fetchImpl?: typeof fetch;
 };
 
@@ -482,15 +486,25 @@ function executionApprovalView(
 export class PostgresAgonMarketService implements AgonMarketService {
   private readonly repository: PostgresAgonRepository;
   private readonly options: PostgresAgonMarketServiceOptions;
+  private readonly escrowExecutionAdapter: AgonEscrowAdapter;
   private readonly escrowLifecycle: ReturnType<typeof createAgonEscrowLifecycleOrchestrator>;
 
   constructor(repository: PostgresAgonRepository, options: PostgresAgonMarketServiceOptions = {}) {
     this.repository = repository;
     this.options = options;
+    const transactionAdapter = options.escrowTransactionWriter && options.escrowWritePreflightAdapter
+      ? createApprovalBoundAgonEscrowTransactionAdapter({
+          store: repository,
+          preflight: options.escrowWritePreflightAdapter,
+          writer: options.escrowTransactionWriter,
+          enabled: options.escrowExecutionEnabled === true,
+        })
+      : null;
+    this.escrowExecutionAdapter = options.escrowExecutionAdapter ?? transactionAdapter ?? createDisabledAgonEscrowAdapter();
     this.escrowLifecycle = createAgonEscrowLifecycleOrchestrator({
       store: repository,
       enabled: options.escrowExecutionEnabled === true,
-      adapter: options.escrowExecutionAdapter ?? createDisabledAgonEscrowAdapter(),
+      adapter: this.escrowExecutionAdapter,
     });
   }
 
@@ -801,7 +815,7 @@ export class PostgresAgonMarketService implements AgonMarketService {
     const intent = await this.repository.getAgonEscrowIntent(intentId);
     if (!intent) return { ok: false, error: { code: "not_found", message: "Agon escrow intent not found" } };
     if (intent.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the escrow intent owner can execute this operation" } };
-    if (!this.options.escrowExecutionEnabled || !this.options.escrowExecutionAdapter?.enabled) {
+    if (!this.options.escrowExecutionEnabled || !this.escrowExecutionAdapter.enabled) {
       return { ok: false, error: { code: "escrow_disabled", message: "Agon escrow execution is disabled by policy" } };
     }
     if (!intent.poolBinding || !this.options.escrowReadAdapter?.enabled) {
@@ -812,10 +826,17 @@ export class PostgresAgonMarketService implements AgonMarketService {
     if (readiness.value.pool.status !== "match") {
       return { ok: false, error: { code: "execution_not_ready", message: `escrow pool is ${readiness.value.pool.status}; an exact authorized pool match is required` } };
     }
+    if (this.options.escrowTransactionWriter) {
+      const approval = await this.repository.getAgonEscrowTransactionApproval(intentId);
+      if (!approval) return { ok: false, error: { code: "execution_not_ready", message: "a durable transaction approval is required before escrow execution" } };
+      if (approval.operation !== action) return { ok: false, error: { code: "execution_not_ready", message: "the durable transaction approval does not match the requested lifecycle action" } };
+      if (approval.expiresAt.getTime() <= Date.now()) return { ok: false, error: { code: "execution_not_ready", message: "the durable transaction approval is expired" } };
+    }
     const result = await this.escrowLifecycle[action](intentId);
     if (!result.ok) {
       if (result.error.code === "escrow_disabled") return { ok: false, error: { code: "escrow_disabled", message: result.error.message } };
       if (result.error.code === "escrow_unknown") return { ok: false, error: { code: "conflict", message: result.error.message } };
+      if (result.error.code === "escrow_failed") return { ok: false, error: { code: "execution_not_ready", message: result.error.message } };
       return { ok: false, error: { code: "execution_not_ready", message: result.error.message } };
     }
     return { ok: true, value: escrowIntentView(result.intent, result.intent.listingReference) };

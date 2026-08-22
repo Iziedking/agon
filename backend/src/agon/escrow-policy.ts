@@ -68,6 +68,7 @@ export type AgonEscrowErrorCode =
   | "escrow_intent_not_found"
   | "invalid_transition"
   | "escrow_disabled"
+  | "escrow_reverted"
   | "escrow_unavailable";
 
 export type AgonEscrowError = { code: AgonEscrowErrorCode; message: string };
