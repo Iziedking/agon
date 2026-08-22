@@ -473,6 +473,12 @@ Only a successful `confirmed` response is Provider listed. Agon verification rem
 
 ## Local release gate
 
+Agon persistence is isolated in the PostgreSQL `agon` schema. The migration
+keeps legacy ArcRun tables in `public`, moves a one-time public Agon install
+into `agon`, and refuses to guess if both copies exist. The runtime pool uses
+`search_path=agon,public`, so existing legacy routes continue to resolve from
+`public` while Agon repositories resolve from the dedicated schema.
+
 Use an isolated Postgres instance. Set both `DATABASE_URL` and `TEST_DATABASE_URL` to that disposable database, then run:
 
 ```text
@@ -496,6 +502,6 @@ powershell -ExecutionPolicy Bypass -File scripts/check-agon-boundary.ps1
 git diff --check
 ```
 
-`prove:agon` creates and drops its own schema and refuses to run without `TEST_DATABASE_URL`. It binds a mock identity, projects a listing, reads it through the public route, recomputes the canonical hash, and prints named refusals for wrong owner, duplicate key, unsafe endpoint, hash mismatch, and escrow-ineligible unverified state.
+`prove:agon` creates and drops its own isolated schema and refuses to run without `TEST_DATABASE_URL`. It binds a mock identity, projects a listing, reads it through the public service, recomputes the canonical hash, and prints named refusals for duplicate key, unsafe endpoint, hash mismatch, owner-scoped writes, and escrow-ineligible unverified state.
 
 Testnet or mock evidence is not proof of mainnet availability, endpoint quality, legal compliance, escrow, Arena verification, or syndicate payouts.

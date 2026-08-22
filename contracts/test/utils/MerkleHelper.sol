@@ -24,11 +24,7 @@ library MerkleHelper {
         return leaves[0];
     }
 
-    function getProof(bytes32[] memory leaves, uint256 index)
-        internal
-        pure
-        returns (bytes32[] memory proof)
-    {
+    function getProof(bytes32[] memory leaves, uint256 index) internal pure returns (bytes32[] memory proof) {
         require(index < leaves.length, "bad index");
         proof = new bytes32[](0);
         while (leaves.length > 1) {

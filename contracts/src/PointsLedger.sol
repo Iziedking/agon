@@ -27,18 +27,9 @@ contract PointsLedger is AccessControl {
 
     mapping(address => Account) private _accounts;
 
-    event PointsCredited(
-        address indexed operator,
-        uint128 amount,
-        uint256 indexed contestId,
-        ContestType cType
-    );
+    event PointsCredited(address indexed operator, uint128 amount, uint256 indexed contestId, ContestType cType);
 
-    event PointsDebited(
-        address indexed operator,
-        uint128 amount,
-        uint256 indexed contestId
-    );
+    event PointsDebited(address indexed operator, uint128 amount, uint256 indexed contestId);
 
     error ZeroAmount();
     error ZeroAddress();
@@ -52,12 +43,10 @@ contract PointsLedger is AccessControl {
     /// @notice Credit points to an operator. Only callable by COORDINATOR_ROLE.
     /// @dev    `lifetimePoints` is monotonic and never decremented; `balance` is
     ///         what the operator can spend on entries.
-    function credit(
-        address operator,
-        uint128 amount,
-        uint256 contestId,
-        ContestType cType
-    ) external onlyRole(COORDINATOR_ROLE) {
+    function credit(address operator, uint128 amount, uint256 contestId, ContestType cType)
+        external
+        onlyRole(COORDINATOR_ROLE)
+    {
         if (operator == address(0)) revert ZeroAddress();
         if (amount == 0) revert ZeroAmount();
 
@@ -71,11 +60,7 @@ contract PointsLedger is AccessControl {
 
     /// @notice Debit points from an operator (e.g. paying a contest entry fee
     ///         denominated in points). Only callable by CONTEST_ENGINE_ROLE.
-    function debit(
-        address operator,
-        uint128 amount,
-        uint256 contestId
-    ) external onlyRole(CONTEST_ENGINE_ROLE) {
+    function debit(address operator, uint128 amount, uint256 contestId) external onlyRole(CONTEST_ENGINE_ROLE) {
         if (amount == 0) revert ZeroAmount();
 
         Account storage a = _accounts[operator];

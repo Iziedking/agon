@@ -70,6 +70,7 @@ scripts/
 backend/scripts/*
 !backend/scripts/circle-bootstrap.ts
 !backend/scripts/verify-contracts.ts
+!backend/scripts/prove-agon-foundation.ts
 !contracts/scripts/
 contracts/scripts/*
 !contracts/scripts/set-listing-fee.sh

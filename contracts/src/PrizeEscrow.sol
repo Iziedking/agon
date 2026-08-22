@@ -44,7 +44,9 @@ contract PrizeEscrow is IPrizeEscrow, AccessControl, ReentrancyGuard {
     // ============ Events ============
 
     event PrizePoolDeposited(address indexed controller, uint256 indexed poolId, address indexed from, uint256 amount);
-    event ChallengePotDeposited(address indexed controller, uint256 indexed poolId, address indexed from, uint256 amount);
+    event ChallengePotDeposited(
+        address indexed controller, uint256 indexed poolId, address indexed from, uint256 amount
+    );
     event ListingFeeCollected(address indexed controller, address indexed from, uint256 amount);
     event PaidOut(address indexed controller, uint256 indexed poolId, address indexed recipient, uint256 amount);
     event PlatformFeeSkimmed(address indexed controller, uint256 indexed poolId, uint256 amount);
@@ -97,11 +99,7 @@ contract PrizeEscrow is IPrizeEscrow, AccessControl, ReentrancyGuard {
     }
 
     /// @inheritdoc IPrizeEscrow
-    function collectListingFee(address from, uint256 amount)
-        external
-        onlyRole(CONTROLLER_ROLE)
-        nonReentrant
-    {
+    function collectListingFee(address from, uint256 amount) external onlyRole(CONTROLLER_ROLE) nonReentrant {
         if (amount == 0) revert ZeroAmount();
         // Listing fee is not escrowed; it goes straight to the treasury.
         usdc.safeTransferFrom(from, treasury, amount);
@@ -111,22 +109,14 @@ contract PrizeEscrow is IPrizeEscrow, AccessControl, ReentrancyGuard {
     // ============ Withdrawals (controllers) ============
 
     /// @inheritdoc IPrizeEscrow
-    function payout(uint256 poolId, address recipient, uint256 amount)
-        external
-        onlyRole(CONTROLLER_ROLE)
-        nonReentrant
-    {
+    function payout(uint256 poolId, address recipient, uint256 amount) external onlyRole(CONTROLLER_ROLE) nonReentrant {
         _debit(_key(msg.sender, poolId), amount);
         usdc.safeTransfer(recipient, amount);
         emit PaidOut(msg.sender, poolId, recipient, amount);
     }
 
     /// @inheritdoc IPrizeEscrow
-    function skimPlatformFee(uint256 poolId, uint256 amount)
-        external
-        onlyRole(CONTROLLER_ROLE)
-        nonReentrant
-    {
+    function skimPlatformFee(uint256 poolId, uint256 amount) external onlyRole(CONTROLLER_ROLE) nonReentrant {
         _debit(_key(msg.sender, poolId), amount);
         usdc.safeTransfer(treasury, amount);
         emit PlatformFeeSkimmed(msg.sender, poolId, amount);

@@ -65,13 +65,10 @@ contract ChallengeArenaTest is Test {
         return _createKindGated(ChallengeKind.PREDICTION, maxEntrants, isPrivate, 0, 4);
     }
 
-    function _createKindGated(
-        ChallengeKind kind,
-        uint64 maxEntrants,
-        bool isPrivate,
-        uint16 minTier,
-        uint16 maxTier
-    ) internal returns (uint256 id) {
+    function _createKindGated(ChallengeKind kind, uint64 maxEntrants, bool isPrivate, uint16 minTier, uint16 maxTier)
+        internal
+        returns (uint256 id)
+    {
         uint64 joinDeadline = uint64(block.timestamp + 1 days);
         uint64 resolveDeadline = uint64(block.timestamp + 2 days);
         vm.prank(alice);

@@ -377,6 +377,17 @@ create table if not exists events (
   source      text not null default 'server', -- web | auth | coordinator | indexer
   created_at  timestamptz not null default now()
 );
+
+-- Older ArcRun databases used a compact events projection with `at`,
+-- `actor`, and `detail`. Add the current append-only event columns
+-- idempotently so the public legacy schema can be upgraded without blocking
+-- the dedicated Agon schema migration.
+alter table events add column if not exists level text not null default 'info';
+alter table events add column if not exists message text;
+alter table events add column if not exists context jsonb;
+alter table events add column if not exists address text;
+alter table events add column if not exists source text not null default 'server';
+alter table events add column if not exists created_at timestamptz not null default now();
 create index if not exists events_created_idx on events(created_at desc);
 create index if not exists events_level_idx on events(level);
 

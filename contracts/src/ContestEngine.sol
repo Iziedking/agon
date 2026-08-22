@@ -39,10 +39,10 @@ contract ContestEngine is AccessControl, ReentrancyGuard, Pausable {
     uint16 public constant MAX_TIER = 4;
 
     /// @notice Ceiling on the platform fee a contest can carry (20%).
-    uint16 public constant MAX_PLATFORM_FEE_BPS = 2_000;
+    uint16 public constant MAX_PLATFORM_FEE_BPS = 2000;
 
     /// @notice Ceiling on the listing fee (10% of the prize pool).
-    uint16 public constant MAX_LISTING_FEE_BPS = 1_000;
+    uint16 public constant MAX_LISTING_FEE_BPS = 1000;
 
     /// @notice Window after a contest ends during which winners can claim.
     ///         After it elapses, leftover pool funds can be swept to treasury.
@@ -106,10 +106,7 @@ contract ContestEngine is AccessControl, ReentrancyGuard, Pausable {
         uint256 prizePool
     );
     event EntryRegistered(
-        uint256 indexed contestId,
-        address indexed operator,
-        uint256 indexed agentId,
-        uint256 syndicateId
+        uint256 indexed contestId, address indexed operator, uint256 indexed agentId, uint256 syndicateId
     );
     event ContestScored(uint256 indexed contestId, bytes32 scoreRoot);
     event ContestSettled(uint256 indexed contestId, uint256 paidOut, uint256 platformFee);
@@ -243,10 +240,7 @@ contract ContestEngine is AccessControl, ReentrancyGuard, Pausable {
     ///         thresholds (min points, etc.) are enforced off-chain by the
     ///         coordinator at scoring time; entry itself is permissionless for
     ///         agent owners.
-    function registerEntry(uint256 contestId, uint256 agentId, uint256 syndicateId)
-        external
-        whenNotPaused
-    {
+    function registerEntry(uint256 contestId, uint256 agentId, uint256 syndicateId) external whenNotPaused {
         Contest storage c = _contests[contestId];
         if (c.sponsor == address(0)) revert ContestDoesNotExist();
         if (c.status != ContestStatus.OPEN) revert ContestNotOpen();
@@ -299,10 +293,7 @@ contract ContestEngine is AccessControl, ReentrancyGuard, Pausable {
 
     /// @notice Post the merkle root of final `(operator, amount)` payouts.
     ///         Only after the contest's entry window has ended.
-    function postScoreRoot(uint256 contestId, bytes32 root)
-        external
-        onlyRole(COORDINATOR_ROLE)
-    {
+    function postScoreRoot(uint256 contestId, bytes32 root) external onlyRole(COORDINATOR_ROLE) {
         Contest storage c = _contests[contestId];
         if (c.sponsor == address(0)) revert ContestDoesNotExist();
         if (c.status != ContestStatus.OPEN) revert ContestNotOpen();
@@ -336,11 +327,10 @@ contract ContestEngine is AccessControl, ReentrancyGuard, Pausable {
     ///         this forwards each delta to AgentRegistry (which only this
     ///         contract is authorized to call). Separate from the ERC-8004
     ///         ReputationRegistry feedback the validator wallet posts.
-    function applyReputationDeltas(
-        uint256 contestId,
-        uint256[] calldata agentIds,
-        int128[] calldata deltas
-    ) external onlyRole(COORDINATOR_ROLE) {
+    function applyReputationDeltas(uint256 contestId, uint256[] calldata agentIds, int128[] calldata deltas)
+        external
+        onlyRole(COORDINATOR_ROLE)
+    {
         Contest storage c = _contests[contestId];
         if (c.sponsor == address(0)) revert ContestDoesNotExist();
         if (c.status != ContestStatus.SCORING && c.status != ContestStatus.SETTLED) {

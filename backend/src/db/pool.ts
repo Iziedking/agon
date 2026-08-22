@@ -6,7 +6,13 @@ import { config } from "../config/index.js";
 /// string so we never lose precision to JS floats.
 pg.types.setTypeParser(1700, (v) => v); // 1700 = numeric oid
 
-export const pool = new pg.Pool({ connectionString: config.databaseUrl, max: 10 });
+// Agon tables live in their own schema. Keep the legacy ArcRun tables visible
+// as a fallback so existing routes continue to resolve against `public`.
+export const pool = new pg.Pool({
+  connectionString: config.databaseUrl,
+  max: 10,
+  options: "-c search_path=agon,public",
+});
 
 export async function query<T extends pg.QueryResultRow = pg.QueryResultRow>(
   text: string,

@@ -57,7 +57,9 @@ contract PrizeEscrowTest is Test {
     function test_payout_revertsOnInsufficientBalance() public {
         _fundAndApprove(sponsor, 100e6);
         escrow.depositPrizePool(1, sponsor, 100e6);
-        vm.expectRevert(abi.encodeWithSelector(PrizeEscrow.InsufficientPoolBalance.selector, uint256(100e6), uint256(200e6)));
+        vm.expectRevert(
+            abi.encodeWithSelector(PrizeEscrow.InsufficientPoolBalance.selector, uint256(100e6), uint256(200e6))
+        );
         escrow.payout(1, winner, 200e6);
     }
 

@@ -34,7 +34,7 @@ contract ChallengeArena is AccessControl, ReentrancyGuard, Pausable {
     uint16 public constant BPS_DENOMINATOR = 10_000;
 
     /// @notice Ceiling on the platform fee a challenge can carry (20%).
-    uint16 public constant MAX_PLATFORM_FEE_BPS = 2_000;
+    uint16 public constant MAX_PLATFORM_FEE_BPS = 2000;
 
     /// @notice Highest agent tier (mirrors AgentRegistry.MAX_TIER), used to
     ///         validate a challenge's entry tier gate.
@@ -298,11 +298,7 @@ contract ChallengeArena is AccessControl, ReentrancyGuard, Pausable {
     ///         platform fee, and open the pot for claims. Must land on or before
     ///         `resolveDeadline`; after that the challenge can be cancelled and
     ///         refunded instead.
-    function postWinnerRoot(uint256 id, bytes32 root)
-        external
-        onlyRole(COORDINATOR_ROLE)
-        nonReentrant
-    {
+    function postWinnerRoot(uint256 id, bytes32 root) external onlyRole(COORDINATOR_ROLE) nonReentrant {
         Challenge storage ch = _challenges[id];
         if (ch.creator == address(0)) revert ChallengeDoesNotExist();
         if (ch.status != ChallengeStatus.LOCKED) revert NotLocked();
@@ -325,11 +321,10 @@ contract ChallengeArena is AccessControl, ReentrancyGuard, Pausable {
     ///         move the same AgentRegistry reputation contests do. Requires this
     ///         contract to hold CONTEST_ENGINE_ROLE on AgentRegistry (granted at
     ///         deploy). Separate from the ERC-8004 feedback the validator posts.
-    function applyReputationDeltas(
-        uint256 id,
-        uint256[] calldata agentIds,
-        int128[] calldata deltas
-    ) external onlyRole(COORDINATOR_ROLE) {
+    function applyReputationDeltas(uint256 id, uint256[] calldata agentIds, int128[] calldata deltas)
+        external
+        onlyRole(COORDINATOR_ROLE)
+    {
         Challenge storage ch = _challenges[id];
         if (ch.creator == address(0)) revert ChallengeDoesNotExist();
         if (ch.status != ChallengeStatus.SETTLED) revert ChallengeNotSettled();

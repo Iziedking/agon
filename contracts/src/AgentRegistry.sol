@@ -45,7 +45,7 @@ contract AgentRegistry is AccessControl, IERC721Receiver, ReentrancyGuard {
 
     /// @dev 0.996 daily survival rate ⇒ 0.4%/day exponential decay.
     uint256 private constant DECAY_NUMERATOR = 996;
-    uint256 private constant DECAY_DENOMINATOR = 1_000;
+    uint256 private constant DECAY_DENOMINATOR = 1000;
 
     /// @dev Hard cap on lazy-decay iterations to keep `getEffectiveReputation`
     ///      gas-bounded. After this many days, decay is treated as saturated.
@@ -88,12 +88,7 @@ contract AgentRegistry is AccessControl, IERC721Receiver, ReentrancyGuard {
     // ============ Events ============
 
     event AgentCreated(uint256 indexed agentId, address indexed owner, uint256 erc8004TokenId);
-    event AgentUpgraded(
-        uint256 indexed agentId,
-        ContestType indexed cType,
-        uint16 newTier,
-        uint256 usdcSpent
-    );
+    event AgentUpgraded(uint256 indexed agentId, ContestType indexed cType, uint16 newTier, uint256 usdcSpent);
     event ReputationUpdated(uint256 indexed agentId, uint128 newReputation, int128 delta);
     event TreasuryUpdated(address indexed oldTreasury, address indexed newTreasury);
     event MaxAgentsPerOwnerUpdated(uint16 oldMax, uint16 newMax);
@@ -114,12 +109,7 @@ contract AgentRegistry is AccessControl, IERC721Receiver, ReentrancyGuard {
 
     // ============ Constructor ============
 
-    constructor(
-        address admin,
-        address identityRegistryAddr,
-        address usdcAddr,
-        address treasuryAddr
-    ) {
+    constructor(address admin, address identityRegistryAddr, address usdcAddr, address treasuryAddr) {
         if (admin == address(0)) revert ZeroAddress();
         if (identityRegistryAddr == address(0)) revert ZeroAddress();
         if (usdcAddr == address(0)) revert ZeroAddress();
@@ -141,20 +131,20 @@ contract AgentRegistry is AccessControl, IERC721Receiver, ReentrancyGuard {
         // agent is a real spend; t3->t4 is the gatekeeper for the top of the
         // leaderboard.
         // SCOUT progression
-        upgradePrice[ContestType.SCOUT][0] = 10_000_000;     // 10 USDC
-        upgradePrice[ContestType.SCOUT][1] = 50_000_000;     // 50 USDC
-        upgradePrice[ContestType.SCOUT][2] = 200_000_000;    // 200 USDC
-        upgradePrice[ContestType.SCOUT][3] = 500_000_000;    // 500 USDC
+        upgradePrice[ContestType.SCOUT][0] = 10_000_000; // 10 USDC
+        upgradePrice[ContestType.SCOUT][1] = 50_000_000; // 50 USDC
+        upgradePrice[ContestType.SCOUT][2] = 200_000_000; // 200 USDC
+        upgradePrice[ContestType.SCOUT][3] = 500_000_000; // 500 USDC
         // ANALYST progression
-        upgradePrice[ContestType.ANALYST][0] = 8_000_000;    // 8 USDC
-        upgradePrice[ContestType.ANALYST][1] = 40_000_000;   // 40 USDC
-        upgradePrice[ContestType.ANALYST][2] = 160_000_000;  // 160 USDC
-        upgradePrice[ContestType.ANALYST][3] = 400_000_000;  // 400 USDC
+        upgradePrice[ContestType.ANALYST][0] = 8_000_000; // 8 USDC
+        upgradePrice[ContestType.ANALYST][1] = 40_000_000; // 40 USDC
+        upgradePrice[ContestType.ANALYST][2] = 160_000_000; // 160 USDC
+        upgradePrice[ContestType.ANALYST][3] = 400_000_000; // 400 USDC
         // SOLVER progression
-        upgradePrice[ContestType.SOLVER][0] = 12_000_000;    // 12 USDC
-        upgradePrice[ContestType.SOLVER][1] = 60_000_000;    // 60 USDC
-        upgradePrice[ContestType.SOLVER][2] = 240_000_000;   // 240 USDC
-        upgradePrice[ContestType.SOLVER][3] = 600_000_000;   // 600 USDC
+        upgradePrice[ContestType.SOLVER][0] = 12_000_000; // 12 USDC
+        upgradePrice[ContestType.SOLVER][1] = 60_000_000; // 60 USDC
+        upgradePrice[ContestType.SOLVER][2] = 240_000_000; // 240 USDC
+        upgradePrice[ContestType.SOLVER][3] = 600_000_000; // 600 USDC
 
         emit UpgradePriceSet(ContestType.SCOUT, 0, 10_000_000);
         emit UpgradePriceSet(ContestType.SCOUT, 1, 50_000_000);
@@ -174,11 +164,7 @@ contract AgentRegistry is AccessControl, IERC721Receiver, ReentrancyGuard {
 
     /// @notice Mint a new ArcRun agent for `msg.sender` and register its
     ///         ERC-8004 identity NFT (held by this contract).
-    function createAgent(string calldata metadataURI)
-        external
-        nonReentrant
-        returns (uint256 agentId)
-    {
+    function createAgent(string calldata metadataURI) external nonReentrant returns (uint256 agentId) {
         if (bytes(metadataURI).length == 0) revert EmptyMetadata();
 
         uint256[] storage owned = _agentsByOwner[msg.sender];
@@ -204,10 +190,7 @@ contract AgentRegistry is AccessControl, IERC721Receiver, ReentrancyGuard {
 
     /// @notice Spend USDC to upgrade an agent's tier in one contest type.
     ///         Upgrades must be sequential (tier N → tier N+1).
-    function upgradeAgent(uint256 agentId, ContestType cType, uint16 newTier)
-        external
-        nonReentrant
-    {
+    function upgradeAgent(uint256 agentId, ContestType cType, uint16 newTier) external nonReentrant {
         Agent storage agent = _agents[agentId];
         if (agent.owner == address(0)) revert AgentDoesNotExist();
         if (agent.owner != msg.sender) revert NotAgentOwner();
@@ -232,10 +215,7 @@ contract AgentRegistry is AccessControl, IERC721Receiver, ReentrancyGuard {
     /// @notice Apply a reputation delta to `agentId`. Called by ContestEngine
     ///         once per entry at settlement, including delta=0 for losers
     ///         (which still resets `lastActivityAt` to keep them "active").
-    function applyReputationChange(uint256 agentId, int128 delta)
-        external
-        onlyRole(CONTEST_ENGINE_ROLE)
-    {
+    function applyReputationChange(uint256 agentId, int128 delta) external onlyRole(CONTEST_ENGINE_ROLE) {
         Agent storage agent = _agents[agentId];
         if (agent.owner == address(0)) revert AgentDoesNotExist();
 
@@ -314,11 +294,7 @@ contract AgentRegistry is AccessControl, IERC721Receiver, ReentrancyGuard {
     /// @notice Captures the minted tokenId from IdentityRegistry's `_safeMint`
     ///         callback. The captured value is used as a fallback when the
     ///         registry's `register` doesn't return tokenId directly.
-    function onERC721Received(address, address, uint256 tokenId, bytes calldata)
-        external
-        override
-        returns (bytes4)
-    {
+    function onERC721Received(address, address, uint256 tokenId, bytes calldata) external override returns (bytes4) {
         if (msg.sender == address(identityRegistry)) {
             _pendingTokenId = tokenId;
         }
@@ -334,9 +310,8 @@ contract AgentRegistry is AccessControl, IERC721Receiver, ReentrancyGuard {
     function _registerIdentity(string calldata metadataURI) internal returns (uint256 tokenId) {
         _pendingTokenId = 0;
 
-        (bool ok, bytes memory data) = address(identityRegistry).call(
-            abi.encodeWithSelector(IIdentityRegistry.register.selector, metadataURI)
-        );
+        (bool ok, bytes memory data) =
+            address(identityRegistry).call(abi.encodeWithSelector(IIdentityRegistry.register.selector, metadataURI));
         if (!ok) revert IdentityRegistryCallFailed();
 
         if (data.length >= 32) {
@@ -367,19 +342,13 @@ contract AgentRegistry is AccessControl, IERC721Receiver, ReentrancyGuard {
         }
     }
 
-    function _decayedReputation(uint128 rawReputation, uint64 lastActivityAt)
-        internal
-        view
-        returns (uint128)
-    {
+    function _decayedReputation(uint128 rawReputation, uint64 lastActivityAt) internal view returns (uint128) {
         if (rawReputation == 0) return 0;
 
         // Day-granular decay is tolerant to the ~seconds of timestamp drift a
         // validator could induce; no economic incentive to manipulate this view.
         // forge-lint: disable-next-line(block-timestamp)
-        uint256 elapsed = block.timestamp > lastActivityAt
-            ? block.timestamp - uint256(lastActivityAt)
-            : 0;
+        uint256 elapsed = block.timestamp > lastActivityAt ? block.timestamp - uint256(lastActivityAt) : 0;
         uint256 daysElapsed = elapsed / 1 days;
         if (daysElapsed == 0) return rawReputation;
         if (daysElapsed > MAX_DECAY_DAYS) daysElapsed = MAX_DECAY_DAYS;

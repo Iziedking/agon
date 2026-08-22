@@ -57,7 +57,7 @@ contract SyndicateFactory is AccessControl {
     bool public customCreationEnabled;
 
     /// @notice Default platform fee (bps) stamped onto custom syndicates.
-    uint16 public customPlatformFeeBps = 1_000; // 10%
+    uint16 public customPlatformFeeBps = 1000; // 10%
 
     // ============ Events ============
 
@@ -179,10 +179,7 @@ contract SyndicateFactory is AccessControl {
 
     /// @notice Create a custom syndicate. Disabled by default; an admin enables
     ///         it for v1. The creator becomes the founder.
-    function createSyndicate(string calldata name, string calldata theme)
-        external
-        returns (uint256 id)
-    {
+    function createSyndicate(string calldata name, string calldata theme) external returns (uint256 id) {
         if (!customCreationEnabled) revert CustomCreationDisabled();
         if (bytes(name).length == 0) revert EmptyName();
 
@@ -220,11 +217,7 @@ contract SyndicateFactory is AccessControl {
         return _syndicates[syndicateId];
     }
 
-    function getMembership(uint256 syndicateId, address member)
-        external
-        view
-        returns (Membership memory)
-    {
+    function getMembership(uint256 syndicateId, address member) external view returns (Membership memory) {
         return _memberships[syndicateId][member];
     }
 

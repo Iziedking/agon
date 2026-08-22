@@ -14,14 +14,69 @@ if (!databaseUrl) {
 // an idempotent SQL schema and may not exist in a migration job.
 const pool = new pg.Pool({ connectionString: databaseUrl, max: 1 });
 
+const AGON_TABLES = [
+  "agon_profiles",
+  "agon_listings",
+  "agon_listing_versions",
+  "agon_listing_events",
+  "agon_chain_events",
+  "agon_write_operations",
+  "agon_verification_evidence",
+  "agon_x402_call_intents",
+  "agon_x402_call_receipts",
+  "agon_x402_facilitator_verifications",
+  "agon_x402_execution_approvals",
+  "agon_escrow_intents",
+  "agon_escrow_transaction_approvals",
+  "agon_indexer_state",
+] as const;
+
 /// Applies schema.sql. The schema is written with `if not exists`, so this is
 /// safe to run repeatedly.
 async function migrate() {
   const here = dirname(fileURLToPath(import.meta.url));
   const sql = readFileSync(join(here, "schema.sql"), "utf8");
-  await pool.query(sql);
-  console.log("migrations applied");
-  await pool.end();
+  const marker = "-- Agon Market foundation";
+  const markerIndex = sql.indexOf(marker);
+  const legacySql = markerIndex >= 0 ? sql.slice(0, markerIndex) : sql;
+  const agonSql = markerIndex >= 0 ? sql.slice(markerIndex) : "";
+
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    await client.query("set local search_path = public");
+    await client.query(legacySql);
+    await client.query("create schema if not exists agon");
+
+    // Preserve an older public Agon installation by moving its tables once.
+    // If both schemas already contain a table, refuse to guess which copy is
+    // authoritative rather than silently splitting the data set.
+    for (const table of AGON_TABLES) {
+      const existing = await client.query<{ public_exists: boolean; agon_exists: boolean }>(
+        `select to_regclass($1) is not null as public_exists,
+                to_regclass($2) is not null as agon_exists`,
+        [`public.${table}`, `agon.${table}`],
+      );
+      const row = existing.rows[0];
+      if (row?.public_exists && row.agon_exists) {
+        throw new Error(`Agon migration found duplicate public and agon tables: ${table}`);
+      }
+      if (row?.public_exists) {
+        await client.query(`alter table public."${table}" set schema agon`);
+      }
+    }
+
+    await client.query("set local search_path = agon, public");
+    if (agonSql.trim()) await client.query(agonSql);
+    await client.query("commit");
+    console.log("migrations applied (legacy public + dedicated agon schema)");
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+    await pool.end();
+  }
 }
 
 migrate().catch((err) => {
