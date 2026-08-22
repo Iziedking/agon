@@ -403,6 +403,12 @@ PrizeEscrow receipt, so an already deployed platform contract is not mistaken
 for an Agon registry deployment. The snapshot remains informational and does
 not enable a writer, signer, provider, or lifecycle adapter.
 
+Escrow lifecycle and transaction execution now have separate kill switches:
+`AGON_ESCROW_ENABLED` controls the owner-scoped lifecycle boundary, while
+`AGON_ESCROW_EXECUTION_ENABLED` controls transaction-writer eligibility. Both
+default to `false`; enabling the lifecycle flag alone cannot authorize a
+PrizeEscrow transaction.
+
 ## Manifest proof
 
 Manifest hashes use sorted-key JSON canonicalization followed by `keccak256` of the UTF-8 bytes. The pinned foundation fixture hashes to:

@@ -187,7 +187,7 @@ const agonEscrowProductionReadiness = () => evaluateAgonEscrowProductionReadines
   flags: {
     writesEnabled: config.agon.writesEnabled,
     escrowEnabled: config.agon.escrow.enabled,
-    executionEnabled: config.agon.escrow.enabled,
+    executionEnabled: config.agon.escrow.executionEnabled,
     preflightEnabled: false,
     writerEnabled: false,
     lifecycleAdapterEnabled: false,

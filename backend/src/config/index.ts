@@ -61,6 +61,7 @@ const envSchema = z.object({
   // intent store, release/refund reconciliation, and approved controller are
   // wired to the deployed PrizeEscrow contracts.
   AGON_ESCROW_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
+  AGON_ESCROW_EXECUTION_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
   AGON_ESCROW_RECONCILIATION_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
   AGON_ESCROW_CONTROLLER_ADDRESS: z.string().regex(/^0x[a-fA-F0-9]{40}$/, "expected an escrow controller address").optional(),
   AGON_ESCROW_MAX_POOL_BASE_UNITS: z.string().regex(/^(0|[1-9]\d*)$/).default("0"),
@@ -677,6 +678,7 @@ export const config = {
     },
     escrow: {
       enabled: env.AGON_ESCROW_ENABLED,
+      executionEnabled: env.AGON_ESCROW_EXECUTION_ENABLED,
       reconciliationEnabled: env.AGON_ESCROW_RECONCILIATION_ENABLED,
       controllerAddress: env.AGON_ESCROW_CONTROLLER_ADDRESS as `0x${string}` | undefined,
       network: "eip155:5042002" as const,
