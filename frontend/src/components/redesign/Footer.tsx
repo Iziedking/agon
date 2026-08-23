@@ -1,3 +1,6 @@
+"use client";
+
+import { usePathname } from "next/navigation";
 import { ArcRunMark } from "./ArcRunMark";
 import { AgonMark } from "./AgonMark";
 import { StatusChip } from "./StatusChip";
@@ -16,6 +19,7 @@ const PRODUCT = [
 
 const AGON_PRODUCT = [
   { label: "BROWSE SERVICES", href: "/market" },
+  { label: "PLAYGROUND", href: "/app" },
   { label: "LIST A SERVICE", href: "/market/new" },
   { label: "DOCUMENTATION", href: "/docs" },
 ];
@@ -39,6 +43,27 @@ const AGON_PROJECT = [
 ];
 
 export function Footer({ variant = "legacy" }: { variant?: "legacy" | "agon" }) {
+  const pathname = usePathname() ?? "/";
+  const isInApp = [
+    "/app",
+    "/dashboard",
+    "/workshop",
+    "/wallet",
+    "/operators",
+    "/onboarding",
+    "/start",
+    "/contests",
+    "/challenges",
+    "/missions",
+    "/live",
+    "/syndicates",
+    "/bridge",
+  ].some((route) => pathname === route || pathname.startsWith(`${route}/`));
+
+  // Authenticated product surfaces use the nav as their persistent chrome.
+  // The marketing footer remains on public landing, market, and docs routes.
+  if (isInApp) return null;
+
   const isAgon = variant === "agon";
   return (
     <footer className="mt-24 border-t border-[color:var(--hairline)]">

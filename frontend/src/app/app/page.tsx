@@ -1,6 +1,8 @@
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/redesign/Footer";
 import { FirstRunGate } from "@/components/FirstRunGate";
+import { AgonPlayground } from "@/components/agon/AgonPlayground";
+import { IS_AGON_DEPLOYMENT } from "@/lib/product";
 import {
   ActivityLedger,
   ActivityRow,
@@ -50,6 +52,8 @@ function contestStatus(c: Contest): string {
 }
 
 export default async function AppHome() {
+  if (IS_AGON_DEPLOYMENT) return <AgonPlayground />;
+
   let contests: Contest[] = [];
   try {
     contests = await fetchContests();

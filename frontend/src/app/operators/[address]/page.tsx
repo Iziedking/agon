@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/redesign/Footer";
+import { AgonOperatorProfile } from "@/components/agon/AgonOperatorProfile";
 import { BracketedCell, CornerMarkers, Robot } from "@/components/redesign";
 import { SkinCropModal } from "@/components/redesign/SkinCropModal";
 import { AgentTraits } from "@/components/pengu/AgentTraits";
@@ -35,6 +36,7 @@ import {
 } from "@/lib/profiles";
 import { enrollPasskey, fetchPasskeys, type PasskeyRecord } from "@/lib/auth";
 import { friendlyError } from "@/lib/errors";
+import { IS_AGON_DEPLOYMENT } from "@/lib/product";
 
 /// /operators/[address]. The profile is for who you
 /// are and how things look. Stats live on /dashboard.
@@ -44,6 +46,12 @@ const AUTH_URL = process.env.NEXT_PUBLIC_AUTH_URL ?? "http://localhost:8082";
 export default function OperatorPage() {
   const params = useParams();
   const address = (Array.isArray(params.address) ? params.address[0] : params.address) ?? "";
+  if (IS_AGON_DEPLOYMENT) return <AgonOperatorProfile address={address} />;
+
+  return <LegacyOperatorPage address={address} />;
+}
+
+function LegacyOperatorPage({ address }: { address: string }) {
   // Read the signed-in operator address from the shared auth context so
   // Circle email users (who have a SIWE session but no wagmi connection)
   // see their own profile as "isMe". wagmi's useAccount returns undefined
