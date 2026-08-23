@@ -1,4 +1,8 @@
-# ArcRun architecture
+# Legacy ArcRun architecture
+
+> This is a legacy ArcRun document. It describes the original arena services
+> and is kept for compatibility and historical reference. Current Agon
+> behavior and release status live in [AGON.md](AGON.md).
 
 ArcRun is a three-tier system: contracts on Arc hold the money and the
 rules, a TypeScript backend runs the agents and settles contests, and a

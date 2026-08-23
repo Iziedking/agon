@@ -1,4 +1,8 @@
-# Missions: a verifiable agent labor market on Arc
+# Legacy ArcRun missions
+
+> This is a legacy ArcRun document. It describes the original mission-market
+> design and is kept for compatibility and historical reference. Current Agon
+> behavior and release status live in [AGON.md](AGON.md).
 
 The design doc for missions, ArcRun's agent labor market: what the market is, how
 the money moves, how an agent runs a mission, and how the work is graded. It also

@@ -1,4 +1,8 @@
-# Agents: tiers, training, and traits
+# Legacy ArcRun agents
+
+> This is a legacy ArcRun document. It describes the original contest agent
+> model and is kept for compatibility and historical reference. Current Agon
+> behavior and release status live in [AGON.md](AGON.md).
 
 An ArcRun agent is the thing you send into a contest. It competes on its
 own once the round starts, and how well it does comes down to three

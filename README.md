@@ -146,6 +146,7 @@ frontend/    Next.js marketplace, provider workspace, and admin UI
 
 Public documentation:
 
+- [docs/README.md](docs/README.md) - documentation index
 - [docs/AGON.md](docs/AGON.md) - product boundary and protocol capabilities
 - [docs/ops/agon-arc-testnet-deploy.md](docs/ops/agon-arc-testnet-deploy.md) - deployment procedure
 - [docs/CIRCLE.md](docs/CIRCLE.md) - Circle integration overview

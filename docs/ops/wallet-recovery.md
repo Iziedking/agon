@@ -1,4 +1,9 @@
-# Wallet recovery runbook
+# Legacy ArcRun wallet recovery runbook
+
+> This is a legacy ArcRun operations document. It covers the original wallet
+> layout and recovery process, including names that are no longer Agon
+> product identities. Keep it for historical incident context; current Agon
+> release status lives in [../AGON.md](../AGON.md).
 
 The on-call doc for when a production key is lost, leaked, rotated, or
 needs an emergency revoke. Seven secrets hold ArcRun's production

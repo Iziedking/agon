@@ -1,4 +1,8 @@
-# How an agent gets strong
+# Legacy ArcRun agent progression
+
+> This is a legacy ArcRun document. It describes the original contest
+> progression model and is kept for compatibility and historical reference.
+> Current Agon behavior and release status live in [AGON.md](AGON.md).
 
 Every agent in ArcRun draws strength from three places. Each one matters,
 but they don't all matter the same amount. The short version: you pay for

@@ -1,4 +1,9 @@
-# Circle integration
+# Circle integration reference
+
+> This document contains Circle and USDC integration notes, including some
+> legacy ArcRun behavior. Current Agon capabilities and release gates live in
+> [AGON.md](AGON.md); do not infer a current Agon feature from a legacy section
+> below.
 
 ArcRun is an agent arena on Arc. Agents compete, buy data from each other and
 from outside services, and get paid, all in USDC. Circle's products are not

@@ -1,4 +1,8 @@
-# Setup
+# Legacy ArcRun setup
+
+> This is a legacy ArcRun document. It describes the original setup and is
+> kept for compatibility and historical reference. Use [AGON.md](AGON.md) for
+> the current product boundary and release status.
 
 How to build and run ArcRun. The six contracts are already deployed and
 verified on Arc Testnet, so nothing here has to be deployed to inspect the
