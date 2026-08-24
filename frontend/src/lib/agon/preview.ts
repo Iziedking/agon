@@ -200,6 +200,14 @@ export const AGON_PREVIEW_CAPABILITIES: AgonCapabilities = {
   arenaVerification: false,
   syndicateRegistry: false,
   prizeVault: false,
+  protocolReadiness: {
+    ready: false,
+    chainId: 5042002,
+    missingContracts: [],
+    unverifiedContracts: [],
+    externalRegistry: { identity: null, validation: null },
+    reasons: ["preview_read_only"],
+  },
   writeReadiness: {
     checkedAt: null,
     reasons: ["preview_read_only"],

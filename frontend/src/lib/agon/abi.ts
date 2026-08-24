@@ -25,6 +25,7 @@ export const agonJobEscrowAbi = parseAbi([
 ]);
 
 export const agonArenaAbi = parseAbi([
+  "event EvaluationRequested(uint256 indexed evaluationId,bytes32 indexed validationRequestHash,uint256 indexed listingId,uint256 agentId,uint256 listingVersion,address participant,bytes32 capabilityHash,bytes32 evaluatorVersionHash,bytes32 taskCommitment,uint64 expiresAt)",
   "function requestEvaluation(bytes32 validationRequestHash,uint256 listingId,bytes32 capabilityHash,bytes32 evaluatorVersionHash,bytes32 taskCommitment,uint64 expiresAt) returns (uint256 evaluationId)",
   "function startEvaluation(uint256 evaluationId)",
   "function submitEvidence(uint256 evaluationId,bytes32 evidenceRoot)",

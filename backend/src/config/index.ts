@@ -42,6 +42,7 @@ const envSchema = z.object({
   AGON_DEPLOYMENTS_FILE: z.string().default("../contracts/deployments/agon-arc-testnet.json"),
   AGON_WRITES_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
   AGON_READINESS_CACHE_MS: z.coerce.number().int().min(1_000).max(300_000).default(30_000),
+  AGON_JOB_ESCROW_READS_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
   // Circle x402 settlement is a separately gated rail. Keep it disabled until
   // the facilitator, recipient allowlist, and reconciliation path are approved.
   AGON_X402_EXECUTION_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
@@ -655,6 +656,7 @@ export const config = {
   external: deployments.external,
   agon: {
     writesEnabled: env.AGON_WRITES_ENABLED,
+    jobEscrowReadsEnabled: env.AGON_JOB_ESCROW_READS_ENABLED,
     deployment: agonDeployment.deployment,
     deploymentError: agonDeployment.error,
     deploymentPath: agonDeployment.path,

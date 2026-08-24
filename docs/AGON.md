@@ -44,13 +44,39 @@ queue for verification evidence, service `VERIFIER_ROLE`, and AgonArena
 guarded; owner-sensitive Agon routes still require the connected wallet's SIWE
 session, so the console does not turn an admin token into a signing oracle.
 
+The live agent demo is `/agon/playground`. It runs the real `agon-coder-v1`
+runtime across Development, Research, Analysis, Verification, and Execution
+tasks. Each run returns structured output, a score, live-chain provenance when
+used, and hashes that can be submitted to the deployed Arena. The runtime has
+an explicit no-write boundary. Public samples are rate-limited and persisted;
+authenticated evaluations additionally bind the run to an exact listing
+version and idempotency key. A durable run has a lease and stale worker runs
+close as terminal `worker_timeout` records instead of blocking retries. A
+public sample is never accepted as Arena evidence; only the scoped evaluation
+path can be anchored. A durable run is evidence preparation, not a verification
+claim until the Arena and ValidationRegistry lifecycle completes.
+The video sequence and CLI commands are in
+[`docs/demo/agon-coder-live.md`](demo/agon-coder-live.md).
+
 The Arc Testnet deployment and verification procedure is documented in [the Agon foundation runbook](ops/agon-arc-testnet-deploy.md).
+
+The canonical receipt also records the external ERC-8004 registries used by
+the deployment: IdentityRegistry
+`0x8004A818BFB912233c491871b3d84c89A494BD9e` and ValidationRegistry
+`0x8004Cb1BF31DAf7788923b405b754f57acEB4272`, both on chain `5042002`.
+`npm run prove:agon-protocol --workspace=backend` is a receipt-only release
+gate. It currently remains blocked because source-verification records exist
+for ProfileRegistry and ServiceRegistry only; it must report all six Agon
+contracts verified before a production enablement review.
 
 ## Public API
 
 The auth service mounts these routes under `/agon`:
 
 - `GET /agon/health`
+- `GET /agon/playground/categories`
+- `POST /agon/playground/run` (public, rate-limited, durable no-write sample execution)
+- `POST /agon/playground/evaluate` (authenticated, rate-limited, idempotent listing-version-scoped evaluation)
 - `GET /agon/listings`
 - `GET /agon/listings/:chainId:serviceRegistry:listingId`
 - `GET /agon/categories/:category/listings`
@@ -68,6 +94,7 @@ The auth service mounts these routes under `/agon`:
 - `GET /agon/escrow/intents/:intentId` (authenticated; owner-scoped durable intent read)
 - `GET /agon/escrow/intents/:intentId/readiness` (authenticated; disabled/reconciliation/terminal readiness)
 - `GET /agon/escrow/intents/:intentId/transaction?operation=fund` (authenticated; exact AgonJobEscrow createJob transaction)
+- `GET /agon/job-escrow/jobs/:jobId` (authenticated; read-only deployed AgonJobEscrow inspection, disabled unless explicitly enabled)
 - `POST /agon/escrow/intents/:intentId/fund` (authenticated; exact confirmation; disabled by default)
 - `POST /agon/escrow/intents/:intentId/release` (authenticated; exact confirmation; disabled by default)
 - `POST /agon/escrow/intents/:intentId/refund` (authenticated; exact confirmation; disabled by default)
@@ -130,6 +157,11 @@ The ledger rejects self-validation, malformed registry/listing identifiers,
 unsafe evidence URIs, invalid hashes, stale responses, validator mismatches,
 and terminal-state mutations. Reusing a request hash with different evidence
 is an explicit conflict.
+
+`buildValidationRequestWritePlan` and `buildValidationResponseWritePlan` now
+produce exact, unsigned ERC-8004 calldata for wallet review. They pin chain
+5042002 and the configured ValidationRegistry, validate every address/hash/URI
+and response bound, and perform no RPC, signing, or transaction submission.
 
 `AGON_ARENA_VALIDATION_ENABLED` defaults to `false`. The default
 ValidationRegistry adapter is disabled and performs no validator-wallet
@@ -561,6 +593,24 @@ predicted addresses, and estimated cost. The approved Arc Testnet receipts
 are now recorded in `contracts/deployments/agon-arc-testnet.json`; all write
 flags remain disabled until the post-deployment release gate passes.
 
+## Phase 27: deployed AgonJobEscrow inspection boundary
+
+The backend now has a contract-specific AgonJobEscrow adapter in
+`backend/src/agon/execution/agon-job-escrow.ts`. It is deliberately separate
+from the legacy pool-oriented PrizeEscrow adapters. It pins the Arc Testnet
+chain, canonical USDC, AgonServiceRegistry, contract bytecode, and the exact
+job tuple before returning state. It also builds deterministic unsigned
+calldata for create, accept, submit, review, dispute, timeout, and refund
+branches, and validates successful receipts against the configured contract,
+transaction hash, and expected lifecycle event.
+
+`GET /agon/job-escrow/jobs/:jobId` exposes that inspection to an authenticated
+operator. `AGON_JOB_ESCROW_READS_ENABLED` defaults to `false`; enabling it only
+permits read-only RPC calls. There is no signer, wallet client, transaction
+submission, settlement retry, or server-side custody path in this adapter.
+The operator console's deployed job inspector reports this distinction and
+never presents a read as proof of payment finality.
+
 ## Current release status
 
 The focused implementation gate is green locally with 225/225 Agon backend
@@ -674,3 +724,20 @@ git diff --check
 `prove:agon` creates and drops its own isolated schema and refuses to run without `TEST_DATABASE_URL`. It binds a mock identity, projects a listing, reads it through the public service, recomputes the canonical hash, and prints named refusals for duplicate key, unsafe endpoint, hash mismatch, owner-scoped writes, and escrow-ineligible unverified state.
 
 Testnet or mock evidence is not proof of mainnet availability, endpoint quality, legal compliance, escrow, Arena verification, or syndicate payouts.
+## Phase 28: durable deployed job escrow intents
+
+The deployed `AgonJobEscrow` path now has a separate durable intent ledger in
+`agon_job_escrow_intents`. It is intentionally not the legacy
+`agon_escrow_intents` PrizeEscrow pool model. Authenticated operators can
+prepare an exact listing-bound job intent, retrieve the unsigned `createJob`
+calldata, and reconcile a user-submitted on-chain job through
+`POST /agon/job-escrow/intents/:intentId/reconcile`.
+
+Reconciliation reads the deployed contract through the explicitly injected
+read adapter and persists only after buyer, provider, listing identity,
+version, manifest, terms hash, amount, fee, and review window match the pinned
+intent. PostgreSQL row locks and idempotency keys protect retries. Unknown
+outcomes cannot be retried as a new submission. All writes and reconciliation
+remain disabled unless the corresponding runtime read capability is explicitly
+enabled; no backend signer, wallet custody, or automatic funding/settlement is
+provided by this slice.

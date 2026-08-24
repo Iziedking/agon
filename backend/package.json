@@ -29,6 +29,7 @@
     "test:nanopayments": "node --experimental-strip-types --test test/nanopayments/*.test.ts",
     "prove:agon": "node --experimental-strip-types scripts/prove-agon-foundation.ts",
     "prove:agon-writes": "tsx -r dotenv/config scripts/prove-agon-write-readiness.ts",
+    "prove:agon-protocol": "node --experimental-strip-types scripts/prove-agon-protocol-readiness.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

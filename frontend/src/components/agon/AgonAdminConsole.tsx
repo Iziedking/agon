@@ -10,10 +10,14 @@ import {
   getAgonEscrowReadiness,
   getAgonEscrowTransaction,
   getAgonHealth,
+  getAgonJobEscrowJob,
+  getAgonJobEscrowTransaction,
   listListings,
   prepareAgonEscrowIntent,
+  prepareAgonJobEscrowIntent,
+  reconcileAgonJobEscrowIntent,
 } from "@/lib/agon/client";
-import type { AgonEscrowIntentView, AgonEscrowReadinessView, AgonEscrowTransactionView, AgonHealth, AgonListing } from "@/lib/agon/types";
+import type { AgonEscrowIntentView, AgonEscrowReadinessView, AgonEscrowTransactionView, AgonHealth, AgonJobEscrowIntentView, AgonJobEscrowJobView, AgonJobEscrowTransactionView, AgonListing } from "@/lib/agon/types";
 
 const inputClass = "w-full border border-[color:var(--hairline-strong)] bg-canvas px-3 py-2 font-mono text-xs text-ink outline-none focus:border-ink";
 
@@ -67,6 +71,7 @@ export function AgonAdminConsole() {
         <AgonListingPicker listings={listings} selectedId={selectedId} onChange={setSelectedId} />
         <AgonEscrowPreparation listing={selected} />
       </div>
+      <AgonJobEscrowIntentPanel listing={selected} />
 
       {selected ? (
         <section className="border border-[color:var(--hairline-strong)] bg-canvas p-5">
@@ -83,8 +88,76 @@ export function AgonAdminConsole() {
       )}
 
       <ProtocolActions />
+      <AgonJobInspector />
     </div>
   );
+}
+
+const JOB_STATUS = ["Created", "Accepted", "Submitted", "Complete", "Rejected", "Disputed", "Failed"];
+const JOB_SETTLEMENT = ["None", "Provider paid", "Buyer refunded"];
+
+function AgonJobInspector() {
+  const { me } = useAuth();
+  const [jobId, setJobId] = useState("");
+  const [job, setJob] = useState<AgonJobEscrowJobView | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function inspect() {
+    if (!me) { setMessage("Sign in before inspecting a deployed job."); return; }
+    if (!/^[1-9]\d*$/.test(jobId)) { setMessage("Enter a positive onchain job id."); return; }
+    setBusy(true); setMessage(null); setJob(null);
+    try { setJob(await getAgonJobEscrowJob(jobId)); }
+    catch (cause) { setMessage(cause instanceof Error ? cause.message : "Could not inspect the deployed job."); }
+    finally { setBusy(false); }
+  }
+
+  return <section className="border border-[color:var(--hairline-strong)] bg-canvas p-5"><div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">DEPLOYED AGON JOB INSPECTOR</div><p className="mt-2 max-w-2xl font-mono text-[10px] leading-5 text-ink-3">Read-only inspection of the canonical AgonJobEscrow contract. This panel never signs, funds, settles, or retries a transaction.</p><div className="mt-4 flex flex-wrap gap-2"><input value={jobId} onChange={(event) => setJobId(event.target.value)} inputMode="numeric" placeholder="onchain job id" className={`${inputClass} max-w-xs`} /><button disabled={busy || !/^[1-9]\d*$/.test(jobId)} onClick={() => void inspect()} className="border border-[color:var(--hairline-strong)] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:text-ink disabled:opacity-50">{busy ? "READING" : "INSPECT JOB"}</button></div>{message ? <p className="mt-3 font-mono text-[10px] text-[color:var(--err)]">{message}</p> : null}{job ? <div className="mt-4 grid gap-2 border-t border-[color:var(--hairline)] pt-3 font-mono text-[10px] leading-5 text-ink-2 sm:grid-cols-2"><span>JOB {job.jobId} / LISTING {job.listingId} / AGENT {job.agentId}</span><span>STATE {JOB_STATUS[job.status] ?? `UNKNOWN(${job.status})`}</span><span>SETTLEMENT {JOB_SETTLEMENT[job.settlement] ?? `UNKNOWN(${job.settlement})`}</span><span>AMOUNT {job.amount} / FEE {job.fee} BASE UNITS</span><span className="break-all">BUYER {job.buyer}</span><span className="break-all">PROVIDER {job.provider}</span><span className="break-all">TERMS {job.termsHash}</span><span className="break-all">DELIVERABLE {job.deliverableHash}</span><span>ACCEPT BY {job.acceptanceDeadline}</span><span>REVIEW BY {job.reviewDeadline ?? "NOT SUBMITTED"}</span></div> : null}</section>;
+}
+
+function AgonJobEscrowIntentPanel({ listing }: { listing: AgonListing | null }) {
+  const { me } = useAuth();
+  const [loginOpen, setLoginOpen] = useState(false);
+  const [amount, setAmount] = useState("");
+  const [feeBps, setFeeBps] = useState("0");
+  const [reviewHours, setReviewHours] = useState("24");
+  const [idempotencyKey, setIdempotencyKey] = useState("");
+  const [expiresAt, setExpiresAt] = useState("");
+  const [jobId, setJobId] = useState("");
+  const [intent, setIntent] = useState<AgonJobEscrowIntentView | null>(null);
+  const [transaction, setTransaction] = useState<AgonJobEscrowTransactionView | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function prepare() {
+    if (!listing) return;
+    if (!me) { setLoginOpen(true); return; }
+    setBusy(true); setMessage(null); setIntent(null); setTransaction(null);
+    try {
+      const value = await prepareAgonJobEscrowIntent({
+        listingReference: listing.id,
+        idempotencyKey: idempotencyKey || `admin-job-escrow-${listing.listingId}-${Date.now()}`,
+        amountBaseUnits: amount,
+        feeBps: Number(feeBps),
+        reviewHours: Number(reviewHours),
+        expiresAt: expiresAt ? new Date(expiresAt).toISOString() : new Date(Date.now() + 7 * 86400000).toISOString(),
+      });
+      setIntent(value);
+      setTransaction(await getAgonJobEscrowTransaction(value.intentId));
+    } catch (cause) { setMessage(cause instanceof Error ? cause.message : "Could not prepare the deployed job escrow intent."); }
+    finally { setBusy(false); }
+  }
+
+  async function reconcile() {
+    if (!intent || !/^[1-9]\d*$/.test(jobId)) return;
+    setBusy(true); setMessage(null);
+    try { setIntent(await reconcileAgonJobEscrowIntent(intent.intentId, jobId)); }
+    catch (cause) { setMessage(cause instanceof Error ? cause.message : "Could not reconcile the onchain job."); }
+    finally { setBusy(false); }
+  }
+
+  const valid = listing && /^\d+$/.test(amount) && amount !== "0" && /^\d+$/.test(feeBps) && Number(feeBps) <= 1000 && /^[1-9]\d*$/.test(reviewHours) && Number(reviewHours) <= 720;
+  return <section className="border border-[color:var(--hairline-strong)] bg-canvas p-5"><div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">DEPLOYED JOB ESCROW INTENT</div><p className="mt-2 max-w-3xl font-mono text-[10px] leading-5 text-ink-3">Pins the exact AgonJobEscrow createJob terms, produces unsigned calldata, and reconciles a user-submitted onchain job by independently reading the deployed contract. No backend signer or automatic retry exists.</p><div className="mt-4 grid gap-2 sm:grid-cols-2"><input value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="amount in USDC base units" className={inputClass} /><input value={reviewHours} onChange={(event) => setReviewHours(event.target.value)} placeholder="review hours (1-720)" className={inputClass} /><input value={feeBps} onChange={(event) => setFeeBps(event.target.value)} placeholder="fee bps" className={inputClass} /><input value={expiresAt} onChange={(event) => setExpiresAt(event.target.value)} type="datetime-local" className={inputClass} /><input value={idempotencyKey} onChange={(event) => setIdempotencyKey(event.target.value)} placeholder="idempotency key, optional" className={`${inputClass} sm:col-span-2`} /><button disabled={busy || !valid} onClick={() => void prepare()} className="bg-accent px-3 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-accent-ink hover:bg-accent-press disabled:opacity-50 sm:col-span-2">{busy ? "WORKING" : "PREPARE JOB INTENT"}</button></div>{message ? <p className="mt-3 font-mono text-[10px] text-[color:var(--err)]">{message}</p> : null}{intent ? <div className="mt-4 grid gap-2 border-t border-[color:var(--hairline)] pt-3 font-mono text-[10px] leading-5 text-ink-2"><span>INTENT {intent.intentId}</span><span>STATE {intent.state} / {intent.nextAction}</span><span>CLIENT REF {intent.clientReference}</span><span>TERMS {intent.termsHash}</span>{transaction ? <span className="break-all">UNSIGNED CALL {transaction.functionName} TO {transaction.to} / {transaction.data}</span> : null}<div className="mt-2 flex flex-wrap gap-2"><input value={jobId} onChange={(event) => setJobId(event.target.value)} placeholder="onchain job id" inputMode="numeric" className={`${inputClass} max-w-xs`} /><button disabled={busy || !/^[1-9]\d*$/.test(jobId)} onClick={() => void reconcile()} className="border border-[color:var(--hairline-strong)] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.12em] hover:text-ink disabled:opacity-50">RECONCILE READ-ONLY</button></div></div> : null}<LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} /></section>;
 }
 
 function AgonReadiness({ health }: { health: AgonHealth | null }) {
@@ -107,6 +180,21 @@ function AgonReadiness({ health }: { health: AgonHealth | null }) {
       </div>
       <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         {rows.map(([label, enabled]) => <div key={label} className="flex items-center justify-between border-t border-[color:var(--hairline)] py-2 font-mono text-[11px]"><span className="text-ink-2">{label}</span><span className={enabled ? "text-[color:var(--ok)]" : "text-ink-3"}>{enabled ? "READY" : "GATED"}</span></div>)}
+      </div>
+      <div className="mt-5 border-t border-[color:var(--hairline)] pt-4">
+        <div className="flex flex-wrap items-center justify-between gap-2 font-mono text-[11px]">
+          <span className="text-ink-2">protocol release gate</span>
+          <span className={capabilities.protocolReadiness.ready ? "text-[color:var(--ok)]" : "text-[color:var(--warn)]"}>
+            {capabilities.protocolReadiness.ready ? "READY" : "BLOCKED"}
+          </span>
+        </div>
+        <div className="mt-2 grid gap-1 font-mono text-[10px] leading-5 text-ink-3">
+          <span>CHAIN {capabilities.protocolReadiness.chainId ?? "UNKNOWN"}</span>
+          {capabilities.protocolReadiness.missingContracts.length ? <span>MISSING {capabilities.protocolReadiness.missingContracts.join(", ")}</span> : null}
+          {capabilities.protocolReadiness.unverifiedContracts.length ? <span>UNVERIFIED {capabilities.protocolReadiness.unverifiedContracts.join(", ")}</span> : null}
+          {capabilities.protocolReadiness.externalRegistry.validation ? <span>VALIDATION REGISTRY {capabilities.protocolReadiness.externalRegistry.validation}</span> : null}
+        </div>
+        {capabilities.protocolReadiness.reasons.length ? <div className="mt-3 border-l-2 border-[color:var(--warn)] p-3 font-mono text-[10px] leading-5 text-ink-2">RELEASE GATE: {capabilities.protocolReadiness.reasons.join(", ")}</div> : null}
       </div>
       {capabilities.escrowReadiness.reasons.length ? <div className="mt-4 border-l-2 border-[color:var(--warn)] p-3 font-mono text-[10px] leading-5 text-ink-2">ESCROW READINESS: {capabilities.escrowReadiness.reasons.join(", ")}</div> : null}
     </section>

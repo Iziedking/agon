@@ -10,6 +10,7 @@ import {
   type StoredVerificationEvidence,
   type StoredX402FacilitatorVerification,
   type StoredAgonEscrowIntent,
+  type StoredAgonJobEscrowIntent,
 } from "../store/repository.ts";
 import { callIntentView, prepareX402Call } from "../execution/x402-intent.ts";
 import { validateX402Approval } from "../execution/x402-approval.ts";
@@ -65,10 +66,19 @@ import type {
   AgonEscrowTransactionView,
   AgonEscrowTransactionApprovalView,
   AgonEscrowTransactionApprovalReadinessView,
+  AgonJobEscrowJobView,
+  AgonJobEscrowIntentRequest,
+  AgonJobEscrowIntentView,
+  AgonJobEscrowTransactionView,
+  AgonJobEscrowReconcileRequest,
+  AgonJobEscrowSubmittedRequest,
 } from "./api-types.ts";
+import { buildAgonJobEscrowWritePlan, type AgonJobEscrowJob, type AgonJobEscrowReadAdapter } from "../execution/agon-job-escrow.ts";
+import { clientReferenceForJobEscrow, hashAgonJobEscrowTerms } from "../execution/job-escrow-state.ts";
 import type { AgonEscrowProductionReadiness } from "../execution/escrow-production-readiness.ts";
 import type { AgonMarketService, AgonServiceError } from "./routes.ts";
 import type { AgonReadiness } from "../write/readiness.ts";
+import type { AgonProtocolReadiness } from "../protocol-readiness.ts";
 
 const cursorSchema = z.object({
   updatedAt: z.string().datetime(),
@@ -120,6 +130,10 @@ export type PostgresAgonMarketServiceOptions = {
   escrowTransactionWriter?: AgonEscrowTransactionWriter;
   /** Pure release-gate snapshot; no provider or wallet work is performed. */
   escrowProductionReadiness?: () => AgonEscrowProductionReadiness;
+  /** Receipt-only protocol release gate; never enables writes. */
+  protocolReadiness?: () => AgonProtocolReadiness;
+  /** Read-only deployed AgonJobEscrow inspection; never submits transactions. */
+  jobEscrowReadAdapter?: AgonJobEscrowReadAdapter;
   agonJobEscrowAddress?: `0x${string}`;
   agonArenaAddress?: `0x${string}`;
   agonSyndicateRegistryAddress?: `0x${string}`;
@@ -301,6 +315,44 @@ function escrowIntentView(intent: StoredAgonEscrowIntent, listingReference: stri
       : terminal
         ? "none"
         : "escrow_adapter_not_enabled",
+    createdAt: intent.createdAt.toISOString(),
+    updatedAt: intent.updatedAt.toISOString(),
+  };
+}
+
+function jobEscrowIntentView(intent: StoredAgonJobEscrowIntent): AgonJobEscrowIntentView {
+  const terminal = intent.state === "complete" || intent.state === "rejected" || intent.state === "failed";
+  return {
+    intentId: intent.intentId,
+    actor: intent.actor,
+    idempotencyKey: intent.idempotencyKey,
+    listingReference: intent.listingReference,
+    network: intent.network,
+    asset: intent.asset,
+    escrowContract: intent.escrowContract,
+    buyer: intent.buyer,
+    provider: intent.provider,
+    listing: {
+      serviceRegistry: intent.serviceRegistry,
+      listingId: intent.listingId,
+      agentId: intent.agentId,
+      version: intent.listingVersion,
+      manifestHash: intent.manifestHash,
+    },
+    termsHash: intent.termsHash,
+    amountBaseUnits: intent.amountBaseUnits.toString(),
+    feeBps: intent.feeBps,
+    reviewHours: intent.reviewHours,
+    expiresAt: intent.expiresAt.toISOString(),
+    clientReference: intent.clientReference,
+    state: intent.state,
+    settlement: intent.settlement,
+    onchainJobId: intent.onchainJobId,
+    transactionHash: intent.transactionHash,
+    deliverableHash: intent.deliverableHash,
+    lastReconciledAt: intent.lastReconciledAt?.toISOString() ?? null,
+    executionEnabled: false,
+    nextAction: terminal ? "none" : intent.state === "unknown" ? "manual_reconciliation" : intent.state === "prepared" ? "prepare_transaction" : "inspect_chain",
     createdAt: intent.createdAt.toISOString(),
     updatedAt: intent.updatedAt.toISOString(),
   };
@@ -805,6 +857,194 @@ export class PostgresAgonMarketService implements AgonMarketService {
         nextAction: "approve_usdc_then_submit",
       },
     };
+  }
+
+  async prepareAgonJobEscrowIntent(
+    actor: string,
+    request: AgonJobEscrowIntentRequest,
+  ): Promise<Result<AgonJobEscrowIntentView, AgonServiceError>> {
+    if (!this.options.agonJobEscrowAddress) return { ok: false, error: { code: "capability_unavailable", message: "AgonJobEscrow is not configured" } };
+    const listing = await this.getListing(request.listingReference);
+    if (!listing.ok) return listing;
+    const expiresAt = new Date(request.expiresAt);
+    const terms = evaluateAgonEscrowTerms({
+      listing: {
+        serviceRegistry: listing.value.serviceRegistry,
+        listingId: listing.value.listingId,
+        agentId: listing.value.agentId,
+        version: listing.value.version,
+        manifestHash: listing.value.manifest.hash,
+        providerSnapshot: listing.value.providerSnapshot,
+        status: listing.value.status,
+        verification: listing.value.verification.status,
+        paymentRail: listing.value.payment.rail,
+        quarantineReason: listing.value.risk.quarantineReason,
+      } satisfies AgonEscrowListing,
+      buyer: actor,
+      amountBaseUnits: request.amountBaseUnits,
+      feeBps: request.feeBps,
+      expiresAt,
+    });
+    if (!terms.ok) {
+      return { ok: false, error: { code: terms.error.code === "escrow_not_eligible" ? "capability_unavailable" : "validation_failed", message: terms.error.message } };
+    }
+    const clientReference = clientReferenceForJobEscrow(request.idempotencyKey);
+    const termsHash = hashAgonJobEscrowTerms({
+      network: terms.value.network,
+      asset: terms.value.asset,
+      buyer: terms.value.buyer,
+      provider: terms.value.beneficiary,
+      escrowContract: this.options.agonJobEscrowAddress,
+      serviceRegistry: terms.value.listing.serviceRegistry,
+      listingId: terms.value.listing.listingId,
+      agentId: terms.value.listing.agentId,
+      listingVersion: terms.value.listing.version,
+      manifestHash: terms.value.listing.manifestHash,
+      amountBaseUnits: terms.value.amountBaseUnits,
+      feeBps: terms.value.feeBps,
+      reviewHours: request.reviewHours,
+      expiresAt,
+    });
+    try {
+      const stored = await this.repository.prepareAgonJobEscrowIntent({
+        intentId: randomUUID(),
+        idempotencyKey: request.idempotencyKey,
+        actor: actor as `0x${string}`,
+        buyer: terms.value.buyer,
+        provider: terms.value.beneficiary,
+        listingReference: request.listingReference,
+        network: terms.value.network,
+        asset: terms.value.asset,
+        escrowContract: this.options.agonJobEscrowAddress,
+        serviceRegistry: terms.value.listing.serviceRegistry,
+        listingId: terms.value.listing.listingId,
+        agentId: terms.value.listing.agentId,
+        listingVersion: terms.value.listing.version,
+        manifestHash: terms.value.listing.manifestHash,
+        termsHash,
+        amountBaseUnits: terms.value.amountBaseUnits,
+        feeBps: terms.value.feeBps,
+        reviewHours: request.reviewHours,
+        expiresAt,
+        clientReference,
+        state: "prepared",
+        settlement: "none",
+        onchainJobId: null,
+        transactionHash: null,
+        deliverableHash: null,
+        reasonHash: null,
+        lastReconciledAt: null,
+      });
+      return { ok: true, value: jobEscrowIntentView(stored) };
+    } catch (error) {
+      if (error instanceof AgonStoreInvariantError && error.message.includes("idempotency")) return { ok: false, error: { code: "conflict", message: error.message } };
+      return internalError(error);
+    }
+  }
+
+  async getAgonJobEscrowIntent(
+    actor: string,
+    intentId: string,
+  ): Promise<Result<AgonJobEscrowIntentView, AgonServiceError>> {
+    const intent = await this.repository.getAgonJobEscrowIntent(intentId);
+    if (!intent) return { ok: false, error: { code: "not_found", message: "AgonJobEscrow intent not found" } };
+    if (intent.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the job escrow intent owner can read this intent" } };
+    return { ok: true, value: jobEscrowIntentView(intent) };
+  }
+
+  async getAgonJobEscrowTransaction(
+    actor: string,
+    intentId: string,
+  ): Promise<Result<AgonJobEscrowTransactionView, AgonServiceError>> {
+    const intent = await this.repository.getAgonJobEscrowIntent(intentId);
+    if (!intent) return { ok: false, error: { code: "not_found", message: "AgonJobEscrow intent not found" } };
+    if (intent.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the job escrow intent owner can prepare this transaction" } };
+    if (intent.state !== "prepared") return { ok: false, error: { code: "execution_not_ready", message: `job escrow intent is ${intent.state}; createJob is no longer ready` } };
+    const plan = buildAgonJobEscrowWritePlan({
+      contractAddress: intent.escrowContract,
+      action: "create",
+      clientReference: intent.clientReference,
+      listingId: intent.listingId,
+      termsHash: intent.termsHash,
+      amountBaseUnits: intent.amountBaseUnits,
+      feeBps: intent.feeBps,
+      reviewHours: intent.reviewHours,
+    });
+    return {
+      ok: true,
+      value: {
+        intentId: intent.intentId,
+        chainId: plan.chainId.toString(),
+        to: plan.contractAddress,
+        functionName: "createJob",
+        args: plan.args as [`0x${string}`, string, `0x${string}`, string, number, number],
+        data: plan.data,
+        executionEnabled: false,
+        nextAction: "approve_usdc_then_submit",
+      },
+    };
+  }
+
+  async reconcileAgonJobEscrowIntent(
+    actor: string,
+    intentId: string,
+    request: AgonJobEscrowReconcileRequest,
+  ): Promise<Result<AgonJobEscrowIntentView, AgonServiceError>> {
+    if (!this.options.jobEscrowReadAdapter?.enabled) return { ok: false, error: { code: "reconciliation_disabled", message: "AgonJobEscrow reconciliation is disabled by policy" } };
+    const intent = await this.repository.getAgonJobEscrowIntent(intentId);
+    if (!intent) return { ok: false, error: { code: "not_found", message: "AgonJobEscrow intent not found" } };
+    if (intent.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the job escrow intent owner can reconcile this intent" } };
+    if (intent.escrowContract !== this.options.agonJobEscrowAddress?.toLowerCase()) return { ok: false, error: { code: "reconciliation_invalid", message: "job escrow intent is pinned to a different deployed contract" } };
+    try {
+      const job = await this.options.jobEscrowReadAdapter.inspect(request.jobId);
+      const stored = await this.repository.reconcileAgonJobEscrowIntent({ intentId, job });
+      return { ok: true, value: jobEscrowIntentView(stored) };
+    } catch (error) {
+      if (error instanceof AgonStoreInvariantError) {
+        const code = error.message.includes("does not match") || error.message.includes("different on-chain")
+          ? "reconciliation_invalid"
+          : "conflict";
+        return { ok: false, error: { code, message: error.message } };
+      }
+      return { ok: false, error: { code: "reconciliation_unavailable", message: error instanceof Error ? error.message : "AgonJobEscrow inspection failed" } };
+    }
+  }
+
+  async markAgonJobEscrowSubmitted(
+    actor: string,
+    intentId: string,
+    request: AgonJobEscrowSubmittedRequest,
+  ): Promise<Result<AgonJobEscrowIntentView, AgonServiceError>> {
+    const intent = await this.repository.getAgonJobEscrowIntent(intentId);
+    if (!intent) return { ok: false, error: { code: "not_found", message: "AgonJobEscrow intent not found" } };
+    if (intent.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the job escrow intent owner can record submission" } };
+    try {
+      const stored = await this.repository.markAgonJobEscrowSubmitted({ intentId, transactionHash: request.transactionHash as `0x${string}` });
+      return { ok: true, value: jobEscrowIntentView(stored) };
+    } catch (error) {
+      if (error instanceof AgonStoreInvariantError) return { ok: false, error: { code: "conflict", message: error.message } };
+      return internalError(error);
+    }
+  }
+
+  async getAgonJobEscrowJob(actor: string, jobId: string): Promise<Result<AgonJobEscrowJobView, AgonServiceError>> {
+    if (!this.options.jobEscrowReadAdapter?.enabled) return { ok: false, error: { code: "capability_unavailable", message: "AgonJobEscrow read inspection is disabled by policy" } };
+    if (!/^[1-9]\d*$/.test(jobId)) return { ok: false, error: { code: "validation_failed", message: "job id must be a positive decimal string" } };
+    try {
+      const job = await this.options.jobEscrowReadAdapter.inspect(jobId);
+      return {
+        ok: true,
+        value: {
+          ...job,
+          acceptanceDeadline: job.acceptanceDeadline.toISOString(),
+          reviewDeadline: job.reviewDeadline?.toISOString() ?? null,
+          createdAt: job.createdAt.toISOString(),
+          submittedAt: job.submittedAt?.toISOString() ?? null,
+        },
+      };
+    } catch (error) {
+      return { ok: false, error: { code: "internal", message: error instanceof Error ? error.message : "AgonJobEscrow inspection failed" } };
+    }
   }
 
   async approveAgonEscrowTransaction(
@@ -1741,6 +1981,14 @@ export class PostgresAgonMarketService implements AgonMarketService {
       reasons: ["readiness_unconfigured"],
       requiredApprovals: [],
     };
+    const protocolReadiness = this.options.protocolReadiness?.() ?? {
+      ready: false,
+      chainId: null,
+      missingContracts: [],
+      unverifiedContracts: [],
+      externalRegistry: { identity: null, validation: null },
+      reasons: ["protocol_readiness_unconfigured"],
+    };
     return {
       identityReads: this.options.identityReads ?? false,
       profileWrites: writesReady,
@@ -1752,6 +2000,7 @@ export class PostgresAgonMarketService implements AgonMarketService {
       arenaVerification: Boolean(this.options.agonArenaAddress),
       syndicateRegistry: Boolean(this.options.agonSyndicateRegistryAddress),
       prizeVault: Boolean(this.options.agonPrizeVaultAddress),
+      protocolReadiness,
       writeReadiness: {
         checkedAt: readiness?.checkedAt ?? null,
         reasons: readiness?.reasons ?? ["adapter_unconfigured"],

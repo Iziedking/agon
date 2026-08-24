@@ -30,6 +30,14 @@ import type {
   AgonEscrowReadinessView,
   AgonEscrowTransactionView,
   AgonEscrowLifecycleRequest,
+  AgonPlaygroundCategory,
+  AgonPlaygroundRun,
+  AgonPlaygroundEvaluationRequest,
+  AgonJobEscrowJobView,
+  AgonJobEscrowIntentRequest,
+  AgonJobEscrowIntentView,
+  AgonJobEscrowTransactionView,
+  AgonJobEscrowSubmittedRequest,
 } from "./types";
 import { AGON_PREVIEW_HEALTH, AGON_PREVIEW_LISTINGS } from "./preview";
 
@@ -131,6 +139,48 @@ export function confirmAgonOperation(
   return request<SubmittedOperation>(`/operations/${encodeURIComponent(operationId)}/confirm`, {
     method: "POST",
     body: JSON.stringify({ txHash }),
+  });
+}
+
+export function getAgonJobEscrowJob(jobId: string): Promise<AgonJobEscrowJobView> {
+  return request<AgonJobEscrowJobView>(`/job-escrow/jobs/${encodeURIComponent(jobId)}`);
+}
+
+export function prepareAgonJobEscrowIntent(payload: AgonJobEscrowIntentRequest): Promise<AgonJobEscrowIntentView> {
+  return request<AgonJobEscrowIntentView>("/job-escrow/intents", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export function getAgonJobEscrowIntent(intentId: string): Promise<AgonJobEscrowIntentView> {
+  return request<AgonJobEscrowIntentView>(`/job-escrow/intents/${encodeURIComponent(intentId)}`);
+}
+
+export function getAgonJobEscrowTransaction(intentId: string): Promise<AgonJobEscrowTransactionView> {
+  return request<AgonJobEscrowTransactionView>(`/job-escrow/intents/${encodeURIComponent(intentId)}/transaction`);
+}
+
+export function reconcileAgonJobEscrowIntent(intentId: string, jobId: string): Promise<AgonJobEscrowIntentView> {
+  return request<AgonJobEscrowIntentView>(`/job-escrow/intents/${encodeURIComponent(intentId)}/reconcile`, { method: "POST", body: JSON.stringify({ jobId }) });
+}
+
+export function markAgonJobEscrowSubmitted(intentId: string, payload: AgonJobEscrowSubmittedRequest): Promise<AgonJobEscrowIntentView> {
+  return request<AgonJobEscrowIntentView>(`/job-escrow/intents/${encodeURIComponent(intentId)}/submitted`, { method: "POST", body: JSON.stringify(payload) });
+}
+
+export function getPlaygroundCategories(): Promise<{ agent: string; categories: AgonPlaygroundCategory[] }> {
+  return request<{ agent: string; categories: AgonPlaygroundCategory[] }>("/playground/categories");
+}
+
+export function runPlaygroundTask(category: AgonPlaygroundCategory["slug"], taskId: string, input?: unknown): Promise<AgonPlaygroundRun> {
+  return request<AgonPlaygroundRun>("/playground/run", {
+    method: "POST",
+    body: JSON.stringify({ category, taskId, input }),
+  });
+}
+
+export function evaluatePlaygroundTask(payload: AgonPlaygroundEvaluationRequest): Promise<AgonPlaygroundRun> {
+  return request<AgonPlaygroundRun>("/playground/evaluate", {
+    method: "POST",
+    body: JSON.stringify(payload),
   });
 }
 

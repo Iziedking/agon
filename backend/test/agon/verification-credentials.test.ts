@@ -3,7 +3,9 @@ import test from "node:test";
 import {
   AGON_VALIDATION_NETWORK,
   AgonVerificationCredentialLedger,
+  buildValidationRequestWritePlan,
   buildValidationRequestPayload,
+  buildValidationResponseWritePlan,
   createDisabledAgonValidationRegistryAdapter,
   hashValidationRequest,
 } from "../../src/agon/verification-credentials.ts";
@@ -134,4 +136,51 @@ test("revokes a credential and never calls the disabled ValidationRegistry adapt
     ok: false,
     error: { code: "validation_disabled", message: "ERC-8004 validation writes are disabled by policy" },
   });
+});
+
+test("builds exact unsigned ERC-8004 request and response plans", () => {
+  const request = buildValidationRequestWritePlan({
+    validationRegistryAddress: "0x8004Cb1BF31DAf7788923b405b754f57acEB4272",
+    validatorAddress: VALIDATOR,
+    agentId: 42n,
+    requestURI: "ipfs://bafy-validation-request",
+    requestHash: REQUEST_HASH,
+  });
+  assert.equal(request.ok, true);
+  if (!request.ok) return;
+  assert.equal(request.value.chainId, 5042002);
+  assert.equal(request.value.functionName, "validationRequest");
+  assert.match(request.value.data, /^0x[0-9a-f]+$/);
+  assert.equal(request.value.to, "0x8004Cb1BF31DAf7788923b405b754f57acEB4272");
+
+  const response = buildValidationResponseWritePlan({
+    validationRegistryAddress: request.value.to,
+    requestHash: REQUEST_HASH,
+    response: 100,
+    responseURI: "https://agon.surf/evidence/1",
+    responseHash: TX_HASH,
+    tag: "arena-pass",
+  });
+  assert.equal(response.ok, true);
+  if (!response.ok) return;
+  assert.equal(response.value.functionName, "validationResponse");
+  assert.match(response.value.data, /^0x[0-9a-f]+$/);
+});
+
+test("rejects unsafe unsigned ValidationRegistry plans", () => {
+  assert.equal(buildValidationRequestWritePlan({
+    validationRegistryAddress: "0x8004Cb1BF31DAf7788923b405b754f57acEB4272",
+    validatorAddress: VALIDATOR,
+    agentId: 42n,
+    requestURI: "http://unsafe.example/request",
+    requestHash: REQUEST_HASH,
+  }).ok, false);
+  assert.equal(buildValidationResponseWritePlan({
+    validationRegistryAddress: "0x8004Cb1BF31DAf7788923b405b754f57acEB4272",
+    requestHash: REQUEST_HASH,
+    response: 101,
+    responseURI: "https://agon.surf/evidence/1",
+    responseHash: TX_HASH,
+    tag: "arena-pass",
+  }).ok, false);
 });

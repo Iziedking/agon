@@ -19,6 +19,17 @@ export type AgonCapabilities = {
   arenaVerification: boolean;
   syndicateRegistry: boolean;
   prizeVault: boolean;
+  protocolReadiness: {
+    ready: boolean;
+    chainId: number | null;
+    missingContracts: string[];
+    unverifiedContracts: string[];
+    externalRegistry: {
+      identity: string | null;
+      validation: string | null;
+    };
+    reasons: string[];
+  };
   writeReadiness: {
     checkedAt: string | null;
     reasons: string[];
@@ -129,6 +140,51 @@ export type SubmittedOperation = {
   txHash: `0x${string}` | null;
   resultReference: string | null;
   proof: { blockNumber: string; logIndex: number } | null;
+};
+
+export type AgonPlaygroundTask = {
+  id: string;
+  category: "development" | "research" | "analysis" | "verification" | "execution";
+  title: string;
+  adversarialPrompt: string;
+  capability: string;
+};
+
+export type AgonPlaygroundCategory = {
+  slug: AgonPlaygroundTask["category"];
+  label: string;
+  description: string;
+  tasks: AgonPlaygroundTask[];
+};
+
+export type AgonPlaygroundRun = {
+  runId: string;
+  replayed?: boolean;
+  agent: { id: string; name: string; version: string; capabilities: string[] };
+  task: AgonPlaygroundTask;
+  input: unknown;
+  output: unknown;
+  passed: boolean;
+  score: number;
+  durationMs: number;
+  evidence: {
+    evidenceRoot: `0x${string}`;
+    responseHash: `0x${string}`;
+    taskCommitment: `0x${string}`;
+    validationRequestHash: `0x${string}`;
+    evaluatorVersionHash: `0x${string}`;
+  };
+  provenance: { execution: "real_agent_runtime"; chainId: number | null; blockNumber: string | null; externalWrites: false };
+  scope?: { listingReference: string; listingVersion: string } | null;
+};
+
+export type AgonPlaygroundEvaluationRequest = {
+  category: AgonPlaygroundTask["category"];
+  taskId: string;
+  input?: unknown;
+  listingReference: string;
+  listingVersion: string;
+  idempotencyKey: string;
 };
 
 export type AgonEscrowIntentRequest = {
@@ -438,6 +494,78 @@ export type AgonHealth = {
   service: "agon";
   capabilities: AgonCapabilities;
 };
+
+export type AgonJobEscrowJobView = {
+  jobId: string;
+  buyer: `0x${string}`;
+  provider: `0x${string}`;
+  listingId: string;
+  agentId: string;
+  listingVersion: string;
+  manifestHash: `0x${string}`;
+  termsHash: `0x${string}`;
+  deliverableHash: `0x${string}`;
+  amount: string;
+  fee: string;
+  reviewHours: number;
+  acceptanceDeadline: string;
+  reviewDeadline: string | null;
+  createdAt: string;
+  submittedAt: string | null;
+  status: number;
+  settlement: number;
+};
+
+export type AgonJobEscrowIntentRequest = {
+  listingReference: string;
+  idempotencyKey: string;
+  amountBaseUnits: string;
+  feeBps: number;
+  reviewHours: number;
+  expiresAt: string;
+};
+
+export type AgonJobEscrowIntentView = {
+  intentId: string;
+  actor: `0x${string}`;
+  idempotencyKey: string;
+  listingReference: string;
+  network: "eip155:5042002";
+  asset: `0x${string}`;
+  escrowContract: `0x${string}`;
+  buyer: `0x${string}`;
+  provider: `0x${string}`;
+  listing: { serviceRegistry: `0x${string}`; listingId: string; agentId: string; version: string; manifestHash: string };
+  termsHash: `0x${string}`;
+  amountBaseUnits: string;
+  feeBps: number;
+  reviewHours: number;
+  expiresAt: string;
+  clientReference: `0x${string}`;
+  state: "prepared" | "submitted" | "unknown" | "created" | "accepted" | "job_submitted" | "complete" | "rejected" | "disputed" | "failed";
+  settlement: "none" | "provider_paid" | "buyer_refunded";
+  onchainJobId: string | null;
+  transactionHash: `0x${string}` | null;
+  deliverableHash: `0x${string}` | null;
+  lastReconciledAt: string | null;
+  executionEnabled: false;
+  nextAction: "prepare_transaction" | "inspect_chain" | "manual_reconciliation" | "none";
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AgonJobEscrowTransactionView = {
+  intentId: string;
+  chainId: string;
+  to: `0x${string}`;
+  functionName: "createJob";
+  args: readonly [`0x${string}`, string, `0x${string}`, string, number, number];
+  data: `0x${string}`;
+  executionEnabled: false;
+  nextAction: "approve_usdc_then_submit";
+};
+
+export type AgonJobEscrowSubmittedRequest = { transactionHash: `0x${string}` };
 
 export type ApiIssue = {
   path: string[];

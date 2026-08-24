@@ -1,4 +1,7 @@
 import { Hono, type Context, type MiddlewareHandler } from "hono";
+import { randomUUID } from "node:crypto";
+import { listPlaygroundCategories, runPlaygroundTask, PlaygroundError } from "../playground.ts";
+import { PlaygroundRunConflictError, type PlaygroundRateLimiter, type PlaygroundRunStore } from "../playground-store.ts";
 import { z, type ZodError } from "zod";
 import type { Result } from "../core/result.ts";
 import type {
@@ -35,6 +38,12 @@ import type {
   AgonEscrowTransactionApprovalRequest,
   AgonEscrowTransactionApprovalView,
   AgonEscrowTransactionApprovalReadinessView,
+  AgonJobEscrowJobView,
+  AgonJobEscrowIntentRequest,
+  AgonJobEscrowIntentView,
+  AgonJobEscrowTransactionView,
+  AgonJobEscrowReconcileRequest,
+  AgonJobEscrowSubmittedRequest,
 } from "./api-types.ts";
 
 export type AgonRouteVariables = { address: string };
@@ -161,6 +170,32 @@ export type AgonMarketService = {
     intentId: string,
     operation: "fund",
   ): Promise<Result<AgonEscrowTransactionView, AgonServiceError>>;
+  getAgonJobEscrowJob?(
+    actor: string,
+    jobId: string,
+  ): Promise<Result<AgonJobEscrowJobView, AgonServiceError>>;
+  prepareAgonJobEscrowIntent?(
+    actor: string,
+    request: AgonJobEscrowIntentRequest,
+  ): Promise<Result<AgonJobEscrowIntentView, AgonServiceError>>;
+  getAgonJobEscrowIntent?(
+    actor: string,
+    intentId: string,
+  ): Promise<Result<AgonJobEscrowIntentView, AgonServiceError>>;
+  getAgonJobEscrowTransaction?(
+    actor: string,
+    intentId: string,
+  ): Promise<Result<AgonJobEscrowTransactionView, AgonServiceError>>;
+  reconcileAgonJobEscrowIntent?(
+    actor: string,
+    intentId: string,
+    request: AgonJobEscrowReconcileRequest,
+  ): Promise<Result<AgonJobEscrowIntentView, AgonServiceError>>;
+  markAgonJobEscrowSubmitted?(
+    actor: string,
+    intentId: string,
+    request: AgonJobEscrowSubmittedRequest,
+  ): Promise<Result<AgonJobEscrowIntentView, AgonServiceError>>;
   fundAgonEscrow?(
     actor: string,
     intentId: string,
@@ -191,6 +226,8 @@ export type AgonMarketService = {
 export type CreateAgonRoutesOptions = {
   service: AgonMarketService;
   requireAuth: MiddlewareHandler<{ Variables: AgonRouteVariables }>;
+  playgroundStore?: PlaygroundRunStore;
+  playgroundRateLimiter?: PlaygroundRateLimiter;
 };
 
 const positiveDecimal = z.string().regex(/^[1-9]\d*$/, "must be a positive decimal string");
@@ -291,6 +328,30 @@ const agonEscrowTransactionApprovalSchema = z.object({
   confirmation: z.string().min(1).max(64),
 }).strict();
 
+const agonJobEscrowIntentSchema = z.object({
+  listingReference: z.string().regex(/^[1-9]\d*:0x[0-9a-fA-F]{40}:[1-9]\d*$/, "must be a chain:registry:listing reference"),
+  idempotencyKey: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/, "must be 8-128 safe characters"),
+  amountBaseUnits: z.string().regex(/^[1-9]\d*$/, "must be a positive integer base-unit amount"),
+  feeBps: z.number().int().min(0).max(1000),
+  reviewHours: z.number().int().min(1).max(720),
+  expiresAt: z.string().datetime({ offset: true }),
+}).strict();
+
+const agonJobEscrowReconcileSchema = z.object({ jobId: positiveDecimal }).strict();
+const agonJobEscrowSubmittedSchema = z.object({ transactionHash: bytes32 }).strict();
+
+const playgroundCategorySchema = z.enum(["development", "research", "analysis", "verification", "execution"]);
+const playgroundTaskSchema = z.object({
+  category: playgroundCategorySchema,
+  taskId: z.string().regex(/^[a-z0-9-]{1,64}$/),
+  input: z.unknown().optional(),
+}).strict();
+const playgroundEvaluationSchema = playgroundTaskSchema.extend({
+  listingReference: z.string().regex(/^[1-9]\d*:0x[0-9a-fA-F]{40}:[1-9]\d*$/),
+  listingVersion: positiveDecimal,
+  idempotencyKey: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/),
+}).strict();
+
 function validationResponse(error: ZodError): ApiErrorResponse {
   return {
     error: {
@@ -354,6 +415,22 @@ async function parseJson(context: Context): Promise<unknown | ApiErrorResponse> 
   }
 }
 
+async function parseBoundedJson(context: Context, maxBytes: number): Promise<unknown | ApiErrorResponse> {
+  const contentLength = Number(context.req.header("content-length") ?? "0");
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+    return { error: { code: "payload_too_large", message: "request payload exceeds the evaluation limit" } };
+  }
+  try {
+    const body = await context.req.text();
+    if (new TextEncoder().encode(body).byteLength > maxBytes) {
+      return { error: { code: "payload_too_large", message: "request payload exceeds the evaluation limit" } };
+    }
+    return JSON.parse(body) as unknown;
+  } catch {
+    return { error: { code: "invalid_json", message: "request body must be valid JSON" } };
+  }
+}
+
 function isApiError(value: unknown): value is ApiErrorResponse {
   return Boolean(
     value &&
@@ -375,9 +452,130 @@ function queryFromRequest(context: Context, overrides: Partial<ListingQuery> = {
 export function createAgonRoutes(options: CreateAgonRoutesOptions) {
   const app = new Hono<{ Variables: AgonRouteVariables }>();
 
+  async function consumePlaygroundLimit(context: Context<{ Variables: AgonRouteVariables }>, scope: "sample" | "evaluation") {
+    if (!options.playgroundRateLimiter) return true;
+    const actor = context.get("address");
+    const forwarded = context.req.header("x-real-ip") ?? context.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+    const key = actor ? `${scope}:actor:${actor}` : `${scope}:ip:${forwarded}`;
+    const result = await options.playgroundRateLimiter.consume(key, scope === "evaluation" ? 10 : 30, 60);
+    if (!result.allowed) {
+      context.header("retry-after", String(result.retryAfterSeconds));
+      return false;
+    }
+    return true;
+  }
+
+  app.get("/playground/categories", (context) => context.json({ agent: "agon-coder-v1", categories: listPlaygroundCategories() }));
+
+  app.post("/playground/run", async (context) => {
+    if (!(await consumePlaygroundLimit(context, "sample"))) {
+      return context.json({ error: { code: "rate_limited", message: "playground sample capacity is temporarily exhausted" } }, 429);
+    }
+    const body = await parseBoundedJson(context, 32 * 1024);
+    if (isApiError(body)) return context.json(body, 400);
+    const parsed = playgroundTaskSchema.safeParse(body);
+    if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
+    try {
+      const result = await runPlaygroundTask(parsed.data, {
+        requestId: context.req.header("x-request-id") && /^[0-9a-f-]{36}$/i.test(context.req.header("x-request-id")!) ? context.req.header("x-request-id")! : randomUUID(),
+        store: options.playgroundStore,
+      });
+      return context.json(result, result.replayed ? 200 : 201);
+    } catch (cause) {
+      if (cause instanceof PlaygroundRunConflictError) return context.json({ error: { code: "idempotency_conflict", message: cause.message } }, 409);
+      if (cause instanceof PlaygroundError) return context.json({ error: { code: cause.code, message: cause.message } }, 400);
+      return context.json({ error: { code: "playground_failed", message: "The agent task did not complete." } }, 500);
+    }
+  });
+
+  app.post("/playground/evaluate", options.requireAuth, async (context) => {
+    if (!(await consumePlaygroundLimit(context, "evaluation"))) {
+      return context.json({ error: { code: "rate_limited", message: "evaluation capacity is temporarily exhausted" } }, 429);
+    }
+    const body = await parseBoundedJson(context, 32 * 1024);
+    if (isApiError(body)) return context.json(body, 400);
+    const parsed = playgroundEvaluationSchema.safeParse(body);
+    if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
+    const listing = await options.service.getListing(parsed.data.listingReference);
+    if (!listing.ok) return serviceErrorResponse(context, listing.error);
+    if (listing.value.version !== parsed.data.listingVersion) {
+      return context.json({ error: { code: "validation_failed", message: "evaluation scope does not match the current listing version" } }, 422);
+    }
+    try {
+      const result = await runPlaygroundTask(
+        { category: parsed.data.category, taskId: parsed.data.taskId, input: parsed.data.input },
+        {
+          actorAddress: context.get("address"),
+          requestId: context.req.header("x-request-id") && /^[0-9a-f-]{36}$/i.test(context.req.header("x-request-id")!) ? context.req.header("x-request-id")! : randomUUID(),
+          idempotencyKey: parsed.data.idempotencyKey,
+          scope: { listingReference: parsed.data.listingReference, listingVersion: parsed.data.listingVersion },
+          store: options.playgroundStore,
+        },
+      );
+      return context.json(result, result.replayed ? 200 : 201);
+    } catch (cause) {
+      if (cause instanceof PlaygroundRunConflictError) return context.json({ error: { code: "idempotency_conflict", message: cause.message } }, 409);
+      if (cause instanceof PlaygroundError) {
+        const status = cause.code === "run_in_progress" || cause.code === "run_failed" ? 409 : 400;
+        return context.json({ error: { code: cause.code, message: cause.message } }, status);
+      }
+      return context.json({ error: { code: "playground_failed", message: "The evaluation did not complete." } }, 500);
+    }
+  });
+
   app.get("/health", async (context) =>
     context.json({ ok: true, service: "agon", capabilities: await options.service.getCapabilities() }),
   );
+
+  app.get("/job-escrow/jobs/:jobId", options.requireAuth, async (context) => {
+    const jobId = context.req.param("jobId");
+    if (!positiveDecimal.safeParse(jobId).success) return serviceErrorResponse(context, { code: "validation_failed", message: "job id must be a positive decimal string" });
+    if (!options.service.getAgonJobEscrowJob) return serviceErrorResponse(context, { code: "capability_unavailable", message: "AgonJobEscrow read inspection is not configured" });
+    const result = await options.service.getAgonJobEscrowJob(context.get("address"), jobId);
+    return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  app.post("/job-escrow/intents", options.requireAuth, async (context) => {
+    const body = await parseJson(context);
+    if (isApiError(body)) return context.json(body, 400);
+    const parsed = agonJobEscrowIntentSchema.safeParse(body);
+    if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
+    if (!options.service.prepareAgonJobEscrowIntent) return serviceErrorResponse(context, { code: "capability_unavailable", message: "AgonJobEscrow intent preparation is not configured" });
+    const result = await options.service.prepareAgonJobEscrowIntent(context.get("address"), parsed.data);
+    return result.ok ? context.json(result.value, 201) : serviceErrorResponse(context, result.error);
+  });
+
+  app.get("/job-escrow/intents/:intentId", options.requireAuth, async (context) => {
+    if (!options.service.getAgonJobEscrowIntent) return serviceErrorResponse(context, { code: "capability_unavailable", message: "AgonJobEscrow intent reads are not configured" });
+    const result = await options.service.getAgonJobEscrowIntent(context.get("address"), context.req.param("intentId"));
+    return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  app.get("/job-escrow/intents/:intentId/transaction", options.requireAuth, async (context) => {
+    if (!options.service.getAgonJobEscrowTransaction) return serviceErrorResponse(context, { code: "capability_unavailable", message: "AgonJobEscrow transaction planning is not configured" });
+    const result = await options.service.getAgonJobEscrowTransaction(context.get("address"), context.req.param("intentId"));
+    return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  app.post("/job-escrow/intents/:intentId/reconcile", options.requireAuth, async (context) => {
+    const body = await parseJson(context);
+    if (isApiError(body)) return context.json(body, 400);
+    const parsed = agonJobEscrowReconcileSchema.safeParse(body);
+    if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
+    if (!options.service.reconcileAgonJobEscrowIntent) return serviceErrorResponse(context, { code: "capability_unavailable", message: "AgonJobEscrow reconciliation is not configured" });
+    const result = await options.service.reconcileAgonJobEscrowIntent(context.get("address"), context.req.param("intentId"), parsed.data);
+    return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  app.post("/job-escrow/intents/:intentId/submitted", options.requireAuth, async (context) => {
+    const body = await parseJson(context);
+    if (isApiError(body)) return context.json(body, 400);
+    const parsed = agonJobEscrowSubmittedSchema.safeParse(body);
+    if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
+    if (!options.service.markAgonJobEscrowSubmitted) return serviceErrorResponse(context, { code: "capability_unavailable", message: "AgonJobEscrow submission tracking is not configured" });
+    const result = await options.service.markAgonJobEscrowSubmitted(context.get("address"), context.req.param("intentId"), parsed.data);
+    return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
 
   app.get("/listings", async (context) => {
     const parsed = queryFromRequest(context);

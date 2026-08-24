@@ -64,7 +64,7 @@ function output(value: unknown, json: boolean): void {
 }
 
 function help(): void {
-  console.log(`Agon ASP CLI\n\nCommands:\n  categories [--json]\n  prepare --config FILE --manifest-out FILE --payload-out FILE [--force]\n  verify-manifest --manifest FILE [--expected-hash HASH] [--json]\n  health --api-url URL [--json]\n  inspect --api-url URL --reference REF [--manifest FILE] [--current-owner ADDRESS] [--json]\n  publish --api-url URL --config FILE --manifest FILE --token-env NAME --yes [--json]\n  confirm --api-url URL --operation ID --tx-hash HASH --token-env NAME [--json]`);
+  console.log(`Agon ASP CLI\n\nCommands:\n  categories [--json]\n  prepare --config FILE --manifest-out FILE --payload-out FILE [--force]\n  verify-manifest --manifest FILE [--expected-hash HASH] [--json]\n  health --api-url URL [--json]\n  demo-run --api-url URL --category SLUG --task TASK_ID [--input FILE] [--json]\n  inspect --api-url URL --reference REF [--manifest FILE] [--current-owner ADDRESS] [--json]\n  publish --api-url URL --config FILE --manifest FILE --token-env NAME --yes [--json]\n  confirm --api-url URL --operation ID --tx-hash HASH --token-env NAME [--json]`);
 }
 
 async function main(): Promise<void> {
@@ -94,6 +94,26 @@ async function main(): Promise<void> {
   }
   if (command === "health") {
     output(await getAspHealth(requiredOption(options, "api-url")), json);
+    return;
+  }
+  if (command === "demo-run") {
+    const apiUrl = requiredOption(options, "api-url").replace(/\/$/, "");
+    const inputPath = stringOption(options, "input");
+    const input = inputPath ? readJson(inputPath) : undefined;
+    let response: Response;
+    try {
+      response = await fetch(`${apiUrl}/agon/playground/run`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ category: requiredOption(options, "category"), taskId: requiredOption(options, "task"), input }),
+        signal: AbortSignal.timeout(30_000),
+      });
+    } catch {
+      throw new AspCommandError("network_unavailable", "Agon agent runtime did not respond");
+    }
+    const body = await readJsonResponse(response);
+    if (!response.ok) throw new AspCommandError("demo_failed", typeof body === "object" && body && "error" in body ? JSON.stringify(body) : "Agon demo task failed");
+    output(body, json);
     return;
   }
   if (command === "inspect") {
@@ -127,6 +147,10 @@ async function main(): Promise<void> {
     return;
   }
   throw new AspCommandError("invalid_command", `Unknown command: ${command}`);
+}
+
+async function readJsonResponse(response: Response): Promise<unknown> {
+  try { return await response.json(); } catch { throw new AspCommandError("invalid_response", "Agon returned a non-JSON response"); }
 }
 
 main().catch((error: unknown) => {

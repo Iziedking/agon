@@ -38,6 +38,7 @@ import type {
   AgonEscrowReadinessView,
 } from "../../src/agon/http/api-types.ts";
 import type { Result } from "../../src/agon/core/result.ts";
+import { InMemoryPlaygroundRateLimiter, InMemoryPlaygroundRunStore } from "../../src/agon/playground-store.ts";
 
 const ADDRESS = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const REGISTRY = "0x3333333333333333333333333333333333333333";
@@ -94,6 +95,14 @@ const capabilities: AgonCapabilities = {
   arenaVerification: false,
   syndicateRegistry: false,
   prizeVault: false,
+  protocolReadiness: {
+    ready: false,
+    chainId: 5042002,
+    missingContracts: [],
+    unverifiedContracts: [],
+    externalRegistry: { identity: null, validation: null },
+    reasons: ["source_verification_incomplete"],
+  },
   writeReadiness: { checkedAt: null, reasons: ["adapter_unconfigured"] },
   escrowReadiness: {
     testnetOnly: true,
@@ -571,9 +580,14 @@ const testAuth: MiddlewareHandler<{ Variables: AgonRouteVariables }> = async (co
   await next();
 };
 
-function testApp(service: AgonMarketService) {
+function testApp(service: AgonMarketService, playground = false) {
   const app = new Hono<{ Variables: AgonRouteVariables }>();
-  app.route("/agon", createAgonRoutes({ service, requireAuth: testAuth }));
+  app.route("/agon", createAgonRoutes({
+    service,
+    requireAuth: testAuth,
+    playgroundStore: playground ? new InMemoryPlaygroundRunStore() : undefined,
+    playgroundRateLimiter: playground ? new InMemoryPlaygroundRateLimiter() : undefined,
+  }));
   return app;
 }
 
@@ -685,8 +699,40 @@ test("reports granular Agon capabilities and keeps escrow disabled", async () =>
   assert.equal(body.capabilities.listingReads, true);
   assert.equal(body.capabilities.listingWrites, false);
   assert.equal(body.capabilities.escrow, false);
+  assert.equal(body.capabilities.protocolReadiness.ready, false);
+  assert.deepEqual(body.capabilities.protocolReadiness.reasons, ["source_verification_incomplete"]);
   assert.deepEqual(body.capabilities.writeReadiness.reasons, ["adapter_unconfigured"]);
   assert.deepEqual(body.capabilities.escrowReadiness.reasons, ["readiness_unconfigured"]);
+});
+
+test("keeps deployed AgonJobEscrow inspection authenticated and fail-closed", async () => {
+  const app = testApp(new FakeAgonService());
+  assert.equal((await app.request("/agon/job-escrow/jobs/1")).status, 401);
+  const invalid = await app.request("/agon/job-escrow/jobs/0", { headers: { "x-test-address": ADDRESS } });
+  assert.equal(invalid.status, 422);
+  const unavailable = await app.request("/agon/job-escrow/jobs/1", { headers: { "x-test-address": ADDRESS } });
+  assert.equal(unavailable.status, 503);
+});
+
+test("keeps durable AgonJobEscrow intent routes authenticated and capability-gated", async () => {
+  const app = testApp(new FakeAgonService());
+  assert.equal((await app.request("/agon/job-escrow/intents", { method: "POST", body: "{}" })).status, 401);
+  const invalid = await app.request("/agon/job-escrow/intents", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-test-address": ADDRESS },
+    body: JSON.stringify({ listingReference: "bad" }),
+  });
+  assert.equal(invalid.status, 400);
+  const unavailable = await app.request("/agon/job-escrow/intents/00000000-0000-4000-8000-000000000001", {
+    headers: { "x-test-address": ADDRESS },
+  });
+  assert.equal(unavailable.status, 503);
+  const submitted = await app.request("/agon/job-escrow/intents/00000000-0000-4000-8000-000000000001/submitted", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-test-address": ADDRESS },
+    body: JSON.stringify({ transactionHash: `0x${"11".repeat(32)}` }),
+  });
+  assert.equal(submitted.status, 503);
 });
 
 test("confirms a prepared operation with a validated transaction hash", async () => {
@@ -1052,4 +1098,71 @@ test("reads facilitator verification evidence through the authenticated owner pa
   const body = (await response.json()) as X402FacilitatorVerificationView;
   assert.equal(body.state, "facilitator_verified");
   assert.match(body.evidenceHash, /^0x[0-9a-f]{64}$/);
+});
+
+test("persists a public playground sample and bounds its payload", async () => {
+  const app = testApp(new FakeAgonService(), true);
+  const response = await app.request("/agon/playground/run", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ category: "development", taskId: "selector-guard", input: { to: ADDRESS, data: "0xa9059cbb" } }),
+  });
+  assert.equal(response.status, 201);
+  const body = await response.json() as { runId: string; evidence: { evidenceRoot: string } };
+  assert.match(body.runId, /^[0-9a-f-]{36}$/i);
+  assert.match(body.evidence.evidenceRoot, /^0x[0-9a-f]{64}$/);
+
+  const oversized = await app.request("/agon/playground/run", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ category: "development", taskId: "selector-guard", input: { value: "x".repeat(16 * 1024) } }),
+  });
+  assert.equal(oversized.status, 400);
+  assert.equal((await oversized.json() as { error: { code: string } }).error.code, "input_too_large");
+});
+
+test("authenticated evaluation binds the exact listing version and replays idempotently", async () => {
+  const app = testApp(new FakeAgonService(), true);
+  const unauthenticated = await app.request("/agon/playground/evaluate", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ category: "development", taskId: "selector-guard", listingReference: listing.id, listingVersion: listing.version, idempotencyKey: "evaluation-route-1" }),
+  });
+  assert.equal(unauthenticated.status, 401);
+
+  const invalidScope = await app.request("/agon/playground/evaluate", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-test-address": ADDRESS },
+    body: JSON.stringify({ category: "development", taskId: "selector-guard", listingReference: listing.id, listingVersion: "999", idempotencyKey: "evaluation-route-2" }),
+  });
+  assert.equal(invalidScope.status, 422);
+
+  const payload = { category: "development", taskId: "selector-guard", listingReference: listing.id, listingVersion: listing.version, idempotencyKey: "evaluation-route-3" };
+  const first = await app.request("/agon/playground/evaluate", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-test-address": ADDRESS },
+    body: JSON.stringify(payload),
+  });
+  assert.equal(first.status, 201);
+  const firstBody = await first.json() as { runId: string; scope: { listingReference: string; listingVersion: string } };
+  assert.equal(firstBody.scope.listingReference, listing.id);
+  assert.equal(firstBody.scope.listingVersion, listing.version);
+
+  const retry = await app.request("/agon/playground/evaluate", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-test-address": ADDRESS },
+    body: JSON.stringify(payload),
+  });
+  assert.equal(retry.status, 200);
+  const retryBody = await retry.json() as { runId: string; replayed: boolean };
+  assert.equal(retryBody.runId, firstBody.runId);
+  assert.equal(retryBody.replayed, true);
+
+  const conflict = await app.request("/agon/playground/evaluate", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-test-address": ADDRESS },
+    body: JSON.stringify({ ...payload, input: { to: "0x0000000000000000000000000000000000000009" } }),
+  });
+  assert.equal(conflict.status, 409);
+  assert.equal((await conflict.json() as { error: { code: string } }).error.code, "idempotency_conflict");
 });

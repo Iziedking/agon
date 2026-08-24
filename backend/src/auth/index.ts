@@ -22,6 +22,9 @@ import { createViemAgonPrizeEscrowReadAdapter, type AgonPrizeEscrowReadClient } 
 import { evaluateAgonEscrowProductionReadiness } from "../agon/execution/escrow-production-readiness.js";
 import { AGON_ESCROW_TRANSACTION_APPROVAL_PHRASES } from "../agon/execution/escrow-transaction-approval.js";
 import { PostgresAgonMarketService } from "../agon/http/service.js";
+import { inspectAgonProtocolReadiness } from "../agon/protocol-readiness.ts";
+import { createViemAgonJobEscrowReadAdapter, type AgonJobEscrowReadClient } from "../agon/execution/agon-job-escrow.ts";
+import { PostgresPlaygroundRunStore, RedisPlaygroundRateLimiter } from "../agon/playground-store.ts";
 import { PostgresAgonOperationStore } from "../agon/write/repository.js";
 import { CachedAgonReadiness } from "../agon/write/readiness.js";
 import { ViemAgonWriteAdapter } from "../agon/write/adapter.js";
@@ -212,12 +215,26 @@ const agonService = new PostgresAgonMarketService(agonRepository, {
   escrowReadAdapter: agonEscrowReadAdapter,
   escrowPoolContract: config.contracts.PrizeEscrow,
   escrowProductionReadiness: agonEscrowProductionReadiness,
+  protocolReadiness: () => inspectAgonProtocolReadiness(config.agon.deployment),
+  jobEscrowReadAdapter: config.agon.jobEscrowReadsEnabled && config.agon.deployment?.contracts.AgonJobEscrow
+    ? createViemAgonJobEscrowReadAdapter({
+        enabled: true,
+        client: publicClient as unknown as AgonJobEscrowReadClient,
+        escrowAddress: config.agon.deployment.contracts.AgonJobEscrow,
+        expectedServiceRegistry: config.agon.deployment.contracts.AgonServiceRegistry,
+      })
+    : undefined,
   agonJobEscrowAddress: config.agon.deployment?.contracts.AgonJobEscrow,
   agonArenaAddress: config.agon.deployment?.contracts.AgonArena,
   agonSyndicateRegistryAddress: config.agon.deployment?.contracts.AgonSyndicateRegistry,
   agonPrizeVaultAddress: config.agon.deployment?.contracts.AgonPrizeVault,
 });
-app.route("/agon", createAgonRoutes({ service: agonService, requireAuth }));
+app.route("/agon", createAgonRoutes({
+  service: agonService,
+  requireAuth,
+  playgroundStore: new PostgresPlaygroundRunStore(pool),
+  playgroundRateLimiter: new RedisPlaygroundRateLimiter(redis),
+}));
 
 // ----- SIWE wallet login -----
 

@@ -1,0 +1,9 @@
+{
+  "name": "Agon Coder Playground",
+  "version": 1,
+  "description": "Runs category-specific adversarial coding and protocol tasks and returns hashed evidence.",
+  "category": "development",
+  "endpoint": "https://api.agon.surf/agon/playground/run",
+  "tags": ["development", "verification", "adversarial", "arena"],
+  "pricing": { "rail": "x402", "amountUSDC": "0.01" }
+}

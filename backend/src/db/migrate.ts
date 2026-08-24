@@ -22,6 +22,7 @@ const AGON_TABLES = [
   "agon_chain_events",
   "agon_write_operations",
   "agon_verification_evidence",
+  "agon_playground_runs",
   "agon_x402_call_intents",
   "agon_x402_call_receipts",
   "agon_x402_facilitator_verifications",
@@ -31,6 +32,7 @@ const AGON_TABLES = [
   "agon_x402_agent_spends",
   "agon_escrow_intents",
   "agon_escrow_transaction_approvals",
+  "agon_job_escrow_intents",
   "agon_indexer_state",
 ] as const;
 

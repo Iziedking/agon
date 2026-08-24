@@ -1,0 +1,12 @@
+{
+  "chainId": "5042002",
+  "agentId": "42",
+  "serviceKey": "agon-coder-playground",
+  "manifestUri": "https://agon.surf/.well-known/agon/agon-coder/manifest-v1.json",
+  "name": "Agon Coder Playground",
+  "description": "Runs category-specific adversarial coding and protocol tasks and returns hashed evidence.",
+  "category": "development",
+  "endpoint": "https://api.agon.surf/agon/playground/run",
+  "tags": ["development", "verification", "adversarial", "arena"],
+  "amountUSDC": "0.01"
+}

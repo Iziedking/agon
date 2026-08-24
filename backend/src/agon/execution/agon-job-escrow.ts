@@ -1,0 +1,275 @@
+import { getAddress, keccak256, stringToHex, toHex, encodeFunctionData } from "viem";
+import { AGON_ESCROW_NETWORK, AGON_ESCROW_USDC } from "../escrow-policy.ts";
+
+const ADDRESS = /^0x[0-9a-f]{40}$/i;
+const HASH = /^0x[0-9a-f]{64}$/i;
+const NON_NEGATIVE_INTEGER = /^(0|[1-9]\d*)$/;
+
+export const AGON_JOB_ESCROW_NETWORK = AGON_ESCROW_NETWORK;
+export const AGON_JOB_ESCROW_CHAIN_ID = 5042002;
+
+/** ABI pin for the deployed AgonJobEscrow contract. This module has no signer. */
+export const AGON_JOB_ESCROW_ABI = [
+  { type: "function", name: "createJob", stateMutability: "nonpayable", inputs: [
+    { name: "clientReference", type: "bytes32" }, { name: "listingId", type: "uint256" },
+    { name: "termsHash", type: "bytes32" }, { name: "amount", type: "uint256" },
+    { name: "feeBps", type: "uint16" }, { name: "reviewHours", type: "uint64" },
+  ], outputs: [{ name: "jobId", type: "uint256" }] },
+  { type: "function", name: "acceptJob", stateMutability: "nonpayable", inputs: [{ name: "jobId", type: "uint256" }], outputs: [] },
+  { type: "function", name: "submitJob", stateMutability: "nonpayable", inputs: [{ name: "jobId", type: "uint256" }, { name: "deliverableHash", type: "bytes32" }], outputs: [] },
+  { type: "function", name: "acceptSubmission", stateMutability: "nonpayable", inputs: [{ name: "jobId", type: "uint256" }], outputs: [] },
+  { type: "function", name: "autoAccept", stateMutability: "nonpayable", inputs: [{ name: "jobId", type: "uint256" }], outputs: [] },
+  { type: "function", name: "rejectSubmission", stateMutability: "nonpayable", inputs: [{ name: "jobId", type: "uint256" }, { name: "reasonHash", type: "bytes32" }], outputs: [] },
+  { type: "function", name: "openDispute", stateMutability: "nonpayable", inputs: [{ name: "jobId", type: "uint256" }, { name: "reasonHash", type: "bytes32" }], outputs: [] },
+  { type: "function", name: "resolveDispute", stateMutability: "nonpayable", inputs: [{ name: "jobId", type: "uint256" }, { name: "payProvider", type: "bool" }], outputs: [] },
+  { type: "function", name: "failJob", stateMutability: "nonpayable", inputs: [{ name: "jobId", type: "uint256" }], outputs: [] },
+  { type: "function", name: "usdc", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
+  { type: "function", name: "serviceRegistry", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
+  { type: "function", name: "disputeResolver", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
+  { type: "function", name: "getJob", stateMutability: "view", inputs: [{ name: "jobId", type: "uint256" }], outputs: [{ name: "job", type: "tuple", components: [
+    { name: "jobId", type: "uint256" }, { name: "buyer", type: "address" }, { name: "provider", type: "address" },
+    { name: "listingId", type: "uint256" }, { name: "agentId", type: "uint256" }, { name: "listingVersion", type: "uint256" },
+    { name: "manifestHash", type: "bytes32" }, { name: "termsHash", type: "bytes32" }, { name: "deliverableHash", type: "bytes32" },
+    { name: "amount", type: "uint256" }, { name: "fee", type: "uint256" }, { name: "reviewHours", type: "uint64" },
+    { name: "acceptanceDeadline", type: "uint64" }, { name: "reviewDeadline", type: "uint64" }, { name: "createdAt", type: "uint64" },
+    { name: "submittedAt", type: "uint64" }, { name: "status", type: "uint8" }, { name: "settlement", type: "uint8" },
+  ] }] },
+] as const;
+
+export type AgonJobEscrowAction =
+  | "create"
+  | "accept"
+  | "submit"
+  | "accept_submission"
+  | "auto_accept"
+  | "reject"
+  | "dispute"
+  | "resolve_pay"
+  | "resolve_refund"
+  | "fail";
+
+export type AgonJobEscrowWritePlan = {
+  network: typeof AGON_JOB_ESCROW_NETWORK;
+  chainId: typeof AGON_JOB_ESCROW_CHAIN_ID;
+  contractAddress: `0x${string}`;
+  action: AgonJobEscrowAction;
+  functionName: string;
+  args: readonly unknown[];
+  data: `0x${string}`;
+  execution: "disabled";
+};
+
+export type AgonJobEscrowJob = {
+  jobId: string;
+  buyer: `0x${string}`;
+  provider: `0x${string}`;
+  listingId: string;
+  agentId: string;
+  listingVersion: string;
+  manifestHash: `0x${string}`;
+  termsHash: `0x${string}`;
+  deliverableHash: `0x${string}`;
+  amount: string;
+  fee: string;
+  reviewHours: number;
+  acceptanceDeadline: Date;
+  reviewDeadline: Date | null;
+  createdAt: Date;
+  submittedAt: Date | null;
+  status: number;
+  settlement: number;
+};
+
+export type AgonJobEscrowReceipt = {
+  status: "success" | "reverted" | 1 | 0;
+  transactionHash?: string | null;
+  to?: string | null;
+  logs?: readonly { address?: string; topics?: readonly string[] }[];
+};
+
+export type AgonJobEscrowReceiptResult =
+  | { ok: true; transactionHash: `0x${string}`; event: string }
+  | { ok: false; code: "receipt_invalid" | "receipt_reverted" | "receipt_unknown"; message: string };
+
+function address(value: unknown, label: string): `0x${string}` {
+  if (typeof value !== "string" || !ADDRESS.test(value)) throw new Error(`${label} is invalid`);
+  try { return getAddress(value).toLowerCase() as `0x${string}`; } catch { throw new Error(`${label} is invalid`); }
+}
+
+function hash(value: unknown, label: string): `0x${string}` {
+  if (typeof value !== "string" || !HASH.test(value) || /^0x0{64}$/i.test(value)) throw new Error(`${label} must be a non-zero bytes32`);
+  return value.toLowerCase() as `0x${string}`;
+}
+
+function integer(value: string | bigint, label: string): bigint {
+  if (typeof value === "bigint") {
+    if (value < 0n) throw new Error(`${label} must be a non-negative integer`);
+    return value;
+  }
+  if (!NON_NEGATIVE_INTEGER.test(value)) throw new Error(`${label} must be a non-negative integer`);
+  return BigInt(value);
+}
+
+function jobId(value: string | bigint): bigint {
+  const result = integer(value, "job id");
+  if (result === 0n) throw new Error("job id must be positive");
+  return result;
+}
+
+function plan(input: {
+  contractAddress: string;
+  action: AgonJobEscrowAction;
+  functionName: string;
+  args: readonly unknown[];
+}): AgonJobEscrowWritePlan {
+  const contractAddress = address(input.contractAddress, "AgonJobEscrow contract address");
+  const data = encodeFunctionData({ abi: AGON_JOB_ESCROW_ABI, functionName: input.functionName as never, args: input.args as never });
+  return { network: AGON_JOB_ESCROW_NETWORK, chainId: AGON_JOB_ESCROW_CHAIN_ID, contractAddress, action: input.action, functionName: input.functionName, args: input.args, data, execution: "disabled" };
+}
+
+export function buildAgonJobEscrowWritePlan(input: {
+  contractAddress: string;
+  action: AgonJobEscrowAction;
+  clientReference?: string;
+  listingId?: string | bigint;
+  termsHash?: string;
+  amountBaseUnits?: string | bigint;
+  feeBps?: number;
+  reviewHours?: number;
+  jobId?: string | bigint;
+  deliverableHash?: string;
+  reasonHash?: string;
+}): AgonJobEscrowWritePlan {
+  if (input.action === "create") {
+    const clientReference = hash(input.clientReference, "client reference");
+    const listingId = integer(input.listingId ?? "", "listing id");
+    if (listingId === 0n) throw new Error("listing id must be positive");
+    const termsHash = hash(input.termsHash, "terms hash");
+    const amount = integer(input.amountBaseUnits ?? "", "amount");
+    if (amount === 0n) throw new Error("amount must be positive");
+    if (!Number.isInteger(input.feeBps) || (input.feeBps ?? -1) < 0 || (input.feeBps ?? 10001) > 1000) throw new Error("fee bps must be between 0 and 1000");
+    if (!Number.isInteger(input.reviewHours) || (input.reviewHours ?? 0) < 0 || (input.reviewHours ?? 721) > 720) throw new Error("review hours must be between 0 and 720");
+    return plan({ contractAddress: input.contractAddress, action: input.action, functionName: "createJob", args: [clientReference, listingId, termsHash, amount, input.feeBps, input.reviewHours] });
+  }
+
+  const id = jobId(input.jobId ?? "");
+  if (input.action === "accept") return plan({ contractAddress: input.contractAddress, action: input.action, functionName: "acceptJob", args: [id] });
+  if (input.action === "submit") return plan({ contractAddress: input.contractAddress, action: input.action, functionName: "submitJob", args: [id, hash(input.deliverableHash, "deliverable hash")] });
+  if (input.action === "accept_submission") return plan({ contractAddress: input.contractAddress, action: input.action, functionName: "acceptSubmission", args: [id] });
+  if (input.action === "auto_accept") return plan({ contractAddress: input.contractAddress, action: input.action, functionName: "autoAccept", args: [id] });
+  if (input.action === "reject") return plan({ contractAddress: input.contractAddress, action: input.action, functionName: "rejectSubmission", args: [id, hash(input.reasonHash, "reason hash")] });
+  if (input.action === "dispute") return plan({ contractAddress: input.contractAddress, action: input.action, functionName: "openDispute", args: [id, hash(input.reasonHash, "reason hash")] });
+  if (input.action === "resolve_pay") return plan({ contractAddress: input.contractAddress, action: input.action, functionName: "resolveDispute", args: [id, true] });
+  if (input.action === "resolve_refund") return plan({ contractAddress: input.contractAddress, action: input.action, functionName: "resolveDispute", args: [id, false] });
+  return plan({ contractAddress: input.contractAddress, action: input.action, functionName: "failJob", args: [id] });
+}
+
+function topic(signature: string): `0x${string}` { return keccak256(stringToHex(signature)); }
+const EVENTS: Record<AgonJobEscrowAction, { name: string; topic: `0x${string}`; indexedJob: boolean }> = {
+  create: { name: "JobCreated", topic: topic("JobCreated(uint256,bytes32,address,address,uint256,uint256,uint256,bytes32,bytes32,uint256,uint256,uint64,uint64)"), indexedJob: true },
+  accept: { name: "JobAccepted", topic: topic("JobAccepted(uint256,address)"), indexedJob: true },
+  submit: { name: "JobSubmitted", topic: topic("JobSubmitted(uint256,bytes32,uint64)"), indexedJob: true },
+  accept_submission: { name: "JobSettled", topic: topic("JobSettled(uint256,uint8,address,uint256,uint256)"), indexedJob: true },
+  auto_accept: { name: "JobSettled", topic: topic("JobSettled(uint256,uint8,address,uint256,uint256)"), indexedJob: true },
+  reject: { name: "JobRejected", topic: topic("JobRejected(uint256,bytes32)"), indexedJob: true },
+  dispute: { name: "JobDisputed", topic: topic("JobDisputed(uint256,address,bytes32)"), indexedJob: true },
+  resolve_pay: { name: "JobSettled", topic: topic("JobSettled(uint256,uint8,address,uint256,uint256)"), indexedJob: true },
+  resolve_refund: { name: "JobSettled", topic: topic("JobSettled(uint256,uint8,address,uint256,uint256)"), indexedJob: true },
+  fail: { name: "JobFailed", topic: topic("JobFailed(uint256,address,uint8)"), indexedJob: true },
+};
+
+export function validateAgonJobEscrowReceipt(input: {
+  receipt: AgonJobEscrowReceipt;
+  contractAddress: string;
+  action: AgonJobEscrowAction;
+  transactionHash: string;
+  jobId?: string | bigint;
+}): AgonJobEscrowReceiptResult {
+  const expectedContract = address(input.contractAddress, "AgonJobEscrow contract address");
+  const expectedHash = hash(input.transactionHash, "transaction hash");
+  if (input.receipt.status === "reverted" || input.receipt.status === 0) return { ok: false, code: "receipt_reverted", message: "AgonJobEscrow transaction reverted" };
+  if (input.receipt.status !== "success" && input.receipt.status !== 1) return { ok: false, code: "receipt_unknown", message: "receipt did not prove a successful AgonJobEscrow transaction" };
+  if (!input.receipt.transactionHash || hash(input.receipt.transactionHash, "receipt transaction hash") !== expectedHash) return { ok: false, code: "receipt_invalid", message: "receipt hash does not match the submitted transaction" };
+  if (!input.receipt.to || address(input.receipt.to, "receipt contract address") !== expectedContract) return { ok: false, code: "receipt_invalid", message: "receipt is not for the configured AgonJobEscrow contract" };
+  const expectedEvent = EVENTS[input.action];
+  const expectedJobTopic = input.action === "create" ? null : toHex(jobId(input.jobId ?? ""), { size: 32 }).toLowerCase();
+  const found = (input.receipt.logs ?? []).some((log) => {
+    if (!log.address || address(log.address, "receipt log address") !== expectedContract) return false;
+    if (!log.topics?.[0] || log.topics[0].toLowerCase() !== expectedEvent.topic.toLowerCase()) return false;
+    return expectedJobTopic === null || log.topics[1]?.toLowerCase() === expectedJobTopic;
+  });
+  if (!found) return { ok: false, code: "receipt_invalid", message: `receipt did not contain the expected ${expectedEvent.name} event` };
+  return { ok: true, transactionHash: expectedHash, event: expectedEvent.name };
+}
+
+export type AgonJobEscrowReadClient = {
+  getBytecode(input: { address: `0x${string}` }): Promise<unknown>;
+  readContract(input: { address: `0x${string}`; abi: typeof AGON_JOB_ESCROW_ABI; functionName: "usdc" | "serviceRegistry" | "disputeResolver" | "getJob"; args?: readonly unknown[] }): Promise<unknown>;
+};
+
+export type AgonJobEscrowReadAdapter = {
+  readonly enabled: boolean;
+  inspect(jobId: string | bigint): Promise<AgonJobEscrowJob>;
+};
+
+function normalizeJob(value: unknown): AgonJobEscrowJob {
+  if (!Array.isArray(value) || value.length < 18) throw new Error("AgonJobEscrow returned an invalid job tuple");
+  const buyer = address(value[1], "job buyer");
+  const provider = address(value[2], "job provider");
+  const manifestHash = hash(value[6], "job manifest hash");
+  const termsHash = hash(value[7], "job terms hash");
+  const deliverableHash: `0x${string}` = typeof value[8] === "string" && HASH.test(value[8]) ? value[8].toLowerCase() as `0x${string}` : `0x${"0".repeat(64)}`;
+  const timestamp = (raw: unknown, label: string) => { const n = Number(raw); if (!Number.isSafeInteger(n) || n < 0) throw new Error(`${label} is invalid`); return n; };
+  const reviewDeadline = timestamp(value[13], "review deadline");
+  const submittedAt = timestamp(value[15], "submitted timestamp");
+  return {
+    jobId: integer(String(value[0]), "job id").toString(), buyer, provider,
+    listingId: integer(String(value[3]), "listing id").toString(), agentId: integer(String(value[4]), "agent id").toString(),
+    listingVersion: integer(String(value[5]), "listing version").toString(), manifestHash, termsHash, deliverableHash,
+    amount: integer(String(value[9]), "job amount").toString(), fee: integer(String(value[10]), "job fee").toString(),
+    reviewHours: timestamp(value[11], "review hours"), acceptanceDeadline: new Date(timestamp(value[12], "acceptance deadline") * 1000),
+    reviewDeadline: reviewDeadline === 0 ? null : new Date(reviewDeadline * 1000), createdAt: new Date(timestamp(value[14], "created timestamp") * 1000),
+    submittedAt: submittedAt === 0 ? null : new Date(submittedAt * 1000), status: timestamp(value[16], "job status"), settlement: timestamp(value[17], "job settlement"),
+  };
+}
+
+export function createDisabledAgonJobEscrowReadAdapter(): AgonJobEscrowReadAdapter {
+  return { enabled: false, async inspect(): Promise<AgonJobEscrowJob> { throw new Error("AgonJobEscrow inspection is disabled by policy"); } };
+}
+
+export function createViemAgonJobEscrowReadAdapter(options: {
+  enabled: boolean;
+  client?: AgonJobEscrowReadClient;
+  escrowAddress: string;
+  expectedServiceRegistry: string;
+  expectedAsset?: string;
+  expectedDisputeResolver?: string;
+}): AgonJobEscrowReadAdapter {
+  const escrowAddress = address(options.escrowAddress, "configured AgonJobEscrow contract address");
+  const serviceRegistry = address(options.expectedServiceRegistry, "configured AgonServiceRegistry address");
+  const expectedAsset = address(options.expectedAsset ?? AGON_ESCROW_USDC, "configured AgonJobEscrow USDC asset");
+  const expectedResolver = options.expectedDisputeResolver ? address(options.expectedDisputeResolver, "configured dispute resolver") : null;
+  const enabled = options.enabled === true && options.client !== undefined;
+  return {
+    enabled,
+    async inspect(input): Promise<AgonJobEscrowJob> {
+      if (!enabled || !options.client) throw new Error("AgonJobEscrow inspection is disabled by policy");
+      const id = jobId(input);
+      const [code, asset, registry, resolver, rawJob] = await Promise.all([
+        options.client.getBytecode({ address: escrowAddress }),
+        options.client.readContract({ address: escrowAddress, abi: AGON_JOB_ESCROW_ABI, functionName: "usdc" }),
+        options.client.readContract({ address: escrowAddress, abi: AGON_JOB_ESCROW_ABI, functionName: "serviceRegistry" }),
+        options.client.readContract({ address: escrowAddress, abi: AGON_JOB_ESCROW_ABI, functionName: "disputeResolver" }),
+        options.client.readContract({ address: escrowAddress, abi: AGON_JOB_ESCROW_ABI, functionName: "getJob", args: [id] }),
+      ]);
+      if (typeof code !== "string" || !/^0x[0-9a-f]+$/i.test(code) || code.length <= 2) throw new Error("AgonJobEscrow contract has no deployed bytecode");
+      if (address(asset, "AgonJobEscrow USDC asset") !== expectedAsset) throw new Error("AgonJobEscrow returned a different USDC asset");
+      if (address(registry, "AgonJobEscrow service registry") !== serviceRegistry) throw new Error("AgonJobEscrow returned a different service registry");
+      const normalizedResolver = address(resolver, "AgonJobEscrow dispute resolver");
+      if (expectedResolver && normalizedResolver !== expectedResolver) throw new Error("AgonJobEscrow returned a different dispute resolver");
+      const job = normalizeJob(rawJob);
+      if (job.jobId !== id.toString()) throw new Error("AgonJobEscrow returned a different job");
+      return job;
+    },
+  };
+}

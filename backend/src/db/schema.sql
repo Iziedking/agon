@@ -1281,6 +1281,47 @@ create table if not exists agon_verification_evidence (
 create index if not exists agon_verification_evidence_listing_idx
   on agon_verification_evidence(listing_id, created_at desc);
 
+-- A playground run is durable evidence preparation, not a verification claim
+-- by itself. The row is created before the agent executes so a timeout or
+-- process crash remains visible. The result is immutable after completion and
+-- idempotency is scoped to the authenticated actor.
+create table if not exists agon_playground_runs (
+  run_id          uuid primary key,
+  actor_address   text check (actor_address is null or actor_address ~ '^0x[0-9a-f]{40}$'),
+  request_id      uuid not null,
+  idempotency_key text check (idempotency_key is null or char_length(idempotency_key) between 8 and 128),
+  category        text not null check (category in ('development', 'research', 'analysis', 'verification', 'execution')),
+  task_id         text not null check (task_id ~ '^[a-z0-9-]{1,64}$'),
+  input_hash      text not null check (input_hash ~ '^0x[0-9a-f]{64}$'),
+  input           jsonb not null,
+  scope           jsonb,
+  state           text not null default 'running' check (state in ('running', 'completed', 'failed')),
+  result          jsonb,
+  error_code      text,
+  created_at      timestamptz not null default now(),
+  lease_expires_at timestamptz not null default (now() + interval '60 seconds'),
+  completed_at    timestamptz,
+  unique (actor_address, idempotency_key),
+  check ((state = 'running' and result is null and completed_at is null)
+      or (state = 'completed' and result is not null and completed_at is not null)
+      or (state = 'failed' and error_code is not null and completed_at is not null))
+);
+create index if not exists agon_playground_runs_actor_idx
+  on agon_playground_runs(actor_address, created_at desc);
+create index if not exists agon_playground_runs_state_idx
+  on agon_playground_runs(state, created_at desc);
+
+-- Additive upgrade for installations created before run leases existed.
+alter table agon_playground_runs
+  add column if not exists lease_expires_at timestamptz;
+update agon_playground_runs
+   set lease_expires_at = coalesce(lease_expires_at, completed_at, created_at + interval '60 seconds')
+ where lease_expires_at is null;
+alter table agon_playground_runs
+  alter column lease_expires_at set default (now() + interval '60 seconds');
+alter table agon_playground_runs
+  alter column lease_expires_at set not null;
+
 -- Durable buyer-side x402 preparation. This is an authorization boundary, not
 -- a payment ledger: the row is written before any future Circle call and is
 -- intentionally stuck in `prepared` while the execution adapter is disabled.
@@ -1499,6 +1540,51 @@ create table if not exists agon_escrow_transaction_approvals (
 );
 create index if not exists agon_escrow_transaction_approvals_intent_idx
   on agon_escrow_transaction_approvals(intent_id, approved_at desc);
+
+-- Durable intent state for the deployed AgonJobEscrow contract. This table is
+-- intentionally separate from agon_escrow_intents, which models the legacy
+-- PrizeEscrow pool lifecycle. Reconciliation is read-only and only persists a
+-- state after the independently read job matches every pinned term.
+create table if not exists agon_job_escrow_intents (
+  intent_id                 uuid primary key,
+  actor_address             text not null check (actor_address ~ '^0x[0-9a-f]{40}$'),
+  idempotency_key            text not null check (idempotency_key ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$'),
+  listing_reference          text not null check (listing_reference ~ '^[1-9][0-9]*:0x[0-9a-f]{40}:[1-9][0-9]*$'),
+  network                   text not null check (network = 'eip155:5042002'),
+  asset                     text not null check (asset = '0x3600000000000000000000000000000000000000'),
+  escrow_contract_address   text not null check (escrow_contract_address ~ '^0x[0-9a-f]{40}$'),
+  buyer_address             text not null check (buyer_address ~ '^0x[0-9a-f]{40}$'),
+  provider_address          text not null check (provider_address ~ '^0x[0-9a-f]{40}$'),
+  service_registry_address  text not null check (service_registry_address ~ '^0x[0-9a-f]{40}$'),
+  listing_id                numeric(78, 0) not null check (listing_id > 0),
+  agent_id                  numeric(78, 0) not null check (agent_id > 0),
+  listing_version           numeric(78, 0) not null check (listing_version > 0),
+  manifest_hash             text not null check (manifest_hash ~ '^0x[0-9a-f]{64}$'),
+  terms_hash                text not null check (terms_hash ~ '^0x[0-9a-f]{64}$'),
+  amount_base_units         numeric(78, 0) not null check (amount_base_units > 0),
+  fee_bps                   integer not null check (fee_bps between 0 and 1000),
+  review_hours              integer not null check (review_hours between 1 and 720),
+  expires_at                timestamptz not null,
+  client_reference          text not null check (client_reference ~ '^0x[0-9a-f]{64}$'),
+  state                     text not null default 'prepared' check (state in ('prepared','submitted','unknown','created','accepted','job_submitted','complete','rejected','disputed','failed')),
+  settlement                text not null default 'none' check (settlement in ('none','provider_paid','buyer_refunded')),
+  onchain_job_id            numeric(78, 0),
+  transaction_hash          text check (transaction_hash is null or transaction_hash ~ '^0x[0-9a-f]{64}$'),
+  deliverable_hash          text check (deliverable_hash is null or deliverable_hash ~ '^0x[0-9a-f]{64}$'),
+  reason_hash               text check (reason_hash is null or reason_hash ~ '^0x[0-9a-f]{64}$'),
+  last_reconciled_at        timestamptz,
+  created_at                timestamptz not null default now(),
+  updated_at                timestamptz not null default now(),
+  unique (actor_address, idempotency_key),
+  unique (actor_address, client_reference)
+);
+create index if not exists agon_job_escrow_intents_actor_idx
+  on agon_job_escrow_intents(actor_address, created_at desc);
+create index if not exists agon_job_escrow_intents_state_idx
+  on agon_job_escrow_intents(state, updated_at desc);
+create index if not exists agon_job_escrow_intents_job_idx
+  on agon_job_escrow_intents(onchain_job_id)
+  where onchain_job_id is not null;
 
 create table if not exists agon_indexer_state (
   stream_name                 text not null check (char_length(stream_name) > 0),

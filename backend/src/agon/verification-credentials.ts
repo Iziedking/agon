@@ -1,4 +1,4 @@
-import { getAddress, keccak256, stringToHex } from "viem";
+import { encodeFunctionData, getAddress, keccak256, stringToHex } from "viem";
 import { canonicalizeManifest } from "./core/manifest.ts";
 
 /** ERC-8004 validation is pinned to the deployed Arc Testnet registries. */
@@ -249,6 +249,104 @@ export type AgonValidationRegistryAdapter = {
   request(input: { validatorAddress: `0x${string}`; agentId: bigint; requestURI: string; requestHash: `0x${string}` }): Promise<AgonValidationResult<{ transaction: `0x${string}` | null }>>;
   respond(input: { requestHash: `0x${string}`; response: number; responseURI?: string | null; responseHash?: `0x${string}` | null; tag?: string | null }): Promise<AgonValidationResult<{ transaction: `0x${string}` | null }>>;
 };
+
+export type AgonValidationRegistryWritePlan = {
+  chainId: 5042002;
+  to: `0x${string}`;
+  value: "0x0";
+  data: `0x${string}`;
+  functionName: "validationRequest" | "validationResponse";
+  args: readonly unknown[];
+};
+
+const validationRegistryAbi = [
+  {
+    type: "function",
+    name: "validationRequest",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "validatorAddress", type: "address" },
+      { name: "agentId", type: "uint256" },
+      { name: "requestURI", type: "string" },
+      { name: "requestHash", type: "bytes32" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "validationResponse",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "requestHash", type: "bytes32" },
+      { name: "response", type: "uint8" },
+      { name: "responseURI", type: "string" },
+      { name: "responseHash", type: "bytes32" },
+      { name: "tag", type: "string" },
+    ],
+    outputs: [],
+  },
+] as const;
+
+function writePlanError(message: string): AgonValidationResult<AgonValidationRegistryWritePlan> {
+  return error("invalid_request", message);
+}
+
+/** Build exact ERC-8004 request calldata for a wallet to review and sign. */
+export function buildValidationRequestWritePlan(input: {
+  validationRegistryAddress: string;
+  validatorAddress: string;
+  agentId: bigint;
+  requestURI: string;
+  requestHash: string;
+}): AgonValidationResult<AgonValidationRegistryWritePlan> {
+  const registry = address(input.validationRegistryAddress);
+  const validator = address(input.validatorAddress);
+  if (!registry || !validator) return writePlanError("registry and validator addresses must be valid");
+  if (input.agentId < 0n) return writePlanError("agent id must be non-negative");
+  if (!validURI(input.requestURI)) return writePlanError("request URI must use HTTPS or IPFS");
+  if (!BYTES32.test(input.requestHash)) return writePlanError("request hash must be a bytes32 value");
+  const args = [validator, input.agentId, input.requestURI, input.requestHash as `0x${string}`] as const;
+  return {
+    ok: true,
+    value: {
+      chainId: 5042002,
+      to: registry,
+      value: "0x0",
+      data: encodeFunctionData({ abi: validationRegistryAbi, functionName: "validationRequest", args }),
+      functionName: "validationRequest",
+      args,
+    },
+  };
+}
+
+/** Build exact ERC-8004 response calldata for the selected validator wallet. */
+export function buildValidationResponseWritePlan(input: {
+  validationRegistryAddress: string;
+  requestHash: string;
+  response: number;
+  responseURI: string;
+  responseHash: string;
+  tag: string;
+}): AgonValidationResult<AgonValidationRegistryWritePlan> {
+  const registry = address(input.validationRegistryAddress);
+  if (!registry) return writePlanError("registry address must be valid");
+  if (!BYTES32.test(input.requestHash) || !BYTES32.test(input.responseHash)) return writePlanError("request and response hashes must be bytes32 values");
+  if (!Number.isInteger(input.response) || input.response < 0 || input.response > 100) return writePlanError("validation response must be an integer from 0 to 100");
+  if (!validURI(input.responseURI)) return writePlanError("response URI must use HTTPS or IPFS");
+  if (!SAFE_TAG.test(input.tag)) return writePlanError("validation tag is invalid");
+  const args = [input.requestHash as `0x${string}`, input.response, input.responseURI, input.responseHash as `0x${string}`, input.tag] as const;
+  return {
+    ok: true,
+    value: {
+      chainId: 5042002,
+      to: registry,
+      value: "0x0",
+      data: encodeFunctionData({ abi: validationRegistryAbi, functionName: "validationResponse", args }),
+      functionName: "validationResponse",
+      args,
+    },
+  };
+}
 
 /** No validator wallet, contract client, RPC call, or transaction is created. */
 export function createDisabledAgonValidationRegistryAdapter(): AgonValidationRegistryAdapter {

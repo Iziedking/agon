@@ -3,6 +3,10 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const address = z.string().regex(/^0x[a-fA-F0-9]{40}$/, "expected deployed contract address");
+// The receipt stores compiler metadata beside one record per contract. Keep
+// the parser forward-compatible while protocol readiness validates the
+// contract records it actually consumes.
+const sourceVerification = z.record(z.unknown()).optional();
 const schema = z.object({
   chainId: z.number().int().positive(),
   contracts: z.object({
@@ -15,7 +19,9 @@ const schema = z.object({
   }),
   external: z.object({
     IdentityRegistry: z.object({ address, chainId: z.number().int().positive() }),
+    ValidationRegistry: z.object({ address, chainId: z.number().int().positive() }).optional(),
   }),
+  sourceVerification,
 });
 
 export type AgonDeployment = z.infer<typeof schema> & {
@@ -27,7 +33,11 @@ export type AgonDeployment = z.infer<typeof schema> & {
     AgonSyndicateRegistry?: `0x${string}`;
     AgonPrizeVault?: `0x${string}`;
   };
-  external: { IdentityRegistry: { address: `0x${string}`; chainId: number } };
+  external: {
+    IdentityRegistry: { address: `0x${string}`; chainId: number };
+    ValidationRegistry?: { address: `0x${string}`; chainId: number };
+  };
+  sourceVerification?: Record<string, unknown>;
 };
 
 export function parseAgonDeployment(input: unknown, options: { registrationMode: boolean }) {

@@ -5,6 +5,16 @@ import { validateX402DeliveryEvidence, type X402DeliveryEvidence, type X402Deliv
 import { hashAgonEscrowTerms, isAgonEscrowTransitionAllowed, type AgonEscrowIntentState, type AgonEscrowTerms } from "../escrow-policy.ts";
 import type { AgonPrizeEscrowPoolBinding } from "../execution/escrow-reconciliation.ts";
 import type { AgonEscrowWriteOperation } from "../execution/escrow-write-preflight.ts";
+import {
+  isAgonJobEscrowTransitionAllowed,
+  settlementForAgonJobStatus,
+  stateForAgonJobStatus,
+  validateAgonJobEscrowJobMatch,
+  type AgonJobEscrowIntent,
+  type AgonJobEscrowIntentState,
+  type AgonJobEscrowSettlement,
+} from "../execution/job-escrow-state.ts";
+import type { AgonJobEscrowJob } from "../execution/agon-job-escrow.ts";
 
 export type ProfileStatus = "Active" | "Suspended" | "Archived";
 export type ListingStatus = "Listed" | "Suspended" | "Delisted";
@@ -189,6 +199,12 @@ export type StoredAgonEscrowIntent = AgonEscrowIntentProjection & {
   createdAt: Date;
   updatedAt: Date;
 };
+
+export type AgonJobEscrowIntentProjection = Omit<AgonJobEscrowIntent, "createdAt" | "updatedAt"> & {
+  createdAt?: Date;
+};
+
+export type StoredAgonJobEscrowIntent = AgonJobEscrowIntent;
 
 export type AgonEscrowTransactionApprovalProjection = {
   approvalHash: string;
@@ -418,6 +434,38 @@ type AgonEscrowIntentRow = QueryResultRow & {
   pool_contract_address: string | null;
   pool_controller_address: string | null;
   pool_id: string | null;
+  created_at: Date;
+  updated_at: Date;
+};
+
+type AgonJobEscrowIntentRow = QueryResultRow & {
+  intent_id: string;
+  actor_address: string;
+  idempotency_key: string;
+  listing_reference: string;
+  network: "eip155:5042002";
+  asset: "0x3600000000000000000000000000000000000000";
+  escrow_contract_address: string;
+  buyer_address: string;
+  provider_address: string;
+  service_registry_address: string;
+  listing_id: string;
+  agent_id: string;
+  listing_version: string;
+  manifest_hash: string;
+  terms_hash: string;
+  amount_base_units: string;
+  fee_bps: number;
+  review_hours: number;
+  expires_at: Date;
+  client_reference: string;
+  state: AgonJobEscrowIntentState;
+  settlement: AgonJobEscrowSettlement;
+  onchain_job_id: string | null;
+  transaction_hash: `0x${string}` | null;
+  deliverable_hash: `0x${string}` | null;
+  reason_hash: `0x${string}` | null;
+  last_reconciled_at: Date | null;
   created_at: Date;
   updated_at: Date;
 };
@@ -695,6 +743,40 @@ function mapAgonEscrowIntent(row: AgonEscrowIntentRow): StoredAgonEscrowIntent {
   };
 }
 
+function mapAgonJobEscrowIntent(row: AgonJobEscrowIntentRow): StoredAgonJobEscrowIntent {
+  return {
+    intentId: row.intent_id,
+    idempotencyKey: row.idempotency_key,
+    actor: row.actor_address as `0x${string}`,
+    buyer: row.buyer_address as `0x${string}`,
+    provider: row.provider_address as `0x${string}`,
+    listingReference: row.listing_reference,
+    network: row.network,
+    asset: row.asset as `0x${string}`,
+    escrowContract: row.escrow_contract_address as `0x${string}`,
+    serviceRegistry: row.service_registry_address as `0x${string}`,
+    listingId: row.listing_id,
+    agentId: row.agent_id,
+    listingVersion: row.listing_version,
+    manifestHash: row.manifest_hash as `0x${string}`,
+    termsHash: row.terms_hash as `0x${string}`,
+    amountBaseUnits: BigInt(row.amount_base_units),
+    feeBps: row.fee_bps,
+    reviewHours: row.review_hours,
+    expiresAt: row.expires_at,
+    clientReference: row.client_reference as `0x${string}`,
+    state: row.state,
+    settlement: row.settlement,
+    onchainJobId: row.onchain_job_id,
+    transactionHash: row.transaction_hash,
+    deliverableHash: row.deliverable_hash,
+    reasonHash: row.reason_hash,
+    lastReconciledAt: row.last_reconciled_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 function mapAgonEscrowTransactionApproval(row: AgonEscrowTransactionApprovalRow): StoredAgonEscrowTransactionApproval {
   return {
     approvalHash: row.approval_hash,
@@ -763,6 +845,13 @@ const AGON_ESCROW_INTENT_COLUMNS = `
   expires_at, state, provider_reference, transaction_hash, pool_contract_address,
   pool_controller_address, pool_id, created_at, updated_at`;
 
+const AGON_JOB_ESCROW_INTENT_COLUMNS = `
+  intent_id, actor_address, idempotency_key, listing_reference, network, asset,
+  escrow_contract_address, buyer_address, provider_address, service_registry_address,
+  listing_id, agent_id, listing_version, manifest_hash, terms_hash, amount_base_units,
+  fee_bps, review_hours, expires_at, client_reference, state, settlement, onchain_job_id,
+  transaction_hash, deliverable_hash, reason_hash, last_reconciled_at, created_at, updated_at`;
+
 const AGON_ESCROW_TRANSACTION_APPROVAL_COLUMNS = `
   approval_hash, intent_id, actor_address, operation, intent_hash,
   approval_idempotency_key, approved_at, expires_at, created_at`;
@@ -814,6 +903,176 @@ export class PostgresAgonRepository {
       [intentId],
     );
     return result.rows[0] ? mapAgonEscrowIntent(result.rows[0]) : null;
+  }
+
+  async getAgonJobEscrowIntent(intentId: string): Promise<StoredAgonJobEscrowIntent | null> {
+    if (!/^[0-9a-f-]{36}$/i.test(intentId)) return null;
+    const result = await this.pool.query<AgonJobEscrowIntentRow>(
+      `select ${AGON_JOB_ESCROW_INTENT_COLUMNS} from agon_job_escrow_intents where intent_id = $1`,
+      [intentId],
+    );
+    return result.rows[0] ? mapAgonJobEscrowIntent(result.rows[0]) : null;
+  }
+
+  async prepareAgonJobEscrowIntent(input: AgonJobEscrowIntentProjection): Promise<StoredAgonJobEscrowIntent> {
+    const actor = normalizeAddress(input.actor);
+    if (!/^[0-9a-f-]{36}$/i.test(input.intentId)) throw new AgonStoreInvariantError("job escrow intent id must be a UUID");
+    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/.test(input.idempotencyKey)) throw new AgonStoreInvariantError("job escrow idempotency key is invalid");
+    if (input.state !== "prepared" || input.settlement !== "none" || input.onchainJobId !== null) {
+      throw new AgonStoreInvariantError("job escrow intent must start prepared with no settlement");
+    }
+    const inserted = await this.pool.query<AgonJobEscrowIntentRow>(
+      `insert into agon_job_escrow_intents (
+         intent_id, actor_address, idempotency_key, listing_reference, network, asset,
+         escrow_contract_address, buyer_address, provider_address, service_registry_address,
+         listing_id, agent_id, listing_version, manifest_hash, terms_hash, amount_base_units,
+         fee_bps, review_hours, expires_at, client_reference, state, settlement, onchain_job_id,
+         transaction_hash, deliverable_hash, reason_hash, last_reconciled_at, created_at, updated_at
+       ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $28)
+       on conflict (actor_address, idempotency_key) do nothing
+       returning ${AGON_JOB_ESCROW_INTENT_COLUMNS}`,
+      [
+        input.intentId,
+        actor,
+        input.idempotencyKey,
+        input.listingReference,
+        input.network,
+        input.asset.toLowerCase(),
+        normalizeAddress(input.escrowContract),
+        normalizeAddress(input.buyer),
+        normalizeAddress(input.provider),
+        normalizeAddress(input.serviceRegistry),
+        requirePositive(BigInt(input.listingId), "listing id"),
+        requirePositive(BigInt(input.agentId), "agent id"),
+        requirePositive(BigInt(input.listingVersion), "listing version"),
+        normalizeHash(input.manifestHash),
+        normalizeHash(input.termsHash),
+        requirePositive(input.amountBaseUnits, "job escrow amount"),
+        input.feeBps,
+        input.reviewHours,
+        input.expiresAt,
+        normalizeHash(input.clientReference),
+        input.state,
+        input.settlement,
+        input.onchainJobId,
+        input.transactionHash,
+        input.deliverableHash,
+        input.reasonHash,
+        input.lastReconciledAt,
+        input.createdAt ?? new Date(),
+      ],
+    );
+    if (inserted.rows[0]) return mapAgonJobEscrowIntent(inserted.rows[0]);
+
+    const existing = await this.pool.query<AgonJobEscrowIntentRow>(
+      `select ${AGON_JOB_ESCROW_INTENT_COLUMNS}
+       from agon_job_escrow_intents where actor_address = $1 and idempotency_key = $2`,
+      [actor, input.idempotencyKey],
+    );
+    const row = existing.rows[0];
+    if (!row) throw new AgonStoreInvariantError("job escrow idempotency conflict could not be loaded");
+    const value = mapAgonJobEscrowIntent(row);
+    const same = value.termsHash === input.termsHash.toLowerCase()
+      && value.clientReference === input.clientReference.toLowerCase()
+      && value.listingReference === input.listingReference
+      && value.escrowContract === input.escrowContract.toLowerCase()
+      && value.buyer === input.buyer.toLowerCase()
+      && value.provider === input.provider.toLowerCase()
+      && value.listingId === input.listingId
+      && value.agentId === input.agentId
+      && value.listingVersion === input.listingVersion
+      && value.manifestHash === input.manifestHash.toLowerCase()
+      && value.amountBaseUnits === input.amountBaseUnits
+      && value.feeBps === input.feeBps
+      && value.reviewHours === input.reviewHours
+      && value.expiresAt.getTime() === input.expiresAt.getTime();
+    if (!same) throw new AgonStoreInvariantError("job escrow idempotency key already used for different terms");
+    return value;
+  }
+
+  async reconcileAgonJobEscrowIntent(input: {
+    intentId: string;
+    job: AgonJobEscrowJob;
+    transactionHash?: `0x${string}` | null;
+  }): Promise<StoredAgonJobEscrowIntent> {
+    if (!/^[0-9a-f-]{36}$/i.test(input.intentId)) throw new AgonStoreInvariantError("job escrow intent id must be a UUID");
+    const client = await this.pool.connect();
+    try {
+      await client.query("begin");
+      const current = await client.query<AgonJobEscrowIntentRow>(
+        `select ${AGON_JOB_ESCROW_INTENT_COLUMNS} from agon_job_escrow_intents where intent_id = $1 for update`,
+        [input.intentId],
+      );
+      const row = current.rows[0];
+      if (!row) throw new AgonStoreInvariantError("job escrow intent not found");
+      const intent = mapAgonJobEscrowIntent(row);
+      const match = validateAgonJobEscrowJobMatch(intent, input.job);
+      if (!match.ok) throw new AgonStoreInvariantError(match.message);
+      if (intent.onchainJobId !== null && intent.onchainJobId !== input.job.jobId) {
+        throw new AgonStoreInvariantError("job escrow intent is already bound to a different on-chain job");
+      }
+      const nextState = stateForAgonJobStatus(input.job.status);
+      if (!isAgonJobEscrowTransitionAllowed(intent.state, nextState)) {
+        throw new AgonStoreInvariantError(`cannot reconcile job escrow intent from ${intent.state} to ${nextState}`);
+      }
+      const settlement = settlementForAgonJobStatus(input.job.settlement);
+      const deliverableHash = /^0x0{64}$/i.test(input.job.deliverableHash) ? null : input.job.deliverableHash;
+      const updated = await client.query<AgonJobEscrowIntentRow>(
+        `update agon_job_escrow_intents set
+           state = $2,
+           settlement = $3,
+           onchain_job_id = $4,
+           transaction_hash = coalesce($5, transaction_hash),
+           deliverable_hash = coalesce($6, deliverable_hash),
+           last_reconciled_at = now(),
+           updated_at = now()
+         where intent_id = $1
+         returning ${AGON_JOB_ESCROW_INTENT_COLUMNS}`,
+        [input.intentId, nextState, settlement, input.job.jobId, input.transactionHash ?? null, deliverableHash],
+      );
+      await client.query("commit");
+      return mapAgonJobEscrowIntent(updated.rows[0]!);
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async markAgonJobEscrowSubmitted(input: {
+    intentId: string;
+    transactionHash: `0x${string}`;
+  }): Promise<StoredAgonJobEscrowIntent> {
+    if (!/^[0-9a-f-]{36}$/i.test(input.intentId)) throw new AgonStoreInvariantError("job escrow intent id must be a UUID");
+    const transactionHash = normalizeHash(input.transactionHash);
+    const client = await this.pool.connect();
+    try {
+      await client.query("begin");
+      const current = await client.query<AgonJobEscrowIntentRow>(
+        `select ${AGON_JOB_ESCROW_INTENT_COLUMNS} from agon_job_escrow_intents where intent_id = $1 for update`,
+        [input.intentId],
+      );
+      const row = current.rows[0];
+      if (!row) throw new AgonStoreInvariantError("job escrow intent not found");
+      if (row.state === "submitted" && row.transaction_hash === transactionHash) {
+        await client.query("commit");
+        return mapAgonJobEscrowIntent(row);
+      }
+      if (row.state !== "prepared") throw new AgonStoreInvariantError(`cannot mark job escrow intent ${row.state} as submitted`);
+      const updated = await client.query<AgonJobEscrowIntentRow>(
+        `update agon_job_escrow_intents set state = 'submitted', transaction_hash = $2, updated_at = now()
+         where intent_id = $1 returning ${AGON_JOB_ESCROW_INTENT_COLUMNS}`,
+        [input.intentId, transactionHash],
+      );
+      await client.query("commit");
+      return mapAgonJobEscrowIntent(updated.rows[0]!);
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async getAgonEscrowTransactionApproval(intentId: string, approvalIdempotencyKey?: string): Promise<StoredAgonEscrowTransactionApproval | null> {
