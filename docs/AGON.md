@@ -489,8 +489,9 @@ snapshotted at creation.
 The matching chain-neutral transition model is
 `backend/src/agon/execution/job-lifecycle.ts`. The contract suite is
 `contracts/test/AgonJobEscrow.t.sol` and the backend adversarial coverage is
-`backend/test/agon/job-lifecycle.test.ts`. No Agon escrow address is documented
-until a deployment receipt exists; deployment and execution remain disabled.
+`backend/test/agon/job-lifecycle.test.ts`. The canonical Arc Testnet receipt
+now records `AgonJobEscrow` at
+`0x6373E576AcFC9DE6cB182dA201d8e857D2A918aD`; execution remains disabled.
 
 ## Phase 24: Agon Arena verification contract boundary
 
@@ -517,7 +518,10 @@ pools, snapshots the sponsor and fee, accepts one immutable payout root, and
 uses indexed Merkle pull claims with a bitmap replay guard. Payouts cannot
 exceed principal, fees are transferred to the configured treasury, and any
 unclaimed remainder is refundable only after all claims or the claim deadline.
-The new contracts have no canonical deployment addresses yet.
+The canonical Arc Testnet receipt records `AgonArena` at
+`0x2c6196dB6491A3D3837f53Ce72B84778bc5E9d8F`, `AgonSyndicateRegistry` at
+`0xD77312288E4019bD3Fc7a6C0234B9c84D09C1Ab4`, and `AgonPrizeVault` at
+`0xd3a538fD48FA81CF102E5b5381B47e46eC176D3b`.
 
 ## Phase 26: post-foundation deployment wiring and preflight
 
@@ -532,9 +536,9 @@ The four constructor inputs that carry custody or authority are explicit:
 the dispute resolver, treasury, validation registry, and Arc Testnet USDC.
 There is no admin or address fallback for those values. A real broadcast is a
 separate four-transaction action requiring approval of the exact inputs,
-predicted addresses, and estimated cost. Until successful receipts are
-recorded, the four new addresses remain absent from the canonical receipt and
-all write flags remain disabled.
+predicted addresses, and estimated cost. The approved Arc Testnet receipts
+are now recorded in `contracts/deployments/agon-arc-testnet.json`; all write
+flags remain disabled until the post-deployment release gate passes.
 
 ## Current release status
 
@@ -550,8 +554,8 @@ Git remains user-owned. The proof fixture currently hashes to:
 Production is not enabled. Profile/listing writes, Circle x402 execution and
 reconciliation, Arena validation adapters, agent-wallet execution, and all
 escrow/prize-vault writes remain disabled by default. The new Agon contract
-implementations have no canonical deployment addresses; the new deployment
-script is local/preflight-only until a separate approval gate. Before production,
+implementations have canonical Arc Testnet receipt addresses, but the new
+deployment script and runtime write paths remain separately gated. Before production,
 complete an explicitly approved Arc Testnet wallet smoke, select and verify
 the controller/signer policy, validate the real Circle and escrow adapters,
 then run staging migrations and authenticated API/UI smoke tests with
