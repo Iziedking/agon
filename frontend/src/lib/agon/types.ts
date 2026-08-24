@@ -196,6 +196,17 @@ export type AgonEscrowReadinessView = {
   checkedAt: string;
 };
 
+export type AgonEscrowTransactionView = {
+  intentId: string;
+  operation: "fund";
+  chainId: string;
+  to: `0x${string}`;
+  functionName: "createJob";
+  args: readonly [string, string, `0x${string}`, string, number, number];
+  data: `0x${string}`;
+  nextAction: "approve_usdc_then_submit";
+};
+
 export type X402CallIntentRequest = {
   idempotencyKey: string;
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";

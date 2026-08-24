@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
-import { keccak256, stringToHex } from "viem";
+import { encodeFunctionData, keccak256, stringToHex } from "viem";
 import type { Result } from "../core/result.ts";
 import {
   PostgresAgonRepository,
@@ -62,6 +62,7 @@ import type {
   AgonEscrowIntentRequest,
   AgonEscrowIntentView,
   AgonEscrowReadinessView,
+  AgonEscrowTransactionView,
   AgonEscrowTransactionApprovalView,
   AgonEscrowTransactionApprovalReadinessView,
 } from "./api-types.ts";
@@ -119,6 +120,10 @@ export type PostgresAgonMarketServiceOptions = {
   escrowTransactionWriter?: AgonEscrowTransactionWriter;
   /** Pure release-gate snapshot; no provider or wallet work is performed. */
   escrowProductionReadiness?: () => AgonEscrowProductionReadiness;
+  agonJobEscrowAddress?: `0x${string}`;
+  agonArenaAddress?: `0x${string}`;
+  agonSyndicateRegistryAddress?: `0x${string}`;
+  agonPrizeVaultAddress?: `0x${string}`;
   fetchImpl?: typeof fetch;
 };
 
@@ -746,6 +751,60 @@ export class PostgresAgonMarketService implements AgonMarketService {
       }
     }
     return { ok: true, value: escrowReadinessView(intent, pool) };
+  }
+
+  async getAgonEscrowTransaction(
+    actor: string,
+    intentId: string,
+    operation: "fund",
+  ): Promise<Result<AgonEscrowTransactionView, AgonServiceError>> {
+    const intent = await this.repository.getAgonEscrowIntent(intentId);
+    if (!intent) return { ok: false, error: { code: "not_found", message: "Agon escrow intent not found" } };
+    if (intent.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the escrow intent owner can prepare this transaction" } };
+    if (intent.state !== "prepared") return { ok: false, error: { code: "execution_not_ready", message: `escrow intent is ${intent.state}; funding is no longer ready` } };
+    if (!this.options.agonJobEscrowAddress) return { ok: false, error: { code: "capability_unavailable", message: "AgonJobEscrow is not configured" } };
+    if (operation !== "fund") return { ok: false, error: { code: "validation_failed", message: "unsupported escrow transaction" } };
+
+    const clientReference = keccak256(stringToHex(intent.idempotencyKey));
+    const args = [
+      clientReference,
+      BigInt(intent.terms.listing.listingId),
+      intent.termsHash as `0x${string}`,
+      intent.terms.amountBaseUnits,
+      intent.terms.feeBps,
+      0n,
+    ] as const;
+    const data = encodeFunctionData({
+      abi: [{
+        type: "function",
+        name: "createJob",
+        stateMutability: "nonpayable",
+        inputs: [
+          { name: "clientReference", type: "bytes32" },
+          { name: "listingId", type: "uint256" },
+          { name: "termsHash", type: "bytes32" },
+          { name: "amount", type: "uint256" },
+          { name: "feeBps", type: "uint16" },
+          { name: "reviewHours", type: "uint64" },
+        ],
+        outputs: [{ name: "jobId", type: "uint256" }],
+      }] as const,
+      functionName: "createJob",
+      args,
+    });
+    return {
+      ok: true,
+      value: {
+        intentId,
+        operation,
+        chainId: "5042002",
+        to: this.options.agonJobEscrowAddress,
+        functionName: "createJob",
+        args: [clientReference, intent.terms.listing.listingId, intent.termsHash as `0x${string}`, intent.terms.amountBaseUnits.toString(), intent.terms.feeBps, 0],
+        data,
+        nextAction: "approve_usdc_then_submit",
+      },
+    };
   }
 
   async approveAgonEscrowTransaction(
@@ -1688,11 +1747,11 @@ export class PostgresAgonMarketService implements AgonMarketService {
       listingReads: true,
       listingWrites: writesReady,
       endpointQa: this.options.endpointQa ?? false,
-      directX402: this.options.directX402 ?? false,
-      escrow: false,
-      arenaVerification: false,
-      syndicateRegistry: false,
-      prizeVault: false,
+      directX402: this.options.directX402 ?? this.options.x402ExecutionEnabled === true,
+      escrow: Boolean(this.options.agonJobEscrowAddress),
+      arenaVerification: Boolean(this.options.agonArenaAddress),
+      syndicateRegistry: Boolean(this.options.agonSyndicateRegistryAddress),
+      prizeVault: Boolean(this.options.agonPrizeVaultAddress),
       writeReadiness: {
         checkedAt: readiness?.checkedAt ?? null,
         reasons: readiness?.reasons ?? ["adapter_unconfigured"],

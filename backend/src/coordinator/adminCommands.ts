@@ -37,7 +37,16 @@ const agonVerificationAbi = parseAbi([
   "function setVerification(uint256 listingId,uint8 verification)",
 ]);
 
+const agonArenaRoleAbi = parseAbi([
+  "function DEFAULT_ADMIN_ROLE() view returns (bytes32)",
+  "function EVALUATOR_ROLE() view returns (bytes32)",
+  "function hasRole(bytes32 role,address account) view returns (bool)",
+  "function grantRole(bytes32 role,address account)",
+  "function revokeRole(bytes32 role,address account)",
+]);
+
 const AGON_SERVICE_REGISTRY = config.agon.deployment?.contracts.AgonServiceRegistry;
+const AGON_ARENA = config.agon.deployment?.contracts.AgonArena;
 const AGON_VERIFIED = 2;
 
 async function agonRoleAction(kind: "agon_grant_verifier" | "agon_revoke_verifier", params: Record<string, unknown> | null): Promise<string> {
@@ -55,6 +64,23 @@ async function agonRoleAction(kind: "agon_grant_verifier" | "agon_revoke_verifie
   const hash = await wallet.writeContract({ address: AGON_SERVICE_REGISTRY, abi: agonVerificationAbi, functionName, args: [role, verifier] } as never);
   await publicClient.waitForTransactionReceipt({ hash, timeout: RECEIPT_TIMEOUT_MS });
   return `${functionName} VERIFIER_ROLE ${verifier}: ${hash}`;
+}
+
+async function agonArenaRoleAction(kind: "agon_grant_arena_evaluator" | "agon_revoke_arena_evaluator", params: Record<string, unknown> | null): Promise<string> {
+  if (!AGON_ARENA) throw new Error("AgonArena deployment is not configured");
+  const evaluator = String(params?.evaluator ?? "").trim() as `0x${string}`;
+  if (!/^0x[a-fA-F0-9]{40}$/.test(evaluator)) throw new Error("evaluator must be a checksummed or hexadecimal EVM address");
+  const role = await publicClient.readContract({ address: AGON_ARENA, abi: agonArenaRoleAbi, functionName: "EVALUATOR_ROLE" });
+  const admin = await publicClient.readContract({ address: AGON_ARENA, abi: agonArenaRoleAbi, functionName: "DEFAULT_ADMIN_ROLE" });
+  const wallet = coordinatorWallet();
+  const walletAddress = (wallet.account as { address?: `0x${string}` } | undefined)?.address;
+  if (!walletAddress) throw new Error("coordinator wallet has no signing address");
+  const isAdmin = await publicClient.readContract({ address: AGON_ARENA, abi: agonArenaRoleAbi, functionName: "hasRole", args: [admin, walletAddress] });
+  if (!isAdmin) throw new Error(`coordinator wallet ${walletAddress} is not AgonArena admin; refusing role mutation`);
+  const functionName = kind === "agon_grant_arena_evaluator" ? "grantRole" : "revokeRole";
+  const hash = await wallet.writeContract({ address: AGON_ARENA, abi: agonArenaRoleAbi, functionName, args: [role, evaluator] } as never);
+  await publicClient.waitForTransactionReceipt({ hash, timeout: RECEIPT_TIMEOUT_MS });
+  return `${functionName} AgonArena EVALUATOR_ROLE ${evaluator}: ${hash}`;
 }
 
 async function agonVerifyListing(params: Record<string, unknown> | null): Promise<string> {
@@ -235,6 +261,9 @@ async function execute(cmd: Command, broadcast: (message: unknown) => void): Pro
     case "agon_grant_verifier":
     case "agon_revoke_verifier":
       return await agonRoleAction(cmd.kind, cmd.params);
+    case "agon_grant_arena_evaluator":
+    case "agon_revoke_arena_evaluator":
+      return await agonArenaRoleAction(cmd.kind, cmd.params);
     case "agon_verify_listing":
       return await agonVerifyListing(cmd.params);
     case "agon_recheck_listing":

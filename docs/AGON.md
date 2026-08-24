@@ -23,6 +23,26 @@ The Agon foundation contracts are deployed on Arc Testnet and recorded in `contr
 
 - `AgonProfileRegistry`: `0xE0c7A2545C2f4eE6d2bD797B6f2742c73E640574`
 - `AgonServiceRegistry`: `0x2144C156B0a4581da2D046C2E41AC41C6C3938CB`
+- `AgonJobEscrow`: `0x6373E576AcFC9DE6cB182dA201d8e857D2A918aD`
+- `AgonArena`: `0x2c6196dB6491A3D3837f53Ce72B84778bc5E9d8F`
+- `AgonSyndicateRegistry`: `0xD77312288E4019bD3Fc7a6C0234B9c84D09C1Ab4`
+- `AgonPrizeVault`: `0xd3a538fD48FA81CF102E5b5381B47e46eC176D3b`
+
+The presentation surface is `/agon` in the frontend. It reads live state from
+the deployed AgonJobEscrow, AgonArena, AgonSyndicateRegistry, and AgonPrizeVault,
+links every contract to Arcscan, and exposes bounded wallet actions for job
+funding, evaluation requests, and syndicate membership. Each write waits for a
+successful receipt before showing completion.
+
+The authenticated `/admin` route is the Agon Operator Console. Its `AGON OPS`
+tab is the working control plane for the backend: it loads live capability and
+escrow readiness, browses indexed listings, runs the owner-scoped x402 preparation
+flow, prepares escrow intents and exact `createJob` calldata, and embeds the
+wallet-originated protocol actions. The same tab keeps the admin-token command
+queue for verification evidence, service `VERIFIER_ROLE`, and AgonArena
+`EVALUATOR_ROLE` grant/revoke operations. Admin-token actions remain coordinator
+guarded; owner-sensitive Agon routes still require the connected wallet's SIWE
+session, so the console does not turn an admin token into a signing oracle.
 
 The Arc Testnet deployment and verification procedure is documented in [the Agon foundation runbook](ops/agon-arc-testnet-deploy.md).
 
@@ -47,6 +67,7 @@ The auth service mounts these routes under `/agon`:
 - `POST /agon/escrow/intents` (authenticated; durable escrow preparation only)
 - `GET /agon/escrow/intents/:intentId` (authenticated; owner-scoped durable intent read)
 - `GET /agon/escrow/intents/:intentId/readiness` (authenticated; disabled/reconciliation/terminal readiness)
+- `GET /agon/escrow/intents/:intentId/transaction?operation=fund` (authenticated; exact AgonJobEscrow createJob transaction)
 - `POST /agon/escrow/intents/:intentId/fund` (authenticated; exact confirmation; disabled by default)
 - `POST /agon/escrow/intents/:intentId/release` (authenticated; exact confirmation; disabled by default)
 - `POST /agon/escrow/intents/:intentId/refund` (authenticated; exact confirmation; disabled by default)

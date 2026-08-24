@@ -28,6 +28,7 @@ import type {
   AgonEscrowIntentRequest,
   AgonEscrowIntentView,
   AgonEscrowReadinessView,
+  AgonEscrowTransactionView,
   AgonEscrowLifecycleRequest,
 } from "./types";
 import { AGON_PREVIEW_HEALTH, AGON_PREVIEW_LISTINGS } from "./preview";
@@ -146,6 +147,10 @@ export function getAgonEscrowIntent(intentId: string): Promise<AgonEscrowIntentV
 
 export function getAgonEscrowReadiness(intentId: string): Promise<AgonEscrowReadinessView> {
   return request<AgonEscrowReadinessView>(`/escrow/intents/${encodeURIComponent(intentId)}/readiness`);
+}
+
+export function getAgonEscrowTransaction(intentId: string): Promise<AgonEscrowTransactionView> {
+  return request<AgonEscrowTransactionView>(`/escrow/intents/${encodeURIComponent(intentId)}/transaction?operation=fund`);
 }
 
 export function fundAgonEscrow(intentId: string): Promise<AgonEscrowIntentView> {

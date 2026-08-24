@@ -212,6 +212,10 @@ const agonService = new PostgresAgonMarketService(agonRepository, {
   escrowReadAdapter: agonEscrowReadAdapter,
   escrowPoolContract: config.contracts.PrizeEscrow,
   escrowProductionReadiness: agonEscrowProductionReadiness,
+  agonJobEscrowAddress: config.agon.deployment?.contracts.AgonJobEscrow,
+  agonArenaAddress: config.agon.deployment?.contracts.AgonArena,
+  agonSyndicateRegistryAddress: config.agon.deployment?.contracts.AgonSyndicateRegistry,
+  agonPrizeVaultAddress: config.agon.deployment?.contracts.AgonPrizeVault,
 });
 app.route("/agon", createAgonRoutes({ service: agonService, requireAuth }));
 
@@ -1616,6 +1620,8 @@ const ADMIN_COMMAND_KINDS = new Set([
   // wallet only after the admin console explicitly queues them.
   "agon_grant_verifier",
   "agon_revoke_verifier",
+  "agon_grant_arena_evaluator",
+  "agon_revoke_arena_evaluator",
   "agon_verify_listing",
   "agon_recheck_listing",
 ]);

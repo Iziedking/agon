@@ -31,6 +31,7 @@ import type {
   AgonEscrowIntentRequest,
   AgonEscrowIntentView,
   AgonEscrowReadinessView,
+  AgonEscrowTransactionView,
   AgonEscrowTransactionApprovalRequest,
   AgonEscrowTransactionApprovalView,
   AgonEscrowTransactionApprovalReadinessView,
@@ -155,6 +156,11 @@ export type AgonMarketService = {
     actor: string,
     intentId: string,
   ): Promise<Result<AgonEscrowReadinessView, AgonServiceError>>;
+  getAgonEscrowTransaction(
+    actor: string,
+    intentId: string,
+    operation: "fund",
+  ): Promise<Result<AgonEscrowTransactionView, AgonServiceError>>;
   fundAgonEscrow?(
     actor: string,
     intentId: string,
@@ -415,6 +421,13 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
 
   app.get("/escrow/intents/:intentId/readiness", options.requireAuth, async (context) => {
     const result = await options.service.getAgonEscrowReadiness(context.get("address"), context.req.param("intentId"));
+    return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  app.get("/escrow/intents/:intentId/transaction", options.requireAuth, async (context) => {
+    const operation = context.req.query("operation") ?? "fund";
+    if (operation !== "fund") return serviceErrorResponse(context, { code: "validation_failed", message: "only the fund transaction is prepared through this route" });
+    const result = await options.service.getAgonEscrowTransaction(context.get("address"), context.req.param("intentId"), "fund");
     return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
   });
 

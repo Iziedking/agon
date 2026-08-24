@@ -133,3 +133,15 @@ export const CONTRACTS = {
   SyndicateFactory: "0x611E5b5ccECe86bB092Bd363F065abE0D3b739B3",
   PointsLedger: "0xd1b822137391f40bc70c8BC1EF5690fD62Fe7AD5",
 } as const;
+
+/// Current Agon protocol contracts. Keep these separate from the archived
+/// ArcRun contracts above so a legacy surface can never silently write into a
+/// new Agon contract or vice versa.
+export const AGON_CONTRACTS = {
+  ProfileRegistry: "0xE0c7A2545C2f4eE6d2bD797B6f2742c73E640574",
+  ServiceRegistry: "0x2144C156B0a4581da2D046C2E41AC41C6C3938CB",
+  JobEscrow: "0x6373E576AcFC9DE6cB182dA201d8e857D2A918aD",
+  Arena: "0x2c6196dB6491A3D3837f53Ce72B84778bc5E9d8F",
+  SyndicateRegistry: "0xD77312288E4019bD3Fc7a6C0234B9c84D09C1Ab4",
+  PrizeVault: "0xd3a538fD48FA81CF102E5b5381B47e46eC176D3b",
+} as const;

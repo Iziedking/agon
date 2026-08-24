@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { BracketedCell, CornerMarkers } from "@/components/redesign";
 import { EXPLORER } from "@/lib/arc";
+import { AgonAdminConsole } from "@/components/agon/AgonAdminConsole";
 
-/// Internal admin console. Not linked from the nav. Gated entirely by the
+/// Internal operator console. Linked as OPS in the Agon nav and gated entirely by the
 /// ADMIN_TOKEN, sent as the x-admin-token header on every call (the same token
 /// that guards /admin/events on the backend). Shows every contract's live USDC
 /// balance, the treasury and coordinator wallets, and lets an admin withdraw
@@ -52,7 +53,7 @@ const TABS: Array<{ id: TabId; label: string; admin?: boolean }> = [
   { id: "missions", label: "MISSIONS", admin: true },
   { id: "events", label: "EVENTS", admin: true },
   { id: "treasury", label: "TREASURY", admin: true },
-  { id: "agon", label: "AGON VERIFY", admin: true },
+  { id: "agon", label: "AGON OPS", admin: true },
   { id: "activity", label: "ACTIVITY" },
 ];
 
@@ -213,7 +214,7 @@ export default function AdminPage() {
             </>
           ) : null}
 
-          {activeTab === "agon" ? <AgonVerificationPanel token={token} /> : null}
+          {activeTab === "agon" ? <><AgonAdminConsole /><AgonVerificationPanel token={token} /></> : null}
 
           {activeTab === "activity" ? <CommandsLog token={token} /> : null}
         </div>
@@ -225,6 +226,7 @@ export default function AdminPage() {
 function AgonVerificationPanel({ token }: { token: string }) {
   const [listingId, setListingId] = useState("");
   const [verifier, setVerifier] = useState("");
+  const [evaluator, setEvaluator] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -273,6 +275,15 @@ function AgonVerificationPanel({ token }: { token: string }) {
         {evidence.length ? <div className="mt-3 flex flex-col gap-2">{evidence.map((run) => <div key={run.id} className="border-t border-[color:var(--hairline)] pt-2 font-mono text-[10px]"><span style={{ color: run.passed ? "var(--ok)" : "var(--err)" }}>{run.passed ? "PASS" : "FAIL"}</span> · {new Date(run.createdAt).toLocaleString()}<div className="mt-1 break-all text-ink-3">{run.evidenceHash}</div>{run.evidence.error ? <div className="text-[color:var(--err)]">{run.evidence.error}</div> : null}</div>)}</div> : null}
       </BracketedCell>
       <BracketedCell pad="sm">
+        <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3"><span aria-hidden className="text-accent">â– </span> ARENA EVALUATOR ROLE</div>
+        <p className="mt-1 font-mono text-[10px] text-ink-3">Authorize the wallet that may start and score AgonArena evaluations. The coordinator must already be AgonArena admin.</p>
+        <input value={evaluator} onChange={(e) => setEvaluator(e.target.value)} placeholder="0x evaluator wallet" className="mt-3 w-full border border-[color:var(--hairline-strong)] bg-canvas px-3 py-2 font-mono text-sm text-ink outline-none focus:border-ink" />
+        <div className="mt-2 flex gap-2">
+          <button disabled={busy || !evaluator} onClick={() => confirmQueue("agon_grant_arena_evaluator", 0, { evaluator }, "Grant AgonArena EVALUATOR_ROLE to this wallet?")} className="bg-accent px-3 py-2 font-mono text-[11px] uppercase tracking-[0.1em] text-accent-ink hover:bg-accent-press disabled:opacity-50">GRANT ROLE</button>
+          <button disabled={busy || !evaluator} onClick={() => confirmQueue("agon_revoke_arena_evaluator", 0, { evaluator }, "Revoke AgonArena EVALUATOR_ROLE from this wallet?")} className="border border-[color:var(--err)] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.1em] text-[color:var(--err)] hover:bg-canvas-3 disabled:opacity-50">REVOKE</button>
+        </div>
+      </BracketedCell>
+      <BracketedCell pad="sm">
         <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3"><span aria-hidden className="text-accent">■</span> VERIFIER ROLE</div>
         <p className="mt-1 font-mono text-[10px] text-ink-3">Grant or revoke the isolated verifier wallet. The worker refuses the action unless its wallet is Agon admin.</p>
         <input value={verifier} onChange={(e) => setVerifier(e.target.value)} placeholder="0x verifier wallet" className="mt-3 w-full border border-[color:var(--hairline-strong)] bg-canvas px-3 py-2 font-mono text-sm text-ink outline-none focus:border-ink" />
@@ -293,7 +304,7 @@ function Shell({ children }: { children: React.ReactNode }) {
       <section className="relative mx-auto max-w-[1100px] px-4 py-16 sm:px-6">
         <CornerMarkers />
         <h1 className="font-stencil uppercase text-ink" style={{ fontSize: "clamp(32px,5vw,56px)", lineHeight: 0.95, letterSpacing: "-0.02em" }}>
-          ADMIN CONSOLE
+          AGON OPERATOR CONSOLE
         </h1>
         <p className="mt-2 mb-8 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3">
           <span aria-hidden className="text-accent">■</span> CONTRACTS · TREASURY · LIVE BALANCES
