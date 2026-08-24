@@ -67,3 +67,50 @@ Publish source through Arcscan's Blockscout verifier using the exact compiler an
 Run the backend deployment parser tests, typecheck, contract tests, and marketplace capability checks after recording the real addresses.
 
 `VERIFIER_ROLE` is intentionally not granted by the constructor. Grant it in a separate reviewed transaction only after the verifier address and operating policy are approved.
+
+## Post-foundation Agon protocol preflight
+
+`contracts/script/DeployAgonProtocol.s.sol` deploys the four new contracts
+against the receipt-verified foundation. It checks Arc Testnet, deployed
+bytecode for every dependency, foundation admin authorization, and the
+ServiceRegistry-to-ProfileRegistry link before constructing anything.
+
+Required local environment values are:
+
+```text
+AGON_PROFILE_REGISTRY_ADDRESS=0xE0c7A2545C2f4eE6d2bD797B6f2742c73E640574
+AGON_SERVICE_REGISTRY_ADDRESS=0x2144C156B0a4581da2D046C2E41AC41C6C3938CB
+AGON_USDC_ADDRESS=0x3600000000000000000000000000000000000000
+AGON_VALIDATION_REGISTRY_ADDRESS=0x8004Cb1BF31DAf7788923b405b754f57acEB4272
+AGON_DISPUTE_RESOLVER_ADDRESS=0x...
+AGON_TREASURY_ADDRESS=0x...
+AGON_DEFAULT_REVIEW_HOURS=24
+```
+
+Run the local checks first:
+
+```text
+forge fmt --check
+forge build
+forge test
+forge script script/DeployAgonProtocol.s.sol:DeployAgonProtocol --rpc-url arc_testnet -vv
+```
+
+The final command is a dry run. Record the deployer, admin, dependency
+addresses, nonce, balance, gas estimate, and four predicted addresses. Check
+that each predicted address has no code. Do not add predicted addresses to
+`contracts/deployments/agon-arc-testnet.json`.
+
+Broadcasting is a separate, four-transaction external state change and
+requires explicit approval of the exact constructor inputs and predicted
+addresses:
+
+```text
+forge script script/DeployAgonProtocol.s.sol:DeployAgonProtocol --rpc-url arc_testnet --broadcast -vv
+```
+
+After a successful approved broadcast, require four successful receipts and
+deployed bytecode, verify constructor relationships onchain, then append the
+actual addresses and transaction receipts to the canonical deployment JSON.
+The backend must remain disabled until that receipt update and the release
+gate pass.

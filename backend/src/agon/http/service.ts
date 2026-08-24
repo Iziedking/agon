@@ -19,6 +19,7 @@ import { buildX402ExecutionPlan } from "../execution/x402-facilitator.ts";
 import { createX402SettlementOrchestrator, type X402SettlementAdapter } from "../execution/x402-orchestrator.ts";
 import { createX402ExecutionPolicy } from "../execution/x402-policy.ts";
 import { isX402ProviderTransferId, isX402Transaction, validateX402ReceiptLookupResult, type X402ReceiptLookupAdapter } from "../execution/x402-reconciliation.ts";
+import { validateX402DeliveryEvidence, type X402DeliveryEvidenceInput } from "../execution/x402-delivery.ts";
 import type { X402FacilitatorVerificationRequest as X402FacilitatorVerificationInput, X402FacilitatorVerificationResult, X402SettlementRequest as X402SettlementInput } from "../execution/x402-settlement.ts";
 import { buildX402ExecutionApproval, type X402ExecutionApprovalRequest } from "../execution/x402-execution-approval.ts";
 import { validateAgonPrizeEscrowPoolBinding, type AgonPrizeEscrowPoolBinding, type AgonPrizeEscrowReadAdapter } from "../execution/escrow-reconciliation.ts";
@@ -51,6 +52,8 @@ import type {
   X402SettlementReadinessView,
   X402ReconciliationReadinessView,
   X402ReconciliationRequest,
+  X402DeliveryEvidenceRequest,
+  X402DeliveryEvidenceView,
   X402ReconciliationView,
   X402SettlementRequest,
   X402SettlementView,
@@ -368,6 +371,26 @@ function facilitatorVerificationView(evidence: StoredX402FacilitatorVerification
     executionEnabled: false,
     nextAction: "settlement_remains_disabled",
     verifiedAt: evidence.verifiedAt.toISOString(),
+  };
+}
+
+function deliveryEvidenceView(evidence: import("../store/repository.ts").StoredX402DeliveryEvidence): X402DeliveryEvidenceView {
+  return {
+    deliveryId: evidence.deliveryId,
+    receiptId: evidence.receiptId,
+    intentId: evidence.intentId,
+    provider: evidence.provider,
+    listingReference: evidence.listingReference,
+    state: "service_delivered",
+    serviceStatus: evidence.serviceStatus,
+    latencyMs: evidence.latencyMs,
+    responseHash: evidence.responseHash,
+    resultAttestationHash: evidence.resultAttestationHash,
+    chargedAmountUSDC: evidence.chargedAmountUSDC,
+    evidenceHash: evidence.evidenceHash,
+    deliveredAt: evidence.deliveredAt.toISOString(),
+    executionEnabled: false,
+    nextAction: "reconcile_receipt",
   };
 }
 
@@ -1388,7 +1411,7 @@ export class PostgresAgonMarketService implements AgonMarketService {
     if (!transaction && !providerTransferId) {
       return { ok: false, error: { code: "reconciliation_invalid", message: "x402 receipt has no valid Arc Testnet transaction or provider transfer reference" } };
     }
-    if (receipt.state !== "unknown" && receipt.state !== "settlement_submitted") {
+    if (receipt.state !== "unknown" && receipt.state !== "settlement_submitted" && receipt.state !== "service_delivered") {
       return { ok: false, error: { code: "conflict", message: `x402 receipt is ${receipt.state}; reconciliation is not applicable` } };
     }
 
@@ -1441,10 +1464,65 @@ export class PostgresAgonMarketService implements AgonMarketService {
         providerTransferId: lookup.providerTransferId ?? null,
         executionEnabled: false,
         serviceDeliveryPending: nextState === "settlement_submitted",
-        nextAction: nextState === "failed" ? "none" : lookup.status === "pending" ? "reconcile_receipt" : "deliver_service",
+        nextAction: nextState === "failed" || nextState === "reconciled"
+          ? "none"
+          : lookup.status === "pending" ? "reconcile_receipt" : "deliver_service",
         recordedAt: reconciled.receipt.updatedAt.toISOString(),
       },
     };
+  }
+
+  async recordX402Delivery(
+    actor: string,
+    intentId: string,
+    request: X402DeliveryEvidenceRequest,
+  ): Promise<Result<X402DeliveryEvidenceView, AgonServiceError>> {
+    const intent = await this.repository.getX402CallIntent(intentId);
+    if (!intent) return { ok: false, error: { code: "not_found", message: "x402 call intent not found" } };
+    const receipt = await this.repository.getX402CallReceipt(intentId);
+    if (!receipt) return { ok: false, error: { code: "receipt_unavailable", message: "x402 receipt has not been created" } };
+    if (receipt.state !== "settlement_submitted" && receipt.state !== "unknown") {
+      if (receipt.state === "service_delivered") {
+        const existing = await this.repository.getLatestX402DeliveryEvidence(intentId);
+        if (existing?.deliveryId === request.deliveryId) return { ok: true, value: deliveryEvidenceView(existing) };
+      }
+      return { ok: false, error: { code: "conflict", message: `x402 receipt is ${receipt.state}; provider delivery cannot be recorded` } };
+    }
+    const listing = await this.repository.getListing({
+      chainId: intent.chainId,
+      serviceRegistry: intent.serviceRegistry,
+      listingId: intent.listingId,
+    });
+    if (!listing) return { ok: false, error: { code: "not_found", message: "x402 listing not found" } };
+    if (listing.currentVersion !== intent.version || listing.agentId !== intent.agentId) {
+      return { ok: false, error: { code: "conflict", message: "x402 delivery does not match the prepared listing version" } };
+    }
+    if (listing.providerSnapshot.toLowerCase() !== actor.toLowerCase()) {
+      return { ok: false, error: { code: "not_owner", message: "only the listing provider can record delivery evidence" } };
+    }
+    const evidenceInput: X402DeliveryEvidenceInput = {
+      deliveryId: request.deliveryId,
+      intentId,
+      receiptId: receipt.receiptId,
+      provider: actor,
+      listingReference: intent.listingReference,
+      serviceStatus: request.serviceStatus,
+      latencyMs: request.latencyMs,
+      responseHash: request.responseHash,
+      resultAttestationHash: request.resultAttestationHash ?? null,
+      chargedAmountUSDC: request.chargedAmountUSDC ?? null,
+      deliveredAt: new Date(request.deliveredAt),
+    };
+    try {
+      const evidence = validateX402DeliveryEvidence(evidenceInput);
+      const stored = await this.repository.recordX402DeliveryEvidence(evidence);
+      return { ok: true, value: deliveryEvidenceView(stored) };
+    } catch (error) {
+      if (error instanceof Error && error.name === "X402DeliveryInvariantError") {
+        return { ok: false, error: { code: "validation_failed", message: error.message } };
+      }
+      return internalError(error);
+    }
   }
 
   async settleX402Call(
@@ -1612,6 +1690,9 @@ export class PostgresAgonMarketService implements AgonMarketService {
       endpointQa: this.options.endpointQa ?? false,
       directX402: this.options.directX402 ?? false,
       escrow: false,
+      arenaVerification: false,
+      syndicateRegistry: false,
+      prizeVault: false,
       writeReadiness: {
         checkedAt: readiness?.checkedAt ?? null,
         reasons: readiness?.reasons ?? ["adapter_unconfigured"],

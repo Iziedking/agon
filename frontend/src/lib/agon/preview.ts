@@ -197,6 +197,9 @@ export const AGON_PREVIEW_CAPABILITIES: AgonCapabilities = {
   endpointQa: false,
   directX402: true,
   escrow: false,
+  arenaVerification: false,
+  syndicateRegistry: false,
+  prizeVault: false,
   writeReadiness: {
     checkedAt: null,
     reasons: ["preview_read_only"],

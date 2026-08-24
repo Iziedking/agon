@@ -25,6 +25,7 @@ import type {
   X402SettlementReadinessView,
   X402ReconciliationReadinessView,
   X402ReconciliationRequest,
+  X402DeliveryEvidenceRequest,
   X402SettlementRequest,
   X402FacilitatorVerificationRequest,
   AgonEscrowIntentRequest,
@@ -123,6 +124,11 @@ export type AgonMarketService = {
     intentId: string,
     request: X402ReconciliationRequest,
   ): Promise<Result<import("./api-types.ts").X402ReconciliationView, AgonServiceError>>;
+  recordX402Delivery?(
+    actor: string,
+    intentId: string,
+    request: X402DeliveryEvidenceRequest,
+  ): Promise<Result<import("./api-types.ts").X402DeliveryEvidenceView, AgonServiceError>>;
   settleX402Call(
     actor: string,
     intentId: string,
@@ -241,6 +247,16 @@ const x402FacilitatorVerificationSchema = z.object({
 
 const x402ReconciliationSchema = z.object({
   confirmation: z.literal("RECONCILE_ARC_TESTNET_X402"),
+}).strict();
+
+const x402DeliveryEvidenceSchema = z.object({
+  deliveryId: z.string().uuid(),
+  serviceStatus: z.number().int().min(200).max(299),
+  latencyMs: z.number().int().min(0).max(900000),
+  responseHash: bytes32,
+  resultAttestationHash: bytes32.nullable().optional(),
+  chargedAmountUSDC: z.string().regex(/^(0|[1-9]\d*)(\.\d{1,6})?$/, "must be a USDC amount with up to 6 decimals").nullable().optional(),
+  deliveredAt: z.string().datetime({ offset: true }),
 }).strict();
 
 const x402SettlementSchema = z.object({
@@ -559,6 +575,22 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
       parsed.data,
     );
     return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  app.post("/call-intents/:intentId/delivery-evidence", options.requireAuth, async (context) => {
+    const body = await parseJson(context);
+    if (isApiError(body)) return context.json(body, 400);
+    const parsed = x402DeliveryEvidenceSchema.safeParse(body);
+    if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
+    if (!options.service.recordX402Delivery) {
+      return serviceErrorResponse(context, { code: "execution_not_ready", message: "x402 delivery evidence is not configured" });
+    }
+    const result = await options.service.recordX402Delivery(
+      context.get("address"),
+      context.req.param("intentId"),
+      parsed.data as X402DeliveryEvidenceRequest,
+    );
+    return result.ok ? context.json(result.value, 201) : serviceErrorResponse(context, result.error);
   });
 
   app.post("/call-intents/:intentId/settle", options.requireAuth, async (context) => {

@@ -26,6 +26,9 @@ export type AgonCapabilities = {
   endpointQa: boolean;
   directX402: boolean;
   escrow: boolean;
+  arenaVerification: boolean;
+  syndicateRegistry: boolean;
+  prizeVault: boolean;
   writeReadiness: {
     checkedAt: string | null;
     reasons: string[];
@@ -302,6 +305,34 @@ export type X402ReconciliationReadinessView = {
 
 export type X402ReconciliationRequest = {
   confirmation: "RECONCILE_ARC_TESTNET_X402";
+};
+
+export type X402DeliveryEvidenceRequest = {
+  deliveryId: string;
+  serviceStatus: number;
+  latencyMs: number;
+  responseHash: string;
+  resultAttestationHash?: string | null;
+  chargedAmountUSDC?: string | null;
+  deliveredAt: string;
+};
+
+export type X402DeliveryEvidenceView = {
+  deliveryId: string;
+  receiptId: string;
+  intentId: string;
+  provider: `0x${string}`;
+  listingReference: string;
+  state: "service_delivered";
+  serviceStatus: number;
+  latencyMs: number;
+  responseHash: string;
+  resultAttestationHash: string | null;
+  chargedAmountUSDC: string | null;
+  evidenceHash: string;
+  deliveredAt: string;
+  executionEnabled: false;
+  nextAction: "reconcile_receipt";
 };
 
 export type X402SettlementRequest = {

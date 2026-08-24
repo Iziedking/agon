@@ -119,3 +119,18 @@ test("reconciliation accepts only a matching Arc Testnet transaction", async () 
   assert.equal(confirmed.receipt.state, "settlement_submitted");
   assert.equal(confirmed.receipt.settlementRef, TX);
 });
+
+test("reconciliation finalizes service delivery only after matching payment evidence", async () => {
+  const { input, receipt } = inputAndReceipt();
+  const store = fakeStore(receipt);
+  await store.advanceX402CallReceipt(input.approval.intentId, { type: "settlement_submitted", settlementRef: TX });
+  await store.advanceX402CallReceipt(input.approval.intentId, { type: "service_delivered", serviceStatus: 200, paymentResponseHash: `0x${"34".repeat(32)}` });
+  const orchestrator = createX402SettlementOrchestrator({
+    store,
+    policy,
+    adapter: { settle: async () => ({ ok: false, error: { code: "execution_disabled", message: "not used" } }) },
+  });
+  const result = await orchestrator.reconcile(input.approval.intentId, { status: "confirmed", network: "eip155:5042002", transaction: TX });
+  assert.equal(result.ok, true);
+  if (result.ok) assert.equal(result.state, "reconciled");
+});

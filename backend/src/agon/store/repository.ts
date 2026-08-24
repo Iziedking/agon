@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Pool, PoolClient, QueryResultRow } from "pg";
 import { transitionX402Receipt, type X402ReceiptEvent, type X402ReceiptState } from "../execution/x402-receipt.ts";
+import { validateX402DeliveryEvidence, type X402DeliveryEvidence, type X402DeliveryEvidenceInput } from "../execution/x402-delivery.ts";
 import { hashAgonEscrowTerms, isAgonEscrowTransitionAllowed, type AgonEscrowIntentState, type AgonEscrowTerms } from "../escrow-policy.ts";
 import type { AgonPrizeEscrowPoolBinding } from "../execution/escrow-reconciliation.ts";
 import type { AgonEscrowWriteOperation } from "../execution/escrow-write-preflight.ts";
@@ -166,6 +167,9 @@ export type StoredX402FacilitatorVerification = X402FacilitatorVerificationProje
   verificationId: string;
   createdAt: Date;
 };
+
+export type X402DeliveryEvidenceProjection = X402DeliveryEvidenceInput;
+export type StoredX402DeliveryEvidence = X402DeliveryEvidence;
 
 export type AgonEscrowIntentProjection = {
   intentId: string;
@@ -371,6 +375,22 @@ type X402FacilitatorVerificationRow = QueryResultRow & {
   payer_address: string | null;
   evidence_hash: string;
   verified_at: Date;
+  created_at: Date;
+};
+
+type X402DeliveryEvidenceRow = QueryResultRow & {
+  delivery_id: string;
+  intent_id: string;
+  receipt_id: string;
+  provider_address: string;
+  listing_reference: string;
+  service_status: number;
+  latency_ms: number;
+  response_hash: string;
+  result_attestation_hash: string | null;
+  charged_amount_usdc: string | null;
+  evidence_hash: string;
+  delivered_at: Date;
   created_at: Date;
 };
 
@@ -619,6 +639,24 @@ function mapX402FacilitatorVerification(row: X402FacilitatorVerificationRow): St
   };
 }
 
+function mapX402DeliveryEvidence(row: X402DeliveryEvidenceRow): StoredX402DeliveryEvidence {
+  return {
+    deliveryId: row.delivery_id,
+    intentId: row.intent_id,
+    receiptId: row.receipt_id,
+    provider: row.provider_address as `0x${string}`,
+    listingReference: row.listing_reference,
+    serviceStatus: row.service_status,
+    latencyMs: row.latency_ms,
+    responseHash: row.response_hash as `0x${string}`,
+    resultAttestationHash: row.result_attestation_hash as `0x${string}` | null,
+    chargedAmountUSDC: row.charged_amount_usdc,
+    evidenceHash: row.evidence_hash as `0x${string}`,
+    deliveredAt: row.delivered_at,
+    createdAt: row.created_at,
+  };
+}
+
 function mapAgonEscrowIntent(row: AgonEscrowIntentRow): StoredAgonEscrowIntent {
   return {
     intentId: row.intent_id,
@@ -712,6 +750,11 @@ const X402_EXECUTION_APPROVAL_COLUMNS = `
 const X402_FACILITATOR_VERIFICATION_COLUMNS = `
   verification_id, receipt_id, intent_id, approval_hash, network, payer_address,
   evidence_hash, verified_at, created_at`;
+
+const X402_DELIVERY_EVIDENCE_COLUMNS = `
+  delivery_id, intent_id, receipt_id, provider_address, listing_reference,
+  service_status, latency_ms, response_hash, result_attestation_hash,
+  charged_amount_usdc, evidence_hash, delivered_at, created_at`;
 
 const AGON_ESCROW_INTENT_COLUMNS = `
   intent_id, actor_address, idempotency_key, listing_reference, terms_hash, network, asset,
@@ -940,6 +983,88 @@ export class PostgresAgonRepository {
       [intentId],
     );
     return result.rows[0] ? mapX402CallReceipt(result.rows[0]) : null;
+  }
+
+  async recordX402DeliveryEvidence(input: X402DeliveryEvidenceProjection): Promise<StoredX402DeliveryEvidence> {
+    const evidence = validateX402DeliveryEvidence(input);
+    const client = await this.pool.connect();
+    try {
+      await client.query("begin");
+      const receiptResult = await client.query<X402CallReceiptRow>(
+        `select ${X402_RECEIPT_COLUMNS} from agon_x402_call_receipts where intent_id = $1 for update`,
+        [evidence.intentId],
+      );
+      const receipt = receiptResult.rows[0];
+      if (!receipt) throw new AgonStoreInvariantError("x402 receipt not found");
+      if (receipt.receipt_id !== evidence.receiptId) throw new AgonStoreInvariantError("delivery evidence does not match the x402 receipt");
+
+      const existing = await client.query<X402DeliveryEvidenceRow>(
+        `select ${X402_DELIVERY_EVIDENCE_COLUMNS}
+         from agon_x402_delivery_evidence
+         where intent_id = $1 and evidence_hash = $2`,
+        [evidence.intentId, evidence.evidenceHash],
+      );
+      if (existing.rows[0]) {
+        await client.query("commit");
+        return mapX402DeliveryEvidence(existing.rows[0]);
+      }
+
+      const transition = transitionX402Receipt(receipt.state, {
+        type: "service_delivered",
+        serviceStatus: evidence.serviceStatus,
+        paymentResponseHash: evidence.responseHash,
+        chargedAmountUSDC: evidence.chargedAmountUSDC,
+      });
+      const inserted = await client.query<X402DeliveryEvidenceRow>(
+        `insert into agon_x402_delivery_evidence (
+           delivery_id, intent_id, receipt_id, provider_address, listing_reference,
+           service_status, latency_ms, response_hash, result_attestation_hash,
+           charged_amount_usdc, evidence_hash, delivered_at, created_at
+         ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+         returning ${X402_DELIVERY_EVIDENCE_COLUMNS}`,
+        [
+          evidence.deliveryId,
+          evidence.intentId,
+          evidence.receiptId,
+          evidence.provider.toLowerCase(),
+          evidence.listingReference,
+          evidence.serviceStatus,
+          evidence.latencyMs,
+          evidence.responseHash,
+          evidence.resultAttestationHash,
+          evidence.chargedAmountUSDC,
+          evidence.evidenceHash,
+          evidence.deliveredAt,
+          evidence.createdAt,
+        ],
+      );
+      await client.query(
+        `update agon_x402_call_receipts set
+           state = $2, service_status = $3, payment_response_hash = $4,
+           charged_amount_usdc = coalesce($5, charged_amount_usdc), updated_at = now()
+         where intent_id = $1`,
+        [evidence.intentId, transition.to, evidence.serviceStatus, evidence.responseHash, transition.patch.chargedAmountUSDC ?? null],
+      );
+      await client.query("commit");
+      return mapX402DeliveryEvidence(inserted.rows[0]!);
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async getLatestX402DeliveryEvidence(intentId: string): Promise<StoredX402DeliveryEvidence | null> {
+    const result = await this.pool.query<X402DeliveryEvidenceRow>(
+      `select ${X402_DELIVERY_EVIDENCE_COLUMNS}
+       from agon_x402_delivery_evidence
+       where intent_id = $1
+       order by delivered_at desc, created_at desc
+       limit 1`,
+      [intentId],
+    );
+    return result.rows[0] ? mapX402DeliveryEvidence(result.rows[0]) : null;
   }
 
   async prepareX402CallIntent(input: X402CallIntentProjection): Promise<StoredX402CallIntent> {

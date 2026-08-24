@@ -91,6 +91,9 @@ const capabilities: AgonCapabilities = {
   endpointQa: false,
   directX402: false,
   escrow: false,
+  arenaVerification: false,
+  syndicateRegistry: false,
+  prizeVault: false,
   writeReadiness: { checkedAt: null, reasons: ["adapter_unconfigured"] },
   escrowReadiness: {
     testnetOnly: true,

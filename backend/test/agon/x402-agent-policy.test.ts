@@ -163,7 +163,7 @@ test("executor reserves before execution, exposes submitted state, and requires 
   assert.equal(replayBeforeConfirm.error.code, "wallet_reconciliation_required");
   assert.equal(calls, 1);
 
-  const confirmed = executor.confirm({ agentId: AGENT, idempotencyKey: "spend-live", transaction: `0x${"ab".repeat(32)}` });
+  const confirmed = await executor.confirm({ agentId: AGENT, idempotencyKey: "spend-live", transaction: `0x${"ab".repeat(32)}` });
   assert.equal(confirmed.ok, true);
   const replayAfterConfirm = await executor.execute({ agentId: AGENT, idempotencyKey: "spend-live", amountBaseUnits: 10n, recipient: RECIPIENT, now: DAY_ONE });
   assert.equal(replayAfterConfirm.ok, true);

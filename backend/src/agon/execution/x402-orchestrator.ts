@@ -44,7 +44,7 @@ export type X402OrchestrationResult =
     };
 
 export type X402ReconciliationResult =
-  | { ok: true; state: "settlement_submitted" | "unknown" | "failed"; receipt: StoredX402CallReceipt }
+  | { ok: true; state: "settlement_submitted" | "service_delivered" | "reconciled" | "unknown" | "failed"; receipt: StoredX402CallReceipt }
   | { ok: false; error: { code: X402OrchestrationErrorCode; message: string }; receipt: StoredX402CallReceipt | null };
 
 function failure(
@@ -157,8 +157,8 @@ export function createX402SettlementOrchestrator(options: {
   async function reconcile(intentId: string, verification: X402ReceiptVerification): Promise<X402ReconciliationResult> {
     const current = await options.store.getX402CallReceipt(intentId);
     if (!current) return { ok: false, error: { code: "execution_not_ready", message: "x402 receipt does not exist" }, receipt: null };
-    if (current.state === "reconciled" || current.state === "failed") return { ok: true, state: current.state === "failed" ? "failed" : "settlement_submitted", receipt: current };
-    if (current.state !== "unknown" && current.state !== "settlement_submitted") {
+    if (current.state === "reconciled" || current.state === "failed") return { ok: true, state: current.state, receipt: current };
+    if (current.state !== "unknown" && current.state !== "settlement_submitted" && current.state !== "service_delivered") {
       return { ok: false, error: { code: "execution_not_ready", message: `x402 receipt is ${current.state}; settlement reconciliation is not applicable` }, receipt: current };
     }
     if (verification.network !== options.policy.network || (!isTransaction(verification.transaction ?? "") && !verification.providerTransferId)) {
@@ -173,8 +173,19 @@ export function createX402SettlementOrchestrator(options: {
     try {
       if (verification.status === "pending") return { ok: true, state: current.state, receipt: current };
       if (verification.status === "failed") {
+        if (current.state === "service_delivered") {
+          return { ok: false, error: { code: "reconciliation_required", message: "payment failure evidence conflicts with recorded service delivery" }, receipt: current };
+        }
         const failed = await options.store.advanceX402CallReceipt(intentId, { type: "fail", failureCode: "settlement_failed", failureMessage: "Arc Testnet reconciliation confirmed settlement failure" });
         return { ok: true, state: "failed", receipt: failed };
+      }
+      if (current.state === "service_delivered") {
+        const reconciled = await options.store.advanceX402CallReceipt(intentId, {
+          type: "reconcile",
+          ...(verification.transaction ? { settlementRef: verification.transaction } : {}),
+          ...(verification.providerTransferId ? { providerTransferId: verification.providerTransferId } : {}),
+        });
+        return { ok: true, state: "reconciled", receipt: reconciled };
       }
       const confirmed = await options.store.advanceX402CallReceipt(intentId, {
         type: "settlement_receipt",

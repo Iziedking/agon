@@ -1386,6 +1386,62 @@ create table if not exists agon_x402_execution_approvals (
 create index if not exists agon_x402_execution_approvals_intent_idx
   on agon_x402_execution_approvals(intent_id, approved_at desc);
 
+-- Provider delivery evidence is append-only and separate from the payment
+-- receipt. A successful HTTP response is not payment proof, and a payment
+-- receipt is not service proof. The receipt lifecycle is advanced atomically
+-- with the first matching evidence row by the repository.
+create table if not exists agon_x402_delivery_evidence (
+  delivery_id             uuid primary key,
+  intent_id               uuid not null references agon_x402_call_intents(intent_id),
+  receipt_id              uuid not null references agon_x402_call_receipts(receipt_id),
+  provider_address        text not null check (provider_address ~ '^0x[0-9a-f]{40}$'),
+  listing_reference        text not null check (char_length(listing_reference) between 1 and 512),
+  service_status          int not null check (service_status between 200 and 299),
+  latency_ms              int not null check (latency_ms between 0 and 900000),
+  response_hash            text not null check (response_hash ~ '^0x[0-9a-f]{64}$'),
+  result_attestation_hash  text check (result_attestation_hash is null or result_attestation_hash ~ '^0x[0-9a-f]{64}$'),
+  charged_amount_usdc      text check (charged_amount_usdc is null or charged_amount_usdc ~ '^(0|[1-9][0-9]*)(\.[0-9]{1,6})?$'),
+  evidence_hash            text not null check (evidence_hash ~ '^0x[0-9a-f]{64}$'),
+  delivered_at             timestamptz not null,
+  created_at               timestamptz not null default now(),
+  unique (intent_id, evidence_hash)
+);
+create index if not exists agon_x402_delivery_evidence_intent_idx
+  on agon_x402_delivery_evidence(intent_id, delivered_at desc);
+
+-- Durable buyer-agent wallet policy and spend boundaries. These tables are
+-- policy records only; no provider SDK, wallet signer, or RPC client is
+-- constructed by migration or persistence code. Unknown outcomes remain
+-- cap-consuming until independently reconciled.
+create table if not exists agon_x402_agent_wallet_policies (
+  agent_id                  text primary key check (agent_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'),
+  wallet_id                 text,
+  wallet_address            text check (wallet_address is null or wallet_address ~ '^0x[0-9a-f]{40}$'),
+  network                   text not null check (network = 'eip155:5042002'),
+  enabled                   boolean not null default false,
+  per_call_cap_base_units  numeric(78, 0) not null check (per_call_cap_base_units >= 0),
+  daily_cap_base_units     numeric(78, 0) not null check (daily_cap_base_units >= 0),
+  allowed_recipients        jsonb,
+  created_at                timestamptz not null default now(),
+  updated_at                timestamptz not null default now()
+);
+
+create table if not exists agon_x402_agent_spends (
+  agent_id                  text not null references agon_x402_agent_wallet_policies(agent_id),
+  idempotency_key           text not null check (idempotency_key ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$'),
+  spend_day                 date not null,
+  amount_base_units         numeric(78, 0) not null check (amount_base_units > 0),
+  recipient_address         text not null check (recipient_address ~ '^0x[0-9a-f]{40}$'),
+  state                     text not null check (state in ('reserved','submitted','unknown','confirmed','failed')),
+  provider_transfer_id      text,
+  transaction_hash          text check (transaction_hash is null or transaction_hash ~ '^0x[0-9a-f]{64}$'),
+  created_at                timestamptz not null,
+  updated_at                timestamptz not null,
+  primary key (agent_id, idempotency_key)
+);
+create index if not exists agon_x402_agent_spends_day_idx
+  on agon_x402_agent_spends(agent_id, spend_day, state);
+
 -- Durable Agon escrow preparation. This is an ownership and authorization
 -- boundary only: no provider, wallet, RPC, or PrizeEscrow call is made by
 -- creating or reading this row. Terms are stored as columns so retries can

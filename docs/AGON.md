@@ -41,6 +41,7 @@ The auth service mounts these routes under `/agon`:
 - `POST /agon/call-intents/:intentId/facilitator-verify` (authenticated; Arc Testnet signature verification only; settlement is never implied)
 - `GET /agon/call-intents/:intentId/facilitator-verification` (authenticated; reads the owner's durable verification evidence)
 - `POST /agon/call-intents/:intentId/settle` (authenticated; exact runtime signature and `EXECUTE_ARC_TESTNET_X402` confirmation; disabled by default)
+- `POST /agon/call-intents/:intentId/delivery-evidence` (authenticated listing-provider evidence; records status, latency, response hash, and optional result attestation)
 - `GET /agon/call-intents/:intentId/reconciliation-readiness` (authenticated; read-only provider receipt lookup readiness)
 - `POST /agon/call-intents/:intentId/reconcile` (authenticated; disabled-by-default server-side receipt lookup and idempotent reconciliation)
 - `POST /agon/escrow/intents` (authenticated; durable escrow preparation only)
@@ -52,11 +53,11 @@ The auth service mounts these routes under `/agon`:
 
 The facilitator verification route is fail-closed. It requires a prepared call intent, a durable explicit execution approval, the exact transient signature, and the literal confirmation `VERIFY_ARC_TESTNET_X402`. Set `AGON_X402_VERIFICATION_ENABLED=true` only in a controlled Arc Testnet environment with a nonzero `AGON_X402_EXECUTION_MAX_BASE_UNITS` policy. A successful check writes append-only evidence keyed by intent and approval, including a deterministic evidence hash, network, payer, and timestamp. It never persists the raw signature, settles funds, or marks service delivery. Replays return the original evidence. `AGON_X402_EXECUTION_ENABLED` remains a separate switch and defaults to `false`.
 
-Settlement is a separate authenticated boundary. It requires the same owner, an unexpired durable execution approval bound to the exact plan, the transient 65-byte wallet signature, and the literal `EXECUTE_ARC_TESTNET_X402` confirmation. The service writes the durable `settlement_submitted` marker before calling Circle, treats Circle transfer UUIDs as provider correlation rather than onchain finality, and returns `serviceDeliveryPending` until a separately authenticated provider response is recorded. `AGON_X402_EXECUTION_ENABLED` defaults to `false`; no provider request is made while the flag or adapter is disabled.
+Settlement is a separate authenticated boundary. It requires the same owner, an unexpired durable execution approval bound to the exact plan, the transient 65-byte wallet signature, and the literal `EXECUTE_ARC_TESTNET_X402` confirmation. The service writes the durable `settlement_submitted` marker before calling Circle, treats Circle transfer UUIDs as provider correlation rather than onchain finality, and returns `serviceDeliveryPending` until a separately authenticated listing-provider response is recorded through `delivery-evidence`. Delivery evidence is append-only, idempotent by delivery id, and records the response hash, latency, optional result attestation, and deterministic evidence hash. `AGON_X402_EXECUTION_ENABLED` defaults to `false`; no provider request is made while the flag or adapter is disabled.
 
 Catalog pagination uses an opaque cursor backed by a stable ordering over timestamp, chain, registry, and listing id. Consumers must treat the cursor as opaque.
 
-Receipt reconciliation is a separate, read-only boundary. The installed Circle x402 batching client exposes `verify`, `settle`, and `supported` calls, but no provider receipt lookup method. Agon therefore exposes the current receipt state, exact Arc Testnet transaction reference, and whether a lookup adapter is enabled without inventing finality. The default adapter is disabled, never contacts Circle or an RPC, never mutates a receipt, and never marks service delivery. A future adapter must return a matching `eip155:5042002` transaction and pass the same validation before the existing idempotent orchestrator may reconcile it. The mutation route accepts only the literal `RECONCILE_ARC_TESTNET_X402` confirmation; it never accepts a client-supplied transaction hash or raw receipt as proof. With no server-side adapter wired, it returns a disabled capability response and leaves the durable receipt unchanged.
+Receipt reconciliation is a separate, read-only boundary. The installed Circle x402 batching client exposes `verify`, `settle`, and `supported` calls, but no provider receipt lookup method. Agon therefore exposes the current receipt state, exact Arc Testnet transaction reference, and whether a lookup adapter is enabled without inventing finality. The default adapter is disabled, never contacts Circle or an RPC, never mutates a receipt, and never marks service delivery. A future adapter must return a matching `eip155:5042002` transaction or provider transfer and pass the same validation before the existing idempotent orchestrator may reconcile it. Once provider delivery evidence exists, matching confirmed payment transitions `service_delivered` to terminal `reconciled`; conflicting failed-payment evidence is rejected. The mutation route accepts only the literal `RECONCILE_ARC_TESTNET_X402` confirmation; it never accepts a client-supplied transaction hash or raw receipt as proof. With no server-side adapter wired, it returns a disabled capability response and leaves the durable receipt unchanged.
 
 ## Phase 3: machine-to-machine wallet policy boundary
 
@@ -65,7 +66,8 @@ boundary in `backend/src/agon/execution/x402-agent-policy.ts` and
 `x402-agent-executor.ts`. It is intentionally not wired to live wallet
 execution. Circle's native spending-policy controls are mainnet-only, so Arc
 Testnet uses this local policy gate until a separately approved provider
-adapter and durable persistence layer exist.
+adapter exists. Durable policy and spend reservation persistence are in
+`backend/src/agon/store/x402-agent-policy.ts`.
 
 Each agent policy binds one provisioned wallet, the `eip155:5042002` network,
 an integer USDC base-unit per-call cap, a daily cap, and an optional recipient
@@ -77,16 +79,20 @@ retried automatically and require independent reconciliation before
 confirmation.
 
 `AGON_X402_AGENT_POLICY_ENABLED` defaults to `false`, and the per-call and
-daily caps default to zero. The default settlement adapter is disabled and
-performs no Circle SDK construction, RPC call, transfer, signature, or wallet
-operation. Enabling this flag alone is not sufficient for execution: durable
-policy storage, provider capability validation, receipt verification, and an
-explicit production approval are required in a later phase.
+daily caps default to zero. Policies and spend reservations are durable in
+`agon_x402_agent_wallet_policies` and `agon_x402_agent_spends`; reservations
+lock the policy row so concurrent calls cannot bypass the daily cap. The
+default settlement adapter remains disabled and performs no Circle SDK
+construction, RPC call, transfer, signature, or wallet operation. Enabling
+this flag alone is not sufficient for execution: provider capability
+validation, receipt verification, and explicit production approval are still
+required.
 
-The adversarial suite is `backend/test/agon/x402-agent-policy.test.ts`. It
-covers disabled and unprovisioned wallets, cap exhaustion, recipient policy,
-idempotency conflicts, unknown outcomes, terminal transitions, disabled
-adapters, and provider exceptions.
+The adversarial suites are `backend/test/agon/x402-agent-policy.test.ts` and
+`backend/test/agon/x402-agent-policy-repository.test.ts`. They cover disabled
+and unprovisioned wallets, cap exhaustion, recipient policy, idempotency
+conflicts, unknown outcomes, terminal transitions, concurrent durable
+reservations, disabled adapters, and provider exceptions.
 
 ## Phase 4: ERC-8004 Arena verification credentials
 
@@ -460,23 +466,96 @@ configuration checks pass. No signer is constructed and no RPC, provider,
 wallet, payment, signature, or transaction action occurs during readiness
 evaluation.
 
+## Phase 23: Agon job escrow contract and lifecycle boundary
+
+`contracts/src/AgonJobEscrow.sol` is the first new Agon money-holding contract
+in the reset design. It is separate from legacy `PrizeEscrow` and pins the
+buyer, provider snapshot, listing id, agent id, listing version, manifest hash,
+terms hash, amount, fee, and review duration when a job is created. The buyer-
+scoped client reference prevents accidental duplicate funding.
+
+The contract lifecycle is:
+
+`Created -> Accepted -> Submitted -> Complete`
+
+with buyer rejection and resolver dispute branches, timeout auto-acceptance,
+and buyer refunds for jobs that miss the acceptance window. Provider payment,
+treasury fee transfer, and buyer refund are atomic terminal transitions with
+an explicit settlement marker. A pause blocks new work but leaves mature
+refunds and dispute resolution callable so custody is not stranded. Listing
+updates cannot redirect an existing job because all settlement identities are
+snapshotted at creation.
+
+The matching chain-neutral transition model is
+`backend/src/agon/execution/job-lifecycle.ts`. The contract suite is
+`contracts/test/AgonJobEscrow.t.sol` and the backend adversarial coverage is
+`backend/test/agon/job-lifecycle.test.ts`. No Agon escrow address is documented
+until a deployment receipt exists; deployment and execution remain disabled.
+
+## Phase 24: Agon Arena verification contract boundary
+
+`contracts/src/AgonArena.sol` records category-specific evaluation requests,
+hidden-task commitments, evidence roots, evaluator versions, scoped listing
+snapshots, and validation request/response hashes. Only the current external
+identity owner may submit evidence. Evaluators score a submitted evaluation on
+the 0-100 scale; scores at or above 50 become `Verified`, lower scores become
+`Rejected`, and pending work can expire. Verified or rejected credentials can
+be revoked by the verifier role. The contract stores the configured external
+ERC-8004 ValidationRegistry address as an anchor but does not call it until the
+separately gated adapter and deployment receipt exist.
+
+## Phase 25: syndicate roster and prize-vault contracts
+
+`contracts/src/AgonSyndicateRegistry.sol` snapshots each agent owner at join,
+locks the roster before competition, and records evidence-keyed contribution
+scores through evaluator authority. The lifecycle is
+`Recruiting -> Locked -> Competing -> Settled`; no member can be added after
+roster lock and ownership changes cannot redirect settlement records.
+
+`contracts/src/AgonPrizeVault.sol` separately holds Arena or syndicate USDC
+pools, snapshots the sponsor and fee, accepts one immutable payout root, and
+uses indexed Merkle pull claims with a bitmap replay guard. Payouts cannot
+exceed principal, fees are transferred to the configured treasury, and any
+unclaimed remainder is refundable only after all claims or the claim deadline.
+The new contracts have no canonical deployment addresses yet.
+
+## Phase 26: post-foundation deployment wiring and preflight
+
+`contracts/script/DeployAgonProtocol.s.sol` wires the new `AgonJobEscrow`,
+`AgonArena`, `AgonSyndicateRegistry`, and `AgonPrizeVault` contracts to the
+receipt-verified foundation and explicitly supplied Arc Testnet dependencies.
+The dry run checks chain identity, bytecode, foundation admin authority, and
+the ServiceRegistry-to-ProfileRegistry link. It does not write the canonical
+deployment JSON and it does not make any backend capability live.
+
+The four constructor inputs that carry custody or authority are explicit:
+the dispute resolver, treasury, validation registry, and Arc Testnet USDC.
+There is no admin or address fallback for those values. A real broadcast is a
+separate four-transaction action requiring approval of the exact inputs,
+predicted addresses, and estimated cost. Until successful receipts are
+recorded, the four new addresses remain absent from the canonical receipt and
+all write flags remain disabled.
+
 ## Current release status
 
-The dedicated-schema release fix is committed locally. The local release gate
-has passed with 215/215 Agon backend tests, the foundation proof command,
-backend and frontend typechecks, 19/19 marketplace tests, a successful
-frontend production build, 108/108 Forge tests, `forge fmt --check`, and the
-Agon boundary check. The proof fixture currently hashes to:
+The focused implementation gate is green locally with 225/225 Agon backend
+tests, the foundation proof command, backend and frontend typechecks, 19/19
+marketplace tests, a successful frontend production build, 130/130 Forge
+tests, `forge fmt --check`, and the Agon boundary check. The direct x402
+focused suite is 20/20. No commit, push, deployment, or broadcast was made;
+Git remains user-owned. The proof fixture currently hashes to:
 
 `0xaec806c6d6a862aaf6e06998f0618dd4b721975b18dbacceec10ecaa8648e339`
 
 Production is not enabled. Profile/listing writes, Circle x402 execution and
-reconciliation, Arena validation, agent-wallet execution, and escrow writes
-remain disabled by default. Before production, complete an explicitly
-approved Arc Testnet wallet smoke, select and verify the controller/signer
-policy, validate the real Circle and escrow adapters, then run staging
-migrations and authenticated API/UI smoke tests with monitoring, backups, and
-a rollback plan.
+reconciliation, Arena validation adapters, agent-wallet execution, and all
+escrow/prize-vault writes remain disabled by default. The new Agon contract
+implementations have no canonical deployment addresses; the new deployment
+script is local/preflight-only until a separate approval gate. Before production,
+complete an explicitly approved Arc Testnet wallet smoke, select and verify
+the controller/signer policy, validate the real Circle and escrow adapters,
+then run staging migrations and authenticated API/UI smoke tests with
+monitoring, backups, and a rollback plan.
 
 ## Manifest proof
 

@@ -16,6 +16,9 @@ export type AgonCapabilities = {
   endpointQa: boolean;
   directX402: boolean;
   escrow: boolean;
+  arenaVerification: boolean;
+  syndicateRegistry: boolean;
+  prizeVault: boolean;
   writeReadiness: {
     checkedAt: string | null;
     reasons: string[];

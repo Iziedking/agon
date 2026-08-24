@@ -18,7 +18,7 @@ export type X402ReceiptEvent =
   | { type: "authorization_submitted"; authorizationHash: string }
   | { type: "settlement_submitted"; settlementRef?: string; providerTransferId?: string }
   | { type: "settlement_receipt"; settlementRef?: string; providerTransferId?: string }
-  | { type: "service_delivered"; serviceStatus: number; paymentResponseHash: string }
+  | { type: "service_delivered"; serviceStatus: number; paymentResponseHash: string; chargedAmountUSDC?: string | null }
   | { type: "reconcile"; settlementRef?: string; providerTransferId?: string }
   | { type: "reject"; failureCode: string; failureMessage: string }
   | { type: "fail"; failureCode: string; failureMessage: string }
@@ -35,6 +35,7 @@ export type X402ReceiptEvidencePatch = {
   providerTransferId?: string;
   serviceStatus?: number;
   paymentResponseHash?: string;
+  chargedAmountUSDC?: string;
   failureCode?: string;
   failureMessage?: string;
 };
@@ -135,7 +136,13 @@ export function transitionX402Receipt(current: X402ReceiptState, event: X402Rece
         throw new X402ReceiptInvariantError("service status must be a successful HTTP status");
       }
       to = "service_delivered";
-      patch = { serviceStatus: event.serviceStatus, paymentResponseHash: requireHash(event.paymentResponseHash, "payment response hash") };
+      patch = {
+        serviceStatus: event.serviceStatus,
+        paymentResponseHash: requireHash(event.paymentResponseHash, "payment response hash"),
+        ...(event.chargedAmountUSDC !== undefined && event.chargedAmountUSDC !== null
+          ? { chargedAmountUSDC: requireAmount(event.chargedAmountUSDC) }
+          : {}),
+      };
       break;
     case "reconcile":
       to = "reconciled";

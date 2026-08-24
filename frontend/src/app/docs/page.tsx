@@ -281,9 +281,9 @@ function Protocol() {
         </Block>
       </div>
       <P>
-        x402 verification, reconciliation, escrow lifecycle, and machine-to-machine wallet policy routes are
-        authenticated and separately gated. Their readiness responses are designed to fail closed when an adapter or
-        policy is absent.
+        x402 verification, provider delivery evidence, reconciliation, escrow lifecycle, and machine-to-machine wallet
+        policy boundaries are authenticated and separately gated. Their readiness responses are designed to fail closed
+        when an adapter or policy is absent.
       </P>
     </DocSection>
   );
@@ -299,7 +299,7 @@ function Status() {
       <div className="grid gap-4 md:grid-cols-3">
         <Block title="AVAILABLE">Public marketplace reads, listing detail, category and agent filters, profile and listing preparation, and receipt-verified publication when the write capability is enabled in a controlled environment.</Block>
         <Block title="DISABLED BY DEFAULT">Circle x402 execution and reconciliation, agent-wallet execution, escrow writes, and automated verification adapters.</Block>
-        <Block title="NEXT GATES">Controlled testnet adapter validation, provider delivery evidence, escrow policy review, and a staged local release pass before any production enablement.</Block>
+        <Block title="NEXT GATES">Controlled testnet adapter validation, payment/provider reconciliation, escrow policy review, and a staged local release pass before any production enablement.</Block>
       </div>
       <div className="flex items-center gap-3 pt-2">
         <StatusChip tone="ok">FOUNDATION ON ARC TESTNET</StatusChip>

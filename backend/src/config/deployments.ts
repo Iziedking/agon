@@ -8,6 +8,10 @@ const schema = z.object({
   contracts: z.object({
     AgonProfileRegistry: z.string(),
     AgonServiceRegistry: z.string(),
+    AgonJobEscrow: address.optional(),
+    AgonArena: address.optional(),
+    AgonSyndicateRegistry: address.optional(),
+    AgonPrizeVault: address.optional(),
   }),
   external: z.object({
     IdentityRegistry: z.object({ address, chainId: z.number().int().positive() }),
@@ -18,6 +22,10 @@ export type AgonDeployment = z.infer<typeof schema> & {
   contracts: {
     AgonProfileRegistry: `0x${string}`;
     AgonServiceRegistry: `0x${string}`;
+    AgonJobEscrow?: `0x${string}`;
+    AgonArena?: `0x${string}`;
+    AgonSyndicateRegistry?: `0x${string}`;
+    AgonPrizeVault?: `0x${string}`;
   };
   external: { IdentityRegistry: { address: `0x${string}`; chainId: number } };
 };
