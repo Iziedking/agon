@@ -2,7 +2,7 @@ import {
   type X402AgentPolicyError,
   type X402AgentReserveInput,
   type X402AgentSpendRecord,
-  type X402AgentWalletPolicyLedger,
+  type X402AgentWalletPolicyStore,
   type X402AgentWalletSettlementAdapter,
 } from "./x402-agent-policy.ts";
 
@@ -37,17 +37,17 @@ export type X402AgentExecutionResult =
  * a separate step after an independent receipt/state verification.
  */
 export class X402AgentSpendExecutor {
-  private readonly ledger: X402AgentWalletPolicyLedger;
+  private readonly ledger: X402AgentWalletPolicyStore;
   private readonly adapter: X402AgentWalletSettlementAdapter;
 
-  constructor(ledger: X402AgentWalletPolicyLedger, adapter: X402AgentWalletSettlementAdapter) {
+  constructor(ledger: X402AgentWalletPolicyStore, adapter: X402AgentWalletSettlementAdapter) {
     this.ledger = ledger;
     this.adapter = adapter;
   }
 
   async execute(input: X402AgentReserveInput): Promise<X402AgentExecutionResult> {
-    const reservation = this.ledger.reserve(input);
-    if (!reservation.ok) return reservation;
+    const reservation = await this.ledger.reserve(input);
+    if (!reservation.ok) return { ok: false, error: reservation.error };
 
     if (reservation.decision === "idempotent_replay") {
       if (reservation.record.state === "confirmed") {
@@ -67,9 +67,9 @@ export class X402AgentSpendExecutor {
       };
     }
 
-    const policy = this.ledger.getPolicy(input.agentId);
+    const policy = await this.ledger.getPolicy(input.agentId);
     if (!policy?.walletId) {
-      const failed = this.ledger.transition({ agentId: input.agentId, idempotencyKey: input.idempotencyKey, state: "failed" });
+      const failed = await this.ledger.transition({ agentId: input.agentId, idempotencyKey: input.idempotencyKey, state: "failed" });
       return {
         ok: false,
         error: { code: "wallet_disabled", message: "agent wallet execution is not provisioned" },
@@ -77,7 +77,7 @@ export class X402AgentSpendExecutor {
       };
     }
     if (!this.adapter.enabled) {
-      const failed = this.ledger.transition({ agentId: input.agentId, idempotencyKey: input.idempotencyKey, state: "failed" });
+      const failed = await this.ledger.transition({ agentId: input.agentId, idempotencyKey: input.idempotencyKey, state: "failed" });
       return {
         ok: false,
         error: { code: "wallet_disabled", message: "agent wallet execution is disabled by policy" },
@@ -95,7 +95,7 @@ export class X402AgentSpendExecutor {
         idempotencyKey: input.idempotencyKey,
       });
     } catch {
-      const unknown = this.ledger.transition({ agentId: input.agentId, idempotencyKey: input.idempotencyKey, state: "unknown" });
+      const unknown = await this.ledger.transition({ agentId: input.agentId, idempotencyKey: input.idempotencyKey, state: "unknown" });
       return {
         ok: false,
         error: { code: "wallet_unknown", message: "wallet provider outcome is unknown; reconcile before retrying" },
@@ -105,7 +105,7 @@ export class X402AgentSpendExecutor {
 
     if (!outcome.ok) {
       const state = outcome.error.code === "wallet_disabled" ? "failed" : "unknown";
-      const transitioned = this.ledger.transition({ agentId: input.agentId, idempotencyKey: input.idempotencyKey, state });
+      const transitioned = await this.ledger.transition({ agentId: input.agentId, idempotencyKey: input.idempotencyKey, state });
       return {
         ok: false,
         error: outcome.error,
@@ -113,25 +113,25 @@ export class X402AgentSpendExecutor {
       };
     }
 
-    const submitted = this.ledger.transition({
+    const submitted = await this.ledger.transition({
       agentId: input.agentId,
       idempotencyKey: input.idempotencyKey,
       state: "submitted",
       providerTransferId: outcome.providerTransferId,
       transaction: outcome.transaction,
     });
-    if (!submitted.ok) return submitted;
+    if (!submitted.ok) return { ok: false, error: submitted.error, record: reservation.record };
     return { ok: true, decision: "submitted", record: submitted.record };
   }
 
-  confirm(input: {
+  async confirm(input: {
     agentId: string;
     idempotencyKey: string;
     now?: Date;
     transaction?: `0x${string}` | null;
-  }): X402AgentExecutionResult {
-    const result = this.ledger.transition({ ...input, state: "confirmed" });
-    if (!result.ok) return result;
+  }): Promise<X402AgentExecutionResult> {
+    const result = await this.ledger.transition({ ...input, state: "confirmed" });
+    if (!result.ok) return { ok: false, error: result.error };
     return { ok: true, decision: "idempotent_replay", record: result.record };
   }
 }

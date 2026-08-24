@@ -68,6 +68,26 @@ export type X402AgentReserveResult =
     }
   | { ok: false; error: X402AgentPolicyError };
 
+export type X402AgentSpendTransitionInput = {
+  agentId: string;
+  idempotencyKey: string;
+  state: Exclude<X402AgentSpendState, "reserved">;
+  now?: Date;
+  providerTransferId?: string | null;
+  transaction?: `0x${string}` | null;
+};
+
+type MaybePromise<T> = T | Promise<T>;
+
+/** The executor depends on this contract, not on an in-memory implementation. */
+export type X402AgentWalletPolicyStore = {
+  setPolicy(policy: X402AgentWalletPolicy): MaybePromise<void>;
+  getPolicy(agentId: string): MaybePromise<X402AgentWalletPolicy | null>;
+  getSpend(agentId: string, idempotencyKey: string): MaybePromise<X402AgentSpendRecord | null>;
+  reserve(input: X402AgentReserveInput): MaybePromise<X402AgentReserveResult>;
+  transition(input: X402AgentSpendTransitionInput): MaybePromise<{ ok: true; record: X402AgentSpendRecord } | { ok: false; error: X402AgentPolicyError }>;
+};
+
 function parseAmount(value: string | bigint): bigint | null {
   try {
     const parsed = typeof value === "bigint" ? value : /^\d+$/.test(value) ? BigInt(value) : null;
@@ -93,7 +113,7 @@ function policyError(code: X402AgentPolicyErrorCode, message: string): { ok: fal
   return { ok: false, error: { code, message } };
 }
 
-function validatePolicy(policy: X402AgentWalletPolicy): X402AgentPolicyError | null {
+export function validateX402AgentWalletPolicy(policy: X402AgentWalletPolicy): X402AgentPolicyError | null {
   if (!AGENT_ID.test(policy.agentId)) return { code: "policy_invalid", message: "agent policy id is invalid" };
   if (policy.network !== AGON_X402_AGENT_POLICY_NETWORK) return { code: "policy_invalid", message: "agent wallet policy is restricted to Arc Testnet" };
   if (policy.perCallCapBaseUnits <= 0n || policy.dailyCapBaseUnits <= 0n || policy.perCallCapBaseUnits > policy.dailyCapBaseUnits) {
@@ -159,7 +179,7 @@ export class X402AgentWalletPolicyLedger {
   reserve(input: X402AgentReserveInput): X402AgentReserveResult {
     const policy = this.policies.get(input.agentId);
     if (!policy || !policy.enabled) return policyError("wallet_policy_disabled", "agent wallet spending policy is disabled");
-    const policyIssue = validatePolicy(policy);
+    const policyIssue = validateX402AgentWalletPolicy(policy);
     if (policyIssue) return { ok: false, error: policyIssue };
     if (!IDEMPOTENCY_KEY.test(input.idempotencyKey)) return policyError("invalid_spend", "spend idempotency key must be 8-128 safe characters");
     const amount = parseAmount(input.amountBaseUnits);
@@ -204,14 +224,7 @@ export class X402AgentWalletPolicyLedger {
     return { ok: true, decision: "reserved", record, remainingDailyBaseUnits: remaining - amount };
   }
 
-  transition(input: {
-    agentId: string;
-    idempotencyKey: string;
-    state: Exclude<X402AgentSpendState, "reserved">;
-    now?: Date;
-    providerTransferId?: string | null;
-    transaction?: `0x${string}` | null;
-  }): { ok: true; record: X402AgentSpendRecord } | { ok: false; error: X402AgentPolicyError } {
+  transition(input: X402AgentSpendTransitionInput): { ok: true; record: X402AgentSpendRecord } | { ok: false; error: X402AgentPolicyError } {
     const record = this.spends.get(spendKey(input.agentId, input.idempotencyKey));
     if (!record) return policyError("invalid_spend", "spend reservation does not exist");
     const now = input.now ?? new Date();

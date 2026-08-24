@@ -65,7 +65,8 @@ progress.md
 # Operator/dev scripts: local-only by default (some may carry admin keys or
 # role grants), but commit the repo-safe, secret-free ones the box and the
 # ops runbook actually need. These read keys from env, never hardcode them.
-scripts/
+scripts/*
+!scripts/check-agon-boundary.ps1
 !backend/scripts/
 backend/scripts/*
 !backend/scripts/circle-bootstrap.ts
@@ -74,6 +75,8 @@ backend/scripts/*
 !contracts/scripts/
 contracts/scripts/*
 !contracts/scripts/set-listing-fee.sh
+!frontend/scripts/
+!frontend/scripts/asp.ts
 
 # Local-only run guide (contains operational tips, not for distribution)
 docs/run_guide.md
