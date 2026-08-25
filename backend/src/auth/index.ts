@@ -5,7 +5,7 @@ import { startArcX402Seller } from "../nanopayments/arcSeller.js";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { deleteCookie, setCookie } from "hono/cookie";
-import { createHash, createHmac, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import { generateSiweNonce, parseSiweMessage } from "viem/siwe";
 import { z } from "zod";
 
@@ -39,7 +39,7 @@ import { redis } from "../redis.js";
 import { issueToken, requireAgonScope, requireAuth, SESSION_COOKIE } from "./jwt.js";
 import { walletPrincipalForOperator } from "./wallet-principal.js";
 import { walletPrincipalForLinkedCircleWallet } from "./wallet-principal.js";
-import { listWalletPrincipals, linkCircleUserControlledWallet } from "./wallet-principal-repository.js";
+import { getWalletPrincipal, listWalletPrincipals, linkCircleUserControlledWallet } from "./wallet-principal-repository.js";
 import { createCircleUserControlledService } from "./circle-user-controlled.js";
 import { CLI_USER_CODE_RE, formatCliUserCode, hashCliCode, randomCliCode } from "./cli-device.js";
 import { createAgonAuthMiddleware } from "../agon/http/admin-auth.js";
@@ -1361,6 +1361,88 @@ app.post("/auth/circle/user-controlled/link", requireAuth, async (c) => {
     const message = error instanceof Error ? error.message : "Circle wallet could not be linked";
     if (message.includes("already linked") || message.includes("mismatch")) return c.json({ error: message }, 409);
     return c.json({ error: "Circle wallet could not be linked" }, 502);
+  }
+});
+
+app.post("/auth/circle/user-controlled/contract-challenge", requireAuth, async (c) => {
+  if (!circleUserControlled.enabled) return c.json({ error: "Circle user-controlled wallets are disabled" }, 503);
+  const body = await c.req.json().catch(() => null) as {
+    userToken?: unknown;
+    walletId?: unknown;
+    address?: unknown;
+    contractAddress?: unknown;
+    callData?: unknown;
+    idempotencyKey?: unknown;
+    amount?: unknown;
+    refId?: unknown;
+  } | null;
+  const userToken = typeof body?.userToken === "string" ? body.userToken : "";
+  const walletId = typeof body?.walletId === "string" ? body.walletId.trim() : "";
+  const address = typeof body?.address === "string" ? body.address.trim().toLowerCase() : "";
+  const contractAddress = typeof body?.contractAddress === "string" ? body.contractAddress.trim().toLowerCase() : "";
+  const callData = typeof body?.callData === "string" ? body.callData.trim() : "";
+  const idempotencyKey = typeof body?.idempotencyKey === "string" ? body.idempotencyKey.trim() : randomUUID();
+  const amount = typeof body?.amount === "string" ? body.amount.trim() : undefined;
+  const refId = typeof body?.refId === "string" ? body.refId.trim().slice(0, 128) : undefined;
+  if (
+    userToken.length < 8 ||
+    userToken.length > 4096 ||
+    walletId.length < 8 ||
+    walletId.length > 256 ||
+    !/^0x[a-fA-F0-9]{40}$/.test(address) ||
+    !/^0x[a-fA-F0-9]{40}$/.test(contractAddress) ||
+    callData.length < 4 ||
+    !/^0x[0-9a-fA-F]*$/.test(callData) ||
+    callData.length % 2 !== 0 ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(idempotencyKey)
+  ) {
+    return c.json({ error: "valid user-controlled wallet and exact contract call required" }, 400);
+  }
+  if (!WRITE_ALLOWLIST.has(contractAddress)) return c.json({ error: "contract is not enabled for Agon writes" }, 403);
+  const principal = await getWalletPrincipal(c.get("address"), address, pool);
+  if (!principal || principal.providerWalletId !== walletId || principal.blockchain !== config.circle.blockchain) {
+    return c.json({ error: "wallet principal is not linked to this operator" }, 403);
+  }
+  try {
+    const challenge = await circleUserControlled.createContractExecutionChallenge({
+      userToken,
+      walletId,
+      contractAddress: contractAddress as `0x${string}`,
+      callData: callData as `0x${string}`,
+      blockchain: config.circle.blockchain,
+      idempotencyKey,
+      ...(amount ? { amount } : {}),
+      ...(refId ? { refId } : {}),
+    });
+    return c.json({ challengeId: challenge.challengeId, chainId: config.chainId, contractAddress, callData });
+  } catch {
+    return c.json({ error: "Circle contract challenge could not be created" }, 502);
+  }
+});
+
+app.post("/auth/circle/user-controlled/contract-status", requireAuth, async (c) => {
+  if (!circleUserControlled.enabled) return c.json({ error: "Circle user-controlled wallets are disabled" }, 503);
+  const body = await c.req.json().catch(() => null) as {
+    userToken?: unknown;
+    walletId?: unknown;
+    address?: unknown;
+    challengeId?: unknown;
+  } | null;
+  const userToken = typeof body?.userToken === "string" ? body.userToken : "";
+  const walletId = typeof body?.walletId === "string" ? body.walletId.trim() : "";
+  const address = typeof body?.address === "string" ? body.address.trim().toLowerCase() : "";
+  const challengeId = typeof body?.challengeId === "string" ? body.challengeId.trim() : "";
+  if (userToken.length < 8 || userToken.length > 4096 || walletId.length < 8 || walletId.length > 256 || !/^0x[a-fA-F0-9]{40}$/.test(address) || challengeId.length < 8 || challengeId.length > 256) {
+    return c.json({ error: "valid wallet and challenge are required" }, 400);
+  }
+  const principal = await getWalletPrincipal(c.get("address"), address, pool);
+  if (!principal || principal.providerWalletId !== walletId || principal.blockchain !== config.circle.blockchain) {
+    return c.json({ error: "wallet principal is not linked to this operator" }, 403);
+  }
+  try {
+    return c.json(await circleUserControlled.getContractExecutionStatus({ userToken, challengeId }));
+  } catch {
+    return c.json({ error: "Circle contract status could not be loaded" }, 502);
   }
 });
 

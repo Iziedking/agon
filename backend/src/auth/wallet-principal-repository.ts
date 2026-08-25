@@ -44,6 +44,33 @@ export async function listWalletPrincipals(operatorAddress: string, database: Po
   }));
 }
 
+export async function getWalletPrincipal(
+  operatorAddress: string,
+  address: string,
+  database: Pool,
+): Promise<StoredWalletPrincipal | null> {
+  const result = await database.query<WalletPrincipalRow>(
+    `select address, principal_type, provider_user_id, provider_wallet_id,
+            blockchain, status, created_at
+       from agon_wallet_principals
+      where operator_address = $1 and address = $2 and status = 'active'
+      limit 1`,
+    [normalizeAddress(operatorAddress), normalizeAddress(address)],
+  );
+  const row = result.rows[0];
+  return row
+    ? {
+        address: row.address,
+        principalType: row.principal_type,
+        providerUserId: row.provider_user_id,
+        providerWalletId: row.provider_wallet_id,
+        blockchain: row.blockchain,
+        status: row.status,
+        linkedAt: row.created_at,
+      }
+    : null;
+}
+
 export type LinkCircleUserControlledWalletInput = {
   operatorAddress: string;
   address: string;

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { walletPrincipalForOperator } from "../../src/auth/wallet-principal.ts";
+import { walletPrincipalForLinkedCircleWallet, walletPrincipalForOperator } from "../../src/auth/wallet-principal.ts";
 
 test("external operators are explicit user-custodied browser wallets", () => {
   assert.deepEqual(
@@ -24,6 +24,19 @@ test("legacy email operators are labelled as managed Circle wallets", () => {
       custody: "agon",
       signingSurface: "agon_backend",
       label: "Managed Circle wallet",
+    },
+  );
+});
+
+test("linked Circle user-controlled wallets are explicit user-custodied browser principals", () => {
+  assert.deepEqual(
+    walletPrincipalForLinkedCircleWallet({ address: "0xABCDEF", principalType: "circle_user_controlled" }),
+    {
+      address: "0xabcdef",
+      mode: "circle_user_controlled",
+      custody: "user",
+      signingSurface: "browser_circle",
+      label: "Circle user-controlled wallet",
     },
   );
 });

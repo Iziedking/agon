@@ -1,5 +1,6 @@
 import {
   initiateUserControlledWalletsClient,
+  type CreateContractExecutionTransactionInput,
   type CircleUserControlledWalletsClient,
   type ClientParams,
 } from "@circle-fin/user-controlled-wallets";
@@ -15,7 +16,13 @@ export type CircleUserControlledWallet = {
 
 export type CircleUserControlledClientLike = Pick<
   CircleUserControlledWalletsClient,
-  "createDeviceTokenForEmailLogin" | "getUserStatus" | "createWallet" | "listWallets"
+  | "createDeviceTokenForEmailLogin"
+  | "getUserStatus"
+  | "createWallet"
+  | "listWallets"
+  | "createUserTransactionContractExecutionChallenge"
+  | "getUserChallenge"
+  | "getTransaction"
 >;
 
 export type CircleUserControlledService = {
@@ -32,6 +39,20 @@ export type CircleUserControlledService = {
   }>;
   listWallets(input: { userToken: string }): Promise<CircleUserControlledWallet[]>;
   findOwnedWallet(input: { userToken: string; walletId: string; address: string }): Promise<CircleUserControlledWallet>;
+  createContractExecutionChallenge(input: {
+    userToken: string;
+    walletId: string;
+    contractAddress: `0x${string}`;
+    callData: `0x${string}`;
+    blockchain: string;
+    idempotencyKey: string;
+    amount?: string;
+    refId?: string;
+  }): Promise<{ challengeId: string }>;
+  getContractExecutionStatus(input: {
+    userToken: string;
+    challengeId: string;
+  }): Promise<{ state: string; txHash: string | null; errorReason: string | null }>;
 };
 
 type ServiceOptions = {
@@ -142,6 +163,50 @@ export function createCircleUserControlledService(options: ServiceOptions): Circ
       const userId = status.data?.id;
       if (typeof userId !== "string" || userId.length < 1) throw new Error("Circle wallet has no provider user identity");
       return { ...wallet, userId };
+    },
+    async createContractExecutionChallenge(input) {
+      const userToken = cleanToken(input.userToken, "user token");
+      const walletId = cleanToken(input.walletId, "wallet id");
+      const callData = input.callData;
+      if (callData.length < 4 || !/^0x[0-9a-fA-F]*$/.test(callData) || callData.length % 2 !== 0) {
+        throw new Error("call data must be an even-length hexadecimal value");
+      }
+      if (!/^0x[a-fA-F0-9]{40}$/.test(input.contractAddress)) throw new Error("contract address is invalid");
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.idempotencyKey)) throw new Error("idempotency key is invalid");
+      const request: CreateContractExecutionTransactionInput = {
+        userToken,
+        walletId,
+        contractAddress: input.contractAddress,
+        callData,
+        blockchain: input.blockchain as never,
+        idempotencyKey: input.idempotencyKey,
+        fee: { type: "level", config: { feeLevel: "MEDIUM" } },
+        ...(input.amount ? { amount: input.amount } : {}),
+        ...(input.refId ? { refId: input.refId } : {}),
+      };
+      const response = await getClient().createUserTransactionContractExecutionChallenge(request);
+      const challengeId = response.data?.challengeId;
+      if (typeof challengeId !== "string" || challengeId.length < 8) {
+        throw new Error("Circle did not return a contract execution challenge");
+      }
+      return { challengeId };
+    },
+    async getContractExecutionStatus(input) {
+      const userToken = cleanToken(input.userToken, "user token");
+      const challengeId = cleanToken(input.challengeId, "challenge id");
+      const challengeResponse = await getClient().getUserChallenge({ userToken, challengeId });
+      const challenge = challengeResponse.data?.challenge;
+      if (!challenge) throw new Error("Circle challenge was not found");
+      const transactionId = challenge.correlationIds?.find((value) => typeof value === "string" && value.length > 0);
+      if (!transactionId) return { state: challenge.status, txHash: null, errorReason: challenge.errorMessage ?? null };
+      const transactionResponse = await getClient().getTransaction({ userToken, id: transactionId });
+      const transaction = transactionResponse.data?.transaction;
+      if (!transaction) return { state: challenge.status, txHash: null, errorReason: challenge.errorMessage ?? null };
+      return {
+        state: transaction.state,
+        txHash: typeof transaction.txHash === "string" ? transaction.txHash : null,
+        errorReason: typeof transaction.errorReason === "string" ? transaction.errorReason : null,
+      };
     },
   };
 }
