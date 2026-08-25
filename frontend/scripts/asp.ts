@@ -1,4 +1,6 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { dirname, join, resolve } from "node:path";
 
 import {
   AspCommandError,
@@ -9,6 +11,7 @@ import {
   publishAspListing,
   verifyAspManifest,
 } from "../src/lib/agon/asp.ts";
+import { scaffoldServiceProject, writeServiceScaffold } from "../src/lib/agon/service-scaffold.ts";
 
 type Options = Record<string, string | boolean>;
 
@@ -19,7 +22,7 @@ function parseArgs(argv: string[]): { command: string; options: Options } {
     const arg = rest[index];
     if (!arg?.startsWith("--")) throw new AspCommandError("invalid_arguments", `Unexpected argument: ${arg ?? ""}`);
     const key = arg.slice(2);
-    if (key === "yes" || key === "json" || key === "force") options[key] = true;
+    if (key === "yes" || key === "json" || key === "force" || key === "run") options[key] = true;
     else {
       const value = rest[index + 1];
       if (!value || value.startsWith("--")) throw new AspCommandError("invalid_arguments", `Missing value for --${key}`);
@@ -54,6 +57,12 @@ function writeJson(path: string, value: unknown, force: boolean): void {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
+function writeJsonOrText(path: string, value: unknown, force: boolean): void {
+  if (existsSync(path) && !force) throw new AspCommandError("file_exists", `Refusing to replace ${path}; add --force after reviewing it`);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, typeof value === "string" ? value : `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
 function output(value: unknown, json: boolean): void {
   if (json) {
     console.log(JSON.stringify(value, null, 2));
@@ -64,7 +73,7 @@ function output(value: unknown, json: boolean): void {
 }
 
 function help(): void {
-  console.log(`Agon ASP CLI\n\nCommands:\n  categories [--json]\n  prepare --config FILE --manifest-out FILE --payload-out FILE [--force]\n  verify-manifest --manifest FILE [--expected-hash HASH] [--json]\n  health --api-url URL [--json]\n  demo-run --api-url URL --category SLUG --task TASK_ID [--input FILE] [--json]\n  inspect --api-url URL --reference REF [--manifest FILE] [--current-owner ADDRESS] [--json]\n  publish --api-url URL --config FILE --manifest FILE --token-env NAME --yes [--json]\n  confirm --api-url URL --operation ID --tx-hash HASH --token-env NAME [--json]`);
+  console.log(`Agon ASP CLI\n\nCommands:\n  categories [--json]\n  init --directory DIR --service-key KEY --name NAME --category SLUG [--description TEXT] [--force]\n  deploy --directory DIR [--target docker] [--port PORT] [--run] [--force]\n  prepare --config FILE --manifest-out FILE --payload-out FILE [--force]\n  verify-manifest --manifest FILE [--expected-hash HASH] [--json]\n  health --api-url URL [--json]\n  demo-run --api-url URL --category SLUG --task TASK_ID [--input FILE] [--json]\n  inspect --api-url URL --reference REF [--manifest FILE] [--current-owner ADDRESS] [--json]\n  publish --api-url URL --config FILE --manifest FILE --token-env NAME --yes [--json]\n  confirm --api-url URL --operation ID --tx-hash HASH --token-env NAME [--json]`);
 }
 
 async function main(): Promise<void> {
@@ -77,6 +86,45 @@ async function main(): Promise<void> {
   if (command === "categories") {
     const { AGON_CATEGORIES } = await import("../src/lib/agon/catalog.ts");
     output(AGON_CATEGORIES, json);
+    return;
+  }
+  if (command === "init") {
+    const directory = resolve(requiredOption(options, "directory"));
+    let scaffold;
+    try {
+      scaffold = scaffoldServiceProject({
+        serviceKey: requiredOption(options, "service-key"),
+        name: requiredOption(options, "name"),
+        category: requiredOption(options, "category"),
+        description: stringOption(options, "description") || undefined,
+      });
+      const files = writeServiceScaffold(directory, scaffold, options.force === true);
+      output({ command, directory, serviceKey: scaffold.serviceKey, files }, json);
+    } catch (error) {
+      if (error instanceof AspCommandError) throw error;
+      throw new AspCommandError("scaffold_failed", error instanceof Error ? error.message : String(error));
+    }
+    return;
+  }
+  if (command === "deploy") {
+    const directory = resolve(requiredOption(options, "directory"));
+    const target = stringOption(options, "target", "docker");
+    if (target !== "docker") throw new AspCommandError("unsupported_target", "The local Docker target is the only supported deploy target in this phase");
+    const port = stringOption(options, "port", "8789");
+    if (!/^([1-9][0-9]{2,4})$/.test(port) || Number(port) > 65535) throw new AspCommandError("invalid_port", "--port must be a TCP port between 100 and 65535");
+    const serviceFile = join(directory, "agon.service.json");
+    const runtimeFile = join(directory, "service.ts");
+    const dockerfile = join(directory, "Dockerfile");
+    if (!existsSync(serviceFile) || !existsSync(runtimeFile) || !existsSync(dockerfile)) {
+      throw new AspCommandError("invalid_service", "Directory must contain agon.service.json, service.ts, and Dockerfile. Run init first.");
+    }
+    const composePath = join(directory, "docker-compose.agon.yml");
+    const compose = `services:\n  agon-provider:\n    build:\n      context: .\n      dockerfile: Dockerfile\n    ports:\n      - "${port}:8789"\n    environment:\n      PORT: 8789\n      PUBLIC_ENDPOINT: http://localhost:${port}/execute\n    restart: unless-stopped\n`;
+    writeJsonOrText(composePath, compose, options.force === true);
+    if (options.run === true) {
+      execFileSync("docker", ["compose", "-f", composePath, "up", "--build", "-d"], { cwd: directory, stdio: "inherit" });
+    }
+    output({ command, target, directory, composePath, serviceUrl: `http://localhost:${port}/execute`, healthUrl: `http://localhost:${port}/health`, started: options.run === true }, json);
     return;
   }
   if (command === "prepare") {

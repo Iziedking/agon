@@ -23,9 +23,10 @@ import { bindProfile, confirmAgonOperation, getAgonHealth, publishListing } from
 import { canonicalManifestHash } from "@/lib/agon/canonical";
 import { buildServiceManifest, validateServiceDraft } from "@/lib/agon/draft";
 import type { AgonCapabilities, PaymentRail } from "@/lib/agon/types";
+import { AGON_NETWORK } from "@/lib/agon/network";
+import { AGON_IDENTITY_REGISTRY, agonIdentityRegistryAbi, identityIdFromRegistrationReceipt, validateIdentityMetadataUri } from "@/lib/agon/identity";
 
 const INPUT_CLASS = "h-12 w-full border border-[color:var(--hairline-strong)] bg-canvas px-4 font-mono text-[12px] text-ink outline-none placeholder:text-ink-3 focus:border-ink focus:ring-2 focus:ring-ink focus:ring-offset-2 focus:ring-offset-canvas disabled:opacity-50";
-const ARC_TESTNET_CHAIN_ID = "5042002";
 
 export default function NewListingPage() {
   const { address, isSignedIn, settling } = useOperatorAddress();
@@ -43,6 +44,7 @@ export default function NewListingPage() {
   const [manifestUri, setManifestUri] = useState("");
   const [paymentRail, setPaymentRail] = useState<PaymentRail>("X402");
   const [binding, setBinding] = useState(false);
+  const [creatingIdentity, setCreatingIdentity] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [notice, setNotice] = useState<{ tone: "ok" | "warn" | "error"; message: string } | null>(null);
   const [pendingConfirmation, setPendingConfirmation] = useState<{
@@ -91,7 +93,7 @@ export default function NewListingPage() {
     setNotice(null);
     setBinding(true);
     try {
-      const operation = await bindProfile({ chainId: ARC_TESTNET_CHAIN_ID, agentId, metadataUri });
+      const operation = await bindProfile({ chainId: AGON_NETWORK.chainId, agentId, metadataUri });
       if (operation.state === "confirmed") {
         setNotice({ tone: "ok", message: `This identity binding is already confirmed${operation.proof ? ` in block ${operation.proof.blockNumber}` : ""}.` });
         return;
@@ -119,6 +121,31 @@ export default function NewListingPage() {
     }
   }
 
+  async function createIdentity() {
+    if (!address || !validateIdentityMetadataUri(metadataUri)) {
+      setNotice({ tone: "error", message: "Provide a permanent HTTPS or IPFS metadata URL before creating the identity." });
+      return;
+    }
+    setNotice(null);
+    setCreatingIdentity(true);
+    try {
+      const hash = await writeContractAsync({
+        address: AGON_IDENTITY_REGISTRY,
+        abi: agonIdentityRegistryAbi,
+        functionName: "register",
+        args: [metadataUri.trim()],
+      });
+      const receipt = await confirmTx(hash);
+      const createdId = identityIdFromRegistrationReceipt(receipt, address);
+      setAgentId(createdId.toString());
+      setNotice({ tone: "ok", message: `ERC-8004 identity #${createdId.toString()} confirmed. Bind it to Agon before publishing.` });
+    } catch (error) {
+      setNotice({ tone: "error", message: error instanceof Error ? error.message : "Identity creation failed." });
+    } finally {
+      setCreatingIdentity(false);
+    }
+  }
+
   async function submitListing(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setNotice(null);
@@ -129,7 +156,7 @@ export default function NewListingPage() {
     setPublishing(true);
     try {
       const operation = await publishListing({
-        chainId: ARC_TESTNET_CHAIN_ID,
+        chainId: AGON_NETWORK.chainId,
         agentId,
         serviceKey,
         manifestHash,
@@ -243,14 +270,14 @@ export default function NewListingPage() {
           <form onSubmit={submitListing} className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_400px]">
             <div className="space-y-6">
               <BracketedCell pad="lg">
-                <StepHeading number="01" title="Choose the service owner" copy="Use an ERC-8004 agent that this wallet owns. Agon binds to that identity and never mints a replacement." />
+                <StepHeading number="01" title="Create or import the owner" copy="Use an ERC-8004 identity that this wallet owns. You can create one here or import an existing agent id; Agon never takes custody of the identity." />
                 <div className="mt-7 grid gap-5 sm:grid-cols-2">
                   <Field label="ERC-8004 AGENT" hint="Find this ID in your identity record">
                     <input required value={agentId} onChange={(event) => setAgentId(event.target.value)} inputMode="numeric" pattern="[1-9][0-9]*" placeholder="42" className={INPUT_CLASS} />
                   </Field>
                   <Field label="NETWORK" hint="Fixed for this foundation release">
                     <div className={`${INPUT_CLASS} flex items-center justify-between gap-3`}>
-                      <span>Arc Testnet</span><span className="text-ink-3">Chain {ARC_TESTNET_CHAIN_ID}</span>
+                      <span>{AGON_NETWORK.name}</span><span className="text-ink-3">Chain {AGON_NETWORK.chainId}</span>
                     </div>
                   </Field>
                   <Field label="AGENT PROFILE URL" hint="Public metadata for the agent identity" className="sm:col-span-2">
@@ -268,6 +295,14 @@ export default function NewListingPage() {
                     onClick={() => { void submitBinding(); }}
                   >
                     {binding ? "BINDING IDENTITY..." : "BIND EXISTING IDENTITY"}
+                  </TagButton>
+                  <TagButton
+                    type="button"
+                    variant="ghost"
+                    disabled={!isSignedIn || creatingIdentity || !metadataUri || !validateIdentityMetadataUri(metadataUri)}
+                    onClick={() => { void createIdentity(); }}
+                  >
+                    {creatingIdentity ? "CREATING IDENTITY..." : "CREATE NEW ERC-8004 IDENTITY"}
                   </TagButton>
                   <span className="font-mono text-[10px] leading-relaxed text-ink-3">Already bound? Continue to the service details.</span>
                 </div>

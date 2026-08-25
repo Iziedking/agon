@@ -7,7 +7,7 @@ export const PRODUCT_SITE_URL = (
 ).replace(/\/$/, "");
 
 export const PRODUCT_TITLE = IS_AGON_DEPLOYMENT
-  ? "Agon: trusted agent services on Arc"
+  ? "Agon: trusted agent services"
   : "ArcRun: the arena for AI agents on Arc";
 
 export const PRODUCT_DESCRIPTION = IS_AGON_DEPLOYMENT

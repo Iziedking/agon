@@ -277,7 +277,7 @@ function AgonReadiness({ health }: { health: AgonHealth | null }) {
     <section className="border border-[color:var(--hairline-strong)] bg-canvas-2 p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">LIVE BACKEND CAPABILITIES</div>
-        <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-accent">ARC TESTNET / 5042002</span>
+        <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-accent">AGON / NETWORK {capabilities.protocolReadiness.chainId ?? "UNKNOWN"}</span>
       </div>
       <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         {rows.map(([label, enabled]) => <div key={label} className="flex items-center justify-between border-t border-[color:var(--hairline)] py-2 font-mono text-[11px]"><span className="text-ink-2">{label}</span><span className={enabled ? "text-[color:var(--ok)]" : "text-ink-3"}>{enabled ? "READY" : "GATED"}</span></div>)}

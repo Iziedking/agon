@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { publicClient } from "@/lib/arc";
+import { AGON_NETWORK } from "@/lib/agon/network";
 
 /// Thin top-of-viewport status bar showing live arc chain numbers. Polls
 /// the public RPC every 6 seconds (well under the 1s block time so we miss
@@ -52,13 +53,13 @@ export function ChainTicker() {
       <div className="mx-auto flex h-7 max-w-[1600px] items-center justify-between gap-6 px-6 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">
         <span className="flex items-center gap-3">
           <span aria-hidden className="inline-block h-1.5 w-1.5 animate-[pulse-live_1.5s_ease-in-out_infinite] bg-[color:var(--ok)]" />
-          ARC TESTNET
+          {AGON_NETWORK.name}
           <span aria-hidden className="text-ink-3/50">·</span>
           <span>BLOCK <span className="text-ink">{blockLabel}</span></span>
           <span aria-hidden className="text-ink-3/50">·</span>
           <span>GAS <span className="text-ink">{gasLabel}</span> USDC</span>
         </span>
-        <span className="hidden md:inline">CHAIN ID 5042002 · USDC NATIVE</span>
+        <span className="hidden md:inline">CHAIN ID {AGON_NETWORK.chainId} · {AGON_NETWORK.gasAsset} GAS</span>
       </div>
     </div>
   );

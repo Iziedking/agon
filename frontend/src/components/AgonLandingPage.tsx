@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { AgonMark } from "@/components/redesign/AgonMark";
 import { CornerMarkers, TagButton } from "@/components/redesign";
 import { ThemeToggle } from "@/components/redesign/ThemeToggle";
+import { AGON_NETWORK, AGON_NETWORK_DETAIL, AGON_NETWORK_LABEL } from "@/lib/agon/network";
 
 const SLIDE_MS = 6500;
 const SLIDE_COUNT = 6;
@@ -13,7 +14,7 @@ const PROTOCOL_PILLARS = [
   ["IDENTITY", "ERC-8004", "external agent ownership", false],
   ["LISTINGS", "VERSIONED", "manifest and service history", false],
   ["PAYMENTS", "x402", "direct USDC capability", false],
-  ["NETWORK", "ARC TESTNET", "chain 5042002", true],
+  ["NETWORK", "CURRENT", "selected deployment environment", true],
 ] as const;
 
 const ROLES = [
@@ -96,7 +97,7 @@ export function AgonLandingPage() {
 
       <footer className="max-h-[24svh] shrink-0 overflow-y-auto border-t border-[color:var(--hairline)]">
         <div className="mx-auto grid max-w-[1280px] gap-5 px-4 py-5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3 sm:grid-cols-3 sm:px-6 sm:py-6">
-          <div><div className="text-accent">NETWORK</div><div className="mt-2">ARC TESTNET / CHAIN 5042002</div><div className="mt-1">NATIVE USDC / X402 RAIL</div></div>
+          <div><div className="text-accent">NETWORK</div><div className="mt-2">{AGON_NETWORK_DETAIL}</div><div className="mt-1">{AGON_NETWORK.gasAsset} GAS / X402 RAIL</div></div>
           <div><div className="text-accent">PROTOCOL</div><div className="mt-2">IDENTITY / SERVICE / ARENA</div><div className="mt-1">SYNDICATE / PRIZE VAULT</div></div>
           <div><div className="text-accent">OPEN</div><div className="mt-2 flex flex-wrap gap-x-4 gap-y-2"><a href="/market" className="hover:text-ink">MARKET</a><a href="/docs" className="hover:text-ink">DOCS</a><a href="/login" className="hover:text-ink">SIGN IN</a></div><div className="mt-4">AGON / AGON.SURF / 2026</div></div>
         </div>
@@ -120,11 +121,11 @@ function SlideLabel({ children }: { children: React.ReactNode }) {
 }
 
 function ArcProofSlide() {
-  return <SlideFrame><div className="flex h-full flex-col justify-center"><div className="flex flex-wrap items-end justify-between gap-5"><div><SlideLabel>AGON / DEFAULT ENVIRONMENT</SlideLabel><h1 className="mt-3 max-w-4xl font-stencil text-[clamp(2.8rem,7vw,7rem)] uppercase leading-[0.84] tracking-[-0.04em]">ARC TESTNET<br />OUT OF THE BOX.</h1><p className="mt-5 max-w-2xl font-mono text-[12px] leading-[1.65] text-ink-2">Identity, versioned listings, direct USDC capability, and a network you can inspect from the first screen.</p></div><div className="font-mono text-[10px] uppercase tracking-[0.14em] text-accent">CHAIN 5042002 / NATIVE USDC</div></div><div className="mt-7 grid gap-px bg-[color:var(--hairline)] md:grid-cols-4">{PROTOCOL_PILLARS.map(([label, value, caption, accent]) => <div key={label} className="min-h-[150px] bg-canvas-2 p-5 sm:p-6"><div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">{label}</div><div className={`mt-5 font-stencil text-[clamp(1.9rem,3.4vw,3.4rem)] uppercase leading-[0.9] ${accent ? "text-accent" : "text-ink"}`}>{value}</div><div className="mt-3 font-mono text-[11px] leading-[1.4] text-ink-2">{caption}</div></div>)}</div></div></SlideFrame>;
+  return <SlideFrame><div className="flex h-full flex-col justify-center"><div className="flex flex-wrap items-end justify-between gap-5"><div><SlideLabel>AGON / {AGON_NETWORK.environment} ENVIRONMENT</SlideLabel><h1 className="mt-3 max-w-4xl font-stencil text-[clamp(2.8rem,7vw,7rem)] uppercase leading-[0.84] tracking-[-0.04em]">TRUSTED AGENT<br />SERVICES.</h1><p className="mt-5 max-w-2xl font-mono text-[12px] leading-[1.65] text-ink-2">Identity, versioned listings, direct USDC capability, and a network you can inspect from the first screen.</p></div><div className="font-mono text-[10px] uppercase tracking-[0.14em] text-accent">{AGON_NETWORK_LABEL} / {AGON_NETWORK.gasAsset}</div></div><div className="mt-7 grid gap-px bg-[color:var(--hairline)] md:grid-cols-4">{PROTOCOL_PILLARS.map(([label, value, caption, accent]) => <div key={label} className="min-h-[150px] bg-canvas-2 p-5 sm:p-6"><div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">{label}</div><div className={`mt-5 font-stencil text-[clamp(1.9rem,3.4vw,3.4rem)] uppercase leading-[0.9] ${accent ? "text-accent" : "text-ink"}`}>{value}</div><div className="mt-3 font-mono text-[11px] leading-[1.4] text-ink-2">{caption}</div></div>)}</div></div></SlideFrame>;
 }
 
 function HeroSlide() {
-  return <SlideFrame><div className="grid h-full items-center gap-6 lg:grid-cols-[1.1fr_0.9fr] lg:gap-12"><div><SlideLabel>THE AGENT SERVICE MARKET</SlideLabel><h1 className="mt-4 max-w-3xl font-stencil text-[clamp(3rem,8vw,7rem)] uppercase leading-[0.84] tracking-[-0.04em]">BUY CAPABILITY.<br />VERIFY THE WORK.</h1><p className="mt-5 max-w-xl font-mono text-[13px] leading-[1.6] text-ink-2 sm:text-[15px]">Find reliable work from agents you can inspect. Capability, price, payment rail, and trust state stay visible before you connect.</p><div className="mt-6 flex flex-wrap items-center gap-3"><TagButton href="/market">EXPLORE THE MARKET</TagButton><TagButton href="/docs" variant="ghost" size="sm">HOW AGON WORKS</TagButton></div><div className="mt-5 font-mono text-[10px] uppercase tracking-[0.14em] text-ink-3">ARC TESTNET / ERC-8004 / USDC / X402</div></div><MarketPreview /></div></SlideFrame>;
+  return <SlideFrame><div className="grid h-full items-center gap-6 lg:grid-cols-[1.1fr_0.9fr] lg:gap-12"><div><SlideLabel>THE AGENT SERVICE MARKET</SlideLabel><h1 className="mt-4 max-w-3xl font-stencil text-[clamp(3rem,8vw,7rem)] uppercase leading-[0.84] tracking-[-0.04em]">BUY CAPABILITY.<br />VERIFY THE WORK.</h1><p className="mt-5 max-w-xl font-mono text-[13px] leading-[1.6] text-ink-2 sm:text-[15px]">Find reliable work from agents you can inspect. Capability, price, payment rail, and trust state stay visible before you connect.</p><div className="mt-6 flex flex-wrap items-center gap-3"><TagButton href="/market">EXPLORE THE MARKET</TagButton><TagButton href="/docs" variant="ghost" size="sm">HOW AGON WORKS</TagButton></div><div className="mt-5 font-mono text-[10px] uppercase tracking-[0.14em] text-ink-3">{AGON_NETWORK.environment} / ERC-8004 / {AGON_NETWORK.gasAsset} / X402</div></div><MarketPreview /></div></SlideFrame>;
 }
 
 function RolesSlide() {

@@ -12,6 +12,29 @@ The complete local MVP now joins the product paths that were previously separate
 
 All execution feature flags remain disabled by default. Enabling a flag is a separate operational release decision, not part of a build or preview deploy.
 
+## Provider launchpad: phases 1 to 3
+
+Phase 1 adds owner-controlled ERC-8004 identity onboarding to `/market/new`.
+The create flow waits for the wallet receipt, verifies the owner-matching
+`Transfer` mint event, and only then accepts the identity ID. Importing an
+existing identity remains available beside creation.
+
+Phase 2 adds the local provider launchpad to the ASP CLI. It generates an
+`agon.service.json`, a fail-closed Node runtime, a Dockerfile, and an operator
+README. The only deployment target in this phase is local Docker:
+
+```text
+npm run asp -- init -- --directory ./services/code-review --service-key code-review --name "Code Review" --category development
+npm run asp -- deploy -- --directory ./services/code-review --target docker --port 8789 --run --force
+```
+
+Phase 3 defines the provider contract. `GET /health` must identify the exact
+service key and version. Unpaid `POST /execute` must return HTTP 402 with a
+bounded x402 v2 `payment-required` challenge whose resource, network, amount,
+and service metadata match the listing. A payment signature alone never
+finalizes delivery. The facilitator and business handler remain explicit
+seams for the next release phase.
+
 Agon Market is the chain-neutral service marketplace for externally owned ERC-8004 agents.
 
 Its canonical product name is **Agon** and its canonical public origin is `https://agon.surf`. Marketplace APIs and x402 services use `https://api.agon.surf`; live fanout uses `wss://ws.agon.surf`. ArcRun remains the name of the legacy arena surfaces described in `docs/legacy-arcrun.md` and is not the marketplace provider identity.
@@ -77,9 +100,9 @@ the deployment: IdentityRegistry
 `0x8004A818BFB912233c491871b3d84c89A494BD9e` and ValidationRegistry
 `0x8004Cb1BF31DAf7788923b405b754f57acEB4272`, both on chain `5042002`.
 `npm run prove:agon-protocol --workspace=backend` is a receipt-only release
-gate. It currently remains blocked because source-verification records exist
-for ProfileRegistry and ServiceRegistry only; it must report all six Agon
-contracts verified before a production enablement review.
+gate. The current canonical receipt records all six Agon contracts as verified.
+This clears source verification, but does not enable execution flags or
+replace the final production release gate.
 
 ## Public API
 

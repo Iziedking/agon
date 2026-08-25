@@ -7,6 +7,7 @@ import { AppHeader } from "@/components/pengu/AppHeader";
 import { LoginModal } from "@/components/pengu/LoginModal";
 import { AgonMark } from "@/components/redesign/AgonMark";
 import { TagButton } from "@/components/redesign/TagButton";
+import { AGON_NETWORK } from "@/lib/agon/network";
 
 /// Direct sign-in route. The same compact modal used by the product header is
 /// the canonical Agon entry surface, so a deep link and an in-app sign-in
@@ -41,7 +42,7 @@ export default function LoginPage() {
               <TagButton onClick={() => setOpen(true)}>START SIGN IN</TagButton>
               <TagButton href="/" variant="ghost" size="sm">BACK</TagButton>
             </div>
-            <p className="mt-8 font-mono text-[10px] uppercase tracking-[0.14em] text-ink-3">WALLET OR EMAIL · ARC TESTNET</p>
+            <p className="mt-8 font-mono text-[10px] uppercase tracking-[0.14em] text-ink-3">WALLET OR EMAIL · {AGON_NETWORK.environment} ENVIRONMENT</p>
           </section>
         </div>
       </main>

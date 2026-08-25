@@ -5,15 +5,15 @@ import test from "node:test";
 import { loadAgonDeployment } from "../../src/config/deployments.ts";
 import { inspectAgonProtocolReadiness } from "../../src/agon/protocol-readiness.ts";
 
-test("canonical receipt records the external ValidationRegistry but remains blocked until all sources are verified", () => {
+test("canonical receipt records the external ValidationRegistry and passes the source gate", () => {
   const loaded = loadAgonDeployment("../contracts/deployments/agon-arc-testnet.json");
   assert.ok(loaded.deployment);
   const readiness = inspectAgonProtocolReadiness(loaded.deployment);
-  assert.equal(readiness.ready, false);
+  assert.equal(readiness.ready, true);
   assert.deepEqual(readiness.missingContracts, []);
-  assert.deepEqual(readiness.unverifiedContracts, ["AgonJobEscrow", "AgonArena", "AgonSyndicateRegistry", "AgonPrizeVault"]);
+  assert.deepEqual(readiness.unverifiedContracts, []);
   assert.equal(readiness.externalRegistry.validation, "0x8004Cb1BF31DAf7788923b405b754f57acEB4272");
-  assert.ok(readiness.reasons.includes("source_verification_incomplete"));
+  assert.deepEqual(readiness.reasons, []);
 });
 
 test("protocol readiness fails closed for a partial receipt", () => {
