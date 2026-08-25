@@ -66,7 +66,10 @@ const ONCE = process.env.INDEXER_ONCE === "1";
 
 function isLogRangeLimitError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
-  return /requested range too large|range too large|eth_getLogs.*range/i.test(message);
+  // Keep quota/rate-limit failures on the normal exponential backoff path.
+  // They can mention eth_getLogs and a range in the serialized request, but
+  // shrinking that range does not release provider quota.
+  return /requested range too large|range too large|block range.*too large|too many blocks/i.test(message);
 }
 
 async function indexAdaptiveRange(
