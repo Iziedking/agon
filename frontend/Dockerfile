@@ -1,7 +1,7 @@
 # Frontend image: a production Next.js build served with `next start`.
 # NEXT_PUBLIC_* values are inlined at build time and used by the browser, so the
 # auth and socket URLs point at the host ports compose maps.
-FROM node:20-slim AS build
+FROM node:22-slim AS build
 
 WORKDIR /app
 
@@ -22,7 +22,7 @@ ENV NEXT_PUBLIC_AGON_PREVIEW_FIXTURES=0
 
 RUN npm run build
 
-FROM node:20-slim
+FROM node:22-slim
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build /app/.next ./.next

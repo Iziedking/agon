@@ -5,6 +5,8 @@ import { useAccount, useReconnect, useWriteContract } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { useAuth } from "@/hooks/useAuth";
 import { useCircleExecute, type CircleWriteArgs } from "@/hooks/useCircleExecute";
+import { useCircleUserControlledExecute } from "@/hooks/useCircleUserControlledExecute";
+import { activeCircleUserControlledAddress } from "@/lib/circle-user-controlled";
 import { useEnsureArc } from "@/hooks/useEnsureArc";
 import { arcTestnet } from "@/lib/arc";
 
@@ -32,14 +34,23 @@ export function useArcWrite() {
   const { me } = useAuth();
   const wagmi = useWriteContract();
   const circle = useCircleExecute();
+  const circleUserControlled = useCircleUserControlledExecute();
   const ensureOnArc = useEnsureArc();
   const { isConnected } = useAccount();
   const { reconnectAsync } = useReconnect();
   const { openConnectModal } = useConnectModal();
   const isCircle = me?.walletKind === "circle";
+  const activeUserControlledAddress = activeCircleUserControlledAddress();
+  const isCircleUserControlled = Boolean(
+    activeUserControlledAddress &&
+      me?.walletPrincipals?.some(
+        (principal) => principal.mode === "circle_user_controlled" && principal.address.toLowerCase() === activeUserControlledAddress,
+      ),
+  );
 
   const writeContractAsync = useCallback(
     async (args: CircleWriteArgs): Promise<`0x${string}`> => {
+      if (isCircleUserControlled) return circleUserControlled.writeContractAsync(args);
       if (isCircle) {
         // Circle Dev-Controlled wallets are backend-signed on Arc directly,
         // so no chain switch is needed for the email-login path.
@@ -87,11 +98,11 @@ export function useArcWrite() {
         ...(args.value ? { value: BigInt(args.value) } : {}),
       } as Parameters<typeof wagmi.writeContractAsync>[0]);
     },
-    [isCircle, circle, wagmi, ensureOnArc, isConnected, reconnectAsync, openConnectModal],
+    [isCircle, isCircleUserControlled, circle, circleUserControlled, wagmi, ensureOnArc, isConnected, reconnectAsync, openConnectModal],
   );
 
   return {
     writeContractAsync,
-    isPending: isCircle ? circle.isPending : wagmi.isPending,
+    isPending: isCircle ? circle.isPending : isCircleUserControlled ? circleUserControlled.isPending : wagmi.isPending,
   };
 }

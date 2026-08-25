@@ -87,6 +87,12 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8082/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
 
   auth:
     <<: *backend
@@ -143,8 +149,10 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
-      - auth
-      - coordinator
+      auth:
+        condition: service_healthy
+      coordinator:
+        condition: service_started
 
 volumes:
   arcrun_pgdata:

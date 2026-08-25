@@ -69,6 +69,28 @@ links every contract to Arcscan, and exposes bounded wallet actions for job
 funding, evaluation requests, and syndicate membership. Each write waits for a
 successful receipt before showing completion.
 
+### Wallet identity and Circle onboarding
+
+Agon uses a hybrid wallet model and labels custody explicitly:
+
+- External browser wallets remain user-custodied and sign through the connected wallet.
+- Existing email/passkey accounts retain their Circle Developer-Controlled wallet and the backend execution boundary.
+- Circle User-Controlled Wallets can be linked from `/wallet` after the operator signs into Agon. Circle email verification, wallet creation, and wallet loading happen in the browser SDK; Agon persists only the wallet address, Circle user id, Circle wallet id, chain, and link timestamp.
+
+The user-controlled path is disabled unless `CIRCLE_USER_CONTROLLED_ENABLED=true`,
+`CIRCLE_API_KEY`, and `CIRCLE_USER_CONTROLLED_APP_ID` are configured. The API
+never accepts a private key and never stores a user token, encryption key,
+refresh token, or keyshare. Linking proves control by asking Circle to list the
+wallet for the short-lived browser user token, then matching both wallet id and
+address. The new principal does not replace a legacy managed wallet. After a
+successful link, the browser may select that principal for an exact AGON
+contract action. The backend checks the linked provider wallet id, operator,
+Arc Testnet chain, and AGON contract allowlist before creating a Circle
+challenge. The browser executes the challenge through the Circle Web SDK and
+the backend reads the correlated transaction until a hash is available. The
+user-controlled session and encryption key remain browser-memory only; a page
+refresh requires Circle re-authentication before signing again.
+
 The authenticated `/admin` route is the Agon Operator Console. Its `AGON OPS`
 tab is the working control plane for the backend: it loads live capability and
 escrow readiness, browses indexed listings, runs the owner-scoped x402 preparation
@@ -133,6 +155,13 @@ The auth service mounts these routes under `/agon`:
 - `POST /agon/escrow/intents/:intentId/fund` (authenticated; exact confirmation; disabled by default)
 - `POST /agon/escrow/intents/:intentId/release` (authenticated; exact confirmation; disabled by default)
 - `POST /agon/escrow/intents/:intentId/refund` (authenticated; exact confirmation; disabled by default)
+- `GET /auth/circle/user-controlled/config` (public; returns only enabled state and public app id)
+- `POST /auth/circle/user-controlled/device` (public; exchanges a browser device id and email for Circle's short-lived device credentials)
+- `POST /auth/circle/user-controlled/prepare` (public; prepares a wallet creation challenge or returns existing wallets)
+- `POST /auth/circle/user-controlled/wallets` (public; lists wallets for the current in-memory Circle user token)
+- `POST /auth/circle/user-controlled/link` (authenticated; verifies and persists one user-controlled wallet principal)
+- `POST /auth/circle/user-controlled/contract-challenge` (authenticated; creates an exact allowlisted Arc Testnet contract challenge for a linked principal)
+- `POST /auth/circle/user-controlled/contract-status` (authenticated; reads the correlated Circle transaction state and hash)
 
 The facilitator verification route is fail-closed. It requires a prepared call intent, a durable explicit execution approval, the exact transient signature, and the literal confirmation `VERIFY_ARC_TESTNET_X402`. Set `AGON_X402_VERIFICATION_ENABLED=true` only in a controlled Arc Testnet environment with a nonzero `AGON_X402_EXECUTION_MAX_BASE_UNITS` policy. A successful check writes append-only evidence keyed by intent and approval, including a deterministic evidence hash, network, payer, and timestamp. It never persists the raw signature, settles funds, or marks service delivery. Replays return the original evidence. `AGON_X402_EXECUTION_ENABLED` remains a separate switch and defaults to `false`.
 
@@ -648,9 +677,9 @@ never presents a read as proof of payment finality.
 
 ## Current release status
 
-The focused implementation gate is green locally with 225/225 Agon backend
+The focused implementation gate is green locally with 300/300 Agon backend
 tests, the foundation proof command, backend and frontend typechecks, 19/19
-marketplace tests, a successful frontend production build, 130/130 Forge
+marketplace tests, a successful frontend production build across 29 routes, 130/130 Forge
 tests, `forge fmt --check`, and the Agon boundary check. The direct x402
 focused suite is 20/20. No commit, push, deployment, or broadcast was made;
 Git remains user-owned. The proof fixture currently hashes to:
@@ -755,6 +784,7 @@ npm run build
 
 cd ..
 powershell -ExecutionPolicy Bypass -File scripts/check-agon-boundary.ps1
+powershell -ExecutionPolicy Bypass -File scripts/check-agon-release.ps1
 git diff --check
 ```
 
@@ -851,4 +881,4 @@ The Agon operator console now exposes the authenticated syndicate contribution a
 - A receipt hash is presented as a submission marker for later chain reconciliation. The UI does not claim finality, payout completion, or successful contribution indexing from the marker alone.
 - Server-side execution remains disabled; no backend signer, automatic broadcast, retry, or provider call was added.
 
-Validation for this phase: frontend and backend typechecks pass; the Next.js production build passes 27 routes. Existing workspace-root, Twitter runtime, `ox` critical-dependency, edge/static-generation, and public Arc RPC rate-limit warnings remain documented environmental warnings.
+Validation for this phase: frontend and backend typechecks pass; the Next.js production build passes 29 routes. Existing workspace-root, Twitter runtime, `ox` critical-dependency, edge/static-generation, and public Arc RPC rate-limit warnings remain documented environmental warnings.

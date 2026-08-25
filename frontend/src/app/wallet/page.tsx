@@ -7,6 +7,7 @@ import { Footer } from "@/components/redesign/Footer";
 import { BracketedCell, CornerMarkers, SectionHeader } from "@/components/redesign";
 import { FundsPanel } from "@/components/redesign/FundsPanel";
 import { useAuth } from "@/hooks/useAuth";
+import { CircleUserControlledWalletPanel } from "@/components/agon/CircleUserControlledWalletPanel";
 
 /// Dedicated Top Up / Withdraw page. The dashboard CTAs route here rather than
 /// embedding the funds flow inline. `?tab=withdraw` deep-links the withdraw tab.
@@ -31,6 +32,21 @@ function WalletBody() {
           </p>
         </BracketedCell>
       ) : null}
+      {me?.walletPrincipals && me.walletPrincipals.length > 1 ? (
+        <BracketedCell pad="md" className="mb-6">
+          <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">LINKED PRINCIPALS</div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {me.walletPrincipals.map((principal) => (
+              <div key={`${principal.mode}:${principal.address}`} className="border-t border-[color:var(--hairline)] pt-3">
+                <div className="font-mono text-[11px] uppercase text-ink">{principal.label}</div>
+                <div className="mt-1 break-all font-mono text-[10px] text-ink-3">{principal.address}</div>
+                <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-accent">{principal.custody} custody / {principal.signingSurface}</div>
+              </div>
+            ))}
+          </div>
+        </BracketedCell>
+      ) : null}
+      <CircleUserControlledWalletPanel />
       <FundsPanel initialTab={tab} />
     </section>
   );

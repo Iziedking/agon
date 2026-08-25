@@ -13,7 +13,7 @@ system. Addresses are in
 
 | Thing | Version | Where it is pinned |
 |-------|---------|--------------------|
-| Node | 20 or newer | `backend/package.json` (`engines.node: ">=20"`), `backend/Dockerfile` (`node:20-slim`) |
+| Node | 22 or newer | `backend/package.json` and `frontend/package.json` (`engines.node: ">=22"`), both Dockerfiles (`node:22-slim`) |
 | Postgres | 16 | `deploy/docker-compose.yml`, `backend/docker-compose.local.yml` (`postgres:16-alpine`) |
 | Redis | 7 | same two compose files (`redis:7-alpine`) |
 | Foundry | any recent `forge` | `contracts/foundry.toml`, solc pinned to `0.8.24` |
@@ -128,9 +128,14 @@ Postgres, Redis, the migration, the three services, and the frontend:
 
 ```bash
 npm run stack:up      # docker compose -f backend/docker-compose.local.yml up --build -d
+npm run release:check # verify safe defaults, Node 22 images, and port 3003 wiring
 npm run stack:logs
 npm run stack:down
 ```
+
+The frontend is available at `http://localhost:3003`. The backend health
+endpoint is `http://localhost:8082/health`; the local compose services wait for
+the migration and expose health state for the auth and frontend containers.
 
 ## 5. Frontend
 
@@ -138,7 +143,7 @@ npm run stack:down
 cd frontend
 cp .env.example .env.local
 npm install
-npm run dev     # http://localhost:3000
+npm run dev     # http://localhost:3003 when using the Docker stack; direct Next dev defaults to 3000
 ```
 
 Three variables, all public:
@@ -149,8 +154,10 @@ Three variables, all public:
   Coinbase wallet paths still work and only the WalletConnect QR option is
   disabled.
 
-The frontend holds no Circle secrets. Circle credentials live on the backend
-and the backend signs on the user's behalf.
+The frontend holds no Circle secrets. Circle Developer-Controlled credentials
+remain on the backend. Circle User-Controlled sessions are browser-only and
+are re-established after refresh; the backend receives only the short-lived
+request needed to create and inspect an exact contract challenge.
 
 Build and serve: `npm run build`, then `npm run start`. Production is on
 Vercel (`frontend/vercel.json`).

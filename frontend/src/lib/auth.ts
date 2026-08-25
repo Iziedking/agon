@@ -60,9 +60,16 @@ export interface Me {
     address: string;
     mode: "external" | "circle_developer_controlled" | "circle_user_controlled" | "circle_agent_cli" | "circle_modular";
     custody: "user" | "agon";
-    signingSurface: "browser_wallet" | "agon_backend" | "circle_cli" | "browser_passkey";
+    signingSurface: "browser_wallet" | "agon_backend" | "circle_cli" | "browser_circle" | "browser_passkey";
     label: string;
   };
+  walletPrincipals?: Array<{
+    address: string;
+    mode: "external" | "circle_developer_controlled" | "circle_user_controlled" | "circle_agent_cli" | "circle_modular";
+    custody: "user" | "agon";
+    signingSurface: "browser_wallet" | "agon_backend" | "circle_cli" | "browser_circle" | "browser_passkey";
+    label: string;
+  }>;
   /// True when this operator has at least one WebAuthn credential enrolled.
   /// Drives the "ADD A PASSKEY" vs "PASSKEY ENABLED" affordance in settings.
   hasPasskey?: boolean;
@@ -74,6 +81,83 @@ export interface Me {
   /// Minimum Cycles required to enter contests, from QUALIFY_MIN_POINTS.
   /// Zero (the default) means qualification is open to everyone.
   cyclesRequired?: number;
+}
+
+export type CircleUserControlledConfig = { enabled: boolean; appId: string | null };
+export type CircleUserControlledWallet = {
+  id: string;
+  address: string;
+  blockchain: string;
+  custodyType: string;
+  userId?: string;
+  state?: string;
+};
+
+const circleJson = async (path: string, body?: unknown): Promise<any> => {
+  const res = await fetch(`${AUTH_URL}${path}`, {
+    method: body === undefined ? "GET" : "POST",
+    headers: body === undefined ? undefined : { "content-type": "application/json" },
+    credentials: "include",
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(typeof data?.error === "string" ? data.error : "Circle wallet request failed");
+  return data;
+};
+
+export function fetchCircleUserControlledConfig(): Promise<CircleUserControlledConfig> {
+  return circleJson("/auth/circle/user-controlled/config");
+}
+
+export function createCircleUserControlledDevice(body: { deviceId: string; email: string }): Promise<{
+  deviceToken: string;
+  deviceEncryptionKey: string;
+  otpToken?: string;
+}> {
+  return circleJson("/auth/circle/user-controlled/device", body);
+}
+
+export function prepareCircleUserControlledWallet(userToken: string): Promise<{
+  challengeId: string | null;
+  userId: string | null;
+  wallets: CircleUserControlledWallet[];
+}> {
+  return circleJson("/auth/circle/user-controlled/prepare", { userToken });
+}
+
+export async function listCircleUserControlledWallets(userToken: string): Promise<CircleUserControlledWallet[]> {
+  const data = await circleJson("/auth/circle/user-controlled/wallets", { userToken });
+  return data.wallets as CircleUserControlledWallet[];
+}
+
+export function linkCircleUserControlledWallet(body: {
+  userToken: string;
+  walletId: string;
+  address: string;
+}): Promise<{ address: string; mode: "circle_user_controlled"; label: string; linkedAt: string }> {
+  return circleJson("/auth/circle/user-controlled/link", body);
+}
+
+export function createCircleUserControlledContractChallenge(body: {
+  userToken: string;
+  walletId: string;
+  address: string;
+  contractAddress: string;
+  callData: string;
+  idempotencyKey: string;
+  amount?: string;
+  refId?: string;
+}): Promise<{ challengeId: string; chainId: number; contractAddress: string; callData: string }> {
+  return circleJson("/auth/circle/user-controlled/contract-challenge", body);
+}
+
+export function getCircleUserControlledContractStatus(body: {
+  userToken: string;
+  walletId: string;
+  address: string;
+  challengeId: string;
+}): Promise<{ state: string; txHash: string | null; errorReason: string | null }> {
+  return circleJson("/auth/circle/user-controlled/contract-status", body);
 }
 
 export interface CliDeviceInfo {

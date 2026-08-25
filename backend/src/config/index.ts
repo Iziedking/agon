@@ -73,8 +73,8 @@ const envSchema = z.object({
   ADMIN_TOKEN: z.string().optional(), // gates GET /admin/events; unset = read endpoint disabled
   SUPPORT_TOKEN: z.string().optional(), // read-only admin tier (Members/Events/Audit, no money actions)
   AUTH_PORT: z.coerce.number().int().positive().default(8082),
-  AUTH_DOMAIN: z.string().default("localhost:3000"),
-  APP_URL: z.string().url().default("http://localhost:3000"),
+  AUTH_DOMAIN: z.string().default("localhost:3003"),
+  APP_URL: z.string().url().default("http://localhost:3003"),
   X_CLIENT_ID: z.string().optional(),
   X_CLIENT_SECRET: z.string().optional(),
   X_CALLBACK_URL: z.string().optional(),
@@ -117,11 +117,11 @@ const envSchema = z.object({
   // WebAuthn (passkey) configuration. RP_ID is the registrable domain the
   // passkey is bound to (no port, no protocol). ORIGIN must include the
   // protocol and port. For local dev RP_ID="localhost" and
-  // ORIGIN="http://localhost:3000". For prod, RP_ID="arcrun.xyz" and
+  // ORIGIN="http://localhost:3003". For prod, RP_ID="arcrun.xyz" and
   // ORIGIN="https://arcrun.xyz".
   WEBAUTHN_RP_NAME: z.string().default("Agon"),
   WEBAUTHN_RP_ID: z.string().default("localhost"),
-  WEBAUTHN_ORIGIN: z.string().default("http://localhost:3000"),
+  WEBAUTHN_ORIGIN: z.string().default("http://localhost:3003"),
 
   // Anthropic. Empty key disables real LLM runners; the coordinator falls
   // back to the synthetic tier-curve simulation so dev environments don't
