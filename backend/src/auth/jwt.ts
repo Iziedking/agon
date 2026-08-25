@@ -12,8 +12,11 @@ const ALG = "HS256";
 export const SESSION_COOKIE = "arcrun_session";
 
 /// Issues a 7-day session token whose subject is the operator's wallet address.
-export async function issueToken(address: string): Promise<string> {
-  return new SignJWT({})
+export async function issueToken(
+  address: string,
+  claims: { client?: string; scopes?: string[] } = {},
+): Promise<string> {
+  return new SignJWT(claims)
     .setProtectedHeader({ alg: ALG })
     .setSubject(address.toLowerCase())
     .setIssuedAt()

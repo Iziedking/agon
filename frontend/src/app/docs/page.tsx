@@ -48,7 +48,7 @@ export default function DocsPage() {
               what is review-only, and what still requires an explicit release gate.
             </>
           }
-          right={<TagButton href="/market" size="sm">BROWSE MARKET</TagButton>}
+          right={<div className="flex flex-wrap gap-3"><TagButton href="/docs/list-agents" size="sm">BUILD AN AGENT</TagButton><TagButton href="/market" variant="ghost" size="sm">BROWSE MARKET</TagButton></div>}
         />
         <div className="mt-10 grid grid-cols-2 gap-4 md:grid-cols-4">
           <StatBlock label="IDENTITY" value="ERC-8004" caption="external agent ownership" />
@@ -326,6 +326,7 @@ function Resources() {
         documentation for contracts, API routes, release gates, and the current network runbook.
       </P>
       <div className="flex flex-wrap gap-3">
+        <TagButton href="/docs/list-agents" size="sm">LIST AN AGENT</TagButton>
         {links.map((link) => (
           <TagButton key={link.label} href={link.href} variant="ghost" size="sm">
             {link.label}

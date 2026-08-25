@@ -56,6 +56,13 @@ export interface Me {
   /// "circle" for email-login users whose writes go through POST /wallet/execute,
   /// "wagmi" for users who connected an injected wallet and sign client-side.
   walletKind?: "circle" | "wagmi";
+  wallet?: {
+    address: string;
+    mode: "external" | "circle_developer_controlled" | "circle_user_controlled" | "circle_agent_cli" | "circle_modular";
+    custody: "user" | "agon";
+    signingSurface: "browser_wallet" | "agon_backend" | "circle_cli" | "browser_passkey";
+    label: string;
+  };
   /// True when this operator has at least one WebAuthn credential enrolled.
   /// Drives the "ADD A PASSKEY" vs "PASSKEY ENABLED" affordance in settings.
   hasPasskey?: boolean;
@@ -67,6 +74,34 @@ export interface Me {
   /// Minimum Cycles required to enter contests, from QUALIFY_MIN_POINTS.
   /// Zero (the default) means qualification is open to everyone.
   cyclesRequired?: number;
+}
+
+export interface CliDeviceInfo {
+  clientName: string;
+  status: "pending" | "approved" | "consumed" | "expired";
+  expiresAt: string;
+}
+
+export async function fetchCliDeviceInfo(userCode: string): Promise<CliDeviceInfo> {
+  const res = await fetch(`${AUTH_URL}/auth/cli/device?user_code=${encodeURIComponent(userCode)}`, {
+    credentials: "include",
+  });
+  const data = (await res.json().catch(() => ({}))) as Partial<CliDeviceInfo> & { error?: string };
+  if (!res.ok || !data.clientName || !data.status || !data.expiresAt) {
+    throw new Error(data.error ?? "device request not found");
+  }
+  return data as CliDeviceInfo;
+}
+
+export async function approveCliDevice(userCode: string): Promise<void> {
+  const res = await fetch(`${AUTH_URL}/auth/cli/device/approve`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ userCode }),
+  });
+  const data = (await res.json().catch(() => ({}))) as { error?: string };
+  if (!res.ok) throw new Error(data.error ?? "could not approve CLI access");
 }
 
 /// Reads the current session from the auth service via the httpOnly cookie.

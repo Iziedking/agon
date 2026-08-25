@@ -7,6 +7,7 @@ import { cors } from "hono/cors";
 import { deleteCookie, setCookie } from "hono/cookie";
 import { createHash, createHmac, randomBytes } from "node:crypto";
 import { generateSiweNonce, parseSiweMessage } from "viem/siwe";
+import { z } from "zod";
 
 import { createWalletClient, http, parseAbi } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
@@ -36,6 +37,8 @@ import { setTierGate, getTierGate, type GateSurface } from "../lib/tierGate.js";
 import { merkleProof, merkleRoot, payoutLeaf } from "../coordinator/merkle.js";
 import { redis } from "../redis.js";
 import { issueToken, requireAuth, SESSION_COOKIE } from "./jwt.js";
+import { walletPrincipalForOperator } from "./wallet-principal.js";
+import { CLI_USER_CODE_RE, formatCliUserCode, hashCliCode, randomCliCode } from "./cli-device.js";
 import { createAgonAuthMiddleware } from "../agon/http/admin-auth.js";
 import { checkEntry } from "./entryGuard.js";
 import {
@@ -131,9 +134,168 @@ app.use(
 
 const NONCE_TTL = 300; // seconds
 const STATE_TTL = 600;
+const CLI_DEVICE_TTL = 10 * 60;
+const cliDeviceRequestSchema = z.object({
+  clientName: z.string().trim().min(1).max(80).default("agon-cli"),
+});
 const b64url = (b: Buffer) => b.toString("base64url");
 
+
 app.get("/health", (c) => c.json({ ok: true, service: "auth" }));
+
+// ----- CLI device authorization -----
+//
+// The CLI is an authenticated Agon client, not a wallet-key transport. It
+// requests a short-lived device code, the user approves that code in the
+// already-authenticated browser, and the CLI exchanges it for a bearer token.
+// The device table stores only hashes, so a database read cannot reconstruct
+// an active code. This flow never signs or broadcasts a blockchain transaction.
+
+app.post("/auth/cli/device", async (c) => {
+  let body: unknown = {};
+  try {
+    body = await c.req.json();
+  } catch {
+    // An empty body is valid and uses the stable default client name.
+  }
+  const parsed = cliDeviceRequestSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: "invalid CLI device request" }, 400);
+
+  const deviceCode = randomCliCode(32);
+  const userCode = formatCliUserCode(randomCliCode(8));
+  const expiresAt = new Date(Date.now() + CLI_DEVICE_TTL * 1000);
+  await query(
+    `insert into agon_cli_device_sessions
+       (device_code_hash, user_code_hash, client_name, status, requested_at, expires_at)
+     values ($1, $2, $3, 'pending', now(), $4)`,
+    [hashCliCode(deviceCode), hashCliCode(userCode), parsed.data.clientName, expiresAt],
+  );
+
+  const verificationUri = new URL("/cli/authorize", config.auth.appUrl);
+  verificationUri.searchParams.set("user_code", userCode);
+  return c.json({
+    deviceCode,
+    userCode,
+    verificationUri: verificationUri.toString(),
+    expiresAt: expiresAt.toISOString(),
+    pollInterval: 5,
+  });
+});
+
+app.get("/auth/cli/device", async (c) => {
+  const userCode = (c.req.query("user_code") ?? "").trim().toUpperCase();
+  if (!CLI_USER_CODE_RE.test(userCode)) {
+    return c.json({ error: "valid user code required" }, 400);
+  }
+  const { rows } = await query<{
+    client_name: string;
+    status: "pending" | "approved" | "consumed" | "expired";
+    expires_at: string;
+  }>(
+    `select client_name, status, expires_at
+       from agon_cli_device_sessions
+      where user_code_hash = $1
+      limit 1`,
+    [hashCliCode(userCode)],
+  );
+  const session = rows[0];
+  if (!session) return c.json({ error: "device request not found" }, 404);
+  if (new Date(session.expires_at).getTime() <= Date.now() && session.status === "pending") {
+    return c.json({ clientName: session.client_name, status: "expired", expiresAt: session.expires_at });
+  }
+  return c.json({
+    clientName: session.client_name,
+    status: session.status,
+    expiresAt: session.expires_at,
+  });
+});
+
+app.post("/auth/cli/device/approve", requireAuth, async (c) => {
+  let body: { userCode?: unknown };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "bad json" }, 400);
+  }
+  const userCode = typeof body.userCode === "string" ? body.userCode.trim().toUpperCase() : "";
+  if (!CLI_USER_CODE_RE.test(userCode)) {
+    return c.json({ error: "valid user code required" }, 400);
+  }
+
+  const { rows } = await query<{
+    client_name: string;
+    expires_at: string;
+  }>(
+    `update agon_cli_device_sessions
+        set status = 'approved', approved_by = $2, approved_at = now()
+      where user_code_hash = $1
+        and status = 'pending'
+        and expires_at > now()
+      returning client_name, expires_at`,
+    [hashCliCode(userCode), c.get("address")],
+  );
+  const approved = rows[0];
+  if (!approved) return c.json({ error: "device request is missing, expired, or already approved" }, 409);
+  void logEvent({
+    kind: "cli_device_approved",
+    address: c.get("address"),
+    context: { clientName: approved.client_name },
+    source: "auth",
+  });
+  return c.json({ ok: true, clientName: approved.client_name, expiresAt: approved.expires_at });
+});
+
+app.post("/auth/cli/device/token", async (c) => {
+  let body: { deviceCode?: unknown };
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "bad json" }, 400);
+  }
+  const deviceCode = typeof body.deviceCode === "string" ? body.deviceCode.trim() : "";
+  if (deviceCode.length < 32 || deviceCode.length > 128) {
+    return c.json({ error: "valid device code required" }, 400);
+  }
+
+  const { rows } = await query<{
+    status: "pending" | "approved" | "consumed" | "expired";
+    approved_by: string | null;
+    expires_at: string;
+  }>(
+    `select status, approved_by, expires_at
+       from agon_cli_device_sessions
+      where device_code_hash = $1
+      limit 1`,
+    [hashCliCode(deviceCode)],
+  );
+  const session = rows[0];
+  if (!session) return c.json({ error: "device request not found" }, 404);
+  if (new Date(session.expires_at).getTime() <= Date.now()) {
+    await query(
+      `update agon_cli_device_sessions set status = 'expired'
+        where device_code_hash = $1 and status = 'pending'`,
+      [hashCliCode(deviceCode)],
+    );
+    return c.json({ error: "expired_token" }, 410);
+  }
+  if (session.status === "pending") return c.json({ error: "authorization_pending" }, 428);
+  if (session.status !== "approved" || !session.approved_by) {
+    return c.json({ error: "device request is not available" }, 409);
+  }
+
+  const claimed = await query<{ approved_by: string }>(
+    `update agon_cli_device_sessions
+        set status = 'consumed', consumed_at = now()
+      where device_code_hash = $1 and status = 'approved'
+      returning approved_by`,
+    [hashCliCode(deviceCode)],
+  );
+  const owner = claimed.rows[0]?.approved_by;
+  if (!owner) return c.json({ error: "device request was already consumed" }, 409);
+  const token = await issueToken(owner, { client: "agon-cli", scopes: ["agon"] });
+  void logEvent({ kind: "cli_device_token_issued", address: owner, source: "auth" });
+  return c.json({ accessToken: token, tokenType: "Bearer", expiresIn: SESSION_MAX_AGE });
+});
 
 const agonRepository = new PostgresAgonRepository(pool);
 const agonOperations = new PostgresAgonOperationStore(pool);
@@ -1117,6 +1279,10 @@ app.get("/auth/me", requireAuth, async (c) => {
   // optional social link, not a gate. `walletKind` lets the frontend pick the
   // write path: "circle" => POST /wallet/execute, "wagmi" => useWriteContract.
   const walletKind: "circle" | "wagmi" = op.circle_wallet_id ? "circle" : "wagmi";
+  const wallet = walletPrincipalForOperator({
+    address: op.address,
+    circleWalletId: op.circle_wallet_id,
+  });
 
   // Count this address's enrolled passkeys so the settings UI can show "ADD
   // A PASSKEY" vs "PASSKEY ENABLED" without a separate round-trip.
@@ -1142,6 +1308,7 @@ app.get("/auth/me", requireAuth, async (c) => {
     current_syndicate_id: op.current_syndicate_id,
     email: op.email,
     walletKind,
+    wallet,
     hasPasskey,
     canEnterContests,
     cycles,

@@ -699,6 +699,8 @@ The ASP coding-agent skill and CLI use this same registry, canonical manifest se
 
 The repository-owned skill lives at `.agents/skills/agon-asp`. It directs coding agents through deterministic preparation and read-only verification before any publication request. The CLI is exposed from the repository root:
 
+The public, task-oriented guide is [`/docs/list-agents`](../frontend/src/app/docs/list-agents/page.tsx) in the web app, with the repository reference at [`docs/list-your-agent.md`](list-your-agent.md). It explains the identity boundary, the numeric ERC-8004 `agentId`, the wallet UI, the CLI path, manifest versioning, and the exact point where a human must review and sign.
+
 ```text
 npm run asp -- categories
 npm run asp -- prepare -- --config asp.json --manifest-out manifest.json --payload-out listing.json

@@ -73,7 +73,7 @@ function output(value: unknown, json: boolean): void {
 }
 
 function help(): void {
-  console.log(`Agon ASP CLI\n\nCommands:\n  categories [--json]\n  init --directory DIR --service-key KEY --name NAME --category SLUG [--description TEXT] [--force]\n  deploy --directory DIR [--target docker] [--port PORT] [--run] [--force]\n  prepare --config FILE --manifest-out FILE --payload-out FILE [--force]\n  verify-manifest --manifest FILE [--expected-hash HASH] [--json]\n  health --api-url URL [--json]\n  demo-run --api-url URL --category SLUG --task TASK_ID [--input FILE] [--json]\n  inspect --api-url URL --reference REF [--manifest FILE] [--current-owner ADDRESS] [--json]\n  publish --api-url URL --config FILE --manifest FILE --token-env NAME --yes [--json]\n  confirm --api-url URL --operation ID --tx-hash HASH --token-env NAME [--json]`);
+  console.log(`Agon ASP CLI\n\nCommands:\n  auth-device --api-url URL [--client-name NAME] [--json]\n  categories [--json]\n  init --directory DIR --service-key KEY --name NAME --category SLUG [--description TEXT] [--force]\n  deploy --directory DIR [--target docker] [--port PORT] [--run] [--force]\n  prepare --config FILE --manifest-out FILE --payload-out FILE [--force]\n  verify-manifest --manifest FILE [--expected-hash HASH] [--json]\n  health --api-url URL [--json]\n  demo-run --api-url URL --category SLUG --task TASK_ID [--input FILE] [--json]\n  inspect --api-url URL --reference REF [--manifest FILE] [--current-owner ADDRESS] [--json]\n  publish --api-url URL --config FILE --manifest FILE --token-env NAME --yes [--json]\n  confirm --api-url URL --operation ID --tx-hash HASH --token-env NAME [--json]\n\nAuthentication is a browser approval flow. The CLI never accepts a private key or seed phrase.`);
 }
 
 async function main(): Promise<void> {
@@ -86,6 +86,74 @@ async function main(): Promise<void> {
   if (command === "categories") {
     const { AGON_CATEGORIES } = await import("../src/lib/agon/catalog.ts");
     output(AGON_CATEGORIES, json);
+    return;
+  }
+  if (command === "auth-device") {
+    const apiUrl = requiredOption(options, "api-url").replace(/\/$/, "");
+    let started: {
+      deviceCode: string;
+      userCode: string;
+      verificationUri: string;
+      expiresAt: string;
+      pollInterval: number;
+    };
+    try {
+      const response = await fetch(`${apiUrl}/auth/cli/device`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ clientName: stringOption(options, "client-name", "agon-cli") }),
+        signal: AbortSignal.timeout(30_000),
+      });
+      const body = await readJsonResponse(response);
+      if (!response.ok) throw new AspCommandError("auth_failed", typeof body === "object" && body && "error" in body ? String(body.error) : "could not start CLI authorization");
+      started = body as typeof started;
+    } catch (error) {
+      if (error instanceof AspCommandError) throw error;
+      throw new AspCommandError("network_unavailable", "Agon auth service did not respond");
+    }
+
+    if (!json) {
+      console.log(`Open ${started.verificationUri}`);
+      console.log(`Enter code: ${started.userCode}`);
+      console.log("Waiting for browser approval...");
+    } else {
+      // Keep stdout machine-readable for agents while still showing the human
+      // approval instructions immediately on the terminal.
+      console.error(JSON.stringify({
+        status: "authorization_required",
+        verificationUri: started.verificationUri,
+        userCode: started.userCode,
+        expiresAt: started.expiresAt,
+      }));
+    }
+
+    const deadline = new Date(started.expiresAt).getTime();
+    let accessToken: string | null = null;
+    while (Date.now() < deadline) {
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, Math.max(1, started.pollInterval) * 1000));
+      let response: Response;
+      let body: unknown;
+      try {
+        response = await fetch(`${apiUrl}/auth/cli/device/token`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ deviceCode: started.deviceCode }),
+          signal: AbortSignal.timeout(30_000),
+        });
+        body = await readJsonResponse(response);
+      } catch {
+        throw new AspCommandError("network_unavailable", "Agon auth service did not respond while polling");
+      }
+      if (response.status === 428) continue;
+      if (response.status === 410) throw new AspCommandError("auth_expired", "CLI authorization expired; start a new device login");
+      if (!response.ok || typeof body !== "object" || !body || !("accessToken" in body)) {
+        throw new AspCommandError("auth_failed", typeof body === "object" && body && "error" in body ? String(body.error) : "CLI authorization failed");
+      }
+      accessToken = String(body.accessToken);
+      break;
+    }
+    if (!accessToken) throw new AspCommandError("auth_expired", "CLI authorization expired; start a new device login");
+    output({ ...started, accessToken, tokenType: "Bearer" }, json);
     return;
   }
   if (command === "init") {

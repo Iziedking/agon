@@ -21,6 +21,7 @@ const PRODUCT = [
 const AGON_PRODUCT = [
   { label: "BROWSE SERVICES", href: "/market" },
   { label: "PLAYGROUND", href: "/app" },
+  { label: "BUILD AN AGENT", href: "/docs/list-agents" },
   { label: "LIST A SERVICE", href: "/market/new" },
   { label: "DOCUMENTATION", href: "/docs" },
 ];

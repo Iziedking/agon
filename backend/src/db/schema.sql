@@ -50,6 +50,26 @@ alter table operators add column if not exists circle_wallet_id text;
 create unique index if not exists operators_email_idx on operators(email) where email is not null;
 create unique index if not exists operators_circle_wallet_idx on operators(circle_wallet_id) where circle_wallet_id is not null;
 
+-- Short-lived OAuth-style device sessions for the Agon CLI. Only hashes of
+-- the device and user codes are persisted. Approval binds the CLI token to
+-- the already-authenticated operator address; it never transfers wallet key
+-- custody or authorizes a blockchain transaction by itself.
+create table if not exists agon_cli_device_sessions (
+  device_code_hash text primary key,
+  user_code_hash text not null unique,
+  client_name text not null,
+  status text not null default 'pending',
+  requested_at timestamptz not null default now(),
+  expires_at timestamptz not null,
+  approved_by text,
+  approved_at timestamptz,
+  consumed_at timestamptz,
+  constraint agon_cli_device_sessions_status_ck
+    check (status in ('pending', 'approved', 'consumed', 'expired'))
+);
+create index if not exists agon_cli_device_sessions_expiry_idx
+  on agon_cli_device_sessions(expires_at);
+
 -- Per-user Circle dev-controlled wallets on SOURCE chains, used for cross-chain
 -- TOP UP: the user funds `address` on `chain` (an App Kit chain name like
 -- "Base_Sepolia"), then the backend bridges it to their Arc wallet. One row per
