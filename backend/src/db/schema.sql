@@ -58,6 +58,7 @@ create table if not exists agon_cli_device_sessions (
   device_code_hash text primary key,
   user_code_hash text not null unique,
   client_name text not null,
+  scopes text[] not null default array['agon:read']::text[],
   status text not null default 'pending',
   requested_at timestamptz not null default now(),
   expires_at timestamptz not null,
@@ -67,6 +68,7 @@ create table if not exists agon_cli_device_sessions (
   constraint agon_cli_device_sessions_status_ck
     check (status in ('pending', 'approved', 'consumed', 'expired'))
 );
+alter table agon_cli_device_sessions add column if not exists scopes text[] not null default array['agon:read']::text[];
 create index if not exists agon_cli_device_sessions_expiry_idx
   on agon_cli_device_sessions(expires_at);
 

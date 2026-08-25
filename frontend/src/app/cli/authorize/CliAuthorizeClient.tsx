@@ -78,6 +78,10 @@ export function CliAuthorizeClient() {
                 <div className="mt-2 font-stencil text-4xl uppercase">{device.clientName}</div>
                 <div className="mt-6 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">DEVICE CODE</div>
                 <div className="mt-2 font-mono text-2xl tracking-[0.16em] text-accent">{userCode || "—"}</div>
+                <div className="mt-6 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">REQUESTED CAPABILITIES</div>
+                <div className="mt-2 flex flex-wrap gap-x-3 gap-y-2 font-mono text-[11px] text-ink-2">
+                  {device.scopes.map((scope) => <span key={scope}>{scope}</span>)}
+                </div>
                 <p className="mt-6 max-w-[60ch] font-mono text-[12px] leading-relaxed text-ink-2">
                   The terminal will receive an Agon bearer session bound to your signed-in account. It expires with the
                   normal session lifetime and can be revoked by ending the CLI session.

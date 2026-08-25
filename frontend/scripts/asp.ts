@@ -73,7 +73,7 @@ function output(value: unknown, json: boolean): void {
 }
 
 function help(): void {
-  console.log(`Agon ASP CLI\n\nCommands:\n  auth-device --api-url URL [--client-name NAME] [--json]\n  categories [--json]\n  init --directory DIR --service-key KEY --name NAME --category SLUG [--description TEXT] [--force]\n  deploy --directory DIR [--target docker] [--port PORT] [--run] [--force]\n  prepare --config FILE --manifest-out FILE --payload-out FILE [--force]\n  verify-manifest --manifest FILE [--expected-hash HASH] [--json]\n  health --api-url URL [--json]\n  demo-run --api-url URL --category SLUG --task TASK_ID [--input FILE] [--json]\n  inspect --api-url URL --reference REF [--manifest FILE] [--current-owner ADDRESS] [--json]\n  publish --api-url URL --config FILE --manifest FILE --token-env NAME --yes [--json]\n  confirm --api-url URL --operation ID --tx-hash HASH --token-env NAME [--json]\n\nAuthentication is a browser approval flow. The CLI never accepts a private key or seed phrase.`);
+  console.log(`Agon ASP CLI\n\nCommands:\n  auth-device --api-url URL [--client-name NAME] [--scopes CSV] [--json]\n  categories [--json]\n  init --directory DIR --service-key KEY --name NAME --category SLUG [--description TEXT] [--force]\n  deploy --directory DIR [--target docker] [--port PORT] [--run] [--force]\n  prepare --config FILE --manifest-out FILE --payload-out FILE [--force]\n  verify-manifest --manifest FILE [--expected-hash HASH] [--json]\n  health --api-url URL [--json]\n  demo-run --api-url URL --category SLUG --task TASK_ID [--input FILE] [--json]\n  inspect --api-url URL --reference REF [--manifest FILE] [--current-owner ADDRESS] [--json]\n  publish --api-url URL --config FILE --manifest FILE --token-env NAME --yes [--json]\n  confirm --api-url URL --operation ID --tx-hash HASH --token-env NAME [--json]\n\nAuthentication is a browser approval flow. The CLI never accepts a private key or seed phrase.`);
 }
 
 async function main(): Promise<void> {
@@ -94,14 +94,23 @@ async function main(): Promise<void> {
       deviceCode: string;
       userCode: string;
       verificationUri: string;
+      scopes: string[];
       expiresAt: string;
       pollInterval: number;
     };
     try {
+      const allowedScopes = new Set(["agon:read", "listing:prepare", "listing:write", "listing:confirm"]);
+      const scopes = stringOption(options, "scopes", "agon:read,listing:prepare,listing:write,listing:confirm")
+        .split(",")
+        .map((scope) => scope.trim())
+        .filter(Boolean);
+      if (!scopes.length || scopes.some((scope) => !allowedScopes.has(scope))) {
+        throw new AspCommandError("invalid_arguments", "--scopes must contain only Agon CLI scopes");
+      }
       const response = await fetch(`${apiUrl}/auth/cli/device`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ clientName: stringOption(options, "client-name", "agon-cli") }),
+        body: JSON.stringify({ clientName: stringOption(options, "client-name", "agon-cli"), scopes }),
         signal: AbortSignal.timeout(30_000),
       });
       const body = await readJsonResponse(response);
@@ -123,6 +132,7 @@ async function main(): Promise<void> {
         status: "authorization_required",
         verificationUri: started.verificationUri,
         userCode: started.userCode,
+        scopes: started.scopes,
         expiresAt: started.expiresAt,
       }));
     }

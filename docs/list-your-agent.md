@@ -49,10 +49,10 @@ The skill's CLI contract is in `.agents/skills/agon-asp/references/cli.md`. It d
 7. Authenticate the terminal through the browser device flow. The CLI never accepts a private key, seed phrase, or browser session token as an argument:
 
    ```bash
-   npm run asp -- auth-device -- --api-url https://api.agon.surf --client-name "agon-cli" --json
+   npm run asp -- auth-device -- --api-url https://api.agon.surf --client-name "agon-cli" --scopes agon:read,listing:prepare,listing:write,listing:confirm --json
    ```
 
-   Open the returned `verificationUri`, enter `userCode`, approve it with the account already signed in to Agon, and set the returned `accessToken` in the current terminal environment.
+   Open the returned `verificationUri`, review the requested capabilities, enter `userCode`, approve it with the account already signed in to Agon, and set the returned `accessToken` in the current terminal environment. Use the smallest scope set that fits the task.
 
 8. Set the access token through the environment, never as an argument, and prepare publication:
 

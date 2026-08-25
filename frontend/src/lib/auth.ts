@@ -78,6 +78,7 @@ export interface Me {
 
 export interface CliDeviceInfo {
   clientName: string;
+  scopes: string[];
   status: "pending" | "approved" | "consumed" | "expired";
   expiresAt: string;
 }
@@ -87,7 +88,7 @@ export async function fetchCliDeviceInfo(userCode: string): Promise<CliDeviceInf
     credentials: "include",
   });
   const data = (await res.json().catch(() => ({}))) as Partial<CliDeviceInfo> & { error?: string };
-  if (!res.ok || !data.clientName || !data.status || !data.expiresAt) {
+  if (!res.ok || !data.clientName || !Array.isArray(data.scopes) || !data.status || !data.expiresAt) {
     throw new Error(data.error ?? "device request not found");
   }
   return data as CliDeviceInfo;

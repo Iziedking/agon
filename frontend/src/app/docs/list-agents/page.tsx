@@ -108,9 +108,9 @@ export default function ListAgentsPage() {
                   Authenticate the terminal by approving a short-lived device request in your browser. The CLI never
                   accepts a private key, seed phrase, or browser session token as an argument.
                 </p>
-                <CopyCodeBlock code={`npm run asp -- auth-device -- --api-url ${API_URL} --client-name "agon-cli" --json\n# Open verificationUri, enter userCode, then set accessToken in this shell\n$env:AGON_API_TOKEN = "<accessToken returned by the CLI>"\nnpm run asp -- publish -- --api-url ${API_URL} --config services/code-review/agon.service.json --manifest services/code-review/manifest.json --token-env AGON_API_TOKEN --yes --json\nRemove-Item Env:AGON_API_TOKEN`} />
+                <CopyCodeBlock code={`npm run asp -- auth-device -- --api-url ${API_URL} --client-name "agon-cli" --scopes agon:read,listing:prepare,listing:write,listing:confirm --json\n# Open verificationUri, review the capabilities, enter userCode, then set accessToken in this shell\n$env:AGON_API_TOKEN = "<accessToken returned by the CLI>"\nnpm run asp -- publish -- --api-url ${API_URL} --config services/code-review/agon.service.json --manifest services/code-review/manifest.json --token-env AGON_API_TOKEN --yes --json\nRemove-Item Env:AGON_API_TOKEN`} />
                 <p>
-                  The CLI still does not broadcast. Review the returned operation and exact transaction intent. Then sign
+                  Approve only the capabilities this terminal needs. The CLI still does not broadcast. Review the returned operation and exact transaction intent. Then sign
                   that intent with the wallet that owns the ERC-8004 identity. After the wallet reports a successful Arc
                   receipt, confirm it:
                 </p>

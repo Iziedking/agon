@@ -36,7 +36,7 @@ import { notify } from "../notifications/index.js";
 import { setTierGate, getTierGate, type GateSurface } from "../lib/tierGate.js";
 import { merkleProof, merkleRoot, payoutLeaf } from "../coordinator/merkle.js";
 import { redis } from "../redis.js";
-import { issueToken, requireAuth, SESSION_COOKIE } from "./jwt.js";
+import { issueToken, requireAgonScope, requireAuth, SESSION_COOKIE } from "./jwt.js";
 import { walletPrincipalForOperator } from "./wallet-principal.js";
 import { CLI_USER_CODE_RE, formatCliUserCode, hashCliCode, randomCliCode } from "./cli-device.js";
 import { createAgonAuthMiddleware } from "../agon/http/admin-auth.js";
@@ -135,8 +135,11 @@ app.use(
 const NONCE_TTL = 300; // seconds
 const STATE_TTL = 600;
 const CLI_DEVICE_TTL = 10 * 60;
+const CLI_SCOPES = ["agon:read", "listing:prepare", "listing:write", "listing:confirm"] as const;
+const DEFAULT_CLI_SCOPES = ["agon:read", "listing:prepare", "listing:write", "listing:confirm"] as const;
 const cliDeviceRequestSchema = z.object({
   clientName: z.string().trim().min(1).max(80).default("agon-cli"),
+  scopes: z.array(z.enum(CLI_SCOPES)).min(1).max(CLI_SCOPES.length).default([...DEFAULT_CLI_SCOPES]),
 });
 const b64url = (b: Buffer) => b.toString("base64url");
 
@@ -166,9 +169,9 @@ app.post("/auth/cli/device", async (c) => {
   const expiresAt = new Date(Date.now() + CLI_DEVICE_TTL * 1000);
   await query(
     `insert into agon_cli_device_sessions
-       (device_code_hash, user_code_hash, client_name, status, requested_at, expires_at)
-     values ($1, $2, $3, 'pending', now(), $4)`,
-    [hashCliCode(deviceCode), hashCliCode(userCode), parsed.data.clientName, expiresAt],
+       (device_code_hash, user_code_hash, client_name, scopes, status, requested_at, expires_at)
+     values ($1, $2, $3, $4, 'pending', now(), $5)`,
+    [hashCliCode(deviceCode), hashCliCode(userCode), parsed.data.clientName, parsed.data.scopes, expiresAt],
   );
 
   const verificationUri = new URL("/cli/authorize", config.auth.appUrl);
@@ -189,10 +192,11 @@ app.get("/auth/cli/device", async (c) => {
   }
   const { rows } = await query<{
     client_name: string;
+    scopes: string[];
     status: "pending" | "approved" | "consumed" | "expired";
     expires_at: string;
   }>(
-    `select client_name, status, expires_at
+    `select client_name, scopes, status, expires_at
        from agon_cli_device_sessions
       where user_code_hash = $1
       limit 1`,
@@ -201,10 +205,11 @@ app.get("/auth/cli/device", async (c) => {
   const session = rows[0];
   if (!session) return c.json({ error: "device request not found" }, 404);
   if (new Date(session.expires_at).getTime() <= Date.now() && session.status === "pending") {
-    return c.json({ clientName: session.client_name, status: "expired", expiresAt: session.expires_at });
+    return c.json({ clientName: session.client_name, scopes: session.scopes, status: "expired", expiresAt: session.expires_at });
   }
   return c.json({
     clientName: session.client_name,
+    scopes: session.scopes,
     status: session.status,
     expiresAt: session.expires_at,
   });
@@ -224,6 +229,7 @@ app.post("/auth/cli/device/approve", requireAuth, async (c) => {
 
   const { rows } = await query<{
     client_name: string;
+    scopes: string[];
     expires_at: string;
   }>(
     `update agon_cli_device_sessions
@@ -242,7 +248,7 @@ app.post("/auth/cli/device/approve", requireAuth, async (c) => {
     context: { clientName: approved.client_name },
     source: "auth",
   });
-  return c.json({ ok: true, clientName: approved.client_name, expiresAt: approved.expires_at });
+  return c.json({ ok: true, clientName: approved.client_name, scopes: approved.scopes, expiresAt: approved.expires_at });
 });
 
 app.post("/auth/cli/device/token", async (c) => {
@@ -260,9 +266,10 @@ app.post("/auth/cli/device/token", async (c) => {
   const { rows } = await query<{
     status: "pending" | "approved" | "consumed" | "expired";
     approved_by: string | null;
+    scopes: string[];
     expires_at: string;
   }>(
-    `select status, approved_by, expires_at
+    `select status, approved_by, scopes, expires_at
        from agon_cli_device_sessions
       where device_code_hash = $1
       limit 1`,
@@ -292,8 +299,8 @@ app.post("/auth/cli/device/token", async (c) => {
   );
   const owner = claimed.rows[0]?.approved_by;
   if (!owner) return c.json({ error: "device request was already consumed" }, 409);
-  const token = await issueToken(owner, { client: "agon-cli", scopes: ["agon"] });
-  void logEvent({ kind: "cli_device_token_issued", address: owner, source: "auth" });
+  const token = await issueToken(owner, { client: "agon-cli", scopes: session.scopes });
+  void logEvent({ kind: "cli_device_token_issued", address: owner, context: { scopes: session.scopes }, source: "auth" });
   return c.json({ accessToken: token, tokenType: "Bearer", expiresIn: SESSION_MAX_AGE });
 });
 
@@ -409,6 +416,8 @@ const agonService = new PostgresAgonMarketService(agonRepository, {
 app.route("/agon", createAgonRoutes({
   service: agonService,
   requireAuth: createAgonAuthMiddleware(config.adminToken, requireAuth),
+  requireListingWriteAuth: createAgonAuthMiddleware(config.adminToken, requireAgonScope("listing:write")),
+  requireListingConfirmAuth: createAgonAuthMiddleware(config.adminToken, requireAgonScope("listing:confirm")),
   playgroundStore: agonPlaygroundStore,
   playgroundRateLimiter: new RedisPlaygroundRateLimiter(redis),
 }));
