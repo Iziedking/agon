@@ -42,7 +42,25 @@ const ADDRESSES = [
   config.contracts.PrizeEscrow,
 ] as `0x${string}`[];
 
-const BATCH_BLOCKS = 5_000n;
+const DEFAULT_BATCH_BLOCKS = 1_000n;
+const MAX_BATCH_BLOCKS = 5_000n;
+
+function readBatchBlocks(raw: string | undefined): bigint {
+  if (!raw?.trim()) return DEFAULT_BATCH_BLOCKS;
+  if (!/^\d+$/.test(raw.trim())) {
+    throw new Error("INDEXER_BATCH_BLOCKS must be a positive integer");
+  }
+  const value = BigInt(raw.trim());
+  if (value < 1n || value > MAX_BATCH_BLOCKS) {
+    throw new Error(`INDEXER_BATCH_BLOCKS must be between 1 and ${MAX_BATCH_BLOCKS}`);
+  }
+  return value;
+}
+
+// Arc's public fallback rejects larger eth_getLogs ranges. Keep the default
+// conservative while allowing a dedicated provider to opt into a larger,
+// explicitly bounded window.
+const BATCH_BLOCKS = readBatchBlocks(process.env.INDEXER_BATCH_BLOCKS);
 const POLL_INTERVAL_MS = 3_000;
 const ONCE = process.env.INDEXER_ONCE === "1";
 
