@@ -1,5 +1,5 @@
 import "dotenv/config";
-import type { Log } from "viem";
+import type { AbiEvent, Log } from "viem";
 import type { PoolClient } from "pg";
 import { parseAbi } from "viem";
 
@@ -24,23 +24,18 @@ import { notify, notifyMany } from "../notifications/index.js";
 /// so a restart never double-applies or skips. Set INDEXER_ONCE=1 to backfill
 /// to chain head and exit (used for tests); otherwise it follows head forever.
 
-const ALL_EVENTS = [
-  ...contestEngineEvents,
-  ...challengeArenaEvents,
-  ...agentRegistryEvents,
-  ...pointsLedgerEvents,
-  ...syndicateFactoryEvents,
-  ...prizeEscrowEvents,
+// Keep each eth_getLogs filter small. Arc's public RPC can reject the combined
+// six-address/full-topic filter even when the block range is only one block.
+// The event groups are already contract-specific, so querying them separately
+// avoids that provider filter-complexity limit without changing event order.
+const EVENT_FILTERS: readonly { address: `0x${string}`; events: readonly AbiEvent[] }[] = [
+  { address: config.contracts.ContestEngine, events: contestEngineEvents },
+  { address: config.contracts.ChallengeArena, events: challengeArenaEvents },
+  { address: config.contracts.AgentRegistry, events: agentRegistryEvents },
+  { address: config.contracts.PointsLedger, events: pointsLedgerEvents },
+  { address: config.contracts.SyndicateFactory, events: syndicateFactoryEvents },
+  { address: config.contracts.PrizeEscrow, events: prizeEscrowEvents },
 ];
-
-const ADDRESSES = [
-  config.contracts.ContestEngine,
-  config.contracts.ChallengeArena,
-  config.contracts.AgentRegistry,
-  config.contracts.PointsLedger,
-  config.contracts.SyndicateFactory,
-  config.contracts.PrizeEscrow,
-] as `0x${string}`[];
 
 const DEFAULT_BATCH_BLOCKS = 1_000n;
 const MAX_BATCH_BLOCKS = 5_000n;
@@ -170,12 +165,16 @@ async function getLastBlock(): Promise<bigint> {
 }
 
 async function indexRange(fromBlock: bigint, toBlock: bigint): Promise<number> {
-  const logs = await publicClient.getLogs({
-    address: ADDRESSES,
-    events: ALL_EVENTS,
-    fromBlock,
-    toBlock,
-  });
+  const logs: Log[] = [];
+  for (const filter of EVENT_FILTERS) {
+    logs.push(
+      ...(await publicClient.getLogs({
+        ...filter,
+        fromBlock,
+        toBlock,
+      })),
+    );
+  }
 
   logs.sort((a, b) => {
     if (a.blockNumber !== b.blockNumber) return Number(a.blockNumber! - b.blockNumber!);
