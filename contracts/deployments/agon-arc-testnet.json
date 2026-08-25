@@ -42,6 +42,22 @@
     "AgonServiceRegistry": {
       "verifiedAt": "2026-08-17T19:39:23.541815Z",
       "explorerUrl": "https://testnet.arcscan.app/address/0x2144C156B0a4581da2D046C2E41AC41C6C3938CB"
+    },
+    "AgonJobEscrow": {
+      "verifiedAt": "2026-08-25T05:26:26.946Z",
+      "explorerUrl": "https://testnet.arcscan.app/address/0x6373E576AcFC9DE6cB182dA201d8e857D2A918aD"
+    },
+    "AgonArena": {
+      "verifiedAt": "2026-08-25T05:26:26.946Z",
+      "explorerUrl": "https://testnet.arcscan.app/address/0x2c6196dB6491A3D3837f53Ce72B84778bc5E9d8F"
+    },
+    "AgonSyndicateRegistry": {
+      "verifiedAt": "2026-08-25T05:26:26.946Z",
+      "explorerUrl": "https://testnet.arcscan.app/address/0xD77312288E4019bD3Fc7a6C0234B9c84D09C1Ab4"
+    },
+    "AgonPrizeVault": {
+      "verifiedAt": "2026-08-25T05:26:26.946Z",
+      "explorerUrl": "https://testnet.arcscan.app/address/0xd3a538fD48FA81CF102E5b5381B47e46eC176D3b"
     }
   },
   "external": {
