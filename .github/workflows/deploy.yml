@@ -50,6 +50,24 @@ jobs:
           else
             echo "ready=true" >> "$GITHUB_OUTPUT"
           fi
+      - name: Validate Agon production settings
+        if: steps.gate.outputs.ready == 'true'
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_SSH_PORT || 22 }}
+          script: |
+            set -eu
+            cd /opt/arcrun
+            test "$(grep -c '^APP_URL=https://agon.surf$' deploy/.env)" = "1"
+            test "$(grep -c '^AUTH_DOMAIN=agon.surf$' deploy/.env)" = "1"
+            grep -q '^AGON_DEPLOYMENTS_FILE=../contracts/deployments/agon-arc-testnet.json$' deploy/.env
+            grep -q '^AGON_WRITES_ENABLED=false$' deploy/.env
+            grep -q '^AGON_X402_EXECUTION_ENABLED=false$' deploy/.env
+            grep -q '^AGON_ESCROW_EXECUTION_ENABLED=false$' deploy/.env
+            echo "Agon production settings passed the fail-closed preflight."
       - name: Redeploy stack on the VPS
         if: steps.gate.outputs.ready == 'true'
         uses: appleboy/ssh-action@v1
