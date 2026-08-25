@@ -10,6 +10,7 @@
     "stack:up": "docker compose -f backend/docker-compose.local.yml up --build -d",
     "stack:down": "docker compose -f backend/docker-compose.local.yml down",
     "stack:logs": "docker compose -f backend/docker-compose.local.yml logs -f",
+    "release:check": "powershell -ExecutionPolicy Bypass -File scripts/check-agon-release.ps1",
     "migrate": "cd backend && npm run migrate",
     "indexer": "cd backend && npm run indexer",
     "indexer:dev": "cd backend && npm run indexer:dev",
