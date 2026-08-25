@@ -50,6 +50,36 @@ alter table operators add column if not exists circle_wallet_id text;
 create unique index if not exists operators_email_idx on operators(email) where email is not null;
 create unique index if not exists operators_circle_wallet_idx on operators(circle_wallet_id) where circle_wallet_id is not null;
 
+-- Additional wallet principals linked to an operator. This is deliberately
+-- separate from operators.circle_wallet_id, which remains the legacy
+-- Developer-Controlled Circle wallet used by email/passkey accounts. Tokens,
+-- encryption keys, refresh tokens, and keyshares are never persisted here.
+create table if not exists agon_wallet_principals (
+  id                  bigserial primary key,
+  operator_address    text not null references operators(address) on delete cascade,
+  principal_type      text not null,
+  address             text not null,
+  provider_user_id    text,
+  provider_wallet_id  text,
+  blockchain          text,
+  status              text not null default 'active',
+  created_at          timestamptz not null default now(),
+  updated_at          timestamptz not null default now(),
+  constraint agon_wallet_principals_type_ck
+    check (principal_type in ('circle_user_controlled')),
+  constraint agon_wallet_principals_status_ck
+    check (status in ('active', 'unlinked', 'pending')),
+  constraint agon_wallet_principals_address_ck
+    check (address = lower(address)),
+  constraint agon_wallet_principals_address_unique
+    unique (principal_type, address)
+);
+create unique index if not exists agon_wallet_principals_provider_wallet_idx
+  on agon_wallet_principals(provider_wallet_id)
+  where provider_wallet_id is not null;
+create index if not exists agon_wallet_principals_operator_idx
+  on agon_wallet_principals(operator_address, status);
+
 -- Short-lived OAuth-style device sessions for the Agon CLI. Only hashes of
 -- the device and user codes are persisted. Approval binds the CLI token to
 -- the already-authenticated operator address; it never transfers wallet key

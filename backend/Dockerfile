@@ -1,6 +1,6 @@
 # Backend image (indexer / auth / coordinator / migrate). Build context is the
 # backend folder; the deployments file is mounted in by compose, not copied.
-FROM node:20-slim
+FROM node:22-slim
 
 WORKDIR /app/backend
 

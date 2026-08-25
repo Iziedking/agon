@@ -108,6 +108,11 @@ const envSchema = z.object({
   // When true, every newly minted Circle wallet is auto-seeded with USDC
   // from Circle's testnet faucet. Off for mainnet.
   CIRCLE_AUTO_SEED_USDC: z.coerce.boolean().default(true),
+  // Circle User-Controlled Wallets. Disabled until the Web3 Services Console
+  // app is configured and the browser onboarding path has been reviewed.
+  CIRCLE_USER_CONTROLLED_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
+  CIRCLE_USER_CONTROLLED_APP_ID: z.string().optional(),
+  CIRCLE_USER_CONTROLLED_API_BASE_URL: z.string().url().default("https://api.circle.com"),
 
   // WebAuthn (passkey) configuration. RP_ID is the registrable domain the
   // passkey is bound to (no port, no protocol). ORIGIN must include the
@@ -768,6 +773,12 @@ export const config = {
     walletSetId: env.CIRCLE_WALLET_SET_ID,
     blockchain: env.CIRCLE_BLOCKCHAIN,
     autoSeedUsdc: env.CIRCLE_AUTO_SEED_USDC,
+    userControlled: {
+      enabled: env.CIRCLE_USER_CONTROLLED_ENABLED,
+      appId: env.CIRCLE_USER_CONTROLLED_APP_ID,
+      apiBaseUrl: env.CIRCLE_USER_CONTROLLED_API_BASE_URL,
+      blockchain: env.CIRCLE_BLOCKCHAIN,
+    },
   },
   webauthn: {
     rpName: env.WEBAUTHN_RP_NAME,

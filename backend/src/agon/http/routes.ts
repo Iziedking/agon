@@ -318,6 +318,8 @@ export type AgonMarketService = {
 export type CreateAgonRoutesOptions = {
   service: AgonMarketService;
   requireAuth: MiddlewareHandler<{ Variables: AgonRouteVariables }>;
+  requireListingWriteAuth?: MiddlewareHandler<{ Variables: AgonRouteVariables }>;
+  requireListingConfirmAuth?: MiddlewareHandler<{ Variables: AgonRouteVariables }>;
   playgroundStore?: PlaygroundRunStore;
   playgroundRateLimiter?: PlaygroundRateLimiter;
 };
@@ -1103,7 +1105,7 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
     return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
   });
 
-  app.post("/profiles/bind", options.requireAuth, async (context) => {
+  app.post("/profiles/bind", options.requireListingWriteAuth ?? options.requireAuth, async (context) => {
     const body = await parseJson(context);
     if (isApiError(body)) return context.json(body, 400);
     const parsed = bindProfileSchema.safeParse(body);
@@ -1112,7 +1114,7 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
     return result.ok ? context.json(result.value, 201) : serviceErrorResponse(context, result.error);
   });
 
-  app.post("/listings", options.requireAuth, async (context) => {
+  app.post("/listings", options.requireListingWriteAuth ?? options.requireAuth, async (context) => {
     const body = await parseJson(context);
     if (isApiError(body)) return context.json(body, 400);
     const parsed = publishListingSchema.safeParse(body);
@@ -1121,7 +1123,7 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
     return result.ok ? context.json(result.value, 201) : serviceErrorResponse(context, result.error);
   });
 
-  app.post("/operations/:operationId/confirm", options.requireAuth, async (context) => {
+  app.post("/operations/:operationId/confirm", options.requireListingConfirmAuth ?? options.requireAuth, async (context) => {
     const body = await parseJson(context);
     if (isApiError(body)) return context.json(body, 400);
     const parsed = confirmOperationSchema.safeParse(body);

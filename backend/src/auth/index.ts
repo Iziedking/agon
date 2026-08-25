@@ -38,6 +38,9 @@ import { merkleProof, merkleRoot, payoutLeaf } from "../coordinator/merkle.js";
 import { redis } from "../redis.js";
 import { issueToken, requireAgonScope, requireAuth, SESSION_COOKIE } from "./jwt.js";
 import { walletPrincipalForOperator } from "./wallet-principal.js";
+import { walletPrincipalForLinkedCircleWallet } from "./wallet-principal.js";
+import { listWalletPrincipals, linkCircleUserControlledWallet } from "./wallet-principal-repository.js";
+import { createCircleUserControlledService } from "./circle-user-controlled.js";
 import { CLI_USER_CODE_RE, formatCliUserCode, hashCliCode, randomCliCode } from "./cli-device.js";
 import { createAgonAuthMiddleware } from "../agon/http/admin-auth.js";
 import { checkEntry } from "./entryGuard.js";
@@ -106,6 +109,13 @@ const SESSION_MAX_AGE = 7 * 24 * 60 * 60; // 7 days, matches issueToken expiry
 /// social link, and Discord can be added the same way later.
 
 const app = new Hono<{ Variables: { address: string } }>();
+
+const circleUserControlled = createCircleUserControlledService({
+  enabled: config.circle.userControlled.enabled,
+  apiKey: config.circle.apiKey,
+  baseUrl: config.circle.userControlled.apiBaseUrl,
+  blockchain: config.circle.userControlled.blockchain,
+});
 
 const allowedBrowserOrigins = new Set([
   config.auth.appUrl,
@@ -1262,6 +1272,98 @@ app.get("/wallet/tx/:id", requireAuth, async (c) => {
   }
 });
 
+// Circle User-Controlled Wallet onboarding. These routes carry short-lived
+// Circle credentials only in memory between the browser SDK and Circle's API.
+// They never persist or log user tokens, encryption keys, refresh tokens, or
+// keyshares. The feature is unavailable unless explicitly enabled and the
+// backend has a Circle API key.
+app.get("/auth/circle/user-controlled/config", (c) => {
+  if (!circleUserControlled.enabled || !config.circle.userControlled.appId) {
+    return c.json({ enabled: false, appId: null });
+  }
+  return c.json({ enabled: true, appId: config.circle.userControlled.appId });
+});
+
+app.post("/auth/circle/user-controlled/device", async (c) => {
+  if (!circleUserControlled.enabled) return c.json({ error: "Circle user-controlled wallets are disabled" }, 503);
+  const body = await c.req.json().catch(() => null) as { deviceId?: unknown; email?: unknown } | null;
+  const deviceId = typeof body?.deviceId === "string" ? body.deviceId.trim() : "";
+  const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
+  if (deviceId.length < 8 || deviceId.length > 512 || !EMAIL_RE.test(email) || email.length > 254) {
+    return c.json({ error: "valid deviceId and email required" }, 400);
+  }
+  try {
+    const result = await circleUserControlled.createDeviceToken({ deviceId, email });
+    return c.json(result);
+  } catch {
+    return c.json({ error: "Circle onboarding could not be started" }, 502);
+  }
+});
+
+app.post("/auth/circle/user-controlled/prepare", async (c) => {
+  if (!circleUserControlled.enabled) return c.json({ error: "Circle user-controlled wallets are disabled" }, 503);
+  const body = await c.req.json().catch(() => null) as { userToken?: unknown } | null;
+  const userToken = typeof body?.userToken === "string" ? body.userToken : "";
+  if (userToken.length < 8 || userToken.length > 4096) return c.json({ error: "userToken required" }, 400);
+  try {
+    const result = await circleUserControlled.prepareWallet({ userToken });
+    return c.json(result);
+  } catch {
+    return c.json({ error: "Circle wallet preparation failed" }, 502);
+  }
+});
+
+app.post("/auth/circle/user-controlled/wallets", async (c) => {
+  if (!circleUserControlled.enabled) return c.json({ error: "Circle user-controlled wallets are disabled" }, 503);
+  const body = await c.req.json().catch(() => null) as { userToken?: unknown } | null;
+  const userToken = typeof body?.userToken === "string" ? body.userToken : "";
+  if (userToken.length < 8 || userToken.length > 4096) return c.json({ error: "userToken required" }, 400);
+  try {
+    return c.json({ wallets: await circleUserControlled.listWallets({ userToken }) });
+  } catch {
+    return c.json({ error: "Circle wallets could not be loaded" }, 502);
+  }
+});
+
+app.post("/auth/circle/user-controlled/link", requireAuth, async (c) => {
+  if (!circleUserControlled.enabled) return c.json({ error: "Circle user-controlled wallets are disabled" }, 503);
+  const body = await c.req.json().catch(() => null) as {
+    userToken?: unknown;
+    walletId?: unknown;
+    address?: unknown;
+  } | null;
+  const userToken = typeof body?.userToken === "string" ? body.userToken : "";
+  const walletId = typeof body?.walletId === "string" ? body.walletId.trim() : "";
+  const address = typeof body?.address === "string" ? body.address.trim() : "";
+  if (userToken.length < 8 || userToken.length > 4096 || walletId.length < 8 || walletId.length > 256 || !/^0x[a-fA-F0-9]{40}$/.test(address)) {
+    return c.json({ error: "valid userToken, walletId, and address required" }, 400);
+  }
+  try {
+    const wallet = await circleUserControlled.findOwnedWallet({ userToken, walletId, address });
+    const providerUserId = wallet.userId;
+    if (!providerUserId) return c.json({ error: "Circle wallet has no provider user identity" }, 502);
+    const linked = await linkCircleUserControlledWallet({
+      operatorAddress: c.get("address"),
+      address: wallet.address,
+      providerUserId,
+      providerWalletId: wallet.id,
+      blockchain: wallet.blockchain,
+    }, pool);
+    return c.json({
+      address: linked.address,
+      mode: "circle_user_controlled",
+      custody: "user",
+      signingSurface: "browser_circle",
+      label: "Circle user-controlled wallet",
+      linkedAt: linked.linkedAt,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Circle wallet could not be linked";
+    if (message.includes("already linked") || message.includes("mismatch")) return c.json({ error: message }, 409);
+    return c.json({ error: "Circle wallet could not be linked" }, 502);
+  }
+});
+
 app.get("/auth/me", requireAuth, async (c) => {
   const address = c.get("address");
   const { rows } = await query<{
@@ -1292,6 +1394,14 @@ app.get("/auth/me", requireAuth, async (c) => {
     address: op.address,
     circleWalletId: op.circle_wallet_id,
   });
+  const linkedWallets = await listWalletPrincipals(op.address, pool);
+  const walletPrincipals = [
+    wallet,
+    ...linkedWallets.map((linked) => walletPrincipalForLinkedCircleWallet({
+      address: linked.address,
+      principalType: linked.principalType,
+    })),
+  ];
 
   // Count this address's enrolled passkeys so the settings UI can show "ADD
   // A PASSKEY" vs "PASSKEY ENABLED" without a separate round-trip.
@@ -1318,6 +1428,7 @@ app.get("/auth/me", requireAuth, async (c) => {
     email: op.email,
     walletKind,
     wallet,
+    walletPrincipals,
     hasPasskey,
     canEnterContests,
     cycles,

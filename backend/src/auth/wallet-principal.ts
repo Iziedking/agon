@@ -8,7 +8,12 @@ export const WALLET_MODES = [
 
 export type WalletMode = (typeof WALLET_MODES)[number];
 export type WalletCustody = "user" | "agon";
-export type WalletSigningSurface = "browser_wallet" | "agon_backend" | "circle_cli" | "browser_passkey";
+export type WalletSigningSurface =
+  | "browser_wallet"
+  | "agon_backend"
+  | "circle_cli"
+  | "browser_circle"
+  | "browser_passkey";
 
 export interface WalletPrincipal {
   address: string;
@@ -21,6 +26,11 @@ export interface WalletPrincipal {
 export interface OperatorWalletRecord {
   address: string;
   circleWalletId?: string | null;
+}
+
+export interface LinkedWalletPrincipalRecord {
+  address: string;
+  principalType: "circle_user_controlled";
 }
 
 /**
@@ -48,5 +58,15 @@ export function walletPrincipalForOperator(record: OperatorWalletRecord): Wallet
     custody: "user",
     signingSurface: "browser_wallet",
     label: "External wallet",
+  };
+}
+
+export function walletPrincipalForLinkedCircleWallet(record: LinkedWalletPrincipalRecord): WalletPrincipal {
+  return {
+    address: record.address.toLowerCase(),
+    mode: "circle_user_controlled",
+    custody: "user",
+    signingSurface: "browser_circle",
+    label: "Circle user-controlled wallet",
   };
 }
