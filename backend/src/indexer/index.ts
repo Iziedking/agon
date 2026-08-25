@@ -64,6 +64,29 @@ const BATCH_BLOCKS = readBatchBlocks(process.env.INDEXER_BATCH_BLOCKS);
 const POLL_INTERVAL_MS = 3_000;
 const ONCE = process.env.INDEXER_ONCE === "1";
 
+function isLogRangeLimitError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /requested range too large|range too large|eth_getLogs.*range/i.test(message);
+}
+
+async function indexAdaptiveRange(
+  fromBlock: bigint,
+  toBlock: bigint,
+  index: (from: bigint, to: bigint) => Promise<number>,
+  label: string,
+): Promise<number> {
+  try {
+    return await index(fromBlock, toBlock);
+  } catch (error) {
+    if (!isLogRangeLimitError(error) || fromBlock >= toBlock) throw error;
+    const midpoint = fromBlock + (toBlock - fromBlock) / 2n;
+    console.warn(`${label}: provider rejected ${fromBlock}-${toBlock}; splitting at ${midpoint}`);
+    const left = await indexAdaptiveRange(fromBlock, midpoint, index, label);
+    const right = await indexAdaptiveRange(midpoint + 1n, toBlock, index, label);
+    return left + right;
+  }
+}
+
 // Transient RPC failures are the normal weather on a shared testnet endpoint:
 // daily quota exhaustion on the dedicated node, then -32011 "request limit
 // reached" on the public one it falls back to. Retrying those at the 3s poll
@@ -745,7 +768,7 @@ async function arcanaLoop() {
       while (last < head) {
         const from = last + 1n;
         const to = from + BATCH_BLOCKS - 1n > head ? head : from + BATCH_BLOCKS - 1n;
-        const count = await indexArcanaRange(from, to);
+        const count = await indexAdaptiveRange(from, to, indexArcanaRange, "arcana indexer");
         if (count > 0) console.log(`arcana blocks ${from}-${to}: ${count} events`);
         last = to;
       }
@@ -801,7 +824,7 @@ async function main() {
       while (last < head) {
         const from = last + 1n;
         const to = from + BATCH_BLOCKS - 1n > head ? head : from + BATCH_BLOCKS - 1n;
-        const count = await indexRange(from, to);
+        const count = await indexAdaptiveRange(from, to, indexRange, "indexer");
         if (count > 0) console.log(`blocks ${from}-${to}: ${count} events`);
         last = to;
       }
