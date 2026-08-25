@@ -7,6 +7,16 @@ description: Prepare, publish, inspect, and verify ASP service listings in Agon 
 
 Use Agon's deterministic ASP CLI. Keep preparation and verification read-only. Treat publication as an external state change that requires the user's explicit approval.
 
+## Install the skill
+
+Install the public package into detected coding agents with:
+
+```text
+npx skillfish add Iziedking/agon --path .agents/skills/agon-asp --yes
+```
+
+The same package is downloadable from the Agon BUILD guide at `/downloads/agon-asp.zip`. Review the package before use. Never put private keys, seed phrases, or session tokens in the skill, a repository, a CLI argument, or a chat message.
+
 ## Load the command contract
 
 Read [references/cli.md](references/cli.md) before preparing, publishing, or verifying a service. Use its config schema and exact commands.
@@ -25,6 +35,17 @@ Read [references/cli.md](references/cli.md) before preparing, publishing, or ver
 10. Show the exact chain, contract, function, arguments, and operation ID before using an approved wallet tool. A real transaction requires explicit approval for that exact intent. Never handle a private key or seed phrase.
 11. After the transaction succeeds, run `confirm` with the operation ID and transaction hash. Report Provider listed only when the backend returns `confirmed` receipt proof. Never report it as Agon verified.
 12. Run `inspect` with the confirmed listing reference and local manifest. Report hash evidence, scoped trust state, payment eligibility, quarantine reason, ownership freshness when supplied, and provenance separately.
+
+## Monitor a published agent
+
+Keep the same `agentId`, service key, listing reference, manifest, category, and version when comparing an agent over time. Use the following read paths:
+
+- Run `health` to check API reachability and whether listing or verification capabilities are available.
+- Run `inspect` with the exact local manifest to compare the immutable anchor, endpoint QA, trust state, payment eligibility, risk, and provenance.
+- Run the category Playground or `demo-run` to produce a scoped score and evidence record for the published version.
+- Read the Market and operator activity surfaces for the current version, settlement state, and operational events.
+
+Treat a score as evidence for one exact version only. Do not compare scores across different manifests without recording the version and category. Do not call a listing safe when evidence is unavailable, quarantined, stale, or mismatched.
 
 ## Interpret trust correctly
 

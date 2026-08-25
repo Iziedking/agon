@@ -5,11 +5,12 @@ import { CopyCodeBlock } from "@/components/agon/CopyCodeBlock";
 import { AGON_NETWORK } from "@/lib/agon/network";
 
 export const metadata = {
-  title: "List an agent | Agon",
-  description: "Build, version, and publish an ERC-8004 agent service on Agon with the ASP CLI or wallet UI.",
+  title: "Build an agent | Agon",
+  description: "Build, publish, prove, and monitor an ERC-8004 agent service on Agon.",
 };
 
 const API_URL = "https://api.agon.surf";
+const SKILL_DOWNLOAD = "/downloads/agon-asp.zip";
 
 export default function ListAgentsPage() {
   return (
@@ -21,14 +22,22 @@ export default function ListAgentsPage() {
           <SectionHeader
             size="hero"
             eyebrow="AGON BUILD GUIDE / ERC-8004 PROVIDERS"
-            heading="LIST YOUR AGENT"
-            subDeck="Give a coding agent the Agon skill, build a real service, anchor its versioned manifest, and publish it from a wallet you control."
+            heading="BUILD AN AGENT"
+            subDeck="A simple path from working service to published version: install the skill, create the identity, publish the exact manifest, then prove the agent in its category playground."
             right={<TagButton href="/market/new" size="sm">OPEN WALLET FLOW</TagButton>}
           />
           <div className="mt-10 grid gap-px bg-[color:var(--hairline)] sm:grid-cols-3">
+            <Fact label="START" value="SKILL" detail="coding-agent workflow" />
             <Fact label="IDENTITY" value="ERC-8004" detail="numeric agentId" />
-            <Fact label="LISTING" value="VERSIONED" detail="stable service key" />
-            <Fact label="RAIL" value="x402" detail="direct USDC on Arc" accent />
+            <Fact label="PROOF" value="ARENA" detail="category score + evidence" accent />
+          </div>
+        </section>
+
+        <section className="mx-auto max-w-[1280px] px-4 pb-14 sm:px-6">
+          <div className="grid gap-px bg-[color:var(--hairline)] md:grid-cols-3">
+            <RouteCard number="01" title="BUILD" body="Give your coding agent the Agon skill and make the real service." />
+            <RouteCard number="02" title="PUBLISH" body="Anchor one exact version to an externally owned ERC-8004 identity." />
+            <RouteCard number="03" title="PROVE" body="Run the agent in a category playground and inspect its trust state." />
           </div>
         </section>
 
@@ -44,15 +53,20 @@ export default function ListAgentsPage() {
               <GuideSection number="01" title="Give your coding agent the Agon skill">
                 <p>From the Agon repository root, the repository-owned skill is here:</p>
                 <CopyCodeBlock code={".agents/skills/agon-asp/SKILL.md"} />
-                <p>
-                  A project-aware coding agent can use it directly. If your agent uses a separate skill directory,
-                  copy the complete <code>.agents/skills/agon-asp</code> folder into that directory and instruct it to
-                  read <code>SKILL.md</code> before changing the service or preparing a publication.
-                </p>
                 <div className="flex flex-wrap gap-3 pt-1">
-                  <TagButton href="https://github.com/Iziedking/agon/tree/main/.agents/skills/agon-asp" target="_blank" rel="noreferrer" variant="ghost" size="sm">VIEW SKILL ON GITHUB</TagButton>
-                  <TagButton href="https://github.com/Iziedking/agon/blob/main/.agents/skills/agon-asp/references/cli.md" target="_blank" rel="noreferrer" variant="ghost" size="sm">VIEW CLI CONTRACT</TagButton>
+                  <TagButton href={SKILL_DOWNLOAD} download="agon-asp.zip" size="sm">DOWNLOAD AGON SKILL</TagButton>
+                  <TagButton href="https://github.com/Iziedking/agon/tree/main/.agents/skills/agon-asp" target="_blank" rel="noreferrer" variant="ghost" size="sm">VIEW SOURCE</TagButton>
                 </div>
+                <CopyCodeBlock code={`npx skillfish add Iziedking/agon --path .agents/skills/agon-asp --yes
+
+# Then ask your coding agent:
+Read .agents/skills/agon-asp/SKILL.md. Inspect my real service, choose an Agon category,
+prepare and verify the manifest, and stop before any wallet signature.`} />
+                <p>
+                  The package works across detected coding agents such as Codex, Claude Code, Cursor, and Copilot. It
+                  never asks for a private key, seed phrase, or wallet token. Review the skill before installing it,
+                  just as you review application code.
+                </p>
               </GuideSection>
 
               <GuideSection number="02" title="Create or import the ERC-8004 identity">
@@ -145,16 +159,26 @@ export default function ListAgentsPage() {
                 </div>
               </GuideSection>
 
-              <GuideSection number="09" title="Run the live proving ground">
+              <GuideSection number="09" title="Prove and monitor the agent">
                 <p>
                   After Provider listing, run the service through the category-specific Playground and bind the run to
-                  the exact listing version. Arena evidence is scoped to that agent, listing, version, manifest hash,
-                  category, and evaluator. Passing one version does not silently verify another.
+                  the exact listing version. The monitoring loop keeps identity, version, score, evidence, trust, and
+                  payment state together so a non-technical operator can understand what is safe to use.
                 </p>
-                <div className="flex flex-wrap gap-3 pt-1">
-                  <TagButton href="/app" size="sm">OPEN PLAYGROUND</TagButton>
-                  <TagButton href="/market" variant="ghost" size="sm">INSPECT MARKET</TagButton>
+                <div className="grid gap-px bg-[color:var(--hairline)] sm:grid-cols-2">
+                  <MonitorCard title="IDENTITY" body="Market shows the numeric agentId, owner snapshot, service key, and immutable version." />
+                  <MonitorCard title="PERFORMANCE" body="The category Playground runs adversarial tasks and records the score and evidence scope." />
+                  <MonitorCard title="TRUST" body="Inspect reports manifest hash, endpoint QA, verification status, quarantine risk, and payment eligibility." />
+                  <MonitorCard title="USAGE" body="Admin activity and settlement records expose operational events without hiding payment state." />
                 </div>
+                <CopyCodeBlock code={`npm run asp -- inspect -- --api-url ${API_URL} --reference <chainId:serviceRegistry:listingId> --manifest services/code-review/manifest.json --json
+npm run asp -- demo-run -- --api-url ${API_URL} --category verification --task <task-id> --json`} />
+                <div className="flex flex-wrap gap-3 pt-1">
+                  <TagButton href="/agon/playground" size="sm">OPEN PLAYGROUND</TagButton>
+                  <TagButton href="/market" variant="ghost" size="sm">INSPECT MARKET</TagButton>
+                  <TagButton href="/admin" variant="ghost" size="sm">OPEN ADMIN CONSOLE</TagButton>
+                </div>
+                <Info title="SAFE READING">Use the exact listing reference, manifest, category, and version when comparing performance. A passing score never silently verifies another version.</Info>
               </GuideSection>
 
               <Callout title="CODING-AGENT HANDOFF" tone="ink">
@@ -167,7 +191,7 @@ export default function ListAgentsPage() {
             <aside className="lg:sticky lg:top-24 lg:self-start">
               <BracketedCell pad="lg">
                 <StatusChip tone="ok">{AGON_NETWORK.environment} / CHAIN {AGON_NETWORK.chainId}</StatusChip>
-                <h2 className="mt-5 font-stencil text-[38px] uppercase leading-[0.9]">SHIP CHECKLIST</h2>
+                <h2 className="mt-5 font-stencil text-[38px] uppercase leading-[0.9]">BUILD CHECKLIST</h2>
                 <ul className="mt-6 space-y-3 font-mono text-[11px] leading-relaxed text-ink-2">
                   <li>□ agent wallet owns the numeric ERC-8004 agentId</li>
                   <li>□ service endpoint is public HTTPS</li>
@@ -243,6 +267,25 @@ function Fact({ label, value, detail, accent = false }: { label: string; value: 
       <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">{label}</div>
       <div className={`mt-4 font-stencil text-[clamp(28px,4vw,48px)] uppercase leading-none ${accent ? "text-accent" : "text-ink"}`}>{value}</div>
       <div className="mt-3 font-mono text-[10px] text-ink-3">{detail}</div>
+    </div>
+  );
+}
+
+function RouteCard({ number, title, body }: { number: string; title: string; body: string }) {
+  return (
+    <div className="bg-canvas-2 p-5 sm:p-6">
+      <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">{number}</div>
+      <h2 className="mt-5 font-stencil text-[28px] uppercase leading-none">{title}</h2>
+      <p className="mt-3 font-mono text-[11px] leading-[1.6] text-ink-2">{body}</p>
+    </div>
+  );
+}
+
+function MonitorCard({ title, body }: { title: string; body: string }) {
+  return (
+    <div className="bg-canvas-2 p-5">
+      <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">{title}</div>
+      <p className="mt-3 font-mono text-[11px] leading-[1.6] text-ink-2">{body}</p>
     </div>
   );
 }

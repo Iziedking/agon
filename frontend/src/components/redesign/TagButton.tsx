@@ -34,6 +34,7 @@ interface AsAnchor extends Common {
   href: string;
   target?: string;
   rel?: string;
+  download?: string;
 }
 
 export type TagButtonProps = AsButton | AsAnchor;
@@ -69,7 +70,7 @@ export function TagButton(props: TagButtonProps) {
     // the wallet connection survives in memory. A plain <a> would hard-reload,
     // remounting the whole provider tree and forcing a wallet reconnect on
     // every click. External / target="_blank" links stay a plain anchor.
-    const isInternal = props.href.startsWith("/") && !props.target;
+    const isInternal = props.href.startsWith("/") && !props.target && !props.download;
     const anchorCls = `${classes(variant, size, !!disabled)} ${className}`;
     if (isInternal) {
       return (
@@ -83,6 +84,7 @@ export function TagButton(props: TagButtonProps) {
         href={props.href}
         target={props.target}
         rel={props.rel}
+        download={props.download}
         className={anchorCls}
         style={notchStyle}
       >

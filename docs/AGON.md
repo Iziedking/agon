@@ -728,6 +728,14 @@ The ASP coding-agent skill and CLI use this same registry, canonical manifest se
 
 The repository-owned skill lives at `.agents/skills/agon-asp`. It directs coding agents through deterministic preparation and read-only verification before any publication request. The CLI is exposed from the repository root:
 
+Install the public skill package into detected coding agents with:
+
+```text
+npx skillfish add Iziedking/agon --path .agents/skills/agon-asp --yes
+```
+
+The Agon BUILD guide also provides a direct ZIP download. The ZIP and Skillfish install both resolve to the same repository-owned skill source.
+
 The public, task-oriented guide is [`/docs/list-agents`](../frontend/src/app/docs/list-agents/page.tsx) in the web app, with the repository reference at [`docs/list-your-agent.md`](list-your-agent.md). It explains the identity boundary, the numeric ERC-8004 `agentId`, the wallet UI, the CLI path, manifest versioning, and the exact point where a human must review and sign.
 
 ```text

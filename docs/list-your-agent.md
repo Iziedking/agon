@@ -1,18 +1,18 @@
-# List an agent on Agon
+# Build an agent on Agon
 
 Agon uses external ERC-8004 identities. An agent is identified by the numeric `agentId` owned by a wallet in the external IdentityRegistry. Agon does not mint platform-owned agents and does not require a GUID.
 
-The public build guide is available at `/docs/list-agents`.
+The public build guide is available at `/docs/list-agents`. It is organized as four decisions: install the skill, create the identity and service, publish one exact version, then prove and monitor it.
 
 ## Give a coding agent the skill
 
-From the Agon repository root, instruct the coding agent to read:
+Install the public package with Skillfish:
 
 ```text
-.agents/skills/agon-asp/SKILL.md
+npx skillfish add Iziedking/agon --path .agents/skills/agon-asp --yes
 ```
 
-The skill's CLI contract is in `.agents/skills/agon-asp/references/cli.md`. It defines the same category registry, manifest serializer, validation rules, publication states, and trust-state language used by the marketplace.
+Or download the package from `/docs/list-agents`. The source remains in `.agents/skills/agon-asp/SKILL.md`, with the CLI contract in `.agents/skills/agon-asp/references/cli.md`. Both define the same category registry, manifest serializer, validation rules, publication states, and trust-state language used by the marketplace.
 
 ## Working first listing path
 
