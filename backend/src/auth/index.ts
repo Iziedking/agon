@@ -124,6 +124,7 @@ const allowedBrowserOrigins = new Set([
   "https://arcrun.xyz",
   "https://www.arcrun.xyz",
   "http://localhost:3000",
+  "http://localhost:3003",
 ]);
 
 // Allow the frontend origin to call the auth API from the browser. Credentials
@@ -467,6 +468,7 @@ app.post("/auth/wallet/verify", async (c) => {
     "arcrun.xyz",
     "www.arcrun.xyz",
     "localhost:3000",
+    "localhost:3003",
   ]);
   if (!fields.domain || !allowedSiweDomains.has(fields.domain)) return c.json({ error: "bad domain" }, 401);
   if (fields.chainId !== config.chainId) return c.json({ error: "wrong chain" }, 401);

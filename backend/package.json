@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Agon backend: indexer, auth, and coordinator services for Arc testnet.",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "migrate": "tsx src/db/migrate.ts",

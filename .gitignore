@@ -67,6 +67,7 @@ progress.md
 # ops runbook actually need. These read keys from env, never hardcode them.
 scripts/*
 !scripts/check-agon-boundary.ps1
+!scripts/check-agon-release.ps1
 !backend/scripts/
 backend/scripts/*
 !backend/scripts/circle-bootstrap.ts
