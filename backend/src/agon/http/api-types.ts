@@ -278,10 +278,10 @@ export type X402ExecutionReadinessView = {
   state: "authorization_submitted";
   plan: X402ExecutionPlanView["plan"];
   approval: X402ExecutionApprovalView | null;
-  status: "approval_required" | "approved_but_disabled" | "approval_expired";
+  status: "approval_required" | "approved_but_disabled" | "ready" | "approval_expired";
   reason: string;
-  executionEnabled: false;
-  nextAction: "explicit_execution_approval" | "execution_adapter_not_enabled";
+  executionEnabled: boolean;
+  nextAction: "explicit_execution_approval" | "execution_adapter_not_enabled" | "execute_settlement";
   checkedAt: string;
 };
 
@@ -292,10 +292,10 @@ export type X402SettlementReadinessView = {
   network: "eip155:5042002";
   settlementRef: string | null;
   providerTransferId: string | null;
-  status: "authorization_required" | "ready_but_disabled" | "service_delivery_pending" | "reconciliation_required" | "terminal";
+  status: "authorization_required" | "ready_but_disabled" | "ready" | "service_delivery_pending" | "reconciliation_required" | "terminal";
   reason: string;
-  executionEnabled: false;
-  nextAction: "complete_authorization" | "execution_adapter_not_enabled" | "deliver_service" | "reconcile_settlement" | "none";
+  executionEnabled: boolean;
+  nextAction: "complete_authorization" | "execution_adapter_not_enabled" | "execute_settlement" | "deliver_service" | "reconcile_settlement" | "none";
   checkedAt: string;
 };
 
@@ -354,7 +354,7 @@ export type X402SettlementRequest = {
 export type X402SettlementView = {
   receiptId: string;
   intentId: string;
-  state: "settlement_submitted" | "unknown" | "failed";
+  state: "settlement_submitted" | "service_delivered" | "unknown" | "failed";
   network: "eip155:5042002";
   transaction: `0x${string}` | null;
   providerTransferId: string | null;
@@ -362,6 +362,8 @@ export type X402SettlementView = {
   executionEnabled: boolean;
   serviceDeliveryPending: boolean;
   nextAction: "deliver_service" | "reconcile_receipt" | "none";
+  serviceResult?: unknown;
+  responseHash?: `0x${string}`;
   recordedAt: string;
 };
 
@@ -491,6 +493,145 @@ export type AgonJobEscrowReconcileRequest = {
 };
 
 export type AgonJobEscrowSubmittedRequest = {
+  transactionHash: string;
+};
+
+export type AgonArenaEvaluationRequest = {
+  listingReference: string;
+  idempotencyKey: string;
+  playgroundRunId: string;
+  expiresAt: string;
+};
+
+export type AgonArenaEvaluationView = {
+  intentId: string;
+  actor: `0x${string}`;
+  idempotencyKey: string;
+  listingReference: string;
+  network: "eip155:5042002";
+  arenaContract: `0x${string}`;
+  validationRegistry: `0x${string}`;
+  participant: `0x${string}`;
+  listing: {
+    serviceRegistry: `0x${string}`;
+    listingId: string;
+    agentId: string;
+    version: string;
+    category: string;
+    manifestHash: `0x${string}`;
+  };
+  capabilityHash: `0x${string}`;
+  evaluatorVersionHash: `0x${string}`;
+  taskCommitment: `0x${string}`;
+  validationRequestHash: `0x${string}`;
+  evidenceRoot: `0x${string}`;
+  playgroundRunId: string;
+  expiresAt: string;
+  state: "prepared" | "request_submitted" | "evidence_ready" | "evidence_submitted" | "verified" | "rejected" | "expired" | "revoked" | "unknown";
+  evaluationId: string | null;
+  requestTransactionHash: `0x${string}` | null;
+  startTransactionHash: `0x${string}` | null;
+  evidenceTransactionHash: `0x${string}` | null;
+  executionEnabled: false;
+  verificationStatus: "prepared" | "user_submitted" | "evidence_submitted" | "verified" | "rejected" | "expired" | "revoked" | "chain_reconciliation_required";
+  nextAction: "prepare_request_transaction" | "record_request_submission" | "record_start_submission" | "prepare_evidence_transaction" | "record_evidence_submission" | "reconcile_chain" | "none";
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AgonArenaTransactionView = {
+  intentId: string;
+  chainId: string;
+  to: `0x${string}`;
+  functionName: "requestEvaluation" | "submitEvidence";
+  args: readonly unknown[];
+  data: `0x${string}`;
+  executionEnabled: false;
+  nextAction: "review_and_submit_with_wallet";
+};
+
+export type AgonArenaEvaluationSubmittedRequest = {
+  evaluationId: string;
+  transactionHash: string;
+};
+
+export type AgonArenaEvaluationStartedRequest = {
+  transactionHash: string;
+};
+
+export type AgonArenaEvidenceSubmittedRequest = {
+  transactionHash: string;
+};
+
+export type AgonSyndicateContributionRequest = {
+  idempotencyKey: string;
+  syndicateId: string;
+  agentId: string;
+  contributionKey: string;
+  score: string;
+  evidenceHash: string;
+};
+
+export type AgonSyndicateContributionView = {
+  intentId: string;
+  actor: `0x${string}`;
+  idempotencyKey: string;
+  network: "eip155:5042002";
+  registryContract: `0x${string}`;
+  syndicateId: string;
+  agentId: string;
+  contributionKey: `0x${string}`;
+  score: string;
+  evidenceHash: `0x${string}`;
+  state: "prepared" | "submitted" | "confirmed" | "unknown";
+  transactionHash: `0x${string}` | null;
+  executionEnabled: false;
+  nextAction: "prepare_transaction" | "record_submission" | "reconcile_chain" | "none";
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AgonPrizeClaimRequest = {
+  idempotencyKey: string;
+  poolKey: string;
+  index: string;
+  beneficiary: string;
+  amount: string;
+  proof: string[];
+};
+
+export type AgonPrizeClaimView = {
+  intentId: string;
+  actor: `0x${string}`;
+  idempotencyKey: string;
+  network: "eip155:5042002";
+  vaultContract: `0x${string}`;
+  poolKey: `0x${string}`;
+  index: string;
+  beneficiary: `0x${string}`;
+  amount: string;
+  proof: `0x${string}`[];
+  leaf: `0x${string}`;
+  state: "prepared" | "submitted" | "confirmed" | "unknown";
+  transactionHash: `0x${string}` | null;
+  executionEnabled: false;
+  nextAction: "prepare_transaction" | "record_submission" | "reconcile_chain" | "none";
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AgonSyndicatePrizeTransactionView = {
+  intentId: string;
+  chainId: string;
+  to: `0x${string}`;
+  functionName: "recordContribution" | "claim";
+  args: readonly unknown[];
+  data: `0x${string}`;
+  executionEnabled: false;
+  nextAction: "review_and_submit_with_wallet";
+};
+
+export type AgonSyndicatePrizeSubmittedRequest = {
   transactionHash: string;
 };
 

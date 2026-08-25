@@ -1166,3 +1166,51 @@ test("authenticated evaluation binds the exact listing version and replays idemp
   assert.equal(conflict.status, 409);
   assert.equal((await conflict.json() as { error: { code: string } }).error.code, "idempotency_conflict");
 });
+
+test("Arena evidence routes require authentication and fail closed without service wiring", async () => {
+  const app = testApp(new FakeAgonService());
+  const unauthenticated = await app.request("/agon/arena/evaluations", { method: "POST", body: "{}" });
+  assert.equal(unauthenticated.status, 401);
+  const invalid = await app.request("/agon/arena/evaluations", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-test-address": ADDRESS },
+    body: JSON.stringify({ listingReference: listing.id }),
+  });
+  assert.equal(invalid.status, 400);
+  const unavailable = await app.request("/agon/arena/evaluations/00000000-0000-4000-8000-000000000001", {
+    headers: { "x-test-address": ADDRESS },
+  });
+  assert.equal(unavailable.status, 503);
+  const transaction = await app.request("/agon/arena/evaluations/00000000-0000-4000-8000-000000000001/request-transaction", {
+    headers: { "x-test-address": ADDRESS },
+  });
+  assert.equal(transaction.status, 503);
+  const reconcile = await app.request("/agon/arena/evaluations/00000000-0000-4000-8000-000000000001/reconcile", { method: "POST", headers: { "x-test-address": ADDRESS } });
+  assert.equal(reconcile.status, 503);
+});
+
+test("syndicate and prize intent routes require authentication and fail closed without service wiring", async () => {
+  const app = testApp(new FakeAgonService());
+  const hash = `0x${"11".repeat(32)}`;
+  assert.equal((await app.request("/agon/syndicates/contributions", { method: "POST", body: "{}" })).status, 401);
+  const invalidContribution = await app.request("/agon/syndicates/contributions", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-test-address": ADDRESS },
+    body: JSON.stringify({ idempotencyKey: "syndicate-route-001", syndicateId: "7", agentId: "42", contributionKey: "0x00", score: "1", evidenceHash: hash }),
+  });
+  assert.equal(invalidContribution.status, 400);
+  const unavailableContribution = await app.request("/agon/syndicates/contributions/00000000-0000-4000-8000-000000000001", { headers: { "x-test-address": ADDRESS } });
+  assert.equal(unavailableContribution.status, 503);
+  assert.equal((await app.request("/agon/syndicates/contributions/00000000-0000-4000-8000-000000000001/reconcile", { method: "POST", headers: { "x-test-address": ADDRESS } })).status, 503);
+
+  assert.equal((await app.request("/agon/prize-claims", { method: "POST", body: "{}" })).status, 401);
+  const invalidClaim = await app.request("/agon/prize-claims", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-test-address": ADDRESS },
+    body: JSON.stringify({ idempotencyKey: "prize-route-001", poolKey: hash, index: "0", beneficiary: ADDRESS, amount: "1", proof: ["0x00"] }),
+  });
+  assert.equal(invalidClaim.status, 400);
+  const unavailableClaim = await app.request("/agon/prize-claims/00000000-0000-4000-8000-000000000001/transaction", { headers: { "x-test-address": ADDRESS } });
+  assert.equal(unavailableClaim.status, 503);
+  assert.equal((await app.request("/agon/prize-claims/00000000-0000-4000-8000-000000000001/reconcile", { method: "POST", headers: { "x-test-address": ADDRESS } })).status, 503);
+});

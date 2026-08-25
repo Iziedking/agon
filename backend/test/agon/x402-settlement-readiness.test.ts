@@ -118,3 +118,24 @@ test("never exposes opaque settlement attempts and enforces intent ownership", a
     error: { code: "not_owner", message: "only the intent owner can inspect settlement readiness" },
   });
 });
+
+test("reports settlement as ready only when both policy and adapter are wired", async () => {
+  const current = receipt("authorization_submitted");
+  const repository = {
+    getX402CallIntent: async () => intent,
+    getX402CallReceipt: async () => current,
+  } as unknown as PostgresAgonRepository;
+  const service = new PostgresAgonMarketService(repository, {
+    x402ExecutionEnabled: true,
+    x402SettlementAdapter: {
+      settle: async () => { throw new Error("readiness must not call the settlement adapter"); },
+    },
+  });
+
+  const ready = await service.getX402SettlementReadiness(ACTOR, INTENT_ID);
+  assert.equal(ready.ok, true);
+  if (!ready.ok) return;
+  assert.equal(ready.value.status, "ready");
+  assert.equal(ready.value.executionEnabled, true);
+  assert.equal(ready.value.nextAction, "execute_settlement");
+});

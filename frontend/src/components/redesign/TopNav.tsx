@@ -43,7 +43,6 @@ const LEGACY_ROUTES = [
 const AGON_ROUTES = [
   { href: "/market", label: "MARKET", exact: true },
   { href: "/agon", label: "PROTOCOL", exact: true },
-  { href: "/admin", label: "OPS", exact: true },
   { href: "/app", label: "PLAYGROUND", exact: true },
   { href: "/docs", label: "DOCUMENTATION", exact: false },
 ];

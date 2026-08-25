@@ -44,6 +44,18 @@ import type {
   AgonJobEscrowTransactionView,
   AgonJobEscrowReconcileRequest,
   AgonJobEscrowSubmittedRequest,
+  AgonArenaEvaluationRequest,
+  AgonArenaEvaluationView,
+  AgonArenaTransactionView,
+  AgonArenaEvaluationSubmittedRequest,
+  AgonArenaEvaluationStartedRequest,
+  AgonArenaEvidenceSubmittedRequest,
+  AgonSyndicateContributionRequest,
+  AgonSyndicateContributionView,
+  AgonPrizeClaimRequest,
+  AgonPrizeClaimView,
+  AgonSyndicatePrizeTransactionView,
+  AgonSyndicatePrizeSubmittedRequest,
 } from "./api-types.ts";
 
 export type AgonRouteVariables = { address: string };
@@ -65,6 +77,9 @@ export type AgonServiceError = {
     | "reconciliation_unavailable"
     | "reconciliation_invalid"
     | "escrow_disabled"
+    | "arena_disabled"
+    | "arena_reconciliation_required"
+    | "syndicate_prize_disabled"
     | "internal";
   message: string;
 };
@@ -196,6 +211,83 @@ export type AgonMarketService = {
     intentId: string,
     request: AgonJobEscrowSubmittedRequest,
   ): Promise<Result<AgonJobEscrowIntentView, AgonServiceError>>;
+  prepareAgonArenaEvaluation?(
+    actor: string,
+    request: AgonArenaEvaluationRequest,
+  ): Promise<Result<AgonArenaEvaluationView, AgonServiceError>>;
+  getAgonArenaEvaluation?(
+    actor: string,
+    intentId: string,
+  ): Promise<Result<AgonArenaEvaluationView, AgonServiceError>>;
+  getAgonArenaRequestTransaction?(
+    actor: string,
+    intentId: string,
+  ): Promise<Result<AgonArenaTransactionView, AgonServiceError>>;
+  markAgonArenaEvaluationSubmitted?(
+    actor: string,
+    intentId: string,
+    request: AgonArenaEvaluationSubmittedRequest,
+  ): Promise<Result<AgonArenaEvaluationView, AgonServiceError>>;
+  markAgonArenaEvaluationStarted?(
+    actor: string,
+    intentId: string,
+    request: AgonArenaEvaluationStartedRequest,
+  ): Promise<Result<AgonArenaEvaluationView, AgonServiceError>>;
+  getAgonArenaEvidenceTransaction?(
+    actor: string,
+    intentId: string,
+  ): Promise<Result<AgonArenaTransactionView, AgonServiceError>>;
+  markAgonArenaEvidenceSubmitted?(
+    actor: string,
+    intentId: string,
+    request: AgonArenaEvidenceSubmittedRequest,
+  ): Promise<Result<AgonArenaEvaluationView, AgonServiceError>>;
+  reconcileAgonArenaEvaluation?(
+    actor: string,
+    intentId: string,
+  ): Promise<Result<AgonArenaEvaluationView, AgonServiceError>>;
+  prepareAgonSyndicateContribution?(
+    actor: string,
+    request: AgonSyndicateContributionRequest,
+  ): Promise<Result<AgonSyndicateContributionView, AgonServiceError>>;
+  getAgonSyndicateContribution?(
+    actor: string,
+    intentId: string,
+  ): Promise<Result<AgonSyndicateContributionView, AgonServiceError>>;
+  getAgonSyndicateContributionTransaction?(
+    actor: string,
+    intentId: string,
+  ): Promise<Result<AgonSyndicatePrizeTransactionView, AgonServiceError>>;
+  markAgonSyndicateContributionSubmitted?(
+    actor: string,
+    intentId: string,
+    request: AgonSyndicatePrizeSubmittedRequest,
+  ): Promise<Result<AgonSyndicateContributionView, AgonServiceError>>;
+  reconcileAgonSyndicateContribution?(
+    actor: string,
+    intentId: string,
+  ): Promise<Result<AgonSyndicateContributionView, AgonServiceError>>;
+  prepareAgonPrizeClaim?(
+    actor: string,
+    request: AgonPrizeClaimRequest,
+  ): Promise<Result<AgonPrizeClaimView, AgonServiceError>>;
+  getAgonPrizeClaim?(
+    actor: string,
+    intentId: string,
+  ): Promise<Result<AgonPrizeClaimView, AgonServiceError>>;
+  getAgonPrizeClaimTransaction?(
+    actor: string,
+    intentId: string,
+  ): Promise<Result<AgonSyndicatePrizeTransactionView, AgonServiceError>>;
+  markAgonPrizeClaimSubmitted?(
+    actor: string,
+    intentId: string,
+    request: AgonSyndicatePrizeSubmittedRequest,
+  ): Promise<Result<AgonPrizeClaimView, AgonServiceError>>;
+  reconcileAgonPrizeClaim?(
+    actor: string,
+    intentId: string,
+  ): Promise<Result<AgonPrizeClaimView, AgonServiceError>>;
   fundAgonEscrow?(
     actor: string,
     intentId: string,
@@ -339,6 +431,33 @@ const agonJobEscrowIntentSchema = z.object({
 
 const agonJobEscrowReconcileSchema = z.object({ jobId: positiveDecimal }).strict();
 const agonJobEscrowSubmittedSchema = z.object({ transactionHash: bytes32 }).strict();
+const agonArenaEvaluationSchema = z.object({
+  listingReference: z.string().regex(/^[1-9]\d*:0x[0-9a-fA-F]{40}:[1-9]\d*$/, "must be a chain:registry:listing reference"),
+  idempotencyKey: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/, "must be 8-128 safe characters"),
+  playgroundRunId: z.string().uuid(),
+  expiresAt: z.string().datetime({ offset: true }),
+}).strict();
+const agonArenaEvaluationSubmittedSchema = z.object({ evaluationId: positiveDecimal, transactionHash: bytes32 }).strict();
+const agonArenaEvaluationStartedSchema = z.object({ transactionHash: bytes32 }).strict();
+const agonArenaEvidenceSubmittedSchema = z.object({ transactionHash: bytes32 }).strict();
+const nonNegativeDecimal = z.string().regex(/^\d+$/, "must be a non-negative decimal string");
+const agonSyndicateContributionSchema = z.object({
+  idempotencyKey: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/),
+  syndicateId: positiveDecimal,
+  agentId: positiveDecimal,
+  contributionKey: bytes32,
+  score: positiveDecimal,
+  evidenceHash: bytes32,
+}).strict();
+const agonPrizeClaimSchema = z.object({
+  idempotencyKey: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/),
+  poolKey: bytes32,
+  index: nonNegativeDecimal,
+  beneficiary: z.string().regex(/^0x[0-9a-fA-F]{40}$/),
+  amount: positiveDecimal,
+  proof: z.array(bytes32).max(256),
+}).strict();
+const agonSyndicatePrizeSubmittedSchema = z.object({ transactionHash: bytes32 }).strict();
 
 const playgroundCategorySchema = z.enum(["development", "research", "analysis", "verification", "execution"]);
 const playgroundTaskSchema = z.object({
@@ -401,6 +520,12 @@ function serviceErrorResponse(
     case "execution_not_ready":
       return context.json(body, 409);
     case "escrow_disabled":
+      return context.json(body, 503);
+    case "arena_disabled":
+      return context.json(body, 503);
+    case "arena_reconciliation_required":
+      return context.json(body, 409);
+    case "syndicate_prize_disabled":
       return context.json(body, 503);
     case "internal":
       return context.json(body, 500);
@@ -521,6 +646,146 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
       }
       return context.json({ error: { code: "playground_failed", message: "The evaluation did not complete." } }, 500);
     }
+  });
+
+  app.post("/arena/evaluations", options.requireAuth, async (context) => {
+    const body = await parseJson(context);
+    if (isApiError(body)) return context.json(body, 400);
+    const parsed = agonArenaEvaluationSchema.safeParse(body);
+    if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
+    if (!options.service.prepareAgonArenaEvaluation) return serviceErrorResponse(context, { code: "arena_disabled", message: "Agon Arena evaluation preparation is not configured" });
+    const result = await options.service.prepareAgonArenaEvaluation(context.get("address"), parsed.data);
+    return result.ok ? context.json(result.value, 201) : serviceErrorResponse(context, result.error);
+  });
+
+  app.get("/arena/evaluations/:intentId", options.requireAuth, async (context) => {
+    if (!options.service.getAgonArenaEvaluation) return serviceErrorResponse(context, { code: "arena_disabled", message: "Agon Arena evaluation reads are not configured" });
+    const result = await options.service.getAgonArenaEvaluation(context.get("address"), context.req.param("intentId"));
+    return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  app.get("/arena/evaluations/:intentId/request-transaction", options.requireAuth, async (context) => {
+    if (!options.service.getAgonArenaRequestTransaction) return serviceErrorResponse(context, { code: "arena_disabled", message: "Agon Arena request planning is not configured" });
+    const result = await options.service.getAgonArenaRequestTransaction(context.get("address"), context.req.param("intentId"));
+    return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  app.post("/arena/evaluations/:intentId/requested", options.requireAuth, async (context) => {
+    const body = await parseJson(context);
+    if (isApiError(body)) return context.json(body, 400);
+    const parsed = agonArenaEvaluationSubmittedSchema.safeParse(body);
+    if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
+    if (!options.service.markAgonArenaEvaluationSubmitted) return serviceErrorResponse(context, { code: "arena_disabled", message: "Agon Arena request tracking is not configured" });
+    const result = await options.service.markAgonArenaEvaluationSubmitted(context.get("address"), context.req.param("intentId"), parsed.data);
+    return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  app.post("/arena/evaluations/:intentId/started", options.requireAuth, async (context) => {
+    const body = await parseJson(context);
+    if (isApiError(body)) return context.json(body, 400);
+    const parsed = agonArenaEvaluationStartedSchema.safeParse(body);
+    if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
+    if (!options.service.markAgonArenaEvaluationStarted) return serviceErrorResponse(context, { code: "arena_disabled", message: "Agon Arena start tracking is not configured" });
+    const result = await options.service.markAgonArenaEvaluationStarted(context.get("address"), context.req.param("intentId"), parsed.data);
+    return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  app.get("/arena/evaluations/:intentId/evidence-transaction", options.requireAuth, async (context) => {
+    if (!options.service.getAgonArenaEvidenceTransaction) return serviceErrorResponse(context, { code: "arena_disabled", message: "Agon Arena evidence planning is not configured" });
+    const result = await options.service.getAgonArenaEvidenceTransaction(context.get("address"), context.req.param("intentId"));
+    return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  app.post("/arena/evaluations/:intentId/evidence-submitted", options.requireAuth, async (context) => {
+    const body = await parseJson(context);
+    if (isApiError(body)) return context.json(body, 400);
+    const parsed = agonArenaEvidenceSubmittedSchema.safeParse(body);
+    if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
+    if (!options.service.markAgonArenaEvidenceSubmitted) return serviceErrorResponse(context, { code: "arena_disabled", message: "Agon Arena evidence tracking is not configured" });
+    const result = await options.service.markAgonArenaEvidenceSubmitted(context.get("address"), context.req.param("intentId"), parsed.data);
+    return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  app.post("/arena/evaluations/:intentId/reconcile", options.requireAuth, async (context) => {
+    if (!options.service.reconcileAgonArenaEvaluation) return serviceErrorResponse(context, { code: "arena_disabled", message: "Agon Arena finality reconciliation is not configured" });
+    const result = await options.service.reconcileAgonArenaEvaluation(context.get("address"), context.req.param("intentId"));
+    return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  app.post("/syndicates/contributions", options.requireAuth, async (context) => {
+    const body = await parseJson(context);
+    if (isApiError(body)) return context.json(body, 400);
+    const parsed = agonSyndicateContributionSchema.safeParse(body);
+    if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
+    if (!options.service.prepareAgonSyndicateContribution) return serviceErrorResponse(context, { code: "syndicate_prize_disabled", message: "syndicate contribution intents are not configured" });
+    const result = await options.service.prepareAgonSyndicateContribution(context.get("address"), parsed.data);
+    return result.ok ? context.json(result.value, 201) : serviceErrorResponse(context, result.error);
+  });
+
+  app.get("/syndicates/contributions/:intentId", options.requireAuth, async (context) => {
+    if (!options.service.getAgonSyndicateContribution) return serviceErrorResponse(context, { code: "syndicate_prize_disabled", message: "syndicate contribution reads are not configured" });
+    const result = await options.service.getAgonSyndicateContribution(context.get("address"), context.req.param("intentId"));
+    return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  app.get("/syndicates/contributions/:intentId/transaction", options.requireAuth, async (context) => {
+    if (!options.service.getAgonSyndicateContributionTransaction) return serviceErrorResponse(context, { code: "syndicate_prize_disabled", message: "syndicate contribution transaction planning is not configured" });
+    const result = await options.service.getAgonSyndicateContributionTransaction(context.get("address"), context.req.param("intentId"));
+    return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  app.post("/syndicates/contributions/:intentId/submitted", options.requireAuth, async (context) => {
+    const body = await parseJson(context);
+    if (isApiError(body)) return context.json(body, 400);
+    const parsed = agonSyndicatePrizeSubmittedSchema.safeParse(body);
+    if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
+    if (!options.service.markAgonSyndicateContributionSubmitted) return serviceErrorResponse(context, { code: "syndicate_prize_disabled", message: "syndicate contribution tracking is not configured" });
+    const result = await options.service.markAgonSyndicateContributionSubmitted(context.get("address"), context.req.param("intentId"), parsed.data);
+    return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  app.post("/syndicates/contributions/:intentId/reconcile", options.requireAuth, async (context) => {
+    if (!options.service.reconcileAgonSyndicateContribution) return serviceErrorResponse(context, { code: "syndicate_prize_disabled", message: "syndicate contribution reconciliation is not configured" });
+    const result = await options.service.reconcileAgonSyndicateContribution(context.get("address"), context.req.param("intentId"));
+    return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  app.post("/prize-claims", options.requireAuth, async (context) => {
+    const body = await parseJson(context);
+    if (isApiError(body)) return context.json(body, 400);
+    const parsed = agonPrizeClaimSchema.safeParse(body);
+    if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
+    if (!options.service.prepareAgonPrizeClaim) return serviceErrorResponse(context, { code: "syndicate_prize_disabled", message: "prize claim intents are not configured" });
+    const result = await options.service.prepareAgonPrizeClaim(context.get("address"), parsed.data);
+    return result.ok ? context.json(result.value, 201) : serviceErrorResponse(context, result.error);
+  });
+
+  app.get("/prize-claims/:intentId", options.requireAuth, async (context) => {
+    if (!options.service.getAgonPrizeClaim) return serviceErrorResponse(context, { code: "syndicate_prize_disabled", message: "prize claim reads are not configured" });
+    const result = await options.service.getAgonPrizeClaim(context.get("address"), context.req.param("intentId"));
+    return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  app.get("/prize-claims/:intentId/transaction", options.requireAuth, async (context) => {
+    if (!options.service.getAgonPrizeClaimTransaction) return serviceErrorResponse(context, { code: "syndicate_prize_disabled", message: "prize claim transaction planning is not configured" });
+    const result = await options.service.getAgonPrizeClaimTransaction(context.get("address"), context.req.param("intentId"));
+    return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  app.post("/prize-claims/:intentId/submitted", options.requireAuth, async (context) => {
+    const body = await parseJson(context);
+    if (isApiError(body)) return context.json(body, 400);
+    const parsed = agonSyndicatePrizeSubmittedSchema.safeParse(body);
+    if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
+    if (!options.service.markAgonPrizeClaimSubmitted) return serviceErrorResponse(context, { code: "syndicate_prize_disabled", message: "prize claim tracking is not configured" });
+    const result = await options.service.markAgonPrizeClaimSubmitted(context.get("address"), context.req.param("intentId"), parsed.data);
+    return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  app.post("/prize-claims/:intentId/reconcile", options.requireAuth, async (context) => {
+    if (!options.service.reconcileAgonPrizeClaim) return serviceErrorResponse(context, { code: "syndicate_prize_disabled", message: "prize claim reconciliation is not configured" });
+    const result = await options.service.reconcileAgonPrizeClaim(context.get("address"), context.req.param("intentId"));
+    return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
   });
 
   app.get("/health", async (context) =>

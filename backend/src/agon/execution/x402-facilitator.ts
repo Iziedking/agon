@@ -15,6 +15,7 @@ export type X402ExecutionPlan = {
   testnetOnly: true;
   facilitatorUrl: typeof AGON_X402_TESTNET_FACILITATOR;
   settlementEndpoint: `${typeof AGON_X402_TESTNET_FACILITATOR}/v1/x402/settle`;
+  resource: X402QuoteSnapshot["resource"];
   requirements: {
     scheme: "exact";
     network: typeof AGON_X402_TESTNET_NETWORK;
@@ -112,6 +113,7 @@ export function buildX402ExecutionPlan(input: {
       testnetOnly: true as const,
       facilitatorUrl: AGON_X402_TESTNET_FACILITATOR,
       settlementEndpoint: `${AGON_X402_TESTNET_FACILITATOR}/v1/x402/settle` as const,
+      resource: input.snapshot.resource,
       requirements,
       authorization: input.authorization.message,
       authorizationHash: input.authorizationHash.toLowerCase() as `0x${string}`,

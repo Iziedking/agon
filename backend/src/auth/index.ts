@@ -17,6 +17,7 @@ import { pool, query } from "../db/pool.js";
 import { PostgresAgonRepository } from "../agon/store/repository.js";
 import { createAgonRoutes } from "../agon/http/routes.js";
 import { createCircleTestnetFacilitatorClient, createX402ExecutionPolicy, createX402FacilitatorAdapter } from "../agon/execution/x402-settlement.js";
+import { createX402ProviderExecutionAdapter } from "../agon/execution/x402-provider-execution.js";
 import { createCircleTestnetX402ReceiptLookupAdapter } from "../agon/execution/x402-reconciliation.js";
 import { createViemAgonPrizeEscrowReadAdapter, type AgonPrizeEscrowReadClient } from "../agon/execution/escrow-reconciliation.js";
 import { evaluateAgonEscrowProductionReadiness } from "../agon/execution/escrow-production-readiness.js";
@@ -24,6 +25,7 @@ import { AGON_ESCROW_TRANSACTION_APPROVAL_PHRASES } from "../agon/execution/escr
 import { PostgresAgonMarketService } from "../agon/http/service.js";
 import { inspectAgonProtocolReadiness } from "../agon/protocol-readiness.ts";
 import { createViemAgonJobEscrowReadAdapter, type AgonJobEscrowReadClient } from "../agon/execution/agon-job-escrow.ts";
+import { createViemAgonProtocolFinalityReader, type AgonProtocolFinalityClient } from "../agon/execution/protocol-finality.ts";
 import { PostgresPlaygroundRunStore, RedisPlaygroundRateLimiter } from "../agon/playground-store.ts";
 import { PostgresAgonOperationStore } from "../agon/write/repository.js";
 import { CachedAgonReadiness } from "../agon/write/readiness.js";
@@ -34,6 +36,7 @@ import { setTierGate, getTierGate, type GateSurface } from "../lib/tierGate.js";
 import { merkleProof, merkleRoot, payoutLeaf } from "../coordinator/merkle.js";
 import { redis } from "../redis.js";
 import { issueToken, requireAuth, SESSION_COOKIE } from "./jwt.js";
+import { createAgonAuthMiddleware } from "../agon/http/admin-auth.js";
 import { checkEntry } from "./entryGuard.js";
 import {
   DAILY_POOL_MAX,
@@ -121,7 +124,7 @@ app.use(
     // x-admin-token is the custom header the /admin console sends. Without it
     // in allowHeaders the browser's CORS preflight rejects the request and the
     // console shows "Failed to fetch".
-    allowHeaders: ["Content-Type", "Authorization", "x-admin-token"],
+    allowHeaders: ["Content-Type", "Authorization", "x-admin-token", "x-agon-actor"],
     allowMethods: ["GET", "POST", "OPTIONS"],
   }),
 );
@@ -159,13 +162,12 @@ const x402VerificationPolicy = createX402ExecutionPolicy({
   enabled: config.agon.x402.verificationEnabled,
   maxAmountBaseUnits: config.agon.x402.maxAmountBaseUnits,
 });
-const x402FacilitatorClient = config.agon.x402.executionEnabled || config.agon.x402.verificationEnabled
+const x402FacilitatorClient = config.agon.x402.verificationEnabled
   ? createCircleTestnetFacilitatorClient()
   : undefined;
-const x402SettlementAdapter = createX402FacilitatorAdapter({
+const x402SettlementAdapter = createX402ProviderExecutionAdapter({
   enabled: config.agon.x402.executionEnabled,
   policy: x402ExecutionPolicy,
-  client: x402FacilitatorClient,
 });
 const agonEscrowReadAdapter = createViemAgonPrizeEscrowReadAdapter({
   enabled: config.agon.escrow.reconciliationEnabled,
@@ -203,6 +205,7 @@ const agonEscrowProductionReadiness = () => evaluateAgonEscrowProductionReadines
   signerAvailable: config.coordinator.address !== null,
   providerFinalityConfigured: false,
 });
+const agonPlaygroundStore = new PostgresPlaygroundRunStore(pool);
 const agonService = new PostgresAgonMarketService(agonRepository, {
   writer: agonWriter,
   x402ExecutionEnabled: config.agon.x402.executionEnabled,
@@ -226,13 +229,25 @@ const agonService = new PostgresAgonMarketService(agonRepository, {
     : undefined,
   agonJobEscrowAddress: config.agon.deployment?.contracts.AgonJobEscrow,
   agonArenaAddress: config.agon.deployment?.contracts.AgonArena,
+  validationRegistryAddress: config.agon.deployment?.external.ValidationRegistry?.address,
+  playgroundStore: agonPlaygroundStore,
   agonSyndicateRegistryAddress: config.agon.deployment?.contracts.AgonSyndicateRegistry,
   agonPrizeVaultAddress: config.agon.deployment?.contracts.AgonPrizeVault,
+  protocolFinalityReader: config.agon.deployment?.contracts.AgonArena
+    && config.agon.deployment.contracts.AgonSyndicateRegistry
+    && config.agon.deployment.contracts.AgonPrizeVault
+    ? createViemAgonProtocolFinalityReader({
+        client: publicClient as unknown as AgonProtocolFinalityClient,
+        arenaAddress: config.agon.deployment.contracts.AgonArena,
+        syndicateRegistryAddress: config.agon.deployment.contracts.AgonSyndicateRegistry,
+        prizeVaultAddress: config.agon.deployment.contracts.AgonPrizeVault,
+      })
+    : undefined,
 });
 app.route("/agon", createAgonRoutes({
   service: agonService,
-  requireAuth,
-  playgroundStore: new PostgresPlaygroundRunStore(pool),
+  requireAuth: createAgonAuthMiddleware(config.adminToken, requireAuth),
+  playgroundStore: agonPlaygroundStore,
   playgroundRateLimiter: new RedisPlaygroundRateLimiter(redis),
 }));
 

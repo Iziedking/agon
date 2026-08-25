@@ -33,6 +33,9 @@ const AGON_TABLES = [
   "agon_escrow_intents",
   "agon_escrow_transaction_approvals",
   "agon_job_escrow_intents",
+  "agon_arena_evaluations",
+  "agon_syndicate_contributions",
+  "agon_prize_claim_intents",
   "agon_indexer_state",
 ] as const;
 

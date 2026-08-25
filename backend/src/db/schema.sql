@@ -1586,6 +1586,107 @@ create index if not exists agon_job_escrow_intents_job_idx
   on agon_job_escrow_intents(onchain_job_id)
   where onchain_job_id is not null;
 
+-- Durable Arena verification intent. Playground output is treated as evidence
+-- input, never as an on-chain verification claim. Transaction hashes and
+-- evaluation ids are user-submitted markers until an independent read adapter
+-- reconciles the deployed Arena state.
+create table if not exists agon_arena_evaluations (
+  intent_id                    uuid primary key,
+  actor_address                text not null check (actor_address ~ '^0x[0-9a-f]{40}$'),
+  idempotency_key              text not null check (idempotency_key ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$'),
+  listing_reference             text not null check (listing_reference ~ '^[1-9][0-9]*:0x[0-9a-f]{40}:[1-9][0-9]*$'),
+  network                      text not null check (network = 'eip155:5042002'),
+  arena_contract_address       text not null check (arena_contract_address ~ '^0x[0-9a-f]{40}$'),
+  validation_registry_address  text not null check (validation_registry_address ~ '^0x[0-9a-f]{40}$'),
+  participant_address          text not null check (participant_address ~ '^0x[0-9a-f]{40}$'),
+  service_registry_address     text not null check (service_registry_address ~ '^0x[0-9a-f]{40}$'),
+  listing_id                   numeric(78, 0) not null check (listing_id > 0),
+  agent_id                     numeric(78, 0) not null check (agent_id > 0),
+  listing_version              numeric(78, 0) not null check (listing_version > 0),
+  category                     text not null check (char_length(category) > 0),
+  manifest_hash                text not null check (manifest_hash ~ '^0x[0-9a-f]{64}$'),
+  capability_hash              text not null check (capability_hash ~ '^0x[0-9a-f]{64}$'),
+  evaluator_version_hash       text not null check (evaluator_version_hash ~ '^0x[0-9a-f]{64}$'),
+  task_commitment              text not null check (task_commitment ~ '^0x[0-9a-f]{64}$'),
+  validation_request_hash      text not null check (validation_request_hash ~ '^0x[0-9a-f]{64}$'),
+  evidence_root                text not null check (evidence_root ~ '^0x[0-9a-f]{64}$'),
+  playground_run_id            uuid not null references agon_playground_runs(run_id),
+  expires_at                   timestamptz not null,
+  state                        text not null default 'prepared' check (state in ('prepared','request_submitted','evidence_ready','evidence_submitted','verified','rejected','expired','revoked','unknown')),
+  evaluation_id                numeric(78, 0),
+  request_transaction_hash     text check (request_transaction_hash is null or request_transaction_hash ~ '^0x[0-9a-f]{64}$'),
+  start_transaction_hash       text check (start_transaction_hash is null or start_transaction_hash ~ '^0x[0-9a-f]{64}$'),
+  evidence_transaction_hash    text check (evidence_transaction_hash is null or evidence_transaction_hash ~ '^0x[0-9a-f]{64}$'),
+  created_at                   timestamptz not null default now(),
+  updated_at                   timestamptz not null default now(),
+  unique (actor_address, idempotency_key),
+  unique (validation_request_hash),
+  unique (playground_run_id)
+);
+alter table agon_arena_evaluations
+  add column if not exists start_transaction_hash text;
+alter table agon_arena_evaluations drop constraint if exists agon_arena_evaluations_state_check;
+alter table agon_arena_evaluations add constraint agon_arena_evaluations_state_check
+  check (state in ('prepared','request_submitted','evidence_ready','evidence_submitted','verified','rejected','expired','revoked','unknown'));
+create index if not exists agon_arena_evaluations_actor_idx
+  on agon_arena_evaluations(actor_address, created_at desc);
+create index if not exists agon_arena_evaluations_state_idx
+  on agon_arena_evaluations(state, updated_at desc);
+
+-- Durable evaluator contribution and prize-claim intents. These records are
+-- unsigned transaction plans until the connected operator or beneficiary
+-- submits a wallet transaction and records its hash.
+create table if not exists agon_syndicate_contributions (
+  intent_id                 uuid primary key,
+  actor_address             text not null check (actor_address ~ '^0x[0-9a-f]{40}$'),
+  idempotency_key           text not null check (idempotency_key ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$'),
+  registry_contract_address text not null check (registry_contract_address ~ '^0x[0-9a-f]{40}$'),
+  syndicate_id              numeric(78, 0) not null check (syndicate_id > 0),
+  agent_id                  numeric(78, 0) not null check (agent_id > 0),
+  contribution_key          text not null check (contribution_key ~ '^0x[0-9a-f]{64}$'),
+  score                     numeric(78, 0) not null check (score > 0),
+  evidence_hash             text not null check (evidence_hash ~ '^0x[0-9a-f]{64}$'),
+  state                     text not null default 'prepared' check (state in ('prepared','submitted','confirmed','unknown')),
+  transaction_hash         text check (transaction_hash is null or transaction_hash ~ '^0x[0-9a-f]{64}$'),
+  created_at                timestamptz not null default now(),
+  updated_at                timestamptz not null default now(),
+  unique (actor_address, idempotency_key),
+  unique (registry_contract_address, syndicate_id, contribution_key)
+);
+alter table agon_syndicate_contributions drop constraint if exists agon_syndicate_contributions_state_check;
+alter table agon_syndicate_contributions add constraint agon_syndicate_contributions_state_check
+  check (state in ('prepared','submitted','confirmed','unknown'));
+create index if not exists agon_syndicate_contributions_actor_idx
+  on agon_syndicate_contributions(actor_address, created_at desc);
+create index if not exists agon_syndicate_contributions_state_idx
+  on agon_syndicate_contributions(state, updated_at desc);
+
+create table if not exists agon_prize_claim_intents (
+  intent_id                 uuid primary key,
+  actor_address             text not null check (actor_address ~ '^0x[0-9a-f]{40}$'),
+  idempotency_key           text not null check (idempotency_key ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$'),
+  vault_contract_address    text not null check (vault_contract_address ~ '^0x[0-9a-f]{40}$'),
+  pool_key                  text not null check (pool_key ~ '^0x[0-9a-f]{64}$'),
+  claim_index               numeric(78, 0) not null check (claim_index >= 0),
+  beneficiary_address       text not null check (beneficiary_address ~ '^0x[0-9a-f]{40}$'),
+  amount_base_units         numeric(78, 0) not null check (amount_base_units > 0),
+  proof                     jsonb not null check (jsonb_typeof(proof) = 'array'),
+  leaf_hash                 text not null check (leaf_hash ~ '^0x[0-9a-f]{64}$'),
+  state                     text not null default 'prepared' check (state in ('prepared','submitted','confirmed','unknown')),
+  transaction_hash         text check (transaction_hash is null or transaction_hash ~ '^0x[0-9a-f]{64}$'),
+  created_at                timestamptz not null default now(),
+  updated_at                timestamptz not null default now(),
+  unique (actor_address, idempotency_key),
+  unique (vault_contract_address, pool_key, claim_index)
+);
+alter table agon_prize_claim_intents drop constraint if exists agon_prize_claim_intents_state_check;
+alter table agon_prize_claim_intents add constraint agon_prize_claim_intents_state_check
+  check (state in ('prepared','submitted','confirmed','unknown'));
+create index if not exists agon_prize_claim_intents_actor_idx
+  on agon_prize_claim_intents(actor_address, created_at desc);
+create index if not exists agon_prize_claim_intents_state_idx
+  on agon_prize_claim_intents(state, updated_at desc);
+
 create table if not exists agon_indexer_state (
   stream_name                 text not null check (char_length(stream_name) > 0),
   chain_id                    numeric(78, 0) not null check (chain_id > 0),

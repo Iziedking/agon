@@ -22,7 +22,10 @@ export function AgonAccessGate({ children }: { children: ReactNode }) {
   const isPublicMarket = pathname === "/market" || (pathname.startsWith("/market/") && pathname !== "/market/new");
   const isPublicDocs = pathname === "/docs" || pathname.startsWith("/docs/");
   const isPublicOperator = pathname === "/operators" || pathname.startsWith("/operators/");
-  const isPublicDiscovery = isLanding || isLogin || isProtocolDocument || isPublicMarket || isPublicDocs || isPublicOperator;
+  // Admin has its own in-memory ADMIN_TOKEN gate. It must reach the token
+  // screen without entering the wallet/email session flow.
+  const isAdminRoute = pathname === "/admin" || pathname.startsWith("/admin/");
+  const isPublicDiscovery = isLanding || isLogin || isProtocolDocument || isPublicMarket || isPublicDocs || isPublicOperator || isAdminRoute;
   const shouldGate = IS_AGON_DEPLOYMENT && !isPublicDiscovery;
 
   useEffect(() => {

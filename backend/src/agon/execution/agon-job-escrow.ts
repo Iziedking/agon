@@ -213,23 +213,30 @@ export type AgonJobEscrowReadAdapter = {
 };
 
 function normalizeJob(value: unknown): AgonJobEscrowJob {
-  if (!Array.isArray(value) || value.length < 18) throw new Error("AgonJobEscrow returned an invalid job tuple");
-  const buyer = address(value[1], "job buyer");
-  const provider = address(value[2], "job provider");
-  const manifestHash = hash(value[6], "job manifest hash");
-  const termsHash = hash(value[7], "job terms hash");
-  const deliverableHash: `0x${string}` = typeof value[8] === "string" && HASH.test(value[8]) ? value[8].toLowerCase() as `0x${string}` : `0x${"0".repeat(64)}`;
+  const record = value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+  const values = Array.isArray(value) ? value : record ? [
+    record.jobId, record.buyer, record.provider, record.listingId, record.agentId,
+    record.listingVersion, record.manifestHash, record.termsHash, record.deliverableHash,
+    record.amount, record.fee, record.reviewHours, record.acceptanceDeadline, record.reviewDeadline,
+    record.createdAt, record.submittedAt, record.status, record.settlement,
+  ] : [];
+  if (values.length < 18) throw new Error("AgonJobEscrow returned an invalid job tuple");
+  const buyer = address(values[1], "job buyer");
+  const provider = address(values[2], "job provider");
+  const manifestHash = hash(values[6], "job manifest hash");
+  const termsHash = hash(values[7], "job terms hash");
+  const deliverableHash: `0x${string}` = typeof values[8] === "string" && HASH.test(values[8]) ? values[8].toLowerCase() as `0x${string}` : `0x${"0".repeat(64)}`;
   const timestamp = (raw: unknown, label: string) => { const n = Number(raw); if (!Number.isSafeInteger(n) || n < 0) throw new Error(`${label} is invalid`); return n; };
-  const reviewDeadline = timestamp(value[13], "review deadline");
-  const submittedAt = timestamp(value[15], "submitted timestamp");
+  const reviewDeadline = timestamp(values[13], "review deadline");
+  const submittedAt = timestamp(values[15], "submitted timestamp");
   return {
-    jobId: integer(String(value[0]), "job id").toString(), buyer, provider,
-    listingId: integer(String(value[3]), "listing id").toString(), agentId: integer(String(value[4]), "agent id").toString(),
-    listingVersion: integer(String(value[5]), "listing version").toString(), manifestHash, termsHash, deliverableHash,
-    amount: integer(String(value[9]), "job amount").toString(), fee: integer(String(value[10]), "job fee").toString(),
-    reviewHours: timestamp(value[11], "review hours"), acceptanceDeadline: new Date(timestamp(value[12], "acceptance deadline") * 1000),
-    reviewDeadline: reviewDeadline === 0 ? null : new Date(reviewDeadline * 1000), createdAt: new Date(timestamp(value[14], "created timestamp") * 1000),
-    submittedAt: submittedAt === 0 ? null : new Date(submittedAt * 1000), status: timestamp(value[16], "job status"), settlement: timestamp(value[17], "job settlement"),
+    jobId: integer(String(values[0]), "job id").toString(), buyer, provider,
+    listingId: integer(String(values[3]), "listing id").toString(), agentId: integer(String(values[4]), "agent id").toString(),
+    listingVersion: integer(String(values[5]), "listing version").toString(), manifestHash, termsHash, deliverableHash,
+    amount: integer(String(values[9]), "job amount").toString(), fee: integer(String(values[10]), "job fee").toString(),
+    reviewHours: timestamp(values[11], "review hours"), acceptanceDeadline: new Date(timestamp(values[12], "acceptance deadline") * 1000),
+    reviewDeadline: reviewDeadline === 0 ? null : new Date(reviewDeadline * 1000), createdAt: new Date(timestamp(values[14], "created timestamp") * 1000),
+    submittedAt: submittedAt === 0 ? null : new Date(submittedAt * 1000), status: timestamp(values[16], "job status"), settlement: timestamp(values[17], "job settlement"),
   };
 }
 

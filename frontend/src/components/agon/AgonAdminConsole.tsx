@@ -1,10 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useAccount } from "wagmi";
 
+import { ConnectButton } from "@/components/ConnectButton";
 import { LoginModal } from "@/components/pengu/LoginModal";
 import { ProtocolActions } from "@/components/agon/ProtocolActions";
 import { X402CallIntentPanel } from "@/components/agon/X402CallIntentPanel";
+import { AgonSyndicatePrizeIntentPanel } from "@/components/agon/AgonSyndicatePrizeIntentPanel";
 import { useAuth } from "@/hooks/useAuth";
 import {
   getAgonEscrowReadiness,
@@ -12,21 +15,36 @@ import {
   getAgonHealth,
   getAgonJobEscrowJob,
   getAgonJobEscrowTransaction,
+  evaluatePlaygroundTask,
+  prepareAgonArenaEvaluation,
+  getAgonArenaRequestTransaction,
+  getAgonArenaEvidenceTransaction,
+  markAgonArenaEvaluationSubmitted,
+  markAgonArenaEvaluationStarted,
+  markAgonArenaEvidenceSubmitted,
+  reconcileAgonArenaEvaluation,
   listListings,
   prepareAgonEscrowIntent,
   prepareAgonJobEscrowIntent,
   reconcileAgonJobEscrowIntent,
+  setAgonAdminAuthorization,
 } from "@/lib/agon/client";
-import type { AgonEscrowIntentView, AgonEscrowReadinessView, AgonEscrowTransactionView, AgonHealth, AgonJobEscrowIntentView, AgonJobEscrowJobView, AgonJobEscrowTransactionView, AgonListing } from "@/lib/agon/types";
+import type { AgonArenaEvaluationView, AgonArenaTransactionView, AgonEscrowIntentView, AgonEscrowReadinessView, AgonEscrowTransactionView, AgonHealth, AgonJobEscrowIntentView, AgonJobEscrowJobView, AgonJobEscrowTransactionView, AgonListing } from "@/lib/agon/types";
 
 const inputClass = "w-full border border-[color:var(--hairline-strong)] bg-canvas px-3 py-2 font-mono text-xs text-ink outline-none focus:border-ink";
 
-export function AgonAdminConsole() {
+export function AgonAdminConsole({ adminToken }: { adminToken: string }) {
+  const { address } = useAccount();
   const [health, setHealth] = useState<AgonHealth | null>(null);
   const [listings, setListings] = useState<AgonListing[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setAgonAdminAuthorization(adminToken, address ?? null);
+    return () => setAgonAdminAuthorization(null, null);
+  }, [adminToken, address]);
 
   async function load() {
     setLoading(true);
@@ -61,8 +79,10 @@ export function AgonAdminConsole() {
           <h2 className="mt-2 font-stencil text-4xl uppercase leading-none">Operator control plane</h2>
           <p className="mt-3 max-w-2xl font-mono text-xs leading-6 text-ink-2">Backend readiness, listing verification, x402 preparation, escrow preparation, and wallet-originated protocol writes live in one workflow. Every ownership-sensitive action still requires the connected operator session or wallet.</p>
         </div>
-        <button onClick={() => void load()} disabled={loading} className="border border-[color:var(--hairline-strong)] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:text-ink disabled:opacity-50">{loading ? "LOADING" : "REFRESH AGON"}</button>
+        <div className="flex flex-wrap items-center gap-3"><ConnectButton /><button onClick={() => void load()} disabled={loading} className="border border-[color:var(--hairline-strong)] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:text-ink disabled:opacity-50">{loading ? "LOADING" : "REFRESH AGON"}</button></div>
       </div>
+
+      {!address ? <p className="border-l-2 border-[color:var(--warn)] p-3 font-mono text-xs text-ink-2">Connect the authorized Arc wallet to bind admin API intents to an actor and sign contract writes. The admin token remains the only console login.</p> : null}
 
       {error ? <p className="border-l-2 border-[color:var(--err)] p-3 font-mono text-xs text-[color:var(--err)]">{error}</p> : null}
       <AgonReadiness health={health} />
@@ -72,6 +92,8 @@ export function AgonAdminConsole() {
         <AgonEscrowPreparation listing={selected} />
       </div>
       <AgonJobEscrowIntentPanel listing={selected} />
+      <AgonArenaEvaluationPanel listing={selected} />
+      <AgonSyndicatePrizeIntentPanel />
 
       {selected ? (
         <section className="border border-[color:var(--hairline-strong)] bg-canvas p-5">
@@ -91,6 +113,85 @@ export function AgonAdminConsole() {
       <AgonJobInspector />
     </div>
   );
+}
+
+function AgonArenaEvaluationPanel({ listing }: { listing: AgonListing | null }) {
+  const { me } = useAuth();
+  const [evaluation, setEvaluation] = useState<AgonArenaEvaluationView | null>(null);
+  const [requestTransaction, setRequestTransaction] = useState<AgonArenaTransactionView | null>(null);
+  const [evidenceTransaction, setEvidenceTransaction] = useState<AgonArenaTransactionView | null>(null);
+  const [requestTxHash, setRequestTxHash] = useState("");
+  const [evaluationId, setEvaluationId] = useState("");
+  const [startTxHash, setStartTxHash] = useState("");
+  const [evidenceTxHash, setEvidenceTxHash] = useState("");
+  const [message, setMessage] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function prepare() {
+    if (!listing || !me) { setMessage("Sign in as the current listing provider before running Arena verification."); return; }
+    setBusy(true); setMessage(null); setEvaluation(null); setRequestTransaction(null); setEvidenceTransaction(null);
+    try {
+      const key = `admin-arena-${listing.listingId}-${Date.now()}`;
+      const run = await evaluatePlaygroundTask({
+        category: "development",
+        taskId: "selector-guard",
+        input: { to: "0x0000000000000000000000000000000000001234", value: "0", data: `0xa9059cbb${"00".repeat(64)}` },
+        listingReference: listing.id,
+        listingVersion: listing.version,
+        idempotencyKey: `${key}-run`,
+      });
+      const next = await prepareAgonArenaEvaluation({
+        listingReference: listing.id,
+        idempotencyKey: key,
+        playgroundRunId: run.runId,
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      });
+      setEvaluation(next);
+      setRequestTransaction(await getAgonArenaRequestTransaction(next.intentId));
+    } catch (cause) { setMessage(cause instanceof Error ? cause.message : "Could not prepare Arena verification."); }
+    finally { setBusy(false); }
+  }
+
+  async function loadEvidencePlan() {
+    if (!evaluation) return;
+    setBusy(true); setMessage(null);
+    try { setEvidenceTransaction(await getAgonArenaEvidenceTransaction(evaluation.intentId)); }
+    catch (cause) { setMessage(cause instanceof Error ? cause.message : "Could not prepare Arena evidence transaction."); }
+    finally { setBusy(false); }
+  }
+
+  async function recordStart() {
+    if (!evaluation || !/^0x[0-9a-fA-F]{64}$/.test(startTxHash)) return;
+    setBusy(true); setMessage(null);
+    try { setEvaluation(await markAgonArenaEvaluationStarted(evaluation.intentId, startTxHash as `0x${string}`)); }
+    catch (cause) { setMessage(cause instanceof Error ? cause.message : "Could not record the evaluator start marker."); }
+    finally { setBusy(false); }
+  }
+
+  async function recordRequest() {
+    if (!evaluation || !/^0x[0-9a-fA-F]{64}$/.test(requestTxHash) || !/^[1-9]\d*$/.test(evaluationId)) return;
+    setBusy(true); setMessage(null);
+    try { setEvaluation(await markAgonArenaEvaluationSubmitted(evaluation.intentId, evaluationId, requestTxHash as `0x${string}`)); }
+    catch (cause) { setMessage(cause instanceof Error ? cause.message : "Could not record the Arena request marker."); }
+    finally { setBusy(false); }
+  }
+
+  async function recordEvidence() {
+    if (!evaluation || !/^0x[0-9a-fA-F]{64}$/.test(evidenceTxHash)) return;
+    setBusy(true); setMessage(null);
+    try { setEvaluation(await markAgonArenaEvidenceSubmitted(evaluation.intentId, evidenceTxHash as `0x${string}`)); }
+    catch (cause) { setMessage(cause instanceof Error ? cause.message : "Could not record the Arena evidence marker."); }
+    finally { setBusy(false); }
+  }
+  async function reconcileEvaluation() {
+    if (!evaluation) return;
+    setBusy(true); setMessage(null);
+    try { setEvaluation(await reconcileAgonArenaEvaluation(evaluation.intentId)); }
+    catch (failure) { setMessage(failure instanceof Error ? failure.message : "Arena finality reconciliation failed."); }
+    finally { setBusy(false); }
+  }
+
+  return <section className="border border-[color:var(--hairline-strong)] bg-canvas p-5"><div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">AGON ARENA VERIFICATION</div><p className="mt-2 max-w-3xl font-mono text-[10px] leading-5 text-ink-3">Runs an authenticated adversarial playground task, pins its evidence to the exact listing version, and prepares unsigned Arena calldata. Final states are accepted only after an independent contract read matches every pinned field.</p><button disabled={busy || !listing} onClick={() => void prepare()} className="mt-4 bg-accent px-3 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-accent-ink hover:bg-accent-press disabled:opacity-50">{busy ? "WORKING" : "RUN PLAYGROUND + PREPARE ARENA"}</button>{message ? <p className="mt-3 font-mono text-[10px] text-[color:var(--err)]">{message}</p> : null}{evaluation ? <div className="mt-4 grid gap-2 border-t border-[color:var(--hairline)] pt-3 font-mono text-[10px] leading-5 text-ink-2"><span>INTENT {evaluation.intentId}</span><span>STATE {evaluation.state} / {evaluation.verificationStatus}</span><span>RUN {evaluation.playgroundRunId}</span><span className="break-all">EVIDENCE {evaluation.evidenceRoot}</span><span className="break-all">VALIDATION REQUEST {evaluation.validationRequestHash}</span>{requestTransaction ? <span className="break-all">UNSIGNED REQUEST {requestTransaction.to} / {requestTransaction.data}</span> : null}<div className="mt-2 grid gap-2 sm:grid-cols-[1fr_1fr_auto]"><input value={evaluationId} onChange={(event) => setEvaluationId(event.target.value)} placeholder="onchain evaluation id" className={inputClass} /><input value={requestTxHash} onChange={(event) => setRequestTxHash(event.target.value)} placeholder="request tx hash marker" className={inputClass} /><button disabled={busy || !/^[1-9]\d*$/.test(evaluationId) || !/^0x[0-9a-fA-F]{64}$/.test(requestTxHash)} onClick={() => void recordRequest()} className="border border-[color:var(--hairline-strong)] px-3 py-2 uppercase disabled:opacity-50">RECORD REQUEST</button></div><div className="grid gap-2 sm:grid-cols-[1fr_auto]"><input value={startTxHash} onChange={(event) => setStartTxHash(event.target.value)} placeholder="evaluator start tx hash marker" className={inputClass} /><button disabled={busy || evaluation.state !== "request_submitted" || !/^0x[0-9a-fA-F]{64}$/.test(startTxHash)} onClick={() => void recordStart()} className="border border-[color:var(--hairline-strong)] px-3 py-2 uppercase disabled:opacity-50">RECORD EVALUATOR START</button></div><button disabled={busy || evaluation.state !== "evidence_ready"} onClick={() => void loadEvidencePlan()} className="border border-[color:var(--hairline-strong)] px-3 py-2 uppercase disabled:opacity-50">PREPARE EVIDENCE CALL</button>{evidenceTransaction ? <span className="break-all">UNSIGNED EVIDENCE {evidenceTransaction.to} / {evidenceTransaction.data}</span> : null}<div className="grid gap-2 sm:grid-cols-[1fr_auto]"><input value={evidenceTxHash} onChange={(event) => setEvidenceTxHash(event.target.value)} placeholder="evidence tx hash marker" className={inputClass} /><button disabled={busy || !/^0x[0-9a-fA-F]{64}$/.test(evidenceTxHash)} onClick={() => void recordEvidence()} className="border border-[color:var(--hairline-strong)] px-3 py-2 uppercase disabled:opacity-50">RECORD EVIDENCE</button></div><button disabled={busy || !evaluation.evaluationId} onClick={() => void reconcileEvaluation()} className="border border-[color:var(--hairline-strong)] px-3 py-2 uppercase disabled:opacity-50">RECONCILE ARENA FINALITY</button></div> : null}</section>;
 }
 
 const JOB_STATUS = ["Created", "Accepted", "Submitted", "Complete", "Rejected", "Disputed", "Failed"];

@@ -8,6 +8,7 @@ import { AgonAuthAction } from "@/components/agon/AgonAuthAction";
 import { UnverifiedWarning } from "@/components/agon/UnverifiedWarning";
 import { VerificationBadge } from "@/components/agon/VerificationBadge";
 import { X402CallIntentPanel } from "@/components/agon/X402CallIntentPanel";
+import { AgonJobEscrowPanel } from "@/components/agon/AgonJobEscrowPanel";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { BracketedCell } from "@/components/redesign/BracketedCell";
 import { CornerMarkers } from "@/components/redesign/CornerMarkers";
@@ -146,7 +147,11 @@ export default function ListingDetailPage() {
                       {listing.endpointQa.checkedAt ? <p className="mt-1 uppercase tracking-[0.08em]">Checked {listing.endpointQa.checkedAt}</p> : null}
                     </div>
 
-                    <X402CallIntentPanel listing={listing} defaultAmount={service.amountUSDC} endpointUrl={listing.endpointQa.endpointUrl ?? null} />
+                    {listing.payment.rail === "X402" ? (
+                      <X402CallIntentPanel listing={listing} defaultAmount={service.amountUSDC} endpointUrl={listing.endpointQa.endpointUrl ?? null} />
+                    ) : (
+                      <AgonJobEscrowPanel listing={listing} defaultAmountUSDC={service.amountUSDC} eligible={escrowEligible} />
+                    )}
 
                     <div className="mt-7 border-t border-current pt-5 font-mono text-[9px] uppercase leading-relaxed tracking-[0.1em] opacity-55">
                       Protocol category {listing.category} <span aria-hidden>·</span> Listing {listing.listingId} <span aria-hidden>·</span> Chain {listing.chainId}

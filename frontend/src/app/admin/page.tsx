@@ -5,8 +5,8 @@ import { BracketedCell, CornerMarkers } from "@/components/redesign";
 import { EXPLORER } from "@/lib/arc";
 import { AgonAdminConsole } from "@/components/agon/AgonAdminConsole";
 
-/// Internal operator console. Linked as OPS in the Agon nav and gated entirely by the
-/// ADMIN_TOKEN, sent as the x-admin-token header on every call (the same token
+/// Internal operator console. Not exposed in the public Agon navigation and gated
+/// entirely by the ADMIN_TOKEN, sent as the x-admin-token header on every call (the same token
 /// that guards /admin/events on the backend). Shows every contract's live USDC
 /// balance, the treasury and coordinator wallets, and lets an admin withdraw
 /// treasury USDC or cancel a wrongly-opened contest / challenge. The token is
@@ -214,7 +214,7 @@ export default function AdminPage() {
             </>
           ) : null}
 
-          {activeTab === "agon" ? <><AgonAdminConsole /><AgonVerificationPanel token={token} /></> : null}
+          {activeTab === "agon" ? <><AgonAdminConsole adminToken={token} /><AgonVerificationPanel token={token} /></> : null}
 
           {activeTab === "activity" ? <CommandsLog token={token} /> : null}
         </div>

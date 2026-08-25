@@ -39,6 +39,7 @@ export interface PlaygroundRunStore {
   beginRun(input: PlaygroundRunStart): Promise<{ run: StoredPlaygroundRun; replayed: boolean }>;
   completeRun(runId: string, result: PlaygroundRun): Promise<void>;
   failRun(runId: string, errorCode: string): Promise<void>;
+  getRun(runId: string): Promise<StoredPlaygroundRun | null>;
 }
 
 export class PlaygroundRunConflictError extends Error {
@@ -179,6 +180,18 @@ export class PostgresPlaygroundRunStore implements PlaygroundRunStore {
       [runId, errorCode.slice(0, 80)],
     );
   }
+
+  async getRun(runId: string): Promise<StoredPlaygroundRun | null> {
+    assertUuid(runId, "run id");
+    const result = await this.pool.query<PlaygroundRunRow>(
+      `select run_id, actor_address, request_id, idempotency_key, category, task_id,
+         input_hash, input, scope, state, result, error_code, created_at,
+         lease_expires_at, completed_at
+       from agon_playground_runs where run_id = $1`,
+      [runId],
+    );
+    return result.rows[0] ? mapRun(result.rows[0]) : null;
+  }
 }
 
 export class InMemoryPlaygroundRunStore implements PlaygroundRunStore {
@@ -245,6 +258,10 @@ export class InMemoryPlaygroundRunStore implements PlaygroundRunStore {
     run.errorCode = errorCode;
     run.leaseExpiresAt = new Date();
     run.completedAt = new Date();
+  }
+
+  async getRun(runId: string): Promise<StoredPlaygroundRun | null> {
+    return this.runs.get(runId) ?? null;
   }
 }
 

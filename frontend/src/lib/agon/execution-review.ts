@@ -15,12 +15,13 @@ export function executionReadinessLabel(status: X402ExecutionReadinessView["stat
   switch (status) {
     case "approval_required": return "APPROVAL REQUIRED";
     case "approved_but_disabled": return "APPROVED · ADAPTER OFF";
+    case "ready": return "APPROVED / READY";
     case "approval_expired": return "APPROVAL EXPIRED";
   }
 }
 
 export function executionReadinessTone(status: X402ExecutionReadinessView["status"]): "warn" | "ok" | "err" {
-  return status === "approved_but_disabled" ? "ok" : status === "approval_expired" ? "err" : "warn";
+  return status === "ready" || status === "approved_but_disabled" ? "ok" : status === "approval_expired" ? "err" : "warn";
 }
 
 export function formatExecutionTimestamp(value: string): string {

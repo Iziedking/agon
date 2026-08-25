@@ -11,6 +11,9 @@ import {
   type StoredX402FacilitatorVerification,
   type StoredAgonEscrowIntent,
   type StoredAgonJobEscrowIntent,
+  type StoredAgonArenaEvaluation,
+  type StoredAgonSyndicateContribution,
+  type StoredAgonPrizeClaim,
 } from "../store/repository.ts";
 import { callIntentView, prepareX402Call } from "../execution/x402-intent.ts";
 import { validateX402Approval } from "../execution/x402-approval.ts";
@@ -72,6 +75,18 @@ import type {
   AgonJobEscrowTransactionView,
   AgonJobEscrowReconcileRequest,
   AgonJobEscrowSubmittedRequest,
+  AgonArenaEvaluationRequest,
+  AgonArenaEvaluationView,
+  AgonArenaTransactionView,
+  AgonArenaEvaluationSubmittedRequest,
+  AgonArenaEvaluationStartedRequest,
+  AgonArenaEvidenceSubmittedRequest,
+  AgonSyndicateContributionRequest,
+  AgonSyndicateContributionView,
+  AgonPrizeClaimRequest,
+  AgonPrizeClaimView,
+  AgonSyndicatePrizeTransactionView,
+  AgonSyndicatePrizeSubmittedRequest,
 } from "./api-types.ts";
 import { buildAgonJobEscrowWritePlan, type AgonJobEscrowJob, type AgonJobEscrowReadAdapter } from "../execution/agon-job-escrow.ts";
 import { clientReferenceForJobEscrow, hashAgonJobEscrowTerms } from "../execution/job-escrow-state.ts";
@@ -79,6 +94,10 @@ import type { AgonEscrowProductionReadiness } from "../execution/escrow-producti
 import type { AgonMarketService, AgonServiceError } from "./routes.ts";
 import type { AgonReadiness } from "../write/readiness.ts";
 import type { AgonProtocolReadiness } from "../protocol-readiness.ts";
+import type { PlaygroundRunStore } from "../playground-store.ts";
+import { buildAgonArenaEvaluationInput, buildAgonArenaEvidencePlan, buildAgonArenaRequestPlan, type AgonArenaEvaluation } from "../execution/arena-verification.ts";
+import { buildAgonPrizeClaimPlan, buildAgonSyndicateContributionPlan, prizeClaimLeaf } from "../execution/syndicate-prize.ts";
+import type { AgonProtocolFinalityReader } from "../execution/protocol-finality.ts";
 
 const cursorSchema = z.object({
   updatedAt: z.string().datetime(),
@@ -136,8 +155,11 @@ export type PostgresAgonMarketServiceOptions = {
   jobEscrowReadAdapter?: AgonJobEscrowReadAdapter;
   agonJobEscrowAddress?: `0x${string}`;
   agonArenaAddress?: `0x${string}`;
+  validationRegistryAddress?: `0x${string}`;
+  playgroundStore?: PlaygroundRunStore;
   agonSyndicateRegistryAddress?: `0x${string}`;
   agonPrizeVaultAddress?: `0x${string}`;
+  protocolFinalityReader?: AgonProtocolFinalityReader;
   fetchImpl?: typeof fetch;
 };
 
@@ -355,6 +377,108 @@ function jobEscrowIntentView(intent: StoredAgonJobEscrowIntent): AgonJobEscrowIn
     nextAction: terminal ? "none" : intent.state === "unknown" ? "manual_reconciliation" : intent.state === "prepared" ? "prepare_transaction" : "inspect_chain",
     createdAt: intent.createdAt.toISOString(),
     updatedAt: intent.updatedAt.toISOString(),
+  };
+}
+
+function arenaEvaluationView(evaluation: StoredAgonArenaEvaluation): AgonArenaEvaluationView {
+  const terminal = ["verified", "rejected", "expired", "revoked"].includes(evaluation.state);
+  const verificationStatus: AgonArenaEvaluationView["verificationStatus"] = terminal
+    ? evaluation.state as "verified" | "rejected" | "expired" | "revoked"
+    : evaluation.state === "prepared"
+      ? "prepared"
+      : evaluation.state === "request_submitted"
+        ? "user_submitted"
+        : evaluation.state === "evidence_submitted"
+          ? "evidence_submitted"
+          : "chain_reconciliation_required";
+  const nextAction: AgonArenaEvaluationView["nextAction"] = terminal
+    ? "none"
+    : evaluation.state === "prepared"
+    ? "prepare_request_transaction"
+    : evaluation.state === "request_submitted"
+      ? "record_start_submission"
+      : evaluation.state === "evidence_ready"
+        ? "prepare_evidence_transaction"
+      : evaluation.state === "evidence_submitted"
+        ? "reconcile_chain"
+        : "reconcile_chain";
+  return {
+    intentId: evaluation.intentId,
+    actor: evaluation.actor,
+    idempotencyKey: evaluation.idempotencyKey,
+    listingReference: evaluation.listingReference,
+    network: evaluation.network,
+    arenaContract: evaluation.arenaContract,
+    validationRegistry: evaluation.validationRegistry,
+    participant: evaluation.participant,
+    listing: {
+      serviceRegistry: evaluation.serviceRegistry,
+      listingId: evaluation.listingId,
+      agentId: evaluation.agentId,
+      version: evaluation.listingVersion,
+      category: evaluation.category,
+      manifestHash: evaluation.manifestHash,
+    },
+    capabilityHash: evaluation.capabilityHash,
+    evaluatorVersionHash: evaluation.evaluatorVersionHash,
+    taskCommitment: evaluation.taskCommitment,
+    validationRequestHash: evaluation.validationRequestHash,
+    evidenceRoot: evaluation.evidenceRoot,
+    playgroundRunId: evaluation.playgroundRunId,
+    expiresAt: evaluation.expiresAt.toISOString(),
+    state: evaluation.state,
+    evaluationId: evaluation.evaluationId,
+    requestTransactionHash: evaluation.requestTransactionHash,
+    startTransactionHash: evaluation.startTransactionHash,
+    evidenceTransactionHash: evaluation.evidenceTransactionHash,
+    executionEnabled: false,
+    verificationStatus,
+    nextAction,
+    createdAt: evaluation.createdAt.toISOString(),
+    updatedAt: evaluation.updatedAt.toISOString(),
+  };
+}
+
+function syndicateContributionView(value: StoredAgonSyndicateContribution): AgonSyndicateContributionView {
+  return {
+    intentId: value.intentId,
+    actor: value.actor,
+    idempotencyKey: value.idempotencyKey,
+    network: "eip155:5042002",
+    registryContract: value.registryContract,
+    syndicateId: value.syndicateId,
+    agentId: value.agentId,
+    contributionKey: value.contributionKey,
+    score: value.score,
+    evidenceHash: value.evidenceHash,
+    state: value.state,
+    transactionHash: value.transactionHash,
+    executionEnabled: false,
+    nextAction: value.state === "prepared" ? "prepare_transaction" : value.state === "confirmed" ? "none" : "reconcile_chain",
+    createdAt: value.createdAt.toISOString(),
+    updatedAt: value.updatedAt.toISOString(),
+  };
+}
+
+function prizeClaimView(value: StoredAgonPrizeClaim): AgonPrizeClaimView {
+  return {
+    intentId: value.intentId,
+    actor: value.actor,
+    idempotencyKey: value.idempotencyKey,
+    network: "eip155:5042002",
+    vaultContract: value.vaultContract,
+    poolKey: value.poolKey,
+    index: value.index,
+    beneficiary: value.beneficiary,
+    amount: value.amount,
+    proof: value.proof,
+    leaf: value.leaf,
+    state: value.state,
+    transactionHash: value.transactionHash,
+    executionEnabled: false,
+    nextAction: value.state === "prepared" ? "prepare_transaction" : value.state === "confirmed" ? "none" : "reconcile_chain",
+    createdAt: value.createdAt.toISOString(),
+    updatedAt: value.updatedAt.toISOString(),
   };
 }
 
@@ -728,7 +852,7 @@ export class PostgresAgonMarketService implements AgonMarketService {
       }
       const stored = await this.repository.prepareAgonEscrowIntent({
         intentId: randomUUID(),
-        actor,
+        actor: actor as `0x${string}`,
         idempotencyKey: request.idempotencyKey,
         listingReference: request.listingReference,
         termsHash: hashAgonEscrowTerms(terms.value),
@@ -1024,6 +1148,292 @@ export class PostgresAgonMarketService implements AgonMarketService {
     } catch (error) {
       if (error instanceof AgonStoreInvariantError) return { ok: false, error: { code: "conflict", message: error.message } };
       return internalError(error);
+    }
+  }
+
+  async prepareAgonArenaEvaluation(
+    actor: string,
+    request: AgonArenaEvaluationRequest,
+  ): Promise<Result<AgonArenaEvaluationView, AgonServiceError>> {
+    if (!this.options.agonArenaAddress || !this.options.validationRegistryAddress || !this.options.playgroundStore) {
+      return { ok: false, error: { code: "arena_disabled", message: "Agon Arena preparation requires the canonical Arena, ValidationRegistry, and playground store" } };
+    }
+    const listing = await this.getListing(request.listingReference);
+    if (!listing.ok) return listing;
+    const run = await this.options.playgroundStore.getRun(request.playgroundRunId);
+    if (!run || run.state !== "completed" || !run.result) return { ok: false, error: { code: "validation_failed", message: "completed authenticated playground evidence is required" } };
+    if (run.actorAddress?.toLowerCase() !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the playground run owner can anchor its evidence" } };
+    try {
+      const input = buildAgonArenaEvaluationInput({
+        intentId: randomUUID(),
+        actor,
+        idempotencyKey: request.idempotencyKey,
+        listingReference: request.listingReference,
+        arenaContract: this.options.agonArenaAddress,
+        validationRegistry: this.options.validationRegistryAddress,
+        listing: {
+          serviceRegistry: listing.value.serviceRegistry,
+          listingId: listing.value.listingId,
+          agentId: listing.value.agentId,
+          version: listing.value.version,
+          category: listing.value.category,
+          manifestHash: listing.value.manifest.hash,
+          providerSnapshot: listing.value.providerSnapshot,
+        },
+        playgroundRun: run.result,
+        expiresAt: new Date(request.expiresAt),
+      });
+      const stored = await this.repository.prepareAgonArenaEvaluation({
+        ...input,
+        state: "prepared",
+        evaluationId: null,
+        requestTransactionHash: null,
+        evidenceTransactionHash: null,
+      });
+      return { ok: true, value: arenaEvaluationView(stored) };
+    } catch (error) {
+      if (error instanceof AgonStoreInvariantError) return { ok: false, error: { code: "conflict", message: error.message } };
+      return { ok: false, error: { code: "validation_failed", message: error instanceof Error ? error.message : "Arena evidence is invalid" } };
+    }
+  }
+
+  async getAgonArenaEvaluation(actor: string, intentId: string): Promise<Result<AgonArenaEvaluationView, AgonServiceError>> {
+    const evaluation = await this.repository.getAgonArenaEvaluation(intentId);
+    if (!evaluation) return { ok: false, error: { code: "not_found", message: "Agon Arena evaluation not found" } };
+    if (evaluation.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the Arena evaluation owner can read this evaluation" } };
+    return { ok: true, value: arenaEvaluationView(evaluation) };
+  }
+
+  async getAgonArenaRequestTransaction(actor: string, intentId: string): Promise<Result<AgonArenaTransactionView, AgonServiceError>> {
+    const evaluation = await this.repository.getAgonArenaEvaluation(intentId);
+    if (!evaluation) return { ok: false, error: { code: "not_found", message: "Agon Arena evaluation not found" } };
+    if (evaluation.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the Arena evaluation owner can prepare this transaction" } };
+    try {
+      const plan = buildAgonArenaRequestPlan(evaluation);
+      return { ok: true, value: { intentId, chainId: plan.chainId.toString(), to: plan.to, functionName: plan.functionName, args: plan.args, data: plan.data, executionEnabled: false, nextAction: "review_and_submit_with_wallet" } };
+    } catch (error) {
+      return { ok: false, error: { code: "execution_not_ready", message: error instanceof Error ? error.message : "Arena request transaction is not ready" } };
+    }
+  }
+
+  async markAgonArenaEvaluationSubmitted(actor: string, intentId: string, request: AgonArenaEvaluationSubmittedRequest): Promise<Result<AgonArenaEvaluationView, AgonServiceError>> {
+    const evaluation = await this.repository.getAgonArenaEvaluation(intentId);
+    if (!evaluation) return { ok: false, error: { code: "not_found", message: "Agon Arena evaluation not found" } };
+    if (evaluation.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the Arena evaluation owner can record submission" } };
+    try {
+      const stored = await this.repository.markAgonArenaEvaluationRequested({ intentId, evaluationId: request.evaluationId, transactionHash: request.transactionHash as `0x${string}` });
+      return { ok: true, value: arenaEvaluationView(stored) };
+    } catch (error) {
+      if (error instanceof AgonStoreInvariantError) return { ok: false, error: { code: "conflict", message: error.message } };
+      return internalError(error);
+    }
+  }
+
+  async getAgonArenaEvidenceTransaction(actor: string, intentId: string): Promise<Result<AgonArenaTransactionView, AgonServiceError>> {
+    const evaluation = await this.repository.getAgonArenaEvaluation(intentId);
+    if (!evaluation) return { ok: false, error: { code: "not_found", message: "Agon Arena evaluation not found" } };
+    if (evaluation.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the Arena evaluation owner can prepare evidence" } };
+    try {
+      const plan = buildAgonArenaEvidencePlan(evaluation);
+      return { ok: true, value: { intentId, chainId: plan.chainId.toString(), to: plan.to, functionName: plan.functionName, args: plan.args, data: plan.data, executionEnabled: false, nextAction: "review_and_submit_with_wallet" } };
+    } catch (error) {
+      return { ok: false, error: { code: "execution_not_ready", message: error instanceof Error ? error.message : "Arena evidence transaction is not ready" } };
+    }
+  }
+
+  async markAgonArenaEvaluationStarted(actor: string, intentId: string, request: AgonArenaEvaluationStartedRequest): Promise<Result<AgonArenaEvaluationView, AgonServiceError>> {
+    const evaluation = await this.repository.getAgonArenaEvaluation(intentId);
+    if (!evaluation) return { ok: false, error: { code: "not_found", message: "Agon Arena evaluation not found" } };
+    if (evaluation.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the Arena evaluation owner can record evaluator start" } };
+    try {
+      const stored = await this.repository.markAgonArenaEvaluationStarted({ intentId, transactionHash: request.transactionHash as `0x${string}` });
+      return { ok: true, value: arenaEvaluationView(stored) };
+    } catch (error) {
+      if (error instanceof AgonStoreInvariantError) return { ok: false, error: { code: "conflict", message: error.message } };
+      return internalError(error);
+    }
+  }
+
+  async markAgonArenaEvidenceSubmitted(actor: string, intentId: string, request: AgonArenaEvidenceSubmittedRequest): Promise<Result<AgonArenaEvaluationView, AgonServiceError>> {
+    const evaluation = await this.repository.getAgonArenaEvaluation(intentId);
+    if (!evaluation) return { ok: false, error: { code: "not_found", message: "Agon Arena evaluation not found" } };
+    if (evaluation.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the Arena evaluation owner can record evidence submission" } };
+    try {
+      const stored = await this.repository.markAgonArenaEvidenceSubmitted({ intentId, transactionHash: request.transactionHash as `0x${string}` });
+      return { ok: true, value: arenaEvaluationView(stored) };
+    } catch (error) {
+      if (error instanceof AgonStoreInvariantError) return { ok: false, error: { code: "conflict", message: error.message } };
+      return internalError(error);
+    }
+  }
+
+  async reconcileAgonArenaEvaluation(actor: string, intentId: string): Promise<Result<AgonArenaEvaluationView, AgonServiceError>> {
+    const reader = this.options.protocolFinalityReader;
+    if (!reader?.enabled) return { ok: false, error: { code: "reconciliation_disabled", message: "Agon Arena finality reads are not configured" } };
+    const evaluation = await this.repository.getAgonArenaEvaluation(intentId);
+    if (!evaluation) return { ok: false, error: { code: "not_found", message: "Agon Arena evaluation not found" } };
+    if (evaluation.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the Arena evaluation owner can reconcile this evaluation" } };
+    if (!evaluation.evaluationId) return { ok: false, error: { code: "conflict", message: "record the on-chain evaluation id before reconciliation" } };
+    try {
+      const chain = await reader.inspectArenaEvaluation(evaluation.evaluationId);
+      const matches = [
+        [chain.evaluationId === evaluation.evaluationId, "evaluation id"],
+        [chain.listingId === evaluation.listingId, "listing id"],
+        [chain.agentId === evaluation.agentId, "agent id"],
+        [chain.listingVersion === evaluation.listingVersion, "listing version"],
+        [chain.category === evaluation.category, "category"],
+        [chain.participant.toLowerCase() === evaluation.participant.toLowerCase(), "participant"],
+        [chain.manifestHash === evaluation.manifestHash.toLowerCase(), "manifest hash"],
+        [chain.capabilityHash === evaluation.capabilityHash.toLowerCase(), "capability hash"],
+        [chain.evaluatorVersionHash === evaluation.evaluatorVersionHash.toLowerCase(), "evaluator version"],
+        [chain.taskCommitment === evaluation.taskCommitment.toLowerCase(), "task commitment"],
+        [chain.validationRequestHash === evaluation.validationRequestHash.toLowerCase(), "validation request"],
+        [Math.floor(chain.expiresAt.getTime() / 1000) === Math.floor(evaluation.expiresAt.getTime() / 1000), "expiry"],
+      ] as const;
+      const mismatch = matches.find(([ok]) => !ok);
+      if (mismatch) return { ok: false, error: { code: "reconciliation_invalid", message: `Arena chain state does not match the prepared ${mismatch[1]}` } };
+      if (chain.state >= 2 && chain.evidenceRoot !== evaluation.evidenceRoot.toLowerCase()) {
+        return { ok: false, error: { code: "reconciliation_invalid", message: "Arena chain evidence root does not match the playground evidence" } };
+      }
+      const state = (["request_submitted", "evidence_ready", "evidence_submitted", "verified", "rejected", "expired", "revoked"] as const)[chain.state];
+      if (!state) return { ok: false, error: { code: "reconciliation_invalid", message: "Agon Arena returned an unknown state" } };
+      return { ok: true, value: arenaEvaluationView(await this.repository.reconcileAgonArenaEvaluation({ intentId, state })) };
+    } catch (error) {
+      if (error instanceof AgonStoreInvariantError) return { ok: false, error: { code: "conflict", message: error.message } };
+      return { ok: false, error: { code: "reconciliation_unavailable", message: error instanceof Error ? error.message : "Agon Arena finality read failed" } };
+    }
+  }
+
+  async prepareAgonSyndicateContribution(actor: string, request: AgonSyndicateContributionRequest): Promise<Result<AgonSyndicateContributionView, AgonServiceError>> {
+    const registryContract = this.options.agonSyndicateRegistryAddress;
+    if (!registryContract) return { ok: false, error: { code: "syndicate_prize_disabled", message: "canonical AgonSyndicateRegistry is not configured" } };
+    try {
+      const plan = buildAgonSyndicateContributionPlan({ contract: registryContract, ...request });
+      const stored = await this.repository.prepareAgonSyndicateContribution({
+        intentId: randomUUID(),
+        actor: actor as `0x${string}`,
+        idempotencyKey: request.idempotencyKey,
+        registryContract: plan.to,
+        syndicateId: request.syndicateId,
+        agentId: request.agentId,
+        contributionKey: plan.args[2] as `0x${string}`,
+        score: request.score,
+        evidenceHash: plan.args[4] as `0x${string}`,
+        state: "prepared",
+        transactionHash: null,
+      });
+      return { ok: true, value: syndicateContributionView(stored) };
+    } catch (error) {
+      if (error instanceof AgonStoreInvariantError) return { ok: false, error: { code: "conflict", message: error.message } };
+      return { ok: false, error: { code: "validation_failed", message: error instanceof Error ? error.message : "syndicate contribution is invalid" } };
+    }
+  }
+
+  async getAgonSyndicateContribution(actor: string, intentId: string): Promise<Result<AgonSyndicateContributionView, AgonServiceError>> {
+    const value = await this.repository.getAgonSyndicateContribution(intentId);
+    if (!value) return { ok: false, error: { code: "not_found", message: "syndicate contribution not found" } };
+    if (value.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the contribution owner can read this intent" } };
+    return { ok: true, value: syndicateContributionView(value) };
+  }
+
+  async getAgonSyndicateContributionTransaction(actor: string, intentId: string): Promise<Result<AgonSyndicatePrizeTransactionView, AgonServiceError>> {
+    const value = await this.repository.getAgonSyndicateContribution(intentId);
+    if (!value) return { ok: false, error: { code: "not_found", message: "syndicate contribution not found" } };
+    if (value.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the contribution owner can prepare this transaction" } };
+    try {
+      const plan = buildAgonSyndicateContributionPlan({ contract: value.registryContract, syndicateId: value.syndicateId, agentId: value.agentId, contributionKey: value.contributionKey, score: value.score, evidenceHash: value.evidenceHash });
+      return { ok: true, value: { intentId, chainId: plan.chainId.toString(), to: plan.to, functionName: plan.functionName, args: plan.args, data: plan.data, executionEnabled: false, nextAction: "review_and_submit_with_wallet" } };
+    } catch (error) { return { ok: false, error: { code: "execution_not_ready", message: error instanceof Error ? error.message : "syndicate contribution transaction is not ready" } }; }
+  }
+
+  async markAgonSyndicateContributionSubmitted(actor: string, intentId: string, request: AgonSyndicatePrizeSubmittedRequest): Promise<Result<AgonSyndicateContributionView, AgonServiceError>> {
+    const value = await this.repository.getAgonSyndicateContribution(intentId);
+    if (!value) return { ok: false, error: { code: "not_found", message: "syndicate contribution not found" } };
+    if (value.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the contribution owner can record submission" } };
+    try { return { ok: true, value: syndicateContributionView(await this.repository.markAgonSyndicateContributionSubmitted({ intentId, transactionHash: request.transactionHash as `0x${string}` })) }; }
+    catch (error) { if (error instanceof AgonStoreInvariantError) return { ok: false, error: { code: "conflict", message: error.message } }; return internalError(error); }
+  }
+
+  async reconcileAgonSyndicateContribution(actor: string, intentId: string): Promise<Result<AgonSyndicateContributionView, AgonServiceError>> {
+    const reader = this.options.protocolFinalityReader;
+    if (!reader?.enabled) return { ok: false, error: { code: "reconciliation_disabled", message: "syndicate finality reads are not configured" } };
+    const value = await this.repository.getAgonSyndicateContribution(intentId);
+    if (!value) return { ok: false, error: { code: "not_found", message: "syndicate contribution not found" } };
+    if (value.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the contribution owner can reconcile this intent" } };
+    if (!value.transactionHash) return { ok: false, error: { code: "conflict", message: "record the contribution transaction before reconciliation" } };
+    try {
+      await reader.confirmSyndicateContribution({
+        transactionHash: value.transactionHash,
+        syndicateId: value.syndicateId,
+        agentId: value.agentId,
+        contributionKey: value.contributionKey,
+        score: value.score,
+        evidenceHash: value.evidenceHash,
+      });
+      return { ok: true, value: syndicateContributionView(await this.repository.confirmAgonSyndicateContribution(intentId)) };
+    } catch (error) {
+      if (error instanceof AgonStoreInvariantError) return { ok: false, error: { code: "conflict", message: error.message } };
+      return { ok: false, error: { code: "reconciliation_unavailable", message: error instanceof Error ? error.message : "syndicate contribution finality read failed" } };
+    }
+  }
+
+  async prepareAgonPrizeClaim(actor: string, request: AgonPrizeClaimRequest): Promise<Result<AgonPrizeClaimView, AgonServiceError>> {
+    const vaultContract = this.options.agonPrizeVaultAddress;
+    if (!vaultContract) return { ok: false, error: { code: "syndicate_prize_disabled", message: "canonical AgonPrizeVault is not configured" } };
+    if (request.beneficiary.toLowerCase() !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "the authenticated beneficiary must prepare its own prize claim" } };
+    try {
+      const plan = buildAgonPrizeClaimPlan({ vault: vaultContract, ...request });
+      const stored = await this.repository.prepareAgonPrizeClaim({
+        intentId: randomUUID(), actor: actor as `0x${string}`, idempotencyKey: request.idempotencyKey,
+        vaultContract: plan.to, poolKey: plan.args[0] as `0x${string}`, index: request.index,
+        beneficiary: plan.args[2] as `0x${string}`, amount: request.amount, proof: plan.args[4] as `0x${string}`[],
+        leaf: plan.leaf, state: "prepared", transactionHash: null,
+      });
+      return { ok: true, value: prizeClaimView(stored) };
+    } catch (error) {
+      if (error instanceof AgonStoreInvariantError) return { ok: false, error: { code: "conflict", message: error.message } };
+      return { ok: false, error: { code: "validation_failed", message: error instanceof Error ? error.message : "prize claim is invalid" } };
+    }
+  }
+
+  async getAgonPrizeClaim(actor: string, intentId: string): Promise<Result<AgonPrizeClaimView, AgonServiceError>> {
+    const value = await this.repository.getAgonPrizeClaim(intentId);
+    if (!value) return { ok: false, error: { code: "not_found", message: "prize claim not found" } };
+    if (value.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the prize claim owner can read this intent" } };
+    return { ok: true, value: prizeClaimView(value) };
+  }
+
+  async getAgonPrizeClaimTransaction(actor: string, intentId: string): Promise<Result<AgonSyndicatePrizeTransactionView, AgonServiceError>> {
+    const value = await this.repository.getAgonPrizeClaim(intentId);
+    if (!value) return { ok: false, error: { code: "not_found", message: "prize claim not found" } };
+    if (value.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the prize claim owner can prepare this transaction" } };
+    try {
+      const plan = buildAgonPrizeClaimPlan({ vault: value.vaultContract, poolKey: value.poolKey, index: value.index, beneficiary: value.beneficiary, amount: value.amount, proof: value.proof });
+      return { ok: true, value: { intentId, chainId: plan.chainId.toString(), to: plan.to, functionName: plan.functionName, args: plan.args, data: plan.data, executionEnabled: false, nextAction: "review_and_submit_with_wallet" } };
+    } catch (error) { return { ok: false, error: { code: "execution_not_ready", message: error instanceof Error ? error.message : "prize claim transaction is not ready" } }; }
+  }
+
+  async markAgonPrizeClaimSubmitted(actor: string, intentId: string, request: AgonSyndicatePrizeSubmittedRequest): Promise<Result<AgonPrizeClaimView, AgonServiceError>> {
+    const value = await this.repository.getAgonPrizeClaim(intentId);
+    if (!value) return { ok: false, error: { code: "not_found", message: "prize claim not found" } };
+    if (value.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the prize claim owner can record submission" } };
+    try { return { ok: true, value: prizeClaimView(await this.repository.markAgonPrizeClaimSubmitted({ intentId, transactionHash: request.transactionHash as `0x${string}` })) }; }
+    catch (error) { if (error instanceof AgonStoreInvariantError) return { ok: false, error: { code: "conflict", message: error.message } }; return internalError(error); }
+  }
+
+  async reconcileAgonPrizeClaim(actor: string, intentId: string): Promise<Result<AgonPrizeClaimView, AgonServiceError>> {
+    const reader = this.options.protocolFinalityReader;
+    if (!reader?.enabled) return { ok: false, error: { code: "reconciliation_disabled", message: "prize finality reads are not configured" } };
+    const value = await this.repository.getAgonPrizeClaim(intentId);
+    if (!value) return { ok: false, error: { code: "not_found", message: "prize claim not found" } };
+    if (value.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the prize claim owner can reconcile this intent" } };
+    if (!value.transactionHash) return { ok: false, error: { code: "conflict", message: "record the claim transaction before reconciliation" } };
+    try {
+      await reader.confirmPrizeClaim({ transactionHash: value.transactionHash, poolKey: value.poolKey, index: value.index, beneficiary: value.beneficiary, amount: value.amount });
+      return { ok: true, value: prizeClaimView(await this.repository.confirmAgonPrizeClaim(intentId)) };
+    } catch (error) {
+      if (error instanceof AgonStoreInvariantError) return { ok: false, error: { code: "conflict", message: error.message } };
+      return { ok: false, error: { code: "reconciliation_unavailable", message: error instanceof Error ? error.message : "prize claim finality read failed" } };
     }
   }
 
@@ -1503,6 +1913,7 @@ export class PostgresAgonMarketService implements AgonMarketService {
     if (!plan.ok) return { ok: false, error: { code: "execution_not_ready", message: plan.error.message } };
     const stored = await this.repository.getLatestX402ExecutionApproval(intentId);
     const expired = stored ? stored.expiresAt.getTime() <= Date.now() : false;
+    const executionEnabled = this.options.x402ExecutionEnabled === true && Boolean(this.options.x402SettlementAdapter);
     return {
       ok: true,
       value: {
@@ -1511,14 +1922,16 @@ export class PostgresAgonMarketService implements AgonMarketService {
         state: "authorization_submitted",
         plan: plan.value,
         approval: stored ? executionApprovalView(receipt, stored) : null,
-        status: !stored ? "approval_required" : expired ? "approval_expired" : "approved_but_disabled",
+        status: !stored ? "approval_required" : expired ? "approval_expired" : executionEnabled ? "ready" : "approved_but_disabled",
         reason: !stored
           ? "Execution approval is required before a settlement adapter can be considered."
           : expired
             ? "The execution approval expired; prepare a fresh approval before any future execution review."
-            : "Approval evidence is valid, but Circle settlement remains disabled by policy.",
-        executionEnabled: false,
-        nextAction: !stored || expired ? "explicit_execution_approval" : "execution_adapter_not_enabled",
+            : executionEnabled
+              ? "Approval evidence is valid and the Circle Arc Testnet settlement adapter is ready."
+              : "Approval evidence is valid, but Circle settlement remains disabled by policy.",
+        executionEnabled,
+        nextAction: !stored || expired ? "explicit_execution_approval" : executionEnabled ? "execute_settlement" : "execution_adapter_not_enabled",
         checkedAt: new Date().toISOString(),
       },
     };
@@ -1533,7 +1946,7 @@ export class PostgresAgonMarketService implements AgonMarketService {
     if (intent.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the intent owner can inspect settlement readiness" } };
     const receipt = await this.repository.getX402CallReceipt(intentId);
     if (!receipt) return { ok: false, error: { code: "receipt_unavailable", message: "x402 receipt has not been created" } };
-      const executionPolicyRequested = this.options.x402ExecutionEnabled === true;
+    const executionEnabled = this.options.x402ExecutionEnabled === true && Boolean(this.options.x402SettlementAdapter);
     const transactionRef = receipt.settlementRef && /^0x[0-9a-f]{64}$/i.test(receipt.settlementRef)
       ? receipt.settlementRef
       : null;
@@ -1541,12 +1954,14 @@ export class PostgresAgonMarketService implements AgonMarketService {
     let reason: string;
     let nextAction: X402SettlementReadinessView["nextAction"];
     switch (receipt.state) {
-        case "authorization_submitted":
-          status = "ready_but_disabled";
-          reason = executionPolicyRequested
+      case "authorization_submitted":
+        status = executionEnabled ? "ready" : "ready_but_disabled";
+        reason = executionEnabled
+          ? "Authorization and the Circle Arc Testnet settlement adapter are ready for explicit execution."
+          : this.options.x402ExecutionEnabled === true
             ? "Settlement policy is configured, but no facilitator route is wired in this service instance."
             : "Authorization is valid, but Circle settlement is disabled by policy.";
-        nextAction = "execution_adapter_not_enabled";
+        nextAction = executionEnabled ? "execute_settlement" : "execution_adapter_not_enabled";
         break;
       case "settlement_submitted":
         status = "service_delivery_pending";
@@ -1591,7 +2006,7 @@ export class PostgresAgonMarketService implements AgonMarketService {
         providerTransferId: receipt.providerTransferId ?? null,
         status,
         reason,
-        executionEnabled: false,
+        executionEnabled,
         nextAction,
         checkedAt: new Date().toISOString(),
       },
@@ -1856,6 +2271,10 @@ export class PostgresAgonMarketService implements AgonMarketService {
     if (!plan.ok) return { ok: false, error: { code: "execution_not_ready", message: plan.error.message } };
     const approval = await this.repository.getLatestX402ExecutionApproval(intentId);
     if (!approval) return { ok: false, error: { code: "execution_not_ready", message: "explicit execution approval is required before settlement" } };
+    const listing = await this.repository.getListing({ chainId: intent.chainId, serviceRegistry: intent.serviceRegistry, listingId: intent.listingId });
+    if (!listing || listing.currentVersion !== intent.version || !intent.targetUrl) {
+      return { ok: false, error: { code: "execution_not_ready", message: "the reviewed provider listing is no longer available" } };
+    }
     const policy = this.options.x402ExecutionPolicy ?? createX402ExecutionPolicy({ enabled: false, maxAmountBaseUnits: 0n });
     const settled = await createX402SettlementOrchestrator({
       store: this.repository,
@@ -1866,26 +2285,43 @@ export class PostgresAgonMarketService implements AgonMarketService {
       plan: plan.value,
       signature: request.signature,
       confirmation: request.confirmation,
+      delivery: { targetUrl: intent.targetUrl, method: intent.method, input: intent.input },
     } as X402SettlementInput);
     if (!settled.ok) {
       if (settled.error.code === "reconciliation_required") return { ok: false, error: { code: "conflict", message: settled.error.message } };
       if (settled.error.code === "settlement_unknown") return { ok: false, error: { code: "facilitator_unavailable", message: settled.error.message } };
       return { ok: false, error: { code: "execution_not_ready", message: settled.error.message } };
     }
+    let durableReceipt = settled.receipt;
+    if (settled.delivery) {
+      try {
+        await this.repository.recordX402DeliveryEvidence({
+          deliveryId: randomUUID(), intentId, receiptId: settled.receipt.receiptId,
+          provider: listing.providerSnapshot, listingReference: intent.listingReference,
+          serviceStatus: settled.delivery.serviceStatus, latencyMs: settled.delivery.latencyMs,
+          responseHash: settled.delivery.responseHash, resultAttestationHash: null,
+          chargedAmountUSDC: null, deliveredAt: new Date(settled.delivery.deliveredAt),
+        });
+        durableReceipt = await this.repository.getX402CallReceipt(intentId) ?? settled.receipt;
+      } catch {
+        return { ok: false, error: { code: "reconciliation_unavailable", message: "provider delivered the service, but delivery evidence could not be stored; reconcile before another attempt" } };
+      }
+    }
     return {
       ok: true,
       value: {
-        receiptId: settled.receipt.receiptId,
+        receiptId: durableReceipt.receiptId,
         intentId,
-        state: "settlement_submitted",
+        state: settled.delivery ? "service_delivered" : "settlement_submitted",
         network: "eip155:5042002",
         transaction: settled.transaction,
-        providerTransferId: settled.receipt.providerTransferId ?? null,
+        providerTransferId: durableReceipt.providerTransferId ?? null,
         payer: null,
         executionEnabled: true,
-        serviceDeliveryPending: true,
-        nextAction: "deliver_service",
-        recordedAt: settled.receipt.updatedAt.toISOString(),
+        serviceDeliveryPending: !settled.delivery,
+        nextAction: settled.delivery ? "reconcile_receipt" : "deliver_service",
+        ...(settled.delivery ? { serviceResult: settled.delivery.result, responseHash: settled.delivery.responseHash } : {}),
+        recordedAt: durableReceipt.updatedAt.toISOString(),
       },
     };
   }

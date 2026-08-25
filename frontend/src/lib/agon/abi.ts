@@ -12,6 +12,7 @@ export const agonServiceRegistryAbi = parseAbi([
 ]);
 
 export const agonJobEscrowAbi = parseAbi([
+  "event JobCreated(uint256 indexed jobId,bytes32 indexed clientReference,address indexed buyer,address provider,uint256 listingId,uint256 agentId,uint256 listingVersion,bytes32 manifestHash,bytes32 termsHash,uint256 amount,uint256 fee,uint64 reviewHours,uint64 acceptanceDeadline)",
   "function createJob(bytes32 clientReference, uint256 listingId, bytes32 termsHash, uint256 amount, uint16 feeBps, uint64 reviewHours) returns (uint256 jobId)",
   "function acceptJob(uint256 jobId)",
   "function submitJob(uint256 jobId, bytes32 deliverableHash)",
@@ -39,14 +40,19 @@ export const agonSyndicateRegistryAbi = parseAbi([
   "function joinSyndicate(uint256 syndicateId,uint256 agentId)",
   "function lockRoster(uint256 syndicateId)",
   "function startCompetition(uint256 syndicateId)",
-  "function recordContribution(uint256 syndicateId,uint256 agentId,uint256 score,bytes32 evidenceRoot)",
+  "function recordContribution(uint256 syndicateId,uint256 agentId,bytes32 contributionKey,uint256 score,bytes32 evidenceHash)",
   "function settleCampaign(uint256 syndicateId)",
-  "function getSyndicate(uint256 syndicateId) view returns ((uint256 syndicateId,bytes32 nameHash,bytes32 campaignHash,address creator,uint8 state,uint64 createdAt,uint64 lockedAt,uint64 settledAt,uint256 memberCount))",
+  "function getSyndicate(uint256 syndicateId) view returns ((uint256 syndicateId,bytes32 nameHash,bytes32 campaignHash,address creator,uint64 createdAt,uint64 lockedAt,uint64 settledAt,uint256 memberCount,uint8 state))",
   "function getMemberAgentIds(uint256 syndicateId) view returns (uint256[])",
 ]);
 
 export const agonPrizeVaultAbi = parseAbi([
-  "function getPool(bytes32 poolKey) view returns ((bytes32 poolKey,uint8 kind,uint8 state,address sponsor,uint256 grossAmount,uint256 feeAmount,uint256 distributableAmount,uint256 claimedAmount,bytes32 payoutRoot,uint256 payoutTotal,uint64 claimDeadline,uint64 createdAt))",
+  "event PoolFunded(bytes32 indexed poolKey,uint8 indexed kind,uint256 indexed sourceId,address sponsor,uint256 principal,uint256 fee)",
+  "event PayoutRootPublished(bytes32 indexed poolKey,bytes32 indexed payoutRoot,uint256 payoutTotal,uint64 claimDeadline)",
+  "function createPool(bytes32 poolKey,uint8 kind,uint256 sourceId,address sponsor,uint256 principal,uint16 feeBps)",
+  "function publishPayoutRoot(bytes32 poolKey,bytes32 payoutRoot,uint256 payoutTotal,uint64 claimDeadline)",
+  "function refundRemaining(bytes32 poolKey)",
+  "function getPool(bytes32 poolKey) view returns ((bytes32 poolKey,uint8 kind,uint256 sourceId,address sponsor,uint256 principal,uint256 fee,bytes32 payoutRoot,uint256 payoutTotal,uint256 claimedTotal,uint64 claimDeadline,uint8 state))",
   "function isClaimed(bytes32 poolKey,uint256 index) view returns (bool)",
   "function claim(bytes32 poolKey,uint256 index,address beneficiary,uint256 amount,bytes32[] proof)",
 ]);

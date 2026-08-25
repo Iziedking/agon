@@ -36,6 +36,7 @@ export type X402OrchestrationResult =
       receipt: StoredX402CallReceipt;
       transaction: `0x${string}` | null;
       serviceDeliveryPending: true;
+      delivery?: NonNullable<Extract<X402SettlementResult, { ok: true }>["value"]["delivery"]>;
     }
   | {
       ok: false;
@@ -148,7 +149,7 @@ export function createX402SettlementOrchestrator(options: {
         ...(result.value.transaction ? { settlementRef: result.value.transaction } : {}),
         ...(result.value.providerTransferId ? { providerTransferId: result.value.providerTransferId } : {}),
       });
-      return { ok: true, state: "settlement_submitted", receipt, transaction: result.value.transaction, serviceDeliveryPending: true };
+      return { ok: true, state: "settlement_submitted", receipt, transaction: result.value.transaction, serviceDeliveryPending: true, ...(result.value.delivery ? { delivery: result.value.delivery } : {}) };
     } catch {
       return failure("settlement_unknown", "payment was submitted but its receipt could not be durably recorded", marked);
     }

@@ -65,6 +65,11 @@ export type X402SettlementRequest = {
   signature: string;
   confirmation: typeof X402_EXECUTION_CONFIRMATION_PHRASE;
   nowSeconds?: number;
+  delivery?: {
+    targetUrl: string;
+    method: "GET" | "POST";
+    input: unknown;
+  };
 };
 
 export type X402FacilitatorVerificationRequest = Omit<X402SettlementRequest, "confirmation"> & {
@@ -82,6 +87,13 @@ export type X402SettlementResult =
         network: typeof AGON_X402_TESTNET_NETWORK;
         payer: `0x${string}` | null;
         executionEnabled: true;
+        delivery?: {
+          serviceStatus: number;
+          latencyMs: number;
+          responseHash: `0x${string}`;
+          deliveredAt: string;
+          result: unknown;
+        };
       };
     }
   | { ok: false; error: { code: X402SettlementErrorCode; message: string } };

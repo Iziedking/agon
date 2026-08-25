@@ -15,6 +15,15 @@ import {
   type AgonJobEscrowSettlement,
 } from "../execution/job-escrow-state.ts";
 import type { AgonJobEscrowJob } from "../execution/agon-job-escrow.ts";
+import type { AgonArenaEvaluation, AgonArenaEvaluationInput, AgonArenaEvaluationState } from "../execution/arena-verification.ts";
+import type {
+  AgonPrizeClaim,
+  AgonPrizeClaimInput,
+  AgonPrizeClaimState,
+  AgonSyndicateContribution,
+  AgonSyndicateContributionInput,
+  AgonSyndicateContributionState,
+} from "../execution/syndicate-prize.ts";
 
 export type ProfileStatus = "Active" | "Suspended" | "Archived";
 export type ListingStatus = "Listed" | "Suspended" | "Delisted";
@@ -205,6 +214,22 @@ export type AgonJobEscrowIntentProjection = Omit<AgonJobEscrowIntent, "createdAt
 };
 
 export type StoredAgonJobEscrowIntent = AgonJobEscrowIntent;
+
+export type AgonArenaEvaluationProjection = AgonArenaEvaluationInput & {
+  state: AgonArenaEvaluationState;
+  evaluationId: string | null;
+  requestTransactionHash: `0x${string}` | null;
+  startTransactionHash: `0x${string}` | null;
+  evidenceTransactionHash: `0x${string}` | null;
+  createdAt?: Date;
+};
+
+export type StoredAgonArenaEvaluation = AgonArenaEvaluation;
+
+export type AgonSyndicateContributionProjection = AgonSyndicateContributionInput;
+export type StoredAgonSyndicateContribution = AgonSyndicateContribution;
+export type AgonPrizeClaimProjection = AgonPrizeClaimInput;
+export type StoredAgonPrizeClaim = AgonPrizeClaim;
 
 export type AgonEscrowTransactionApprovalProjection = {
   approvalHash: string;
@@ -466,6 +491,70 @@ type AgonJobEscrowIntentRow = QueryResultRow & {
   deliverable_hash: `0x${string}` | null;
   reason_hash: `0x${string}` | null;
   last_reconciled_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
+};
+
+type AgonArenaEvaluationRow = QueryResultRow & {
+  intent_id: string;
+  actor_address: string;
+  idempotency_key: string;
+  listing_reference: string;
+  network: "eip155:5042002";
+  arena_contract_address: string;
+  validation_registry_address: string;
+  participant_address: string;
+  service_registry_address: string;
+  listing_id: string;
+  agent_id: string;
+  listing_version: string;
+  category: string;
+  manifest_hash: string;
+  capability_hash: string;
+  evaluator_version_hash: string;
+  task_commitment: string;
+  validation_request_hash: string;
+  evidence_root: string;
+  playground_run_id: string;
+  expires_at: Date;
+  state: AgonArenaEvaluationState;
+  evaluation_id: string | null;
+  request_transaction_hash: `0x${string}` | null;
+  start_transaction_hash: `0x${string}` | null;
+  evidence_transaction_hash: `0x${string}` | null;
+  created_at: Date;
+  updated_at: Date;
+};
+
+type AgonSyndicateContributionRow = QueryResultRow & {
+  intent_id: string;
+  actor_address: string;
+  idempotency_key: string;
+  registry_contract_address: string;
+  syndicate_id: string;
+  agent_id: string;
+  contribution_key: string;
+  score: string;
+  evidence_hash: string;
+  state: AgonSyndicateContributionState;
+  transaction_hash: `0x${string}` | null;
+  created_at: Date;
+  updated_at: Date;
+};
+
+type AgonPrizeClaimRow = QueryResultRow & {
+  intent_id: string;
+  actor_address: string;
+  idempotency_key: string;
+  vault_contract_address: string;
+  pool_key: string;
+  claim_index: string;
+  beneficiary_address: string;
+  amount_base_units: string;
+  proof: unknown;
+  leaf_hash: string;
+  state: AgonPrizeClaimState;
+  transaction_hash: `0x${string}` | null;
   created_at: Date;
   updated_at: Date;
 };
@@ -777,6 +866,79 @@ function mapAgonJobEscrowIntent(row: AgonJobEscrowIntentRow): StoredAgonJobEscro
   };
 }
 
+function mapAgonArenaEvaluation(row: AgonArenaEvaluationRow): StoredAgonArenaEvaluation {
+  return {
+    intentId: row.intent_id,
+    actor: row.actor_address as `0x${string}`,
+    idempotencyKey: row.idempotency_key,
+    listingReference: row.listing_reference,
+    network: row.network,
+    arenaContract: row.arena_contract_address as `0x${string}`,
+    validationRegistry: row.validation_registry_address as `0x${string}`,
+    participant: row.participant_address as `0x${string}`,
+    serviceRegistry: row.service_registry_address as `0x${string}`,
+    listingId: row.listing_id,
+    agentId: row.agent_id,
+    listingVersion: row.listing_version,
+    category: row.category,
+    manifestHash: row.manifest_hash as `0x${string}`,
+    capabilityHash: row.capability_hash as `0x${string}`,
+    evaluatorVersionHash: row.evaluator_version_hash as `0x${string}`,
+    taskCommitment: row.task_commitment as `0x${string}`,
+    validationRequestHash: row.validation_request_hash as `0x${string}`,
+    evidenceRoot: row.evidence_root as `0x${string}`,
+    playgroundRunId: row.playground_run_id,
+    expiresAt: row.expires_at,
+    state: row.state,
+    evaluationId: row.evaluation_id,
+    requestTransactionHash: row.request_transaction_hash,
+    startTransactionHash: row.start_transaction_hash,
+    evidenceTransactionHash: row.evidence_transaction_hash,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapAgonSyndicateContribution(row: AgonSyndicateContributionRow): StoredAgonSyndicateContribution {
+  return {
+    intentId: row.intent_id,
+    actor: row.actor_address as `0x${string}`,
+    idempotencyKey: row.idempotency_key,
+    registryContract: row.registry_contract_address as `0x${string}`,
+    syndicateId: row.syndicate_id,
+    agentId: row.agent_id,
+    contributionKey: row.contribution_key as `0x${string}`,
+    score: row.score,
+    evidenceHash: row.evidence_hash as `0x${string}`,
+    state: row.state,
+    transactionHash: row.transaction_hash,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapAgonPrizeClaim(row: AgonPrizeClaimRow): StoredAgonPrizeClaim {
+  if (!Array.isArray(row.proof) || !row.proof.every((value): value is string => typeof value === "string")) {
+    throw new AgonStoreInvariantError("prize claim proof is not a string array");
+  }
+  return {
+    intentId: row.intent_id,
+    actor: row.actor_address as `0x${string}`,
+    idempotencyKey: row.idempotency_key,
+    vaultContract: row.vault_contract_address as `0x${string}`,
+    poolKey: row.pool_key as `0x${string}`,
+    index: row.claim_index,
+    beneficiary: row.beneficiary_address as `0x${string}`,
+    amount: row.amount_base_units,
+    proof: row.proof as `0x${string}`[],
+    leaf: row.leaf_hash as `0x${string}`,
+    state: row.state,
+    transactionHash: row.transaction_hash,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 function mapAgonEscrowTransactionApproval(row: AgonEscrowTransactionApprovalRow): StoredAgonEscrowTransactionApproval {
   return {
     approvalHash: row.approval_hash,
@@ -852,6 +1014,24 @@ const AGON_JOB_ESCROW_INTENT_COLUMNS = `
   fee_bps, review_hours, expires_at, client_reference, state, settlement, onchain_job_id,
   transaction_hash, deliverable_hash, reason_hash, last_reconciled_at, created_at, updated_at`;
 
+const AGON_ARENA_EVALUATION_COLUMNS = `
+  intent_id, actor_address, idempotency_key, listing_reference, network,
+  arena_contract_address, validation_registry_address, participant_address,
+  service_registry_address, listing_id, agent_id, listing_version, category,
+  manifest_hash, capability_hash, evaluator_version_hash, task_commitment,
+  validation_request_hash, evidence_root, playground_run_id, expires_at, state,
+  evaluation_id, request_transaction_hash, start_transaction_hash, evidence_transaction_hash, created_at, updated_at`;
+
+const AGON_SYNDICATE_CONTRIBUTION_COLUMNS = `
+  intent_id, actor_address, idempotency_key, registry_contract_address,
+  syndicate_id, agent_id, contribution_key, score, evidence_hash, state,
+  transaction_hash, created_at, updated_at`;
+
+const AGON_PRIZE_CLAIM_COLUMNS = `
+  intent_id, actor_address, idempotency_key, vault_contract_address, pool_key,
+  claim_index, beneficiary_address, amount_base_units, proof, leaf_hash, state,
+  transaction_hash, created_at, updated_at`;
+
 const AGON_ESCROW_TRANSACTION_APPROVAL_COLUMNS = `
   approval_hash, intent_id, actor_address, operation, intent_hash,
   approval_idempotency_key, approved_at, expires_at, created_at`;
@@ -912,6 +1092,361 @@ export class PostgresAgonRepository {
       [intentId],
     );
     return result.rows[0] ? mapAgonJobEscrowIntent(result.rows[0]) : null;
+  }
+
+  async getAgonArenaEvaluation(intentId: string): Promise<StoredAgonArenaEvaluation | null> {
+    if (!/^[0-9a-f-]{36}$/i.test(intentId)) return null;
+    const result = await this.pool.query<AgonArenaEvaluationRow>(
+      `select ${AGON_ARENA_EVALUATION_COLUMNS} from agon_arena_evaluations where intent_id = $1`,
+      [intentId],
+    );
+    return result.rows[0] ? mapAgonArenaEvaluation(result.rows[0]) : null;
+  }
+
+  async prepareAgonArenaEvaluation(input: AgonArenaEvaluationProjection): Promise<StoredAgonArenaEvaluation> {
+    const actor = normalizeAddress(input.actor);
+    if (!/^[0-9a-f-]{36}$/i.test(input.intentId)) throw new AgonStoreInvariantError("Arena evaluation intent id must be a UUID");
+    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/.test(input.idempotencyKey)) throw new AgonStoreInvariantError("Arena evaluation idempotency key is invalid");
+    if (input.state !== "prepared" || input.evaluationId !== null || input.requestTransactionHash !== null || input.startTransactionHash !== null || input.evidenceTransactionHash !== null) {
+      throw new AgonStoreInvariantError("Arena evaluation must start prepared without transaction evidence");
+    }
+    const inserted = await this.pool.query<AgonArenaEvaluationRow>(
+      `insert into agon_arena_evaluations (
+         intent_id, actor_address, idempotency_key, listing_reference, network,
+         arena_contract_address, validation_registry_address, participant_address,
+         service_registry_address, listing_id, agent_id, listing_version, category,
+         manifest_hash, capability_hash, evaluator_version_hash, task_commitment,
+         validation_request_hash, evidence_root, playground_run_id, expires_at,
+         state, evaluation_id, request_transaction_hash, start_transaction_hash, evidence_transaction_hash,
+         created_at, updated_at
+       ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $27)
+       on conflict (actor_address, idempotency_key) do nothing
+       returning ${AGON_ARENA_EVALUATION_COLUMNS}`,
+      [
+        input.intentId,
+        actor,
+        input.idempotencyKey,
+        input.listingReference,
+        input.network,
+        normalizeAddress(input.arenaContract),
+        normalizeAddress(input.validationRegistry),
+        normalizeAddress(input.participant),
+        normalizeAddress(input.serviceRegistry),
+        requirePositive(BigInt(input.listingId), "listing id"),
+        requirePositive(BigInt(input.agentId), "agent id"),
+        requirePositive(BigInt(input.listingVersion), "listing version"),
+        input.category,
+        normalizeHash(input.manifestHash),
+        normalizeHash(input.capabilityHash),
+        normalizeHash(input.evaluatorVersionHash),
+        normalizeHash(input.taskCommitment),
+        normalizeHash(input.validationRequestHash),
+        normalizeHash(input.evidenceRoot),
+        input.playgroundRunId,
+        input.expiresAt,
+        input.state,
+        input.evaluationId,
+        input.requestTransactionHash,
+        input.startTransactionHash,
+        input.evidenceTransactionHash,
+        input.createdAt ?? new Date(),
+      ],
+    );
+    if (inserted.rows[0]) return mapAgonArenaEvaluation(inserted.rows[0]);
+    const existing = await this.pool.query<AgonArenaEvaluationRow>(
+      `select ${AGON_ARENA_EVALUATION_COLUMNS}
+       from agon_arena_evaluations where actor_address = $1 and idempotency_key = $2`,
+      [actor, input.idempotencyKey],
+    );
+    const row = existing.rows[0];
+    if (!row) throw new AgonStoreInvariantError("Arena evaluation idempotency conflict could not be loaded");
+    const value = mapAgonArenaEvaluation(row);
+    const same = value.listingReference === input.listingReference
+      && value.playgroundRunId === input.playgroundRunId
+      && value.validationRequestHash === input.validationRequestHash.toLowerCase()
+      && value.evidenceRoot === input.evidenceRoot.toLowerCase()
+      && value.arenaContract === input.arenaContract.toLowerCase()
+      && value.validationRegistry === input.validationRegistry.toLowerCase()
+      && value.expiresAt.getTime() === input.expiresAt.getTime();
+    if (!same) throw new AgonStoreInvariantError("Arena evaluation idempotency key already used for different evidence");
+    return value;
+  }
+
+  async markAgonArenaEvaluationRequested(input: {
+    intentId: string;
+    evaluationId: string;
+    transactionHash: `0x${string}`;
+  }): Promise<StoredAgonArenaEvaluation> {
+    if (!/^[0-9a-f-]{36}$/i.test(input.intentId)) throw new AgonStoreInvariantError("Arena evaluation intent id must be a UUID");
+    if (!/^[1-9]\d*$/.test(input.evaluationId)) throw new AgonStoreInvariantError("Arena evaluation id must be positive");
+    const transactionHash = normalizeHash(input.transactionHash);
+    const client = await this.pool.connect();
+    try {
+      await client.query("begin");
+      const current = await client.query<AgonArenaEvaluationRow>(
+        `select ${AGON_ARENA_EVALUATION_COLUMNS} from agon_arena_evaluations where intent_id = $1 for update`,
+        [input.intentId],
+      );
+      const row = current.rows[0];
+      if (!row) throw new AgonStoreInvariantError("Arena evaluation not found");
+      if (row.state === "request_submitted" && row.evaluation_id === input.evaluationId && row.request_transaction_hash === transactionHash) {
+        await client.query("commit");
+        return mapAgonArenaEvaluation(row);
+      }
+      if (row.state !== "prepared") throw new AgonStoreInvariantError(`cannot mark Arena evaluation ${row.state} as requested`);
+      const updated = await client.query<AgonArenaEvaluationRow>(
+        `update agon_arena_evaluations set state = 'request_submitted', evaluation_id = $2,
+           request_transaction_hash = $3, updated_at = now()
+         where intent_id = $1 returning ${AGON_ARENA_EVALUATION_COLUMNS}`,
+        [input.intentId, input.evaluationId, transactionHash],
+      );
+      await client.query("commit");
+      return mapAgonArenaEvaluation(updated.rows[0]!);
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async markAgonArenaEvaluationStarted(input: {
+    intentId: string;
+    transactionHash: `0x${string}`;
+  }): Promise<StoredAgonArenaEvaluation> {
+    if (!/^[0-9a-f-]{36}$/i.test(input.intentId)) throw new AgonStoreInvariantError("Arena evaluation intent id must be a UUID");
+    const transactionHash = normalizeHash(input.transactionHash);
+    const client = await this.pool.connect();
+    try {
+      await client.query("begin");
+      const current = await client.query<AgonArenaEvaluationRow>(
+        `select ${AGON_ARENA_EVALUATION_COLUMNS} from agon_arena_evaluations where intent_id = $1 for update`,
+        [input.intentId],
+      );
+      const row = current.rows[0];
+      if (!row) throw new AgonStoreInvariantError("Arena evaluation not found");
+      if (row.state === "evidence_ready" && row.start_transaction_hash === transactionHash) {
+        await client.query("commit");
+        return mapAgonArenaEvaluation(row);
+      }
+      if (row.state !== "request_submitted") throw new AgonStoreInvariantError(`cannot mark Arena evaluation ${row.state} as started`);
+      const updated = await client.query<AgonArenaEvaluationRow>(
+        `update agon_arena_evaluations set state = 'evidence_ready', start_transaction_hash = $2, updated_at = now()
+         where intent_id = $1 returning ${AGON_ARENA_EVALUATION_COLUMNS}`,
+        [input.intentId, transactionHash],
+      );
+      await client.query("commit");
+      return mapAgonArenaEvaluation(updated.rows[0]!);
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async markAgonArenaEvidenceSubmitted(input: {
+    intentId: string;
+    transactionHash: `0x${string}`;
+  }): Promise<StoredAgonArenaEvaluation> {
+    if (!/^[0-9a-f-]{36}$/i.test(input.intentId)) throw new AgonStoreInvariantError("Arena evaluation intent id must be a UUID");
+    const transactionHash = normalizeHash(input.transactionHash);
+    const client = await this.pool.connect();
+    try {
+      await client.query("begin");
+      const current = await client.query<AgonArenaEvaluationRow>(
+        `select ${AGON_ARENA_EVALUATION_COLUMNS} from agon_arena_evaluations where intent_id = $1 for update`,
+        [input.intentId],
+      );
+      const row = current.rows[0];
+      if (!row) throw new AgonStoreInvariantError("Arena evaluation not found");
+      if (row.state === "evidence_submitted" && row.evidence_transaction_hash === transactionHash) {
+        await client.query("commit");
+        return mapAgonArenaEvaluation(row);
+      }
+      if (row.state !== "request_submitted" && row.state !== "evidence_ready") throw new AgonStoreInvariantError(`cannot mark Arena evidence while evaluation is ${row.state}`);
+      const updated = await client.query<AgonArenaEvaluationRow>(
+        `update agon_arena_evaluations set state = 'evidence_submitted', evidence_transaction_hash = $2, updated_at = now()
+         where intent_id = $1 returning ${AGON_ARENA_EVALUATION_COLUMNS}`,
+        [input.intentId, transactionHash],
+      );
+      await client.query("commit");
+      return mapAgonArenaEvaluation(updated.rows[0]!);
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async reconcileAgonArenaEvaluation(input: {
+    intentId: string;
+    state: AgonArenaEvaluationState;
+  }): Promise<StoredAgonArenaEvaluation> {
+    if (!/^[0-9a-f-]{36}$/i.test(input.intentId)) throw new AgonStoreInvariantError("Arena evaluation intent id must be a UUID");
+    const allowed: AgonArenaEvaluationState[] = ["request_submitted", "evidence_ready", "evidence_submitted", "verified", "rejected", "expired", "revoked"];
+    if (!allowed.includes(input.state)) throw new AgonStoreInvariantError("Arena reconciliation state is invalid");
+    const current = await this.getAgonArenaEvaluation(input.intentId);
+    if (!current) throw new AgonStoreInvariantError("Arena evaluation not found");
+    const rank: Record<AgonArenaEvaluationState, number> = {
+      prepared: 0, request_submitted: 1, evidence_ready: 2, evidence_submitted: 3,
+      verified: 4, rejected: 4, expired: 4, revoked: 5, unknown: 0,
+    };
+    if (rank[input.state] < rank[current.state]) throw new AgonStoreInvariantError(`cannot reconcile Arena evaluation from ${current.state} to ${input.state}`);
+    if (["verified", "rejected", "expired", "revoked"].includes(current.state) && current.state !== input.state) {
+      if (!(current.state === "verified" || current.state === "rejected") || input.state !== "revoked") {
+        throw new AgonStoreInvariantError(`Arena evaluation ${current.state} is terminal`);
+      }
+    }
+    const updated = await this.pool.query<AgonArenaEvaluationRow>(
+      `update agon_arena_evaluations set state = $2, updated_at = now()
+       where intent_id = $1 returning ${AGON_ARENA_EVALUATION_COLUMNS}`,
+      [input.intentId, input.state],
+    );
+    if (!updated.rows[0]) throw new AgonStoreInvariantError("Arena evaluation not found");
+    return mapAgonArenaEvaluation(updated.rows[0]);
+  }
+
+  async getAgonSyndicateContribution(intentId: string): Promise<StoredAgonSyndicateContribution | null> {
+    if (!/^[0-9a-f-]{36}$/i.test(intentId)) return null;
+    const result = await this.pool.query<AgonSyndicateContributionRow>(
+      `select ${AGON_SYNDICATE_CONTRIBUTION_COLUMNS} from agon_syndicate_contributions where intent_id = $1`,
+      [intentId],
+    );
+    return result.rows[0] ? mapAgonSyndicateContribution(result.rows[0]) : null;
+  }
+
+  async prepareAgonSyndicateContribution(input: AgonSyndicateContributionProjection): Promise<StoredAgonSyndicateContribution> {
+    const actor = normalizeAddress(input.actor);
+    if (!/^[0-9a-f-]{36}$/i.test(input.intentId)) throw new AgonStoreInvariantError("syndicate contribution intent id must be a UUID");
+    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/.test(input.idempotencyKey)) throw new AgonStoreInvariantError("syndicate contribution idempotency key is invalid");
+    if (input.state !== "prepared" || input.transactionHash !== null) throw new AgonStoreInvariantError("syndicate contribution must start prepared without transaction evidence");
+    const registryContract = normalizeAddress(input.registryContract);
+    const syndicateId = requirePositive(BigInt(input.syndicateId), "syndicate id");
+    const agentId = requirePositive(BigInt(input.agentId), "agent id");
+    const contributionKey = normalizeHash(input.contributionKey);
+    const score = requirePositive(BigInt(input.score), "score");
+    const evidenceHash = normalizeHash(input.evidenceHash);
+    const inserted = await this.pool.query<AgonSyndicateContributionRow>(
+      `insert into agon_syndicate_contributions (
+         intent_id, actor_address, idempotency_key, registry_contract_address,
+         syndicate_id, agent_id, contribution_key, score, evidence_hash, state,
+         transaction_hash, created_at, updated_at
+       ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'prepared', null, $10, $10)
+       on conflict (actor_address, idempotency_key) do nothing
+       returning ${AGON_SYNDICATE_CONTRIBUTION_COLUMNS}`,
+      [input.intentId, actor, input.idempotencyKey, registryContract, syndicateId, agentId, contributionKey, score, evidenceHash, input.createdAt ?? new Date()],
+    );
+    if (inserted.rows[0]) return mapAgonSyndicateContribution(inserted.rows[0]);
+    const existing = await this.pool.query<AgonSyndicateContributionRow>(
+      `select ${AGON_SYNDICATE_CONTRIBUTION_COLUMNS} from agon_syndicate_contributions where actor_address = $1 and idempotency_key = $2`,
+      [actor, input.idempotencyKey],
+    );
+    const row = existing.rows[0];
+    if (!row) throw new AgonStoreInvariantError("syndicate contribution idempotency conflict could not be loaded");
+    const value = mapAgonSyndicateContribution(row);
+    if (value.registryContract !== registryContract || value.syndicateId !== syndicateId || value.agentId !== agentId || value.contributionKey !== contributionKey || value.score !== score || value.evidenceHash !== evidenceHash) {
+      throw new AgonStoreInvariantError("syndicate contribution idempotency key already used for different evidence");
+    }
+    return value;
+  }
+
+  async markAgonSyndicateContributionSubmitted(input: { intentId: string; transactionHash: `0x${string}` }): Promise<StoredAgonSyndicateContribution> {
+    if (!/^[0-9a-f-]{36}$/i.test(input.intentId)) throw new AgonStoreInvariantError("syndicate contribution intent id must be a UUID");
+    const transactionHash = normalizeHash(input.transactionHash);
+    const client = await this.pool.connect();
+    try {
+      await client.query("begin");
+      const current = await client.query<AgonSyndicateContributionRow>(`select ${AGON_SYNDICATE_CONTRIBUTION_COLUMNS} from agon_syndicate_contributions where intent_id = $1 for update`, [input.intentId]);
+      const row = current.rows[0];
+      if (!row) throw new AgonStoreInvariantError("syndicate contribution not found");
+      if ((row.state === "submitted" || row.state === "confirmed") && row.transaction_hash === transactionHash) { await client.query("commit"); return mapAgonSyndicateContribution(row); }
+      if (row.state !== "prepared") throw new AgonStoreInvariantError(`cannot mark syndicate contribution ${row.state} as submitted`);
+      const updated = await client.query<AgonSyndicateContributionRow>(`update agon_syndicate_contributions set state = 'submitted', transaction_hash = $2, updated_at = now() where intent_id = $1 returning ${AGON_SYNDICATE_CONTRIBUTION_COLUMNS}`, [input.intentId, transactionHash]);
+      await client.query("commit");
+      return mapAgonSyndicateContribution(updated.rows[0]!);
+    } catch (error) { await client.query("rollback"); throw error; } finally { client.release(); }
+  }
+
+  async confirmAgonSyndicateContribution(intentId: string): Promise<StoredAgonSyndicateContribution> {
+    if (!/^[0-9a-f-]{36}$/i.test(intentId)) throw new AgonStoreInvariantError("syndicate contribution intent id must be a UUID");
+    const updated = await this.pool.query<AgonSyndicateContributionRow>(
+      `update agon_syndicate_contributions set state = 'confirmed', updated_at = now()
+       where intent_id = $1 and state in ('submitted','confirmed') and transaction_hash is not null
+       returning ${AGON_SYNDICATE_CONTRIBUTION_COLUMNS}`,
+      [intentId],
+    );
+    if (!updated.rows[0]) throw new AgonStoreInvariantError("syndicate contribution is not submitted for confirmation");
+    return mapAgonSyndicateContribution(updated.rows[0]);
+  }
+
+  async getAgonPrizeClaim(intentId: string): Promise<StoredAgonPrizeClaim | null> {
+    if (!/^[0-9a-f-]{36}$/i.test(intentId)) return null;
+    const result = await this.pool.query<AgonPrizeClaimRow>(`select ${AGON_PRIZE_CLAIM_COLUMNS} from agon_prize_claim_intents where intent_id = $1`, [intentId]);
+    return result.rows[0] ? mapAgonPrizeClaim(result.rows[0]) : null;
+  }
+
+  async prepareAgonPrizeClaim(input: AgonPrizeClaimProjection): Promise<StoredAgonPrizeClaim> {
+    const actor = normalizeAddress(input.actor);
+    if (!/^[0-9a-f-]{36}$/i.test(input.intentId)) throw new AgonStoreInvariantError("prize claim intent id must be a UUID");
+    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/.test(input.idempotencyKey)) throw new AgonStoreInvariantError("prize claim idempotency key is invalid");
+    if (input.state !== "prepared" || input.transactionHash !== null) throw new AgonStoreInvariantError("prize claim must start prepared without transaction evidence");
+    const vaultContract = normalizeAddress(input.vaultContract);
+    const poolKey = normalizeHash(input.poolKey);
+    const claimIndex = requireNonNegative(BigInt(input.index), "claim index");
+    const beneficiary = normalizeAddress(input.beneficiary);
+    const amount = requirePositive(BigInt(input.amount), "claim amount");
+    const proof = input.proof.map((value) => normalizeHash(value));
+    const leaf = normalizeHash(input.leaf);
+    const inserted = await this.pool.query<AgonPrizeClaimRow>(
+      `insert into agon_prize_claim_intents (
+         intent_id, actor_address, idempotency_key, vault_contract_address, pool_key,
+         claim_index, beneficiary_address, amount_base_units, proof, leaf_hash, state,
+         transaction_hash, created_at, updated_at
+       ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, 'prepared', null, $11, $11)
+       on conflict (actor_address, idempotency_key) do nothing
+       returning ${AGON_PRIZE_CLAIM_COLUMNS}`,
+      [input.intentId, actor, input.idempotencyKey, vaultContract, poolKey, claimIndex, beneficiary, amount, JSON.stringify(proof), leaf, input.createdAt ?? new Date()],
+    );
+    if (inserted.rows[0]) return mapAgonPrizeClaim(inserted.rows[0]);
+    const existing = await this.pool.query<AgonPrizeClaimRow>(`select ${AGON_PRIZE_CLAIM_COLUMNS} from agon_prize_claim_intents where actor_address = $1 and idempotency_key = $2`, [actor, input.idempotencyKey]);
+    const row = existing.rows[0];
+    if (!row) throw new AgonStoreInvariantError("prize claim idempotency conflict could not be loaded");
+    const value = mapAgonPrizeClaim(row);
+    if (value.vaultContract !== vaultContract || value.poolKey !== poolKey || value.index !== claimIndex || value.beneficiary !== beneficiary || value.amount !== amount || value.leaf !== leaf || JSON.stringify(value.proof) !== JSON.stringify(proof)) {
+      throw new AgonStoreInvariantError("prize claim idempotency key already used for different claim");
+    }
+    return value;
+  }
+
+  async markAgonPrizeClaimSubmitted(input: { intentId: string; transactionHash: `0x${string}` }): Promise<StoredAgonPrizeClaim> {
+    if (!/^[0-9a-f-]{36}$/i.test(input.intentId)) throw new AgonStoreInvariantError("prize claim intent id must be a UUID");
+    const transactionHash = normalizeHash(input.transactionHash);
+    const client = await this.pool.connect();
+    try {
+      await client.query("begin");
+      const current = await client.query<AgonPrizeClaimRow>(`select ${AGON_PRIZE_CLAIM_COLUMNS} from agon_prize_claim_intents where intent_id = $1 for update`, [input.intentId]);
+      const row = current.rows[0];
+      if (!row) throw new AgonStoreInvariantError("prize claim not found");
+      if ((row.state === "submitted" || row.state === "confirmed") && row.transaction_hash === transactionHash) { await client.query("commit"); return mapAgonPrizeClaim(row); }
+      if (row.state !== "prepared") throw new AgonStoreInvariantError(`cannot mark prize claim ${row.state} as submitted`);
+      const updated = await client.query<AgonPrizeClaimRow>(`update agon_prize_claim_intents set state = 'submitted', transaction_hash = $2, updated_at = now() where intent_id = $1 returning ${AGON_PRIZE_CLAIM_COLUMNS}`, [input.intentId, transactionHash]);
+      await client.query("commit");
+      return mapAgonPrizeClaim(updated.rows[0]!);
+    } catch (error) { await client.query("rollback"); throw error; } finally { client.release(); }
+  }
+
+  async confirmAgonPrizeClaim(intentId: string): Promise<StoredAgonPrizeClaim> {
+    if (!/^[0-9a-f-]{36}$/i.test(intentId)) throw new AgonStoreInvariantError("prize claim intent id must be a UUID");
+    const updated = await this.pool.query<AgonPrizeClaimRow>(
+      `update agon_prize_claim_intents set state = 'confirmed', updated_at = now()
+       where intent_id = $1 and state in ('submitted','confirmed') and transaction_hash is not null
+       returning ${AGON_PRIZE_CLAIM_COLUMNS}`,
+      [intentId],
+    );
+    if (!updated.rows[0]) throw new AgonStoreInvariantError("prize claim is not submitted for confirmation");
+    return mapAgonPrizeClaim(updated.rows[0]);
   }
 
   async prepareAgonJobEscrowIntent(input: AgonJobEscrowIntentProjection): Promise<StoredAgonJobEscrowIntent> {

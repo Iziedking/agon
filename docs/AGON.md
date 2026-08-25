@@ -1,5 +1,17 @@
 ﻿# Agon
 
+## MVP completion boundary (2026-08-25)
+
+The complete local MVP now joins the product paths that were previously separate:
+
+- Direct x402 execution replays the reviewed v2 `PAYMENT-SIGNATURE` to the exact HTTPS resource from the provider quote. The provider must return a successful bounded task result and a valid Arc Testnet `PAYMENT-RESPONSE`. Agon hashes and records the delivery independently. Ambiguous calls remain retry-blocked until receipt reconciliation.
+- Escrow listings can be funded from the market detail page through an exact USDC approval and `AgonJobEscrow.createJob`. The created event is decoded, then the durable intent is reconciled against the deployed contract.
+- Arena, syndicate contribution, and prize claim intents advance to final states only after independent contract and receipt checks match their pinned identities, versions, hashes, amounts, and participants.
+- The public Protocol page is read-only. Contract writes and backend operator workflows are isolated under `/admin`, protected by the in-memory `ADMIN_TOKEN`, an explicit connected actor wallet, contract roles, wallet confirmation, and the `EXECUTE_ARC_TESTNET_WRITE` phrase.
+- The administrator console covers job creation and lifecycle, Arena evaluator lifecycle, syndicate creation through settlement, prize-pool funding, payout root publication, refunds, contribution evidence, and prize claims.
+
+All execution feature flags remain disabled by default. Enabling a flag is a separate operational release decision, not part of a build or preview deploy.
+
 Agon Market is the chain-neutral service marketplace for externally owned ERC-8004 agents.
 
 Its canonical product name is **Agon** and its canonical public origin is `https://agon.surf`. Marketplace APIs and x402 services use `https://api.agon.surf`; live fanout uses `wss://ws.agon.surf`. ArcRun remains the name of the legacy arena surfaces described in `docs/legacy-arcrun.md` and is not the marketplace provider identity.
@@ -741,3 +753,77 @@ outcomes cannot be retried as a new submission. All writes and reconciliation
 remain disabled unless the corresponding runtime read capability is explicitly
 enabled; no backend signer, wallet custody, or automatic funding/settlement is
 provided by this slice.
+
+## Phase 29: durable Arena evidence and unsigned verification flow
+
+Authenticated playground runs can now become durable Arena evaluation intents
+through the following read-only workflow:
+
+1. Run an adversarial task against the exact authenticated listing version.
+2. Pin the resulting evidence root, task commitment, evaluator version, and
+   ERC-8004 validation request hash in `agon_arena_evaluations`.
+3. Prepare unsigned `AgonArena.requestEvaluation` calldata for the provider's
+   wallet.
+4. Record the user-submitted request transaction hash and on-chain evaluation
+   id.
+5. Record the evaluator's `startEvaluation` transaction marker. Evidence
+   calldata is intentionally unavailable before this state.
+6. Prepare unsigned `AgonArena.submitEvidence` calldata, then record its
+   user-submitted transaction hash.
+
+The API is exposed under `/agon/arena/evaluations`. Every intent is scoped to
+the authenticated listing provider, the current listing version, and one
+completed playground run. Idempotency keys and unique validation request and
+playground references prevent duplicate anchors. A transaction hash or
+evaluation id is only a submission marker; the system does not call an RPC
+writer or claim `Verified` until an independent Arena and ValidationRegistry
+read adapter is implemented and enabled through a separate release gate.
+
+The operator console exposes the complete preparation and marker workflow but
+never signs, submits, scores, or reconciles a transaction. Arena and external
+ValidationRegistry writes remain disabled by default.
+
+## Phase 30: syndicate and prize-vault boundary
+
+The syndicate contribution boundary is pinned to the deployed
+`AgonSyndicateRegistry` signature: `(syndicateId, agentId, contributionKey,
+score, evidenceHash)`. Contribution keys and evidence hashes are required
+bytes32 values so an evaluator cannot overwrite evidence identity or submit an
+unanchored record.
+
+Prize claims are planned against the deployed `AgonPrizeVault` signature and
+reproduce its exact Merkle leaf derivation:
+`keccak256(bytes.concat(keccak256(abi.encode(index, beneficiary, amount))))`.
+Proof items, beneficiary, pool key, index, and amount are validated before
+unsigned calldata is returned. Prize allocation reuses the integer-conserving
+policy and assigns any division remainder to the lowest rank.
+
+This phase only produces auditable unsigned transaction plans and deterministic
+allocations. It does not create pools, publish roots, record contributions,
+claim prizes, call USDC, or enable syndicate/prize execution. Future API/UI
+integration must consume these plans through authenticated intent records and a
+separate explicit write gate.
+
+## Phase 31: durable syndicate and prize intents
+
+Syndicate contribution and prize claim plans now have dedicated durable intent
+records with actor ownership, idempotency keys, exact contract/input hashes,
+proof pinning, and immutable submitted-transaction markers. Authenticated API
+routes expose preparation, owner-scoped reads, unsigned transaction calldata,
+and user-submitted transaction hashes under `/agon/syndicates/contributions`
+and `/agon/prize-claims`.
+
+The backend never signs, broadcasts, calls USDC, records a claim as finalized,
+or reconciles chain state in this phase. A `submitted` marker is only evidence
+that the user reported a wallet transaction hash; independent chain reads remain
+the next reconciliation gate. All execution flags remain disabled by default.
+### Phase 32 — Admin wallet workflow for syndicates and prize claims
+
+The Agon operator console now exposes the authenticated syndicate contribution and prize claim intents as a complete user-driven workflow:
+
+- `AgonSyndicatePrizeIntentPanel` prepares the durable backend intent, loads the exact unsigned calldata, and displays the pinned target/data before any wallet action.
+- `SIGN + RECORD SUBMISSION` is the only execution CTA. It uses the connected Arc wallet abstraction, waits for a successful receipt, and then records the returned transaction hash against the authenticated intent.
+- A receipt hash is presented as a submission marker for later chain reconciliation. The UI does not claim finality, payout completion, or successful contribution indexing from the marker alone.
+- Server-side execution remains disabled; no backend signer, automatic broadcast, retry, or provider call was added.
+
+Validation for this phase: frontend and backend typechecks pass; the Next.js production build passes 27 routes. Existing workspace-root, Twitter runtime, `ox` critical-dependency, edge/static-generation, and public Arc RPC rate-limit warnings remain documented environmental warnings.

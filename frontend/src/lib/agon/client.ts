@@ -23,6 +23,10 @@ import type {
   X402SettlementRequest,
   X402SettlementView,
   X402ReconciliationReadinessView,
+  X402ReconciliationRequest,
+  X402ReconciliationView,
+  X402DeliveryEvidenceRequest,
+  X402DeliveryEvidenceView,
   X402FacilitatorVerificationRequest,
   X402FacilitatorVerificationView,
   AgonEscrowIntentRequest,
@@ -38,10 +42,24 @@ import type {
   AgonJobEscrowIntentView,
   AgonJobEscrowTransactionView,
   AgonJobEscrowSubmittedRequest,
+  AgonArenaEvaluationRequest,
+  AgonArenaEvaluationView,
+  AgonArenaTransactionView,
+  AgonSyndicateContributionRequest,
+  AgonSyndicateContributionView,
+  AgonPrizeClaimRequest,
+  AgonPrizeClaimView,
+  AgonSyndicatePrizeTransactionView,
 } from "./types";
 import { AGON_PREVIEW_HEALTH, AGON_PREVIEW_LISTINGS } from "./preview";
 
 export const AGON_PREVIEW_MODE = process.env.NEXT_PUBLIC_AGON_PREVIEW_FIXTURES === "1";
+
+let adminAuthorization: { token: string; actor: `0x${string}` } | null = null;
+
+export function setAgonAdminAuthorization(token: string | null, actor: `0x${string}` | null): void {
+  adminAuthorization = token && actor ? { token, actor } : null;
+}
 
 const AGON_API_URL = (
   process.env.NEXT_PUBLIC_AGON_API_URL ??
@@ -64,12 +82,16 @@ export class AgonApiError extends Error {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {
+    const headers = new Headers(init?.headers);
+    if (init?.body) headers.set("content-type", "application/json");
+    if (adminAuthorization) {
+      headers.set("x-admin-token", adminAuthorization.token);
+      headers.set("x-agon-actor", adminAuthorization.actor);
+    }
     response = await fetch(`${AGON_API_URL}/agon${path}`, {
       ...init,
       credentials: "include",
-      headers: init?.body
-        ? { "content-type": "application/json", ...init.headers }
-        : init?.headers,
+      headers,
     });
   } catch {
     throw new AgonApiError("network_unavailable", "Could not reach the Agon indexer.", 0);
@@ -164,6 +186,78 @@ export function reconcileAgonJobEscrowIntent(intentId: string, jobId: string): P
 
 export function markAgonJobEscrowSubmitted(intentId: string, payload: AgonJobEscrowSubmittedRequest): Promise<AgonJobEscrowIntentView> {
   return request<AgonJobEscrowIntentView>(`/job-escrow/intents/${encodeURIComponent(intentId)}/submitted`, { method: "POST", body: JSON.stringify(payload) });
+}
+
+export function prepareAgonArenaEvaluation(payload: AgonArenaEvaluationRequest): Promise<AgonArenaEvaluationView> {
+  return request<AgonArenaEvaluationView>("/arena/evaluations", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export function getAgonArenaEvaluation(intentId: string): Promise<AgonArenaEvaluationView> {
+  return request<AgonArenaEvaluationView>(`/arena/evaluations/${encodeURIComponent(intentId)}`);
+}
+
+export function getAgonArenaRequestTransaction(intentId: string): Promise<AgonArenaTransactionView> {
+  return request<AgonArenaTransactionView>(`/arena/evaluations/${encodeURIComponent(intentId)}/request-transaction`);
+}
+
+export function markAgonArenaEvaluationSubmitted(intentId: string, evaluationId: string, transactionHash: `0x${string}`): Promise<AgonArenaEvaluationView> {
+  return request<AgonArenaEvaluationView>(`/arena/evaluations/${encodeURIComponent(intentId)}/requested`, { method: "POST", body: JSON.stringify({ evaluationId, transactionHash }) });
+}
+
+export function markAgonArenaEvaluationStarted(intentId: string, transactionHash: `0x${string}`): Promise<AgonArenaEvaluationView> {
+  return request<AgonArenaEvaluationView>(`/arena/evaluations/${encodeURIComponent(intentId)}/started`, { method: "POST", body: JSON.stringify({ transactionHash }) });
+}
+
+export function getAgonArenaEvidenceTransaction(intentId: string): Promise<AgonArenaTransactionView> {
+  return request<AgonArenaTransactionView>(`/arena/evaluations/${encodeURIComponent(intentId)}/evidence-transaction`);
+}
+
+export function markAgonArenaEvidenceSubmitted(intentId: string, transactionHash: `0x${string}`): Promise<AgonArenaEvaluationView> {
+  return request<AgonArenaEvaluationView>(`/arena/evaluations/${encodeURIComponent(intentId)}/evidence-submitted`, { method: "POST", body: JSON.stringify({ transactionHash }) });
+}
+
+export function reconcileAgonArenaEvaluation(intentId: string): Promise<AgonArenaEvaluationView> {
+  return request<AgonArenaEvaluationView>(`/arena/evaluations/${encodeURIComponent(intentId)}/reconcile`, { method: "POST" });
+}
+
+export function prepareAgonSyndicateContribution(payload: AgonSyndicateContributionRequest): Promise<AgonSyndicateContributionView> {
+  return request<AgonSyndicateContributionView>("/syndicates/contributions", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export function getAgonSyndicateContribution(intentId: string): Promise<AgonSyndicateContributionView> {
+  return request<AgonSyndicateContributionView>(`/syndicates/contributions/${encodeURIComponent(intentId)}`);
+}
+
+export function getAgonSyndicateContributionTransaction(intentId: string): Promise<AgonSyndicatePrizeTransactionView> {
+  return request<AgonSyndicatePrizeTransactionView>(`/syndicates/contributions/${encodeURIComponent(intentId)}/transaction`);
+}
+
+export function markAgonSyndicateContributionSubmitted(intentId: string, transactionHash: `0x${string}`): Promise<AgonSyndicateContributionView> {
+  return request<AgonSyndicateContributionView>(`/syndicates/contributions/${encodeURIComponent(intentId)}/submitted`, { method: "POST", body: JSON.stringify({ transactionHash }) });
+}
+
+export function reconcileAgonSyndicateContribution(intentId: string): Promise<AgonSyndicateContributionView> {
+  return request<AgonSyndicateContributionView>(`/syndicates/contributions/${encodeURIComponent(intentId)}/reconcile`, { method: "POST" });
+}
+
+export function prepareAgonPrizeClaim(payload: AgonPrizeClaimRequest): Promise<AgonPrizeClaimView> {
+  return request<AgonPrizeClaimView>("/prize-claims", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export function getAgonPrizeClaim(intentId: string): Promise<AgonPrizeClaimView> {
+  return request<AgonPrizeClaimView>(`/prize-claims/${encodeURIComponent(intentId)}`);
+}
+
+export function getAgonPrizeClaimTransaction(intentId: string): Promise<AgonSyndicatePrizeTransactionView> {
+  return request<AgonSyndicatePrizeTransactionView>(`/prize-claims/${encodeURIComponent(intentId)}/transaction`);
+}
+
+export function markAgonPrizeClaimSubmitted(intentId: string, transactionHash: `0x${string}`): Promise<AgonPrizeClaimView> {
+  return request<AgonPrizeClaimView>(`/prize-claims/${encodeURIComponent(intentId)}/submitted`, { method: "POST", body: JSON.stringify({ transactionHash }) });
+}
+
+export function reconcileAgonPrizeClaim(intentId: string): Promise<AgonPrizeClaimView> {
+  return request<AgonPrizeClaimView>(`/prize-claims/${encodeURIComponent(intentId)}/reconcile`, { method: "POST" });
 }
 
 export function getPlaygroundCategories(): Promise<{ agent: string; categories: AgonPlaygroundCategory[] }> {
@@ -478,6 +572,28 @@ export function getX402ReconciliationReadiness(intentId: string): Promise<X402Re
     });
   }
   return request<X402ReconciliationReadinessView>(`/call-intents/${encodeURIComponent(intentId)}/reconciliation-readiness`, { method: "GET" });
+}
+
+/** Perform a read-only provider receipt lookup and advance only matching durable evidence. */
+export function reconcileX402Receipt(intentId: string, body: X402ReconciliationRequest): Promise<X402ReconciliationView> {
+  if (AGON_PREVIEW_MODE) {
+    return Promise.reject(new AgonApiError("reconciliation_disabled", "Receipt reconciliation is disabled in preview mode.", 409));
+  }
+  return request<X402ReconciliationView>(`/call-intents/${encodeURIComponent(intentId)}/reconcile`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+/** Record provider-authenticated delivery evidence after settlement. */
+export function recordX402DeliveryEvidence(intentId: string, body: X402DeliveryEvidenceRequest): Promise<X402DeliveryEvidenceView> {
+  if (AGON_PREVIEW_MODE) {
+    return Promise.reject(new AgonApiError("execution_not_ready", "Delivery evidence cannot be recorded in preview mode.", 409));
+  }
+  return request<X402DeliveryEvidenceView>(`/call-intents/${encodeURIComponent(intentId)}/delivery-evidence`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }
 
 /** Verify a wallet signature with Circle without settling or claiming delivery. */
