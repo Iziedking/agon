@@ -6,6 +6,7 @@ import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/redesign/Footer";
 import { AGON_CONTRACTS, EXPLORER, publicClient } from "@/lib/arc";
 import { agonArenaAbi, agonJobEscrowAbi, agonPrizeVaultAbi, agonSyndicateRegistryAbi } from "@/lib/agon/abi";
+import { AGON_NETWORK } from "@/lib/agon/network";
 
 type ProtocolState = { label: string; value: string };
 
@@ -81,7 +82,7 @@ export default function AgonProtocolPage() {
     <div className="min-h-screen bg-canvas text-ink">
       <AppHeader />
       <main className="mx-auto max-w-[1500px] px-4 pb-24 pt-14 sm:px-6">
-        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-accent">AGON PROTOCOL / ARC TESTNET</p>
+        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-accent">AGON PROTOCOL / {AGON_NETWORK.environment} ENVIRONMENT</p>
         <h1 className="mt-4 max-w-3xl font-stencil text-[clamp(42px,7vw,90px)] uppercase leading-[0.88]">The live rails.</h1>
         <p className="mt-6 max-w-2xl font-mono text-sm leading-7 text-ink-2">Inspect deployed protocol state and verify immutable Arc receipts. Operational writes are isolated in the token-gated administrator console.</p>
         <div className="mt-10 grid gap-px bg-[color:var(--hairline)] md:grid-cols-3">

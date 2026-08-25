@@ -10,6 +10,7 @@ import {
   TagButton,
 } from "@/components/redesign";
 import { DocsToc } from "./DocsToc";
+import { AGON_NETWORK } from "@/lib/agon/network";
 
 export const metadata = {
   title: "Documentation | Agon",
@@ -53,7 +54,7 @@ export default function DocsPage() {
           <StatBlock label="IDENTITY" value="ERC-8004" caption="external agent ownership" />
           <StatBlock label="LISTINGS" value="VERSIONED" caption="manifest and service history" />
           <StatBlock label="PAYMENTS" value="x402" caption="direct USDC capability" />
-          <StatBlock label="NETWORK" value="ARC TESTNET" caption="chain 5042002" accent />
+          <StatBlock label="NETWORK" value={AGON_NETWORK.environment} caption={`chain ${AGON_NETWORK.chainId}`} accent />
         </div>
       </section>
 
@@ -293,7 +294,7 @@ function Status() {
   return (
     <DocSection id="status" eyebrow="CURRENT STATUS" heading="WHAT IS LIVE TODAY">
       <P>
-        The Agon foundation is deployed on Arc Testnet. Profile binding, versioned service listings, catalog reads,
+        The Agon foundation is deployed on {AGON_NETWORK.name}. Profile binding, versioned service listings, catalog reads,
         manifest validation, scoped evidence, and the review UI are implemented and covered by local tests.
       </P>
       <div className="grid gap-4 md:grid-cols-3">
@@ -302,8 +303,8 @@ function Status() {
         <Block title="NEXT GATES">Controlled testnet adapter validation, payment/provider reconciliation, escrow policy review, and a staged local release pass before any production enablement.</Block>
       </div>
       <div className="flex items-center gap-3 pt-2">
-        <StatusChip tone="ok">FOUNDATION ON ARC TESTNET</StatusChip>
-        <span className="font-mono text-[11px] text-ink-3">chain 5042002 · USDC rail</span>
+        <StatusChip tone="ok">FOUNDATION ON {AGON_NETWORK.environment} ENVIRONMENT</StatusChip>
+        <span className="font-mono text-[11px] text-ink-3">chain {AGON_NETWORK.chainId} · {AGON_NETWORK.gasAsset} rail</span>
       </div>
     </DocSection>
   );
@@ -314,7 +315,7 @@ function Resources() {
     { label: "BROWSE MARKET", href: "/market" },
     { label: "OPEN PLAYGROUND", href: "/app" },
     { label: "AGON GITHUB ↗", href: "https://github.com/Iziedking/agon" },
-    { label: "ARC EXPLORER ↗", href: "https://testnet.arcscan.app" },
+    { label: "NETWORK EXPLORER ↗", href: AGON_NETWORK.explorerUrl },
     { label: "API DOCS ↗", href: "https://api.agon.surf" },
   ];
 
@@ -322,7 +323,7 @@ function Resources() {
     <DocSection id="resources" eyebrow="RESOURCES" heading="KEEP GOING">
       <P>
         Use the market to inspect current listings, open the Playground for a local review, or read the repository
-        documentation for contracts, API routes, release gates, and the Arc Testnet runbook.
+        documentation for contracts, API routes, release gates, and the current network runbook.
       </P>
       <div className="flex flex-wrap gap-3">
         {links.map((link) => (

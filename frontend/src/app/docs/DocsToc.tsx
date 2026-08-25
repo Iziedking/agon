@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { StatusChip } from "@/components/redesign";
+import { AGON_NETWORK } from "@/lib/agon/network";
 
 /// The docs table of contents with scrollspy: as the reader scrolls, the section
 /// currently in view is highlighted in the accent color so they always see where
@@ -54,7 +55,7 @@ export function DocsToc({ items }: { items: { id: string; label: string }[] }) {
         })}
       </ul>
       <div className="mt-6">
-        <StatusChip tone="ok">LIVE ON ARC TESTNET</StatusChip>
+        <StatusChip tone="ok">{AGON_NETWORK.environment} ENVIRONMENT</StatusChip>
       </div>
     </nav>
   );
