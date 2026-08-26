@@ -15,18 +15,18 @@ export function assessX402Readiness(listing: AgonListing): X402Readiness {
     return { eligible: false, label: "BLOCKED", reason: `Listing is ${listing.status.toLowerCase()}.` };
   }
   if (listing.risk.quarantineReason) {
-    return { eligible: false, label: "BLOCKED", reason: "Agon quarantined this listing." };
+    return { eligible: false, label: "BLOCKED", reason: "This service is unavailable because a safety check failed." };
   }
   if (listing.payment.rail !== "X402" || !listing.payment.directX402) {
-    return { eligible: false, label: "BLOCKED", reason: "This listing does not declare direct x402 delivery." };
+    return { eligible: false, label: "BLOCKED", reason: "This service does not support pay-per-use delivery." };
   }
   if (listing.verification.status !== "Verified") {
-    return { eligible: false, label: "BLOCKED", reason: "Only Agon-verified listings can receive a call intent." };
+    return { eligible: false, label: "BLOCKED", reason: "This version must pass an Agon test before paid use." };
   }
   if (listing.endpointQa.status !== "passed") {
-    return { eligible: false, label: "BLOCKED", reason: "Endpoint QA has not passed for this exact version." };
+    return { eligible: false, label: "BLOCKED", reason: "The service endpoint has not passed its availability check." };
   }
-  return { eligible: true, label: "READY", reason: "Verified listing and endpoint QA passed." };
+  return { eligible: true, label: "READY", reason: "This version passed testing and its service endpoint is available." };
 }
 
 export function parseCallInput(raw: string): { input: unknown } | { error: string } {

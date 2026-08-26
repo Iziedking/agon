@@ -9,7 +9,7 @@ test("keeps preview listings fail-closed unless every x402 gate passes", () => {
   const provider = AGON_PREVIEW_LISTINGS[1];
   assert.ok(verified);
   assert.equal(assessX402Readiness(verified).eligible, true);
-  assert.match(assessX402Readiness(provider).reason, /verified/i);
+  assert.match(assessX402Readiness(provider).reason, /Agon test/i);
 });
 
 test("validates JSON object input and preserves a bounded spend cap", () => {

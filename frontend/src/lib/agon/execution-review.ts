@@ -13,10 +13,10 @@ export function formatUSDCBaseUnits(amount: string): string {
 
 export function executionReadinessLabel(status: X402ExecutionReadinessView["status"]): string {
   switch (status) {
-    case "approval_required": return "APPROVAL REQUIRED";
-    case "approved_but_disabled": return "APPROVED · ADAPTER OFF";
-    case "ready": return "APPROVED / READY";
-    case "approval_expired": return "APPROVAL EXPIRED";
+    case "approval_required": return "CONFIRMATION NEEDED";
+    case "approved_but_disabled": return "PAYMENT UNAVAILABLE";
+    case "ready": return "READY TO RUN";
+    case "approval_expired": return "CONFIRMATION EXPIRED";
   }
 }
 

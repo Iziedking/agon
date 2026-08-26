@@ -12,9 +12,9 @@ test("formats integer USDC base units without floating point math", () => {
 });
 
 test("maps readiness states to honest UI labels and tones", () => {
-  assert.equal(executionReadinessLabel("approval_required"), "APPROVAL REQUIRED");
-  assert.equal(executionReadinessLabel("approved_but_disabled"), "APPROVED · ADAPTER OFF");
-  assert.equal(executionReadinessLabel("approval_expired"), "APPROVAL EXPIRED");
+  assert.equal(executionReadinessLabel("approval_required"), "CONFIRMATION NEEDED");
+  assert.equal(executionReadinessLabel("approved_but_disabled"), "PAYMENT UNAVAILABLE");
+  assert.equal(executionReadinessLabel("approval_expired"), "CONFIRMATION EXPIRED");
   assert.equal(executionReadinessTone("approval_required"), "warn");
   assert.equal(executionReadinessTone("approved_but_disabled"), "ok");
   assert.equal(executionReadinessTone("approval_expired"), "err");
