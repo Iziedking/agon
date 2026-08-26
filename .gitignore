@@ -84,6 +84,10 @@ contracts/scripts/*
 # Local-only run guide (contains operational tips, not for distribution)
 docs/run_guide.md
 
+# Private presentation runbooks and temporary listing payloads.
+# These can contain wallet-specific IDs, operation IDs, and demo sequencing.
+docs/demo/private-*
+
 # Lepton hackathon demo runbook (script, setup, dry-run). Local only.
 lepton.md
 
