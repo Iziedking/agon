@@ -79,11 +79,12 @@ export class AgonApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(path: string, init?: RequestInit, principal?: `0x${string}`): Promise<T> {
   let response: Response;
   try {
     const headers = new Headers(init?.headers);
     if (init?.body) headers.set("content-type", "application/json");
+    if (principal) headers.set("x-agon-principal", principal);
     if (adminAuthorization) {
       headers.set("x-admin-token", adminAuthorization.token);
       headers.set("x-agon-actor", adminAuthorization.actor);
@@ -140,28 +141,29 @@ export function getAgonHealth(): Promise<AgonHealth> {
   return request<AgonHealth>("/health");
 }
 
-export function bindProfile(payload: BindProfileRequest): Promise<SubmittedOperation> {
+export function bindProfile(payload: BindProfileRequest, principal?: `0x${string}`): Promise<SubmittedOperation> {
   return request<SubmittedOperation>("/profiles/bind", {
     method: "POST",
     body: JSON.stringify(payload),
-  });
+  }, principal);
 }
 
-export function publishListing(payload: PublishListingRequest): Promise<SubmittedOperation> {
+export function publishListing(payload: PublishListingRequest, principal?: `0x${string}`): Promise<SubmittedOperation> {
   return request<SubmittedOperation>("/listings", {
     method: "POST",
     body: JSON.stringify(payload),
-  });
+  }, principal);
 }
 
 export function confirmAgonOperation(
   operationId: string,
   txHash: `0x${string}`,
+  principal?: `0x${string}`,
 ): Promise<SubmittedOperation> {
   return request<SubmittedOperation>(`/operations/${encodeURIComponent(operationId)}/confirm`, {
     method: "POST",
     body: JSON.stringify({ txHash }),
-  });
+  }, principal);
 }
 
 export function getAgonJobEscrowJob(jobId: string): Promise<AgonJobEscrowJobView> {

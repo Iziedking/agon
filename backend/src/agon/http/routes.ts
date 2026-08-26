@@ -321,6 +321,7 @@ export type CreateAgonRoutesOptions = {
   requireAuth: MiddlewareHandler<{ Variables: AgonRouteVariables }>;
   requireListingWriteAuth?: MiddlewareHandler<{ Variables: AgonRouteVariables }>;
   requireListingConfirmAuth?: MiddlewareHandler<{ Variables: AgonRouteVariables }>;
+  requirePrincipal?: MiddlewareHandler<{ Variables: AgonRouteVariables }>;
   playgroundStore?: PlaygroundRunStore;
   playgroundRateLimiter?: PlaygroundRateLimiter;
   playgroundProviderRunner?: PlaygroundProviderRunner;
@@ -587,6 +588,7 @@ function queryFromRequest(context: Context, overrides: Partial<ListingQuery> = {
 
 export function createAgonRoutes(options: CreateAgonRoutesOptions) {
   const app = new Hono<{ Variables: AgonRouteVariables }>();
+  const requirePrincipal = options.requirePrincipal ?? (async (_context, next) => { await next(); });
 
   async function consumePlaygroundLimit(context: Context<{ Variables: AgonRouteVariables }>, scope: "sample" | "evaluation") {
     if (!options.playgroundRateLimiter) return true;
@@ -1139,7 +1141,7 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
     return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
   });
 
-  app.post("/profiles/bind", options.requireListingWriteAuth ?? options.requireAuth, async (context) => {
+  app.post("/profiles/bind", options.requireListingWriteAuth ?? options.requireAuth, requirePrincipal, async (context) => {
     const body = await parseJson(context);
     if (isApiError(body)) return context.json(body, 400);
     const parsed = bindProfileSchema.safeParse(body);
@@ -1148,7 +1150,7 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
     return result.ok ? context.json(result.value, 201) : serviceErrorResponse(context, result.error);
   });
 
-  app.post("/listings", options.requireListingWriteAuth ?? options.requireAuth, async (context) => {
+  app.post("/listings", options.requireListingWriteAuth ?? options.requireAuth, requirePrincipal, async (context) => {
     const body = await parseJson(context);
     if (isApiError(body)) return context.json(body, 400);
     const parsed = publishListingSchema.safeParse(body);
@@ -1157,7 +1159,7 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
     return result.ok ? context.json(result.value, 201) : serviceErrorResponse(context, result.error);
   });
 
-  app.post("/operations/:operationId/confirm", options.requireListingConfirmAuth ?? options.requireAuth, async (context) => {
+  app.post("/operations/:operationId/confirm", options.requireListingConfirmAuth ?? options.requireAuth, requirePrincipal, async (context) => {
     const body = await parseJson(context);
     if (isApiError(body)) return context.json(body, 400);
     const parsed = confirmOperationSchema.safeParse(body);

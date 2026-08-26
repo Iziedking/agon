@@ -44,6 +44,7 @@ import { getWalletPrincipal, listWalletPrincipals, linkCircleUserControlledWalle
 import { createCircleUserControlledService } from "./circle-user-controlled.js";
 import { CLI_USER_CODE_RE, formatCliUserCode, hashCliCode, randomCliCode } from "./cli-device.js";
 import { createAgonAuthMiddleware } from "../agon/http/admin-auth.js";
+import { createAgonPrincipalMiddleware } from "../agon/http/principal-auth.js";
 import { checkEntry } from "./entryGuard.js";
 import {
   DAILY_POOL_MAX,
@@ -139,7 +140,7 @@ app.use(
     // x-admin-token is the custom header the /admin console sends. Without it
     // in allowHeaders the browser's CORS preflight rejects the request and the
     // console shows "Failed to fetch".
-    allowHeaders: ["Content-Type", "Authorization", "x-admin-token", "x-agon-actor"],
+    allowHeaders: ["Content-Type", "Authorization", "x-admin-token", "x-agon-actor", "x-agon-principal"],
     allowMethods: ["GET", "POST", "OPTIONS"],
   }),
 );
@@ -431,6 +432,9 @@ app.route("/agon", createAgonRoutes({
   requireAuth: createAgonAuthMiddleware(config.adminToken, requireAuth),
   requireListingWriteAuth: createAgonAuthMiddleware(config.adminToken, requireAgonScope("listing:write")),
   requireListingConfirmAuth: createAgonAuthMiddleware(config.adminToken, requireAgonScope("listing:confirm")),
+  requirePrincipal: createAgonPrincipalMiddleware(async (operatorAddress, requestedAddress) =>
+    Boolean(await getWalletPrincipal(operatorAddress, requestedAddress, pool)),
+  ),
   playgroundStore: agonPlaygroundStore,
   playgroundRateLimiter: new RedisPlaygroundRateLimiter(redis),
   playgroundProviderRunner: agonPlaygroundProviderRunner,

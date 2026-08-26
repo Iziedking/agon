@@ -29,8 +29,8 @@ import { AGON_IDENTITY_REGISTRY, agonIdentityRegistryAbi, identityIdFromRegistra
 const INPUT_CLASS = "h-12 w-full border border-[color:var(--hairline-strong)] bg-canvas px-4 font-mono text-[12px] text-ink outline-none placeholder:text-ink-3 focus:border-ink focus:ring-2 focus:ring-ink focus:ring-offset-2 focus:ring-offset-canvas disabled:opacity-50";
 
 export default function NewListingPage() {
-  const { address, isSignedIn, settling } = useOperatorAddress();
-  const { writeContractAsync } = useArcWrite();
+  const { isSignedIn, settling } = useOperatorAddress();
+  const { writeContractAsync, signerAddress: address } = useArcWrite();
   const [capabilities, setCapabilities] = useState<AgonCapabilities | null>(null);
   const [agentId, setAgentId] = useState("");
   const [metadataUri, setMetadataUri] = useState("");
@@ -104,10 +104,14 @@ export default function NewListingPage() {
   const readyToPublish = Boolean(isSignedIn && serviceKey && manifestHash && manifestUriValid && !listingWritesUnavailable);
 
   async function submitBinding() {
+    if (!address) {
+      setNotice({ tone: "error", message: "Choose the wallet that owns this identity before binding it." });
+      return;
+    }
     setNotice(null);
     setBinding(true);
     try {
-      const operation = await bindProfile({ chainId: AGON_NETWORK.chainId, agentId, metadataUri });
+      const operation = await bindProfile({ chainId: AGON_NETWORK.chainId, agentId, metadataUri }, address);
       if (operation.state === "confirmed") {
         setNotice({ tone: "ok", message: `This identity binding is already confirmed${operation.proof ? ` in block ${operation.proof.blockNumber}` : ""}.` });
         return;
@@ -125,7 +129,7 @@ export default function NewListingPage() {
       });
       await confirmTx(hash);
       setPendingConfirmation({ operationId: operation.operationId, txHash: hash, label: "identity binding" });
-      const confirmed = await confirmAgonOperation(operation.operationId, hash);
+      const confirmed = await confirmAgonOperation(operation.operationId, hash, address);
       setPendingConfirmation(null);
       setNotice({ tone: "ok", message: `Identity binding confirmed in block ${confirmed.proof?.blockNumber ?? "unknown"}.` });
     } catch (error) {
@@ -163,6 +167,10 @@ export default function NewListingPage() {
   async function submitListing(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setNotice(null);
+    if (!address) {
+      setNotice({ tone: "error", message: "Choose the wallet that owns this identity before publishing." });
+      return;
+    }
     if (!serviceKey || !manifestHash || !manifestUriValid) {
       setNotice({ tone: "error", message: "Complete the service details and provide the permanent URL for this exact manifest." });
       return;
@@ -177,7 +185,7 @@ export default function NewListingPage() {
         manifestUri: manifestUri.trim(),
         category: categoryId,
         paymentRail,
-      });
+      }, address);
       if (operation.state === "confirmed") {
         setNotice({ tone: "ok", message: `This service is already published${operation.resultReference ? `: ${operation.resultReference}` : "."} It remains Not yet tested until this version passes an Agon review.` });
         return;
@@ -202,7 +210,7 @@ export default function NewListingPage() {
       });
       await confirmTx(hash);
       setPendingConfirmation({ operationId: operation.operationId, txHash: hash, label: "listing publication" });
-      const confirmed = await confirmAgonOperation(operation.operationId, hash);
+      const confirmed = await confirmAgonOperation(operation.operationId, hash, address);
       setPendingConfirmation(null);
       setNotice({
         tone: "ok",
@@ -217,11 +225,16 @@ export default function NewListingPage() {
 
   async function retryReceiptConfirmation() {
     if (!pendingConfirmation) return;
+    if (!address) {
+      setNotice({ tone: "error", message: "Reconnect the wallet that signed this transaction before checking its receipt." });
+      return;
+    }
     setNotice({ tone: "warn", message: `Checking the ${pendingConfirmation.label} receipt again...` });
     try {
       const confirmed = await confirmAgonOperation(
         pendingConfirmation.operationId,
         pendingConfirmation.txHash,
+        address,
       );
       setPendingConfirmation(null);
       setNotice({
