@@ -64,6 +64,16 @@ ws.agon.surf {
 # Portable Agent Memory (the Agent-QA repo) deploys its own containers on this
 # compose project's default network and borrows this Caddy as its ingress.
 agentsqa.xyz {
+	# Free, read-only AGON challenge calls execute inside the memory provider.
+	handle /agon/v1/* {
+		reverse_proxy agentqa-memory:4000
+	}
+
+	# The immutable AGON listing manifest is owned by the seller service.
+	handle /agon/manifest.json {
+		reverse_proxy agentqa-pay:9100
+	}
+
 	# The paid lane: OKX marketplace buyers pay here and agentqa-pay forwards to
 	# the app once payment clears. Listed first because Caddy matches the most
 	# specific handle, and the free console must not end up behind the paywall.
