@@ -260,8 +260,8 @@ export function reconcileAgonPrizeClaim(intentId: string): Promise<AgonPrizeClai
   return request<AgonPrizeClaimView>(`/prize-claims/${encodeURIComponent(intentId)}/reconcile`, { method: "POST" });
 }
 
-export function getPlaygroundCategories(): Promise<{ agent: string; categories: AgonPlaygroundCategory[] }> {
-  return request<{ agent: string; categories: AgonPlaygroundCategory[] }>("/playground/categories");
+export function getPlaygroundCategories(): Promise<{ agent: string; categories: AgonPlaygroundCategory[]; providerScopes: string[] }> {
+  return request<{ agent: string; categories: AgonPlaygroundCategory[]; providerScopes: string[] }>("/playground/categories");
 }
 
 export function runPlaygroundTask(category: AgonPlaygroundCategory["slug"], taskId: string, input?: unknown): Promise<AgonPlaygroundRun> {

@@ -7,6 +7,8 @@ commands.
 ## Product and operations
 
 - [AGON.md](AGON.md): product model, protocol boundaries, and release status.
+- [ROADMAP.md](ROADMAP.md): current delivery priorities and measurable later-stage product goals.
+- [demo/two-agent-live.md](demo/two-agent-live.md): real two-provider listing, Playground, Arena, and optional payment proof.
 - [ops/agon-arc-testnet-deploy.md](ops/agon-arc-testnet-deploy.md): the Arc
   Testnet deployment runbook.
 - [CIRCLE.md](CIRCLE.md): Circle and USDC integration notes. Treat its

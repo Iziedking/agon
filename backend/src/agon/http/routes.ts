@@ -1,6 +1,7 @@
 import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { randomUUID } from "node:crypto";
 import { listPlaygroundCategories, runPlaygroundTask, PlaygroundError } from "../playground.ts";
+import { PlaygroundProviderError, type PlaygroundProviderRunner } from "../playground-provider.ts";
 import { PlaygroundRunConflictError, type PlaygroundRateLimiter, type PlaygroundRunStore } from "../playground-store.ts";
 import { z, type ZodError } from "zod";
 import type { Result } from "../core/result.ts";
@@ -322,6 +323,7 @@ export type CreateAgonRoutesOptions = {
   requireListingConfirmAuth?: MiddlewareHandler<{ Variables: AgonRouteVariables }>;
   playgroundStore?: PlaygroundRunStore;
   playgroundRateLimiter?: PlaygroundRateLimiter;
+  playgroundProviderRunner?: PlaygroundProviderRunner;
 };
 
 const positiveDecimal = z.string().regex(/^[1-9]\d*$/, "must be a positive decimal string");
@@ -462,6 +464,13 @@ const agonPrizeClaimSchema = z.object({
 const agonSyndicatePrizeSubmittedSchema = z.object({ transactionHash: bytes32 }).strict();
 
 const playgroundCategorySchema = z.enum(["development", "research", "analysis", "verification", "execution"]);
+const playgroundCategoryId = {
+  research: "1",
+  analysis: "3",
+  execution: "5",
+  development: "7",
+  verification: "8",
+} as const;
 const playgroundTaskSchema = z.object({
   category: playgroundCategorySchema,
   taskId: z.string().regex(/^[a-z0-9-]{1,64}$/),
@@ -592,7 +601,11 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
     return true;
   }
 
-  app.get("/playground/categories", (context) => context.json({ agent: "agon-coder-v1", categories: listPlaygroundCategories() }));
+  app.get("/playground/categories", (context) => context.json({
+    agent: "agon-coder-v1",
+    categories: listPlaygroundCategories(),
+    providerScopes: options.playgroundProviderRunner?.scopes() ?? [],
+  }));
 
   app.post("/playground/run", async (context) => {
     if (!(await consumePlaygroundLimit(context, "sample"))) {
@@ -628,6 +641,18 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
     if (listing.value.version !== parsed.data.listingVersion) {
       return context.json({ error: { code: "validation_failed", message: "evaluation scope does not match the current listing version" } }, 422);
     }
+    if (listing.value.category !== playgroundCategoryId[parsed.data.category]) {
+      return context.json({ error: { code: "validation_failed", message: "the selected challenge category does not match this listing" } }, 422);
+    }
+    const provider = {
+      agentId: listing.value.agentId,
+      serviceKey: listing.value.serviceKey,
+      listingReference: parsed.data.listingReference,
+      listingVersion: parsed.data.listingVersion,
+    };
+    if (!options.playgroundProviderRunner?.supports(provider)) {
+      return context.json({ error: { code: "provider_not_enabled", message: "This listing does not yet have an approved live Playground endpoint." } }, 409);
+    }
     try {
       const result = await runPlaygroundTask(
         { category: parsed.data.category, taskId: parsed.data.taskId, input: parsed.data.input },
@@ -637,6 +662,11 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
           idempotencyKey: parsed.data.idempotencyKey,
           scope: { listingReference: parsed.data.listingReference, listingVersion: parsed.data.listingVersion },
           store: options.playgroundStore,
+          execute: (task, input) => options.playgroundProviderRunner!.run({
+            provider,
+            task,
+            taskInput: input,
+          }),
         },
       );
       return context.json(result, result.replayed ? 200 : 201);
@@ -644,6 +674,10 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
       if (cause instanceof PlaygroundRunConflictError) return context.json({ error: { code: "idempotency_conflict", message: cause.message } }, 409);
       if (cause instanceof PlaygroundError) {
         const status = cause.code === "run_in_progress" || cause.code === "run_failed" ? 409 : 400;
+        return context.json({ error: { code: cause.code, message: cause.message } }, status);
+      }
+      if (cause instanceof PlaygroundProviderError) {
+        const status = cause.code === "provider_not_enabled" || cause.code === "provider_task_unsupported" ? 409 : 502;
         return context.json({ error: { code: cause.code, message: cause.message } }, status);
       }
       return context.json({ error: { code: "playground_failed", message: "The evaluation did not complete." } }, 500);

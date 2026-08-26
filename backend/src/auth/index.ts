@@ -28,6 +28,7 @@ import { inspectAgonProtocolReadiness } from "../agon/protocol-readiness.ts";
 import { createViemAgonJobEscrowReadAdapter, type AgonJobEscrowReadClient } from "../agon/execution/agon-job-escrow.ts";
 import { createViemAgonProtocolFinalityReader, type AgonProtocolFinalityClient } from "../agon/execution/protocol-finality.ts";
 import { PostgresPlaygroundRunStore, RedisPlaygroundRateLimiter } from "../agon/playground-store.ts";
+import { createHttpPlaygroundProviderRunner } from "../agon/playground-provider.ts";
 import { PostgresAgonOperationStore } from "../agon/write/repository.js";
 import { CachedAgonReadiness } from "../agon/write/readiness.js";
 import { ViemAgonWriteAdapter } from "../agon/write/adapter.js";
@@ -386,6 +387,7 @@ const agonEscrowProductionReadiness = () => evaluateAgonEscrowProductionReadines
   providerFinalityConfigured: false,
 });
 const agonPlaygroundStore = new PostgresPlaygroundRunStore(pool);
+const agonPlaygroundProviderRunner = createHttpPlaygroundProviderRunner(config.agon.playground.providerEndpoints);
 const agonService = new PostgresAgonMarketService(agonRepository, {
   writer: agonWriter,
   x402ExecutionEnabled: config.agon.x402.executionEnabled,
@@ -431,6 +433,7 @@ app.route("/agon", createAgonRoutes({
   requireListingConfirmAuth: createAgonAuthMiddleware(config.adminToken, requireAgonScope("listing:confirm")),
   playgroundStore: agonPlaygroundStore,
   playgroundRateLimiter: new RedisPlaygroundRateLimiter(redis),
+  playgroundProviderRunner: agonPlaygroundProviderRunner,
 }));
 
 // ----- SIWE wallet login -----

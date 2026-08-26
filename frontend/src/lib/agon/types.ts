@@ -174,7 +174,13 @@ export type AgonPlaygroundRun = {
     validationRequestHash: `0x${string}`;
     evaluatorVersionHash: `0x${string}`;
   };
-  provenance: { execution: "real_agent_runtime"; chainId: number | null; blockNumber: string | null; externalWrites: false };
+  provenance: {
+    execution: "agon_builtin" | "listed_provider";
+    chainId: number | null;
+    blockNumber: string | null;
+    externalWrites: false;
+    providerHost: string | null;
+  };
   scope?: { listingReference: string; listingVersion: string } | null;
 };
 

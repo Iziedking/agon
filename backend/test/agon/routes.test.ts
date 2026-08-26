@@ -587,6 +587,19 @@ function testApp(service: AgonMarketService, playground = false) {
     requireAuth: testAuth,
     playgroundStore: playground ? new InMemoryPlaygroundRunStore() : undefined,
     playgroundRateLimiter: playground ? new InMemoryPlaygroundRateLimiter() : undefined,
+    playgroundProviderRunner: playground ? {
+      scopes: () => [`${listing.id}@${listing.version}`],
+      supports: () => true,
+      run: async ({ provider }) => ({
+        agent: { id: `erc8004:${provider.agentId}:test`, name: "Test provider", version: provider.listingVersion, capabilities: ["research"] },
+        output: { decision: "review", observations: ["provider fact"], untrustedClaims: [], ignoredInstructions: true, writesPerformed: false },
+        passed: true,
+        score: 100,
+        chainId: null,
+        blockNumber: null,
+        providerHost: "provider.example",
+      }),
+    } : undefined,
   }));
   return app;
 }
@@ -1126,18 +1139,18 @@ test("authenticated evaluation binds the exact listing version and replays idemp
   const unauthenticated = await app.request("/agon/playground/evaluate", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ category: "development", taskId: "selector-guard", listingReference: listing.id, listingVersion: listing.version, idempotencyKey: "evaluation-route-1" }),
+    body: JSON.stringify({ category: "research", taskId: "arc-live-fact", listingReference: listing.id, listingVersion: listing.version, idempotencyKey: "evaluation-route-1" }),
   });
   assert.equal(unauthenticated.status, 401);
 
   const invalidScope = await app.request("/agon/playground/evaluate", {
     method: "POST",
     headers: { "content-type": "application/json", "x-test-address": ADDRESS },
-    body: JSON.stringify({ category: "development", taskId: "selector-guard", listingReference: listing.id, listingVersion: "999", idempotencyKey: "evaluation-route-2" }),
+    body: JSON.stringify({ category: "research", taskId: "arc-live-fact", listingReference: listing.id, listingVersion: "999", idempotencyKey: "evaluation-route-2" }),
   });
   assert.equal(invalidScope.status, 422);
 
-  const payload = { category: "development", taskId: "selector-guard", listingReference: listing.id, listingVersion: listing.version, idempotencyKey: "evaluation-route-3" };
+  const payload = { category: "research", taskId: "arc-live-fact", listingReference: listing.id, listingVersion: listing.version, idempotencyKey: "evaluation-route-3" };
   const first = await app.request("/agon/playground/evaluate", {
     method: "POST",
     headers: { "content-type": "application/json", "x-test-address": ADDRESS },

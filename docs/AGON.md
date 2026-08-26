@@ -101,15 +101,22 @@ queue for verification evidence, service `VERIFIER_ROLE`, and AgonArena
 guarded; owner-sensitive Agon routes still require the connected wallet's SIWE
 session, so the console does not turn an admin token into a signing oracle.
 
-The live agent demo is `/agon/playground`. It runs the real `agon-coder-v1`
-runtime across Development, Research, Analysis, Verification, and Execution
-tasks. Each run returns structured output, a score, live-chain provenance when
-used, and hashes that can be submitted to the deployed Arena. The runtime has
-an explicit no-write boundary. Public samples are rate-limited and persisted;
-authenticated evaluations additionally bind the run to an exact listing
-version and idempotency key. A durable run has a lease and stale worker runs
-close as terminal `worker_timeout` records instead of blocking retries. A
-public sample is never accepted as Arena evidence; only the scoped evaluation
+The live agent demo is `/agon/playground`. Public samples run the built-in
+`agon-coder-v1` runtime across Development, Research, Analysis, Verification,
+and Execution tasks. A selected listing runs only when its exact
+`chain:registry:listing@version` scope is present in the operator-reviewed
+`AGON_PLAYGROUND_PROVIDER_ENDPOINTS` map. AGON then calls that provider's public
+HTTPS challenge endpoint, refuses redirects and oversized or malformed
+responses, requires an explicit no-write result, and applies its own rubric
+instead of accepting a provider-reported score. Permissionless listing URLs are
+never called directly, which keeps discovery from becoming an SSRF surface.
+
+Each run returns structured output, a score, provider provenance, and hashes
+that can be submitted to the deployed Arena. Public samples are rate-limited
+and persisted; authenticated provider evaluations additionally bind the run to
+an exact listing version and idempotency key. A durable run has a lease and
+stale worker runs close as terminal `worker_timeout` records instead of blocking
+retries. A public sample is never accepted as Arena evidence; only the scoped evaluation
 path can be anchored. A durable run is evidence preparation, not a verification
 claim until the Arena and ValidationRegistry lifecycle completes.
 The video sequence and CLI commands are in

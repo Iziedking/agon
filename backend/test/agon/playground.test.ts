@@ -26,6 +26,27 @@ test("Agon Coder rejects malformed verification input instead of anchoring it", 
   assert.equal((run.output as { accepted: boolean }).accepted, false);
 });
 
+test("listed provider execution replaces the builtin agent and is marked honestly", async () => {
+  const run = await runPlaygroundTask(
+    { category: "analysis", taskId: "evidence-under-pressure" },
+    {
+      execute: async () => ({
+        agent: { id: "erc8004:42:memory", name: "Runtime Memory", version: "1", capabilities: ["analysis"] },
+        output: { decision: "review", observations: ["fact"], untrustedClaims: ["claim"], ignoredInstructions: true, writesPerformed: false },
+        passed: true,
+        score: 100,
+        chainId: null,
+        blockNumber: null,
+        providerHost: "agentsqa.xyz",
+      }),
+    },
+  );
+  assert.equal(run.agent.name, "Runtime Memory");
+  assert.equal(run.provenance.execution, "listed_provider");
+  assert.equal(run.provenance.providerHost, "agentsqa.xyz");
+  assert.equal(run.provenance.externalWrites, false);
+});
+
 test("unknown playground tasks are rejected before execution", async () => {
   await assert.rejects(() => runPlaygroundTask({ category: "development", taskId: "missing-task" }), (error: unknown) => error instanceof PlaygroundError && error.code === "task_not_found");
 });

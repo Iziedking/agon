@@ -28,6 +28,18 @@ function isCommaSeparatedUrls(s: string): boolean {
   });
 }
 
+function parsePlaygroundProviderEndpoints(value: string): Record<string, string> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new Error("AGON_PLAYGROUND_PROVIDER_ENDPOINTS must be a JSON object");
+  }
+  const result = z.record(z.string().min(1)).safeParse(parsed);
+  if (!result.success) throw new Error("AGON_PLAYGROUND_PROVIDER_ENDPOINTS must map service keys to HTTPS endpoints");
+  return result.data;
+}
+
 const envSchema = z.object({
   DATABASE_URL: z.string().url(),
   REDIS_URL: z.string().url(),
@@ -67,6 +79,10 @@ const envSchema = z.object({
   AGON_ESCROW_CONTROLLER_ADDRESS: z.string().regex(/^0x[a-fA-F0-9]{40}$/, "expected an escrow controller address").optional(),
   AGON_ESCROW_MAX_POOL_BASE_UNITS: z.string().regex(/^(0|[1-9]\d*)$/).default("0"),
   AGON_SYNDICATE_PRIZE_POOL_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
+  // Only operator-reviewed provider challenge endpoints are callable from the
+  // Playground. A static map avoids turning permissionless listing URLs into an
+  // SSRF primitive. Keys pin chain:registry:listing@version to one endpoint.
+  AGON_PLAYGROUND_PROVIDER_ENDPOINTS: z.string().default("{}"),
 
   // Auth service
   JWT_SECRET: z.string().default("dev-insecure-secret-change-me"),
@@ -692,6 +708,9 @@ export const config = {
       asset: "0x3600000000000000000000000000000000000000" as const,
       maxPoolBaseUnits: BigInt(env.AGON_ESCROW_MAX_POOL_BASE_UNITS),
       syndicatePrizePoolEnabled: env.AGON_SYNDICATE_PRIZE_POOL_ENABLED,
+    },
+    playground: {
+      providerEndpoints: parsePlaygroundProviderEndpoints(env.AGON_PLAYGROUND_PROVIDER_ENDPOINTS),
     },
   },
   adminToken: env.ADMIN_TOKEN,
