@@ -53,13 +53,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ThemeScript />
       </head>
       <body>
-        <BodyLines />
+        {IS_AGON_DEPLOYMENT ? null : <BodyLines />}
         <Providers>
           <ChainGuard />
           {children}
           {IS_AGON_DEPLOYMENT ? null : <SideRail />}
           {IS_AGON_DEPLOYMENT ? null : <WinWatcher />}
-          <FeedbackPin />
+          {IS_AGON_DEPLOYMENT ? null : <FeedbackPin />}
         </Providers>
         <ErrorReporter />
       </body>

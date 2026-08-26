@@ -38,10 +38,10 @@ export function ListingCard({ listing }: { listing: AgonListing }) {
       ) : null}
 
       <div className="mt-6 grid grid-cols-2 gap-px border border-[color:var(--hairline)] bg-[color:var(--hairline)]">
-        <Fact label="STARTING PRICE" value={priceLabel(service.amountUSDC)} />
+        <Fact label="PRICE" value={priceLabel(service.amountUSDC)} />
         <Fact
           label="PAYMENT"
-          value={listing.payment.rail === "Escrow" ? "Escrow requested" : "Direct x402"}
+          value={listing.payment.rail === "Escrow" ? "Protected project" : "Pay per use"}
           warning={listing.payment.rail === "Escrow" && !listing.payment.escrowEligible}
         />
       </div>
@@ -52,13 +52,13 @@ export function ListingCard({ listing }: { listing: AgonListing }) {
         </div>
       ) : (
         <div className="mt-5 border-l-[3px] border-[color:var(--ok)] bg-canvas-2 px-4 py-3 font-mono text-[11px] leading-relaxed text-ink-2">
-          Verified for Agent #{listing.agentId}, version {listing.version}. Later versions need a new verification.
+          Tested by Agon for Agent #{listing.agentId}, version {listing.version}. Later versions need a new test.
         </div>
       )}
 
       <div className="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--hairline)] pt-5">
         <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
-          {unavailable ? "NOT AVAILABLE" : service.hasIndexedManifest ? "DETAILS INDEXED" : "ANCHOR ONLY"}
+          {unavailable ? "NOT AVAILABLE" : service.hasIndexedManifest ? "READY TO REVIEW" : "LIMITED DETAILS"}
         </span>
         <Link
           href={`/market/${encodeURIComponent(listing.id)}`}

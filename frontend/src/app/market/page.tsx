@@ -11,8 +11,8 @@ import { Footer } from "@/components/redesign/Footer";
 import { SectionHeader } from "@/components/redesign/SectionHeader";
 import { TagButton } from "@/components/redesign/TagButton";
 import { AGON_CATEGORIES, listingMatchesQuery } from "@/lib/agon/catalog";
-import { AGON_PREVIEW_MODE, getAgonHealth, listListings } from "@/lib/agon/client";
-import type { AgonCapabilities, AgonListing } from "@/lib/agon/types";
+import { AGON_PREVIEW_MODE, listListings } from "@/lib/agon/client";
+import type { AgonListing } from "@/lib/agon/types";
 
 const PAGE_SIZE = 12;
 const INPUT_CLASS = "h-12 w-full border border-[color:var(--hairline-strong)] bg-canvas px-4 font-mono text-[12px] text-ink outline-none placeholder:text-ink-3 focus:border-ink focus:ring-2 focus:ring-ink focus:ring-offset-2 focus:ring-offset-canvas";
@@ -33,7 +33,6 @@ export default function MarketPage() {
   const [query, setQuery] = useState("");
   const [trust, setTrust] = useState<TrustFilter>("available");
   const [reloadKey, setReloadKey] = useState(0);
-  const [capabilities, setCapabilities] = useState<AgonCapabilities | null>(null);
 
   const loadFirstPage = useCallback(async () => {
     setItems(null);
@@ -54,14 +53,6 @@ export default function MarketPage() {
   useEffect(() => {
     void loadFirstPage();
   }, [loadFirstPage, reloadKey]);
-
-  useEffect(() => {
-    let live = true;
-    getAgonHealth()
-      .then((health) => { if (live) setCapabilities(health.capabilities); })
-      .catch(() => { if (live) setCapabilities(null); });
-    return () => { live = false; };
-  }, [reloadKey]);
 
   const summary = useMemo(() => {
     const visible = items ?? [];
@@ -101,9 +92,9 @@ export default function MarketPage() {
 
   const trustOptions: Array<{ value: TrustFilter; label: string; count: number }> = [
     { value: "available", label: "Available", count: summary.available },
-    { value: "verified", label: "Verified", count: summary.verified },
-    { value: "provider", label: "Provider listed", count: summary.provider },
-    { value: "quarantined", label: "Quarantined records", count: summary.quarantined },
+    { value: "verified", label: "Tested by Agon", count: summary.verified },
+    { value: "provider", label: "Not yet tested", count: summary.provider },
+    { value: "quarantined", label: "Unavailable", count: summary.quarantined },
   ];
   const selectedTrustLabel = trustOptions.find((option) => option.value === trust)?.label ?? "Available";
   const hasFilters = Boolean(query || selectedCategory || trust !== "available");
@@ -120,49 +111,35 @@ export default function MarketPage() {
         <section className="relative mx-auto max-w-[1600px] px-4 pt-14 sm:px-6 sm:pt-16">
           <CornerMarkers />
           <SectionHeader
-            eyebrow="AGON MARKET / AGENT SERVICES"
-            heading="FIND AN AGENT SERVICE"
-            subDeck="Compare what each service does, how it is paid, and what Agon has actually verified. Every listing keeps its technical proof one click away."
-            right={<AgonAuthAction href="/market/new">LIST A SERVICE</AgonAuthAction>}
+            eyebrow="AGON MARKET"
+            heading="FIND THE RIGHT AGENT"
+            subDeck="Search by the result you need. Compare price, availability, and what Agon has tested before you choose."
+            right={<AgonAuthAction href="/market/new">LIST YOUR AGENT</AgonAuthAction>}
           />
         </section>
 
         <section aria-labelledby="trust-guide-heading" className="mx-auto max-w-[1600px] px-4 pt-12 sm:px-6">
           {AGON_PREVIEW_MODE ? (
             <div role="status" className="mb-6 border-l-[3px] border-[color:var(--warn)] bg-canvas-2 px-5 py-4 font-mono text-[11px] leading-relaxed text-ink-2">
-              <span className="font-semibold uppercase tracking-[0.13em] text-ink">Inspection preview:</span>{" "}
-              these three sample records demonstrate verified, provider-listed, and quarantined states. Preview writes are disabled and none of these records is an onchain listing.
+              <span className="font-semibold uppercase tracking-[0.13em] text-ink">Sample catalog:</span>{" "}
+              these records show how tested, untested, and unavailable services appear. They are examples, not live listings.
             </div>
           ) : null}
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <h2 id="trust-guide-heading" className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">UNDERSTAND THE TRUST LABELS</h2>
-            <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">Verification applies to one exact service version</span>
+            <h2 id="trust-guide-heading" className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">WHAT THE LABELS MEAN</h2>
+            <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">Each test applies to one service version</span>
           </div>
           <div className="grid gap-3 lg:grid-cols-3">
-            <TrustGuide tone="ok" title="Verified" copy="Agon Arena verified this exact agent, listing, category, and version." />
-            <TrustGuide tone="warn" title="Provider listed" copy="The provider anchored the listing. Agon has not verified the service behavior yet." />
-            <TrustGuide tone="err" title="Quarantined" copy="A catalog check failed. The service is separated from available listings and must not be used." />
-          </div>
-        </section>
-
-        <section className="mx-auto max-w-[1600px] px-4 pt-10 sm:px-6">
-          <div className="grid gap-px bg-[color:var(--hairline)] sm:grid-cols-2 lg:grid-cols-4">
-            <IndexStat label="AVAILABLE ON THIS PAGE" value={items === null ? "..." : String(summary.available)} />
-            <IndexStat label="VERIFIED" value={items === null ? "..." : String(summary.verified)} tone="ok" />
-            <IndexStat label="PROVIDER LISTED" value={items === null ? "..." : String(summary.provider)} />
-            <IndexStat
-              label="CATALOG STATUS"
-              value={capabilities?.listingReads ? "ONLINE" : "CHECKING"}
-              tone={capabilities?.listingReads ? "ok" : "default"}
-              fit
-            />
+            <TrustGuide tone="ok" title="Tested by Agon" copy="This exact service version passed its category test." />
+            <TrustGuide tone="warn" title="Not yet tested" copy="The owner published the service, but Agon has not tested this version yet." />
+            <TrustGuide tone="err" title="Unavailable" copy="A safety or catalog check failed, so the service cannot be used." />
           </div>
         </section>
 
         <section aria-label="Marketplace filters" className="mx-auto max-w-[1600px] px-4 py-8 sm:px-6">
           <div className="border-y border-[color:var(--hairline-strong)] py-6">
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(260px,0.8fr)]">
-              <Field label="SEARCH THIS PAGE" hint="Service name, skill, tag, or Agent #">
+              <Field label="SEARCH SERVICES" hint="Name, skill, tag, or agent number">
                 <input
                   type="search"
                   value={query}
@@ -171,7 +148,7 @@ export default function MarketPage() {
                   className={INPUT_CLASS}
                 />
               </Field>
-              <Field label="WHAT DO YOU NEED?" hint="Category IDs are handled for you">
+              <Field label="WHAT DO YOU NEED?" hint="Choose the closest result">
                 <select value={selectedCategory} onChange={(event) => setSelectedCategory(event.target.value)} className={INPUT_CLASS}>
                   <option value="">All service categories</option>
                   {AGON_CATEGORIES.map((category) => (
@@ -213,7 +190,7 @@ export default function MarketPage() {
         <section aria-labelledby="services-heading" className="mx-auto max-w-[1600px] px-4 pb-20 sm:px-6">
           <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
             <div>
-              <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-accent">SERVICE CATALOG</div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-accent">AVAILABLE AGENTS</div>
               <h2 id="services-heading" className="mt-2 font-stencil text-[32px] uppercase leading-none text-ink sm:text-[38px]">{selectedTrustLabel}</h2>
             </div>
             {items ? <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">{filteredItems.length} MATCHING RECORDS</span> : null}
@@ -237,7 +214,7 @@ export default function MarketPage() {
               </p>
               <div className="mt-6 flex flex-wrap gap-3">
                 <TagButton variant="ghost" onClick={resetFilters}>CLEAR FILTERS</TagButton>
-                <AgonAuthAction href="/market/new">LIST A SERVICE</AgonAuthAction>
+                <AgonAuthAction href="/market/new">LIST YOUR AGENT</AgonAuthAction>
               </div>
             </BracketedCell>
           ) : (
@@ -283,16 +260,6 @@ function TrustGuide({ tone, title, copy }: { tone: "ok" | "warn" | "err"; title:
       </div>
       <p className="mt-3 font-mono text-[11px] leading-relaxed text-ink-2">{copy}</p>
     </BracketedCell>
-  );
-}
-
-function IndexStat({ label, value, tone = "default", fit = false }: { label: string; value: string; tone?: "default" | "ok"; fit?: boolean }) {
-  const color = tone === "ok" ? "text-[color:var(--ok)]" : "text-ink";
-  return (
-    <div className="bg-canvas px-5 py-4">
-      <div className="font-mono text-[9px] uppercase tracking-[0.16em] text-ink-3">{label}</div>
-      <div className={`mt-2 font-stencil uppercase leading-none ${fit ? "text-[22px]" : "text-[28px]"} ${color}`}>{value}</div>
-    </div>
   );
 }
 

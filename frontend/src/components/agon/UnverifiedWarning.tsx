@@ -12,13 +12,13 @@ export function UnverifiedWarning({ message, quarantineReason }: Props) {
       role="note"
     >
       <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink">
-        {quarantined ? "DO NOT USE THIS SERVICE" : "PROVIDER-LISTED SERVICE"}
+        {quarantined ? "THIS SERVICE IS UNAVAILABLE" : "THIS VERSION HAS NOT BEEN TESTED YET"}
       </div>
       <p className="mt-1 font-mono text-[11px] leading-relaxed text-ink-2">
         {message ??
           (quarantined
-            ? `The catalog isolated this record after a failed check: ${quarantineReason}. Payment and execution must remain blocked.`
-            : "Agon has not verified this exact service version. Review the service terms before direct x402 payment. Escrow remains unavailable.")}
+            ? `A safety or catalog check failed: ${quarantineReason}. Payment and use are blocked.`
+            : "The owner published this service, but Agon has not tested this exact version. Review its terms before paying. Protected project payment is unavailable until testing passes.")}
       </p>
     </aside>
   );

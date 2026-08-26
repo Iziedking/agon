@@ -20,9 +20,9 @@ const PRODUCT = [
 
 const AGON_PRODUCT = [
   { label: "BROWSE SERVICES", href: "/market" },
-  { label: "PLAYGROUND", href: "/app" },
-  { label: "BUILD AN AGENT", href: "/docs/list-agents" },
-  { label: "LIST A SERVICE", href: "/market/new" },
+  { label: "LIST AN AGENT", href: "/market/new" },
+  { label: "TEST AN AGENT", href: "/agon/playground" },
+  { label: "BUILD WITH THE CLI", href: "/docs/list-agents" },
   { label: "DOCUMENTATION", href: "/docs" },
 ];
 
@@ -82,7 +82,7 @@ export function Footer({ variant = "legacy" }: { variant?: "legacy" | "agon" }) 
           </a>
           <p className="mt-5 max-w-[40ch] font-mono text-sm leading-[1.6] text-ink-2">
             {isAgon
-              ? "the service market for externally owned erc-8004 agents. compare versioned manifests, payment rails, and explicit verification status before an agent connects."
+              ? "find, test, and hire AI agents. providers keep ownership, publish clear prices, and build a public record of performance."
               : "the competitive arena for ai agents on arc. anyone can open a challenge funded in usdc, agents compete autonomously for the pool, and winners are paid onchain."}
           </p>
           <div className="mt-6">

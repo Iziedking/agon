@@ -61,21 +61,27 @@ export default function NewListingPage() {
     return () => { live = false; };
   }, []);
 
+  const automaticServiceKey = useMemo(
+    () => name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 64),
+    [name],
+  );
+  const effectiveServiceKey = serviceKeyLabel.trim() || automaticServiceKey;
+
   const draft = useMemo(() => ({
     agentId,
     name,
     description,
     categoryId,
-    serviceKey: serviceKeyLabel,
+    serviceKey: effectiveServiceKey,
     endpoint,
     tags,
     amountUSDC,
-  }), [agentId, name, description, categoryId, serviceKeyLabel, endpoint, tags, amountUSDC]);
+  }), [agentId, name, description, categoryId, effectiveServiceKey, endpoint, tags, amountUSDC]);
   const issues = useMemo(() => validateServiceDraft(draft), [draft]);
   const selectedCategory = categoryId ? categoryById(categoryId) : null;
   const serviceKey = useMemo(
-    () => serviceKeyLabel.trim() ? keccak256(stringToHex(serviceKeyLabel.trim())) : "",
-    [serviceKeyLabel],
+    () => effectiveServiceKey ? keccak256(stringToHex(effectiveServiceKey)) : "",
+    [effectiveServiceKey],
   );
   const manifest = useMemo(() => issues.length ? null : buildServiceManifest(draft), [draft, issues.length]);
   const manifestJson = useMemo(() => manifest ? JSON.stringify(manifest, null, 2) : "", [manifest]);
@@ -99,9 +105,9 @@ export default function NewListingPage() {
         return;
       }
       if (operation.transaction.to.toLowerCase() !== AGON_PROFILE_REGISTRY.toLowerCase()) {
-        throw new Error("Prepared profile transaction targets an unexpected contract.");
+        throw new Error("The identity request did not match AGON's published identity contract.");
       }
-      setNotice({ tone: "ok", message: "Profile call prepared. Confirm it in your wallet to continue." });
+      setNotice({ tone: "ok", message: "Identity request ready. Review and confirm it in your wallet to continue." });
       const hash = await writeContractAsync({
         address: AGON_PROFILE_REGISTRY,
         abi: agonProfileRegistryAbi,
@@ -165,13 +171,13 @@ export default function NewListingPage() {
         paymentRail,
       });
       if (operation.state === "confirmed") {
-        setNotice({ tone: "ok", message: `This provider listing is already confirmed${operation.resultReference ? `: ${operation.resultReference}` : "."} Agon verification remains separate.` });
+        setNotice({ tone: "ok", message: `This service is already published${operation.resultReference ? `: ${operation.resultReference}` : "."} It remains Not yet tested until this version passes an Agon review.` });
         return;
       }
       if (operation.transaction.to.toLowerCase() !== AGON_SERVICE_REGISTRY.toLowerCase()) {
-        throw new Error("Prepared listing transaction targets an unexpected contract.");
+        throw new Error("The listing request did not match AGON's published service contract.");
       }
-      setNotice({ tone: "ok", message: "Listing call prepared. Confirm it in your wallet to publish." });
+      setNotice({ tone: "ok", message: "Listing request ready. Review and confirm it in your wallet to publish." });
       const hash = await writeContractAsync({
         address: AGON_SERVICE_REGISTRY,
         abi: agonServiceRegistryAbi,
@@ -192,7 +198,7 @@ export default function NewListingPage() {
       setPendingConfirmation(null);
       setNotice({
         tone: "ok",
-        message: `Provider listing confirmed${confirmed.resultReference ? `: ${confirmed.resultReference}` : "."} Agon verification remains separate.`,
+        message: `Service published${confirmed.resultReference ? `: ${confirmed.resultReference}` : "."} It remains Not yet tested until this version passes an Agon review.`,
       });
     } catch (error) {
       setNotice({ tone: "error", message: error instanceof Error ? error.message : "Listing publication failed." });
@@ -213,12 +219,23 @@ export default function NewListingPage() {
       setNotice({
         tone: "ok",
         message: confirmed.resultReference
-          ? `Provider listing confirmed: ${confirmed.resultReference}. Agon verification remains separate.`
+          ? `Service published: ${confirmed.resultReference}. It remains Not yet tested until this version passes an Agon review.`
           : `Identity binding confirmed in block ${confirmed.proof?.blockNumber ?? "unknown"}.`,
       });
     } catch (error) {
       setNotice({ tone: "error", message: error instanceof Error ? error.message : "Receipt confirmation failed." });
     }
+  }
+
+  function downloadServiceFile() {
+    if (!manifestJson) return;
+    const blob = new Blob([manifestJson], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${effectiveServiceKey || "agon-service"}.manifest.json`;
+    link.click();
+    URL.revokeObjectURL(url);
   }
 
   return (
@@ -228,9 +245,9 @@ export default function NewListingPage() {
         <section className="relative mx-auto max-w-[1400px] px-4 pt-14 sm:px-6 sm:pt-16">
           <CornerMarkers />
           <SectionHeader
-            eyebrow="PROVIDER WORKSPACE / 3 PARTS"
-            heading="LIST AN AGENT SERVICE"
-            subDeck="Choose the agent that owns the service, describe the result buyers receive, then review the exact manifest before it reaches Arc."
+            eyebrow="LIST YOUR AGENT / 3 STEPS"
+            heading="PUBLISH A SERVICE"
+            subDeck="Choose the agent, explain the result buyers receive, set the price, and review everything before you sign."
             right={<TagButton variant="ghost" href="/market">BACK TO MARKET</TagButton>}
           />
         </section>
@@ -249,7 +266,7 @@ export default function NewListingPage() {
           ) : null}
           {capabilities && (profileWritesUnavailable || listingWritesUnavailable) ? (
             <Notice tone="warn">
-              Marketplace publishing is unavailable: {writeReadinessMessage}. You can still complete the form and review the exact manifest without creating a transaction.
+              Publishing is unavailable: {writeReadinessMessage}. You can still complete the form and review the service without signing anything.
             </Notice>
           ) : null}
           {notice ? <Notice tone={notice.tone}>{notice.message}</Notice> : null}
@@ -325,7 +342,7 @@ export default function NewListingPage() {
                     <div className="sm:col-span-2 border-l-[3px] border-accent bg-canvas-2 px-4 py-3">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink">{selectedCategory.label}</span>
-                        <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-ink-3">PROTOCOL CATEGORY {selectedCategory.id}</span>
+                        <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-ink-3">CATEGORY {selectedCategory.id}</span>
                       </div>
                       <p className="mt-2 font-mono text-[11px] leading-relaxed text-ink-2">{selectedCategory.description}</p>
                     </div>
@@ -334,19 +351,24 @@ export default function NewListingPage() {
                   <Field label="WHAT THE BUYER RECEIVES" hint="One or two clear sentences" className="sm:col-span-2">
                     <textarea required value={description} onChange={(event) => setDescription(event.target.value)} rows={4} placeholder="Reviews smart contracts and returns prioritized findings with evidence and remediation steps." className={`${INPUT_CLASS} h-auto resize-y py-3 leading-relaxed`} />
                   </Field>
-                  <Field label="STABLE SERVICE KEY" hint="Used by APIs and future CLI tools">
-                    <input required value={serviceKeyLabel} onChange={(event) => setServiceKeyLabel(event.target.value)} placeholder="protocol-security-review" className={INPUT_CLASS} />
-                  </Field>
-                  <Field label="SEARCH TAGS" hint="Comma separated, up to 8">
+                  <Field label="SEARCH TAGS" hint="Comma separated, up to 8" className="sm:col-span-2">
                     <input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="security, solidity, audit" className={INPUT_CLASS} />
                   </Field>
+                  <details className="sm:col-span-2 border border-[color:var(--hairline)] bg-canvas-2 p-4">
+                    <summary className="cursor-pointer font-mono text-[10px] uppercase tracking-[0.13em] text-ink">ADVANCED SERVICE ID</summary>
+                    <div className="mt-4">
+                      <Field label="SERVICE KEY" hint="Generated from the name unless you override it">
+                        <input value={serviceKeyLabel} onChange={(event) => setServiceKeyLabel(event.target.value)} placeholder={automaticServiceKey || "my-agent-service"} className={INPUT_CLASS} />
+                      </Field>
+                    </div>
+                  </details>
                 </div>
               </BracketedCell>
 
               <BracketedCell pad="lg">
-                <StepHeading number="03" title="Set delivery and payment" copy="Point to the public service endpoint, declare the price, and provide a permanent URL for the exact manifest shown in review." />
+                <StepHeading number="03" title="Set delivery and payment" copy="Add the live service address, choose how buyers pay, and link the permanent service file created from this form." />
                 <div className="mt-7 grid gap-5 sm:grid-cols-2">
-                  <Field label="SERVICE ENDPOINT" hint="HTTPS · return 402 before payment" className="sm:col-span-2">
+                  <Field label="LIVE SERVICE URL" hint="Public HTTPS address" className="sm:col-span-2">
                     <input required type="url" value={endpoint} onChange={(event) => setEndpoint(event.target.value)} placeholder="https://agent.example.com/review" className={INPUT_CLASS} />
                   </Field>
                   <Field label="PRICE" hint="Fixed amount, up to 6 decimals">
@@ -355,20 +377,24 @@ export default function NewListingPage() {
                       <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center font-mono text-[10px] uppercase text-ink-3">USDC</span>
                     </div>
                   </Field>
-                  <Field label="PAYMENT SETUP" hint="Escrow needs verification">
+                  <Field label="PAYMENT METHOD" hint="Choose what fits the work">
                     <select value={paymentRail} onChange={(event) => setPaymentRail(event.target.value as PaymentRail)} className={INPUT_CLASS}>
-                      <option value="X402">Direct x402</option>
-                      <option value="Escrow">Request escrow after verification</option>
+                      <option value="X402">Pay per use</option>
+                      <option value="Escrow">Protected project payment</option>
                     </select>
                   </Field>
                   {paymentRail === "Escrow" ? (
                     <div className="sm:col-span-2 border-l-[3px] border-[color:var(--warn)] bg-canvas-2 px-4 py-3 font-mono text-[11px] leading-relaxed text-ink-2">
-                      The listing can declare escrow, but escrow remains blocked until Agon verifies this exact service version.
+                      Protected project payment becomes available after this exact version passes an Agon test.
                     </div>
                   ) : null}
-                  <Field label="PERMANENT MANIFEST URL" hint="IPFS or HTTPS · exact JSON shown in review" className="sm:col-span-2">
+                  <Field label="PERMANENT SERVICE FILE URL" hint="IPFS or HTTPS · exact JSON shown in review" className="sm:col-span-2">
                     <input required value={manifestUri} onChange={(event) => setManifestUri(event.target.value)} placeholder="ipfs://... or https://..." className={INPUT_CLASS} />
                   </Field>
+                  <div className="sm:col-span-2 flex flex-wrap items-center gap-3 border-l-2 border-accent pl-4">
+                    <TagButton type="button" variant="ghost" size="sm" disabled={!manifestJson} onClick={downloadServiceFile}>DOWNLOAD SERVICE FILE</TagButton>
+                    <p className="max-w-[54ch] font-mono text-[10px] leading-relaxed text-ink-3">Upload this exact file to permanent HTTPS or IPFS storage, then paste its public URL above.</p>
+                  </div>
                 </div>
               </BracketedCell>
             </div>
@@ -378,14 +404,14 @@ export default function NewListingPage() {
                 <div className="font-mono text-[10px] uppercase tracking-[0.16em] opacity-60">REVIEW BEFORE PUBLISHING</div>
                 <h2 className="mt-3 font-stencil text-[30px] uppercase leading-none sm:text-[36px]">{name.trim() || "YOUR SERVICE"}</h2>
                 <p className="mt-4 font-mono text-[11px] leading-relaxed opacity-75">
-                  {description.trim() || "Complete the service details to generate the exact manifest and onchain anchor."}
+                  {description.trim() || "Complete the service details to generate the exact public service record."}
                 </p>
 
                 <div className="mt-6 grid gap-px border border-current bg-current sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
                   <ReviewFact label="CATEGORY" value={selectedCategory ? `${selectedCategory.id} · ${selectedCategory.label}` : "Not chosen"} />
                   <ReviewFact label="PRICE" value={amountUSDC ? `${amountUSDC} USDC` : "Not set"} />
                   <ReviewFact label="AGENT" value={agentId ? `#${agentId}` : "Not chosen"} />
-                  <ReviewFact label="FIRST TRUST STATE" value="Provider listed" />
+                  <ReviewFact label="FIRST TRUST STATE" value="Not yet tested" />
                 </div>
 
                 {issues.length ? (
@@ -396,7 +422,7 @@ export default function NewListingPage() {
                     </ul>
                   </div>
                 ) : (
-                  <div className="mt-6 border-l-[3px] border-[color:var(--ok)] pl-4 font-mono text-[11px] leading-relaxed">Manifest ready for anchoring.</div>
+                  <div className="mt-6 border-l-[3px] border-[color:var(--ok)] pl-4 font-mono text-[11px] leading-relaxed">Service record ready for review.</div>
                 )}
 
                 <details className="mt-6 border-t border-current pt-5">
@@ -413,10 +439,10 @@ export default function NewListingPage() {
                 ) : null}
 
                 <TagButton type="submit" disabled={!readyToPublish || publishing} className="mt-7 w-full justify-center">
-                  {publishing ? "PUBLISHING..." : listingWritesUnavailable ? "PUBLISHING NOT ENABLED" : "PUBLISH PROVIDER-LISTED SERVICE"}
+                  {publishing ? "PUBLISHING..." : listingWritesUnavailable ? "PUBLISHING UNAVAILABLE" : "PUBLISH SERVICE"}
                 </TagButton>
                 <p className="mt-4 font-mono text-[9px] uppercase leading-relaxed tracking-[0.1em] opacity-60">
-                  Publishing does not imply Agon verification. Coding-agent CLI support will use this same category registry, manifest, and proof model.
+                  New services appear as Not yet tested. Use the Playground to request testing for this exact version.
                 </p>
               </BracketedCell>
             </aside>
@@ -474,17 +500,17 @@ function Notice({ tone, children }: { tone: "ok" | "warn" | "error"; children: R
 
 function readinessMessage(reasons: string[]): string {
   const labels: Record<string, string> = {
-    adapter_unconfigured: "the write adapter is not configured",
-    writes_disabled: "publishing is disabled for this environment",
-    deployment_unavailable: "the canonical deployment receipt is unavailable",
-    configured_chain_mismatch: "the backend chain does not match the deployment",
-    rpc_unavailable: "the Arc RPC could not verify contract readiness",
-    rpc_chain_mismatch: "the connected RPC reports the wrong chain",
-    profile_code_missing: "the profile registry has no deployed bytecode",
-    service_code_missing: "the service registry has no deployed bytecode",
-    identity_registry_mismatch: "the profile registry points to the wrong ERC-8004 registry",
-    profile_registry_link_mismatch: "the service registry points to the wrong profile registry",
+    adapter_unconfigured: "new listings are not open in this environment",
+    writes_disabled: "new listings are temporarily paused",
+    deployment_unavailable: "the network record could not be confirmed",
+    configured_chain_mismatch: "the selected network does not match AGON",
+    rpc_unavailable: "AGON could not reach the network",
+    rpc_chain_mismatch: "the connected network is not supported",
+    profile_code_missing: "the identity service could not be confirmed",
+    service_code_missing: "the listing service could not be confirmed",
+    identity_registry_mismatch: "the identity service does not match AGON",
+    profile_registry_link_mismatch: "the listing service does not match AGON",
   };
-  if (reasons.length === 0) return "runtime readiness could not be established";
+  if (reasons.length === 0) return "availability could not be confirmed";
   return reasons.map((reason) => labels[reason] ?? reason.replaceAll("_", " ")).join("; ");
 }

@@ -10,6 +10,7 @@ import {
   unichainSepolia,
 } from "wagmi/chains";
 import { getDefaultConfig } from "@rainbow-me/rainbowkit";
+import { injectedWallet } from "@rainbow-me/rainbowkit/wallets";
 import { PRODUCT_NAME } from "./product";
 
 /// wagmi config, built through RainbowKit's `getDefaultConfig` so the wallet
@@ -27,11 +28,9 @@ import { PRODUCT_NAME } from "./product";
 /// out mid-reconnect.
 ///
 /// WalletConnect needs a project id from cloud.reown.com
-/// (NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID). getDefaultConfig THROWS on an empty
-/// id, which would fail the whole production build if the env var is missing,
-/// so we fall back to a placeholder: the site still builds and the injected /
-/// Coinbase paths still work; only the WalletConnect/QR option is dead until a
-/// real id is set. Set the env var on Vercel to enable WalletConnect.
+/// (NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID). When it is absent, expose only the
+/// injected browser-wallet connector. This keeps email and extension-wallet
+/// sign-in usable without sending broken placeholder requests to Reown.
 ///
 /// arcTestnet is the home chain for everything ArcRun-native (contests, agents,
 /// settlement). The other testnets are registered so /bridge can switch the
@@ -45,7 +44,11 @@ import { PRODUCT_NAME } from "./product";
 /// dedicated endpoint(s) then the public RPC, so one endpoint failing never breaks
 /// wallet reads. The bridge source chains stay on their bare public RPCs — they're
 /// touched only during an occasional bridge, not on every page.
-const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || "arcrun_walletconnect_unset";
+const walletConnectProjectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID?.trim();
+const projectId = walletConnectProjectId || "agon-walletconnect-disabled";
+const wallets = walletConnectProjectId
+  ? undefined
+  : [{ groupName: "Browser wallet", wallets: [injectedWallet] }];
 const arcDedicatedRpc = (process.env.NEXT_PUBLIC_ARC_RPC_HTTP || "")
   .split(",")
   .map((u) => u.trim())
@@ -58,6 +61,7 @@ const arcTransport = arcDedicatedRpc.length
 export const config = getDefaultConfig({
   appName: PRODUCT_NAME,
   projectId,
+  wallets,
   chains: [
     arcTestnet,
     sepolia,

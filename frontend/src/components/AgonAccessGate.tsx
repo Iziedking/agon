@@ -21,11 +21,12 @@ export function AgonAccessGate({ children }: { children: ReactNode }) {
   const isProtocolDocument = pathname.startsWith("/.well-known/");
   const isPublicMarket = pathname === "/market" || (pathname.startsWith("/market/") && pathname !== "/market/new");
   const isPublicDocs = pathname === "/docs" || pathname.startsWith("/docs/");
+  const isPublicPlayground = pathname === "/agon/playground";
   const isPublicOperator = pathname === "/operators" || pathname.startsWith("/operators/");
   // Admin has its own in-memory ADMIN_TOKEN gate. It must reach the token
   // screen without entering the wallet/email session flow.
   const isAdminRoute = pathname === "/admin" || pathname.startsWith("/admin/");
-  const isPublicDiscovery = isLanding || isLogin || isProtocolDocument || isPublicMarket || isPublicDocs || isPublicOperator || isAdminRoute;
+  const isPublicDiscovery = isLanding || isLogin || isProtocolDocument || isPublicMarket || isPublicDocs || isPublicPlayground || isPublicOperator || isAdminRoute;
   const shouldGate = IS_AGON_DEPLOYMENT && !isPublicDiscovery;
 
   useEffect(() => {
@@ -38,10 +39,10 @@ export function AgonAccessGate({ children }: { children: ReactNode }) {
     <main className="flex min-h-screen items-center justify-center bg-canvas px-6 text-ink">
       <div className="w-full max-w-[560px] border border-[color:var(--hairline-strong)] bg-canvas-2 p-8 text-center">
         <AgonMark />
-        <p className="mt-8 font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">ACCESS CHECK</p>
+        <p className="mt-8 font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">SIGN IN REQUIRED</p>
         <h1 className="mt-3 font-stencil text-[42px] uppercase leading-none">SIGN IN TO ENTER AGON</h1>
         <p className="mx-auto mt-5 max-w-[42ch] font-mono text-[12px] leading-relaxed text-ink-2">
-          Connect a wallet or continue with email to access the marketplace, documentation, and provider workspace.
+          Connect a wallet or continue with email to publish a service or approve a protected action.
         </p>
         <p className="mt-5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">Redirecting to sign in...</p>
       </div>

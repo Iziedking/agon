@@ -60,14 +60,14 @@ export function X402AuthorizationSigner({ intentId, authorization, preview = fal
 
   return (
     <div className="mt-4 border-t border-current pt-3">
-      <div className="font-mono text-[9px] uppercase tracking-[0.12em]">WALLET SIGNATURE</div>
-      <p className="mt-2 font-mono text-[10px] leading-relaxed opacity-75">Agon will submit the signature hash for validation only. It will not send payment or call the provider.</p>
+      <div className="font-mono text-[9px] uppercase tracking-[0.12em]">APPROVE IN YOUR WALLET</div>
+      <p className="mt-2 font-mono text-[10px] leading-relaxed opacity-75">Review the amount, recipient, and expiry in your wallet. Signing approves this payment request but does not run it yet.</p>
 
-      {preview ? <p className="mt-3 border-l-2 border-[color:var(--warn)] pl-3 font-mono text-[10px] leading-relaxed text-[color:var(--warn)]">PREVIEW MODE · wallet signing is disabled and no signature is simulated.</p> : null}
+      {preview ? <p className="mt-3 border-l-2 border-[color:var(--warn)] pl-3 font-mono text-[10px] leading-relaxed text-[color:var(--warn)]">SAMPLE ONLY · wallet signing is unavailable.</p> : null}
       {gate === "connect_wallet" ? <TagButton variant="primary" size="sm" className="mt-3" onClick={() => openConnectModal?.()} disabled={!openConnectModal}>CONNECT WALLET TO SIGN →</TagButton> : null}
       {gate === "switch_chain" ? <TagButton variant="primary" size="sm" className="mt-3" onClick={() => switchChain({ chainId: arcTestnet.id })} disabled={switching}>{switching ? "SWITCHING..." : "SWITCH TO ARC TESTNET →"}</TagButton> : null}
       {gate === "wrong_account" ? <p className="mt-3 border-l-2 border-[color:var(--err)] pl-3 font-mono text-[10px] leading-relaxed text-[color:var(--err)]">Connected wallet does not match the authorization owner. Switch accounts before signing.</p> : null}
-      {gate === "ready" ? <TagButton variant="primary" size="sm" className="mt-3" onClick={sign} disabled={busy}>{busy ? "VALIDATING SIGNATURE..." : "SIGN EXACT AUTHORIZATION →"}</TagButton> : null}
+      {gate === "ready" ? <TagButton variant="primary" size="sm" className="mt-3" onClick={sign} disabled={busy}>{busy ? "CHECKING SIGNATURE..." : "APPROVE PAYMENT REQUEST →"}</TagButton> : null}
       {error ? <p role="alert" className="mt-3 border-l-2 border-[color:var(--err)] pl-3 font-mono text-[10px] leading-relaxed text-[color:var(--err)]">{error}</p> : null}
     </div>
   );

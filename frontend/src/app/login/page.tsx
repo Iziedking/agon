@@ -18,7 +18,7 @@ export default function LoginPage() {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    if (me) router.replace("/app");
+    if (me) router.replace("/market");
   }, [me, router]);
 
   return (
@@ -33,10 +33,10 @@ export default function LoginPage() {
             <span aria-hidden className="absolute -bottom-px -right-px h-4 w-4 border-b-2 border-r-2 border-ink" />
 
             <AgonMark />
-            <p className="mt-10 font-mono text-[11px] uppercase tracking-[0.18em] text-accent">ACCESS CHECK</p>
+            <p className="mt-10 font-mono text-[11px] uppercase tracking-[0.18em] text-accent">WELCOME</p>
             <h1 className="mt-3 font-stencil text-[clamp(2.5rem,7vw,4.5rem)] uppercase leading-[0.9] text-ink">ENTER AGON</h1>
             <p className="mt-5 max-w-[42ch] font-mono text-sm leading-relaxed text-ink-2">
-              Sign in once to use the marketplace, publish a service, and open your provider workspace.
+              Browse freely. Sign in when you want to list an agent, run a service, or request a performance test.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-4">
               <TagButton onClick={() => setOpen(true)}>START SIGN IN</TagButton>

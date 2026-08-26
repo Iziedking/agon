@@ -59,7 +59,7 @@ export default function ListingDetailPage() {
             eyebrow={service && listing ? `${service.category.label} / AGENT #${listing.agentId}` : "AGON MARKET / SERVICE"}
             heading={service?.name ?? "SERVICE DETAILS"}
             subDeck={service?.description ?? "Reading the service description and trust record from the Agon catalog."}
-            right={<><TagButton variant="ghost" href="/market">BACK TO MARKET</TagButton><AgonAuthAction href="/market/new">LIST A SERVICE</AgonAuthAction></>}
+            right={<><TagButton variant="ghost" href="/market">BACK TO MARKET</TagButton><AgonAuthAction href="/market/new">LIST YOUR AGENT</AgonAuthAction></>}
           />
         </section>
 
@@ -80,7 +80,7 @@ export default function ListingDetailPage() {
               ) : (
                 <div className="border-l-[3px] border-[color:var(--ok)] bg-canvas-2 px-5 py-4">
                   <div className="flex flex-wrap items-center gap-3"><VerificationBadge status={listing.verification.status} /><span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">Exact version scope</span></div>
-                  <p className="mt-3 max-w-[90ch] font-mono text-[11px] leading-relaxed text-ink-2">Agon verified Agent #{listing.agentId}, listing {listing.listingId}, category {service.category.label}, version {listing.version}. A later version needs its own verification.</p>
+                  <p className="mt-3 max-w-[90ch] font-mono text-[11px] leading-relaxed text-ink-2">Agon tested Agent #{listing.agentId}, version {listing.version}, for {service.category.label}. A later version needs a new test.</p>
                 </div>
               )}
 
@@ -99,7 +99,7 @@ export default function ListingDetailPage() {
 
                     <dl className="mt-7 grid gap-px bg-[color:var(--hairline)] sm:grid-cols-2">
                       <OverviewFact label="CATEGORY" value={service.category.label} note={service.category.description} />
-                      <OverviewFact label="PROVIDER" value={`ERC-8004 Agent #${listing.agentId}`} note="Ownership snapshot is available in technical proof." />
+                      <OverviewFact label="PROVIDER" value={`Agent #${listing.agentId}`} note="Ownership details are available in Technical proof." />
                       <OverviewFact label="DELIVERY" value={service.endpoint ? "External HTTPS service" : "Endpoint not indexed"} note={service.endpoint ?? "Open the manifest URL to inspect delivery details."} />
                       <OverviewFact label="VERSION" value={`Version ${listing.version}`} note={listing.status === "Listed" ? "Current listed version" : `Chain status: ${listing.status}`} />
                     </dl>
@@ -115,7 +115,7 @@ export default function ListingDetailPage() {
 
                     {!service.hasIndexedManifest ? (
                       <div className="mt-6 border-l-[3px] border-[color:var(--warn)] bg-canvas-2 px-4 py-3 font-mono text-[11px] leading-relaxed text-ink-2">
-                        The indexer currently has the immutable anchor but not the manifest body. Service name, description, endpoint, and price remain limited until manifest ingestion is enabled.
+                        AGON can confirm the published record, but the full service description is not available yet. Review the original service file before use.
                       </div>
                     ) : null}
                   </BracketedCell>
@@ -128,20 +128,20 @@ export default function ListingDetailPage() {
 
                 <aside className="lg:sticky lg:top-24">
                   <BracketedCell tone="ink" pad="lg">
-                    <div className="font-mono text-[10px] uppercase tracking-[0.16em] opacity-60">PRICE AND ACCESS</div>
+                    <div className="font-mono text-[10px] uppercase tracking-[0.16em] opacity-60">PRICE AND USE</div>
                     <div className="mt-4 font-stencil text-[36px] uppercase leading-none sm:text-[42px]">{service.amountUSDC ? `${service.amountUSDC} USDC` : "PRICE NOT INDEXED"}</div>
                     <div className="mt-7 space-y-4 border-t border-current pt-5">
                       <Readiness label="LISTING ACTIVE" state={listing.status === "Listed" ? "ready" : "blocked"} value={listing.status === "Listed" ? "YES" : listing.status.toUpperCase()} />
                       <Readiness
-                        label="DIRECT X402"
+                        label="PAY PER USE"
                         state={quarantined || listing.endpointQa.status === "failed" ? "blocked" : listing.endpointQa.status === "passed" ? "ready" : "caution"}
-                        value={quarantined ? "BLOCKED" : listing.endpointQa.status === "passed" ? "QA PASSED" : listing.endpointQa.status === "failed" ? "BLOCKED" : listing.payment.directX402 ? "DECLARED" : "NO"}
+                        value={quarantined ? "BLOCKED" : listing.endpointQa.status === "passed" ? "AVAILABLE" : listing.endpointQa.status === "failed" ? "BLOCKED" : listing.payment.directX402 ? "CHECK REQUIRED" : "NO"}
                       />
-                      <Readiness label="ESCROW PROTECTION" state={escrowEligible ? "ready" : "blocked"} value={escrowEligible ? "ELIGIBLE" : "NOT AVAILABLE"} />
+                      <Readiness label="PROTECTED PROJECT" state={escrowEligible ? "ready" : "blocked"} value={escrowEligible ? "AVAILABLE" : "NOT AVAILABLE"} />
                     </div>
 
                     <div className="mt-5 border-t border-current pt-4 font-mono text-[10px] leading-relaxed opacity-70">
-                      <div className="uppercase tracking-[0.12em]">ENDPOINT CHECK</div>
+                      <div className="uppercase tracking-[0.12em]">SERVICE AVAILABILITY</div>
                       <p className="mt-2">{listing.endpointQa.reason}</p>
                       {listing.endpointQa.attempts > 0 ? <p className="mt-1 uppercase tracking-[0.08em]">{listing.endpointQa.passedAttempts}/{listing.endpointQa.attempts} checks passed · {listing.endpointQa.successRate}% reliability</p> : null}
                       {listing.endpointQa.checkedAt ? <p className="mt-1 uppercase tracking-[0.08em]">Checked {listing.endpointQa.checkedAt}</p> : null}
@@ -154,7 +154,7 @@ export default function ListingDetailPage() {
                     )}
 
                     <div className="mt-7 border-t border-current pt-5 font-mono text-[9px] uppercase leading-relaxed tracking-[0.1em] opacity-55">
-                      Protocol category {listing.category} <span aria-hidden>·</span> Listing {listing.listingId} <span aria-hidden>·</span> Chain {listing.chainId}
+                      Service record {listing.listingId} <span aria-hidden>·</span> Version {listing.version}
                     </div>
                   </BracketedCell>
                 </aside>

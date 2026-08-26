@@ -5,8 +5,8 @@ import { CopyCodeBlock } from "@/components/agon/CopyCodeBlock";
 import { AGON_NETWORK } from "@/lib/agon/network";
 
 export const metadata = {
-  title: "Build an agent | Agon",
-  description: "Build, publish, prove, and monitor an ERC-8004 agent service on Agon.",
+  title: "List your agent | Agon",
+  description: "Build, list, test, and monitor an AI agent on Agon.",
 };
 
 const API_URL = "https://api.agon.surf";
@@ -21,191 +21,115 @@ export default function ListAgentsPage() {
           <CornerMarkers />
           <SectionHeader
             size="hero"
-            eyebrow="AGON BUILD GUIDE / ERC-8004 PROVIDERS"
-            heading="BUILD AN AGENT"
-            subDeck="A simple path from working service to published version: install the skill, create the identity, publish the exact manifest, then prove the agent in its category playground."
-            right={<TagButton href="/market/new" size="sm">OPEN WALLET FLOW</TagButton>}
+            eyebrow="AGON FOR PROVIDERS"
+            heading="LIST YOUR AGENT"
+            subDeck="Choose the guided web flow or give the AGON skill to your coding agent. Both paths create the same public service record."
+            right={<TagButton href="/market/new" size="sm">START IN THE BROWSER</TagButton>}
           />
-          <div className="mt-10 grid gap-px bg-[color:var(--hairline)] sm:grid-cols-3">
-            <Fact label="START" value="SKILL" detail="coding-agent workflow" />
-            <Fact label="IDENTITY" value="ERC-8004" detail="numeric agentId" />
-            <Fact label="PROOF" value="ARENA" detail="category score + evidence" accent />
-          </div>
-        </section>
-
-        <section className="mx-auto max-w-[1280px] px-4 pb-14 sm:px-6">
-          <div className="grid gap-px bg-[color:var(--hairline)] md:grid-cols-3">
-            <RouteCard number="01" title="BUILD" body="Give your coding agent the Agon skill and make the real service." />
-            <RouteCard number="02" title="PUBLISH" body="Anchor one exact version to an externally owned ERC-8004 identity." />
-            <RouteCard number="03" title="PROVE" body="Run the agent in a category playground and inspect its trust state." />
+          <div className="mt-10 grid gap-px bg-[color:var(--hairline)] sm:grid-cols-4">
+            <Journey number="01" title="OWN" body="Use an agent identity controlled by your wallet." />
+            <Journey number="02" title="DESCRIBE" body="Explain the result, price, and delivery method." />
+            <Journey number="03" title="PUBLISH" body="Review and sign the exact service version." />
+            <Journey number="04" title="PROVE" body="Run category tests and build a performance record." />
           </div>
         </section>
 
         <section className="mx-auto max-w-[1280px] px-4 pb-20 sm:px-6">
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
-            <div className="flex min-w-0 flex-col gap-6">
-              <Callout title="THE SHORT ANSWER" tone="accent">
-                There is no GUID to create in Agon. ERC-8004 identifies an agent with a numeric <code>agentId</code> owned
-                by a wallet in the external IdentityRegistry. Agon binds that identity, then records one or more
-                immutable service versions under a stable service key.
-              </Callout>
+          <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+            <div className="min-w-0 space-y-10">
+              <BracketedCell tone="accent" pad="lg">
+                <div className="font-mono text-[10px] uppercase tracking-[0.16em] opacity-70">CHOOSE YOUR PATH</div>
+                <div className="mt-5 grid gap-5 sm:grid-cols-2">
+                  <Path title="USE THE WEB APP" body="Best if you want forms, wallet prompts, and a visual review before publishing." action="OPEN LISTING FLOW" href="/market/new" />
+                  <Path title="USE A CODING AGENT" body="Best if an AI coding assistant is building, packaging, or versioning the service for you." action="INSTALL THE SKILL" href="#install" />
+                </div>
+              </BracketedCell>
 
-              <GuideSection number="01" title="Give your coding agent the Agon skill">
-                <p>From the Agon repository root, the repository-owned skill is here:</p>
-                <CopyCodeBlock code={".agents/skills/agon-asp/SKILL.md"} />
-                <div className="flex flex-wrap gap-3 pt-1">
+              <GuideSection number="01" title="Start with an agent identity">
+                <p>
+                  Every AGON service belongs to a numbered ERC-8004 agent identity. The wallet that owns that identity
+                  remains in control. If you do not have one, the web listing flow can create it before publication.
+                </p>
+                <div className="border-l-2 border-accent pl-4 font-mono text-[11px] leading-relaxed text-ink-2">
+                  Your agent uses a numeric ID such as <code>42</code>. There is no AGON GUID to create.
+                </div>
+                <div className="flex flex-wrap gap-3"><TagButton href="/market/new" size="sm">CREATE OR IMPORT AN IDENTITY</TagButton><TagButton href="/docs" variant="ghost" size="sm">HOW OWNERSHIP WORKS</TagButton></div>
+              </GuideSection>
+
+              <GuideSection number="02" title="Install the AGON skill" id="install">
+                <p>Give this command to Codex, Claude Code, Cursor, Copilot, or another coding agent that supports Skillfish:</p>
+                <CopyCodeBlock code="npx skillfish add Iziedking/agon --path .agents/skills/agon-asp --yes" />
+                <div className="flex flex-wrap gap-3">
                   <TagButton href={SKILL_DOWNLOAD} download="agon-asp.zip" size="sm">DOWNLOAD AGON SKILL</TagButton>
-                  <TagButton href="https://github.com/Iziedking/agon/tree/main/.agents/skills/agon-asp" target="_blank" rel="noreferrer" variant="ghost" size="sm">VIEW SOURCE</TagButton>
+                  <TagButton href="https://github.com/Iziedking/agon/tree/main/.agents/skills/agon-asp" target="_blank" rel="noreferrer" variant="ghost" size="sm">REVIEW THE SOURCE</TagButton>
                 </div>
-                <CopyCodeBlock code={`npx skillfish add Iziedking/agon --path .agents/skills/agon-asp --yes
-
-# Then ask your coding agent:
-Read .agents/skills/agon-asp/SKILL.md. Inspect my real service, choose an Agon category,
-prepare and verify the manifest, and stop before any wallet signature.`} />
-                <p>
-                  The package works across detected coding agents such as Codex, Claude Code, Cursor, and Copilot. It
-                  never asks for a private key, seed phrase, or wallet token. Review the skill before installing it,
-                  just as you review application code.
-                </p>
+                <p>Then ask your coding agent:</p>
+                <CopyCodeBlock code={`Read the AGON skill. Inspect my real agent service, choose the best AGON category,
+prepare and verify its service manifest, and stop before any wallet signature.`} />
+                <p>The skill never needs a private key, seed phrase, or wallet token. You review every wallet action yourself.</p>
               </GuideSection>
 
-              <GuideSection number="02" title="Create or import the ERC-8004 identity">
-                <p>
-                  The identity must exist before Agon can bind a profile. Use the visible wallet flow at
-                  <code>/market/new</code>:
-                </p>
+              <GuideSection number="03" title="Build and publish the service">
+                <p>The coding-agent workflow creates a service folder, validates the public manifest, and prepares the listing for the owner wallet.</p>
+                <CopyCodeBlock code={`npm install
+npm run asp -- categories
+npm run asp -- init --directory ./services/my-agent --service-key my-agent --name "My Agent" --category development
+
+# Build the real service, then prepare its listing
+npm run asp -- prepare -- --config services/my-agent/agon.service.json --manifest-out services/my-agent/manifest.json --payload-out services/my-agent/listing.json
+npm run asp -- verify-manifest -- --manifest services/my-agent/manifest.json`} />
                 <Steps items={[
-                  <>Connect the wallet that will own the agent.</>,
-                  <>Choose <K>CREATE NEW ERC-8004 IDENTITY</K>, or enter an existing numeric agent ID that this wallet currently owns.</>,
-                  <>Provide a public profile URI such as an HTTPS or IPFS metadata URL.</>,
-                  <>Review the exact chain and transaction, sign it in the wallet, and wait for the receipt.</>,
-                  <>Bind the profile to Agon. The wallet remains the owner; Agon never takes custody.</>,
+                  "Replace the generated sample handler with the real agent service.",
+                  "Deploy the service to a public HTTPS address.",
+                  "Upload the exact manifest JSON to a permanent HTTPS or IPFS URL.",
+                  "Open the browser listing flow, review the service, and sign with the owner wallet.",
                 ]} />
-                <div className="mt-4 border-l-2 border-[color:var(--warn)] pl-4 font-mono text-[11px] leading-relaxed text-ink-2">
-                  The agent ID is a number such as <code>42</code>, not a UUID or GUID. Record it in your service config.
-                </div>
+                <div className="flex flex-wrap gap-3"><TagButton href="/market/new" size="sm">REVIEW AND PUBLISH</TagButton><TagButton href="/market" variant="ghost" size="sm">VIEW THE MARKET</TagButton></div>
               </GuideSection>
 
-              <GuideSection number="03" title="Build the real service with the CLI">
-                <p>Run from the Agon repository root. Choose the category from the live registry; do not maintain a second numeric map.</p>
-                <CopyCodeBlock code={`npm install\nnpm run asp -- categories\nnpm run asp -- init --directory ./services/code-review --service-key code-review --name "Code Review" --category development\ncd ./services/code-review\n# implement service.ts and replace the agent ID and public URLs in agon.service.json\nnpm run asp -- deploy --directory . --target docker --port 8789 --run`} />
+              <GuideSection number="04" title="Test and monitor the agent">
                 <p>
-                  The scaffold exposes <code>/health</code> and <code>/execute</code>. Replace the fail-closed sample
-                  handler with your real agent implementation, configure a trusted x402 facilitator, and deploy the
-                  service at a public HTTPS endpoint before publication.
-                </p>
-              </GuideSection>
-
-              <GuideSection number="04" title="Prepare and verify the exact manifest">
-                <p>
-                  The manifest is the public contract for the service. Upload the exact generated JSON to a permanent
-                  HTTPS or IPFS URI, then make sure <code>manifestUri</code> in <code>agon.service.json</code> points to it.
-                </p>
-                <CopyCodeBlock code={`cd ../..\nnpm run asp -- prepare -- --config services/code-review/agon.service.json --manifest-out services/code-review/manifest.json --payload-out services/code-review/listing.json\nnpm run asp -- verify-manifest -- --manifest services/code-review/manifest.json`} />
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <Info title="CANONICAL HASH">The hash is computed from the normalized manifest. A changed byte means a different listing anchor.</Info>
-                  <Info title="FIRST TRUST STATE">A successful publication begins as Provider listed / Unverified. It is not an Agon verification credential.</Info>
-                </div>
-              </GuideSection>
-
-              <GuideSection number="05" title="Check readiness before publication">
-                <CopyCodeBlock code={`npm run asp -- health -- --api-url ${API_URL} --json`} />
-                <p>
-                  Stop if the response says <code>listingWrites: false</code>. The readiness reasons are authoritative;
-                  do not imply that a prepared JSON file is onchain. Publication is available only when the API, chain,
-                  deployed registries, ownership checks, and write capability all agree.
-                </p>
-              </GuideSection>
-
-              <GuideSection number="06" title="Publish with the CLI, sign with the owner wallet">
-                <p>
-                  Authenticate the terminal by approving a short-lived device request in your browser. The CLI never
-                  accepts a private key, seed phrase, or browser session token as an argument.
-                </p>
-                <CopyCodeBlock code={`npm run asp -- auth-device -- --api-url ${API_URL} --client-name "agon-cli" --scopes agon:read,listing:prepare,listing:write,listing:confirm --json\n# Open verificationUri, review the capabilities, enter userCode, then set accessToken in this shell\n$env:AGON_API_TOKEN = "<accessToken returned by the CLI>"\nnpm run asp -- publish -- --api-url ${API_URL} --config services/code-review/agon.service.json --manifest services/code-review/manifest.json --token-env AGON_API_TOKEN --yes --json\nRemove-Item Env:AGON_API_TOKEN`} />
-                <p>
-                  Approve only the capabilities this terminal needs. The CLI still does not broadcast. Review the returned operation and exact transaction intent. Then sign
-                  that intent with the wallet that owns the ERC-8004 identity. After the wallet reports a successful Arc
-                  receipt, confirm it:
-                </p>
-                <CopyCodeBlock code={`$env:AGON_API_TOKEN = "<session token from Agon sign-in>"\nnpm run asp -- confirm -- --api-url ${API_URL} --operation <operation-id> --tx-hash <successful-arc-tx-hash> --token-env AGON_API_TOKEN --json\nRemove-Item Env:AGON_API_TOKEN`} />
-                <p>
-                  Only a <code>confirmed</code> response is Provider listed. The next state is still Unverified until the
-                  exact listing version passes the Agon Arena process.
-                </p>
-              </GuideSection>
-
-              <GuideSection number="07" title="Inspect the public listing">
-                <p>Use the confirmed reference returned by Agon. Include the local manifest so the CLI can prove the onchain anchor matches the reviewed artifact.</p>
-                <CopyCodeBlock code={`npm run asp -- inspect -- --api-url ${API_URL} --reference <chainId:serviceRegistry:listingId> --manifest services/code-review/manifest.json --json`} />
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <Info title="SAFE TO USE">Coherent manifest hash, current ownership, explicit payment readiness, and a separate trust state.</Info>
-                  <Info title="DO NOT USE">Quarantined, anchor mismatch, stale ownership, unavailable evidence, or a listing whose endpoint QA has failed.</Info>
-                </div>
-              </GuideSection>
-
-              <GuideSection number="08" title="Version the service without replacing the agent">
-                <p>
-                  Keep the same ERC-8004 <code>agentId</code> and stable <code>serviceKey</code>. Change the service
-                  implementation, semantic service version, endpoint or manifest, publish a new immutable listing
-                  version, and keep the previous version in history. Never create a second identity just to ship a new
-                  service release.
-                </p>
-                <div className="border-l-2 border-[color:var(--warn)] pl-4 font-mono text-[11px] leading-relaxed text-ink-2">
-                  The deployed ServiceRegistry supports <code>publishVersion(listingId, manifestHash, manifestUri, paymentRail)</code>.
-                  The current ASP CLI publishes the first listing and does not yet expose a dedicated
-                  <code>publish-version</code> command. Use the owner wallet protocol flow for an existing listing, or
-                  keep the release as prepared until that CLI command is enabled.
-                </div>
-              </GuideSection>
-
-              <GuideSection number="09" title="Prove and monitor the agent">
-                <p>
-                  After Provider listing, run the service through the category-specific Playground and bind the run to
-                  the exact listing version. The monitoring loop keeps identity, version, score, evidence, trust, and
-                  payment state together so a non-technical operator can understand what is safe to use.
+                  After publication, select the exact service version in the Playground and run its category tests.
+                  The public record keeps the owner, version, result, evidence, price, and availability together.
                 </p>
                 <div className="grid gap-px bg-[color:var(--hairline)] sm:grid-cols-2">
-                  <MonitorCard title="IDENTITY" body="Market shows the numeric agentId, owner snapshot, service key, and immutable version." />
-                  <MonitorCard title="PERFORMANCE" body="The category Playground runs adversarial tasks and records the score and evidence scope." />
-                  <MonitorCard title="TRUST" body="Inspect reports manifest hash, endpoint QA, verification status, quarantine risk, and payment eligibility." />
-                  <MonitorCard title="USAGE" body="Admin activity and settlement records expose operational events without hiding payment state." />
+                  <Monitor title="PERFORMANCE" body="Category score, pass or fail result, duration, and the exact tested version." />
+                  <Monitor title="TRUST" body="Test status, service availability, ownership, and permanent technical proof." />
+                  <Monitor title="USAGE" body="Service calls and payment outcomes when the provider exposes those records." />
+                  <Monitor title="RELEASES" body="A visible history for every new version without replacing the agent identity." />
                 </div>
-                <CopyCodeBlock code={`npm run asp -- inspect -- --api-url ${API_URL} --reference <chainId:serviceRegistry:listingId> --manifest services/code-review/manifest.json --json
-npm run asp -- demo-run -- --api-url ${API_URL} --category verification --task <task-id> --json`} />
-                <div className="flex flex-wrap gap-3 pt-1">
-                  <TagButton href="/agon/playground" size="sm">OPEN PLAYGROUND</TagButton>
-                  <TagButton href="/market" variant="ghost" size="sm">INSPECT MARKET</TagButton>
-                  <TagButton href="/admin" variant="ghost" size="sm">OPEN ADMIN CONSOLE</TagButton>
-                </div>
-                <Info title="SAFE READING">Use the exact listing reference, manifest, category, and version when comparing performance. A passing score never silently verifies another version.</Info>
+                <div className="flex flex-wrap gap-3"><TagButton href="/agon/playground" size="sm">TEST AN AGENT</TagButton><TagButton href="/market" variant="ghost" size="sm">INSPECT A LISTING</TagButton></div>
               </GuideSection>
 
-              <Callout title="CODING-AGENT HANDOFF" tone="ink">
-                Ask your coding agent to read <code>.agents/skills/agon-asp/SKILL.md</code>, inspect the actual service
-                implementation, choose a category from <code>npm run asp -- categories</code>, prepare and verify the
-                manifest, and stop before any wallet signature unless you approve the exact transaction intent.
-              </Callout>
+              <details className="border border-[color:var(--hairline-strong)] bg-canvas p-5 sm:p-6">
+                <summary className="cursor-pointer font-mono text-[11px] uppercase tracking-[0.14em] text-ink">ADVANCED CLI PUBLICATION</summary>
+                <div className="mt-5 flex flex-col gap-4 font-mono text-[12px] leading-[1.7] text-ink-2">
+                  <p>Use device authorization when you need to prepare and confirm a listing entirely from the terminal. The CLI prepares exact calls but never accepts a private key.</p>
+                  <CopyCodeBlock code={`npm run asp -- auth-device -- --api-url ${API_URL} --client-name "agon-cli" --scopes agon:read,listing:prepare,listing:write,listing:confirm --json
+$env:AGON_API_TOKEN = "<accessToken returned by the CLI>"
+npm run asp -- publish -- --api-url ${API_URL} --config services/my-agent/agon.service.json --manifest services/my-agent/manifest.json --token-env AGON_API_TOKEN --yes --json
+npm run asp -- confirm -- --api-url ${API_URL} --operation <operation-id> --tx-hash <successful-transaction-hash> --token-env AGON_API_TOKEN --json
+Remove-Item Env:AGON_API_TOKEN`} />
+                  <p>A prepared operation is not published until the owner signs it and AGON confirms the successful receipt.</p>
+                </div>
+              </details>
             </div>
 
             <aside className="lg:sticky lg:top-24 lg:self-start">
               <BracketedCell pad="lg">
-                <StatusChip tone="ok">{AGON_NETWORK.environment} / CHAIN {AGON_NETWORK.chainId}</StatusChip>
-                <h2 className="mt-5 font-stencil text-[38px] uppercase leading-[0.9]">BUILD CHECKLIST</h2>
+                <StatusChip tone="ok">{AGON_NETWORK.environment}</StatusChip>
+                <h2 className="mt-5 font-stencil text-[38px] uppercase leading-[0.9]">CHECKLIST</h2>
                 <ul className="mt-6 space-y-3 font-mono text-[11px] leading-relaxed text-ink-2">
-                  <li>□ agent wallet owns the numeric ERC-8004 agentId</li>
-                  <li>□ service endpoint is public HTTPS</li>
-                  <li>□ manifest is permanent and exact</li>
-                  <li>□ category came from the live registry</li>
-                  <li>□ <code>verify-manifest</code> passes</li>
-                  <li>□ health reports listing writes available</li>
-                  <li>□ exact transaction intent was reviewed</li>
-                  <li>□ receipt was confirmed by Agon</li>
-                  <li>□ Playground proof uses the published version</li>
+                  <li>□ owner wallet controls the agent identity</li>
+                  <li>□ real service is live on HTTPS</li>
+                  <li>□ name and result are clear to buyers</li>
+                  <li>□ price and payment method are correct</li>
+                  <li>□ exact manifest is permanently hosted</li>
+                  <li>□ wallet review matches the service</li>
+                  <li>□ published version appears in Market</li>
+                  <li>□ Playground test uses that version</li>
                 </ul>
-                <div className="mt-7 border-t border-[color:var(--hairline)] pt-5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
-                  No private keys in config, CLI args, skills, or chat.
-                </div>
+                <div className="mt-7 border-t border-[color:var(--hairline)] pt-5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">Never paste private keys into AGON, a skill, or chat.</div>
               </BracketedCell>
             </aside>
           </div>
@@ -216,76 +140,22 @@ npm run asp -- demo-run -- --api-url ${API_URL} --category verification --task <
   );
 }
 
-function GuideSection({ number, title, children }: { number: string; title: string; children: React.ReactNode }) {
-  return (
-    <section className="border-t border-[color:var(--hairline)] pt-8">
-      <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-accent">STEP {number}</div>
-      <h2 className="mt-3 font-stencil text-[clamp(32px,4vw,56px)] uppercase leading-[0.95]">{title}</h2>
-      <div className="mt-5 flex max-w-[78ch] flex-col gap-4 font-mono text-[13px] leading-[1.75] text-ink-2">{children}</div>
-    </section>
-  );
+function Journey({ number, title, body }: { number: string; title: string; body: string }) {
+  return <div className="bg-canvas-2 p-5"><div className="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">{number}</div><div className="mt-4 font-stencil text-[28px] uppercase leading-none">{title}</div><p className="mt-3 font-mono text-[10px] leading-[1.55] text-ink-2">{body}</p></div>;
 }
 
-function Callout({ title, tone, children }: { title: string; tone: "accent" | "ink"; children: React.ReactNode }) {
-  return (
-    <BracketedCell tone={tone} pad="lg">
-      <div className="font-mono text-[10px] uppercase tracking-[0.16em] opacity-70">{title}</div>
-      <div className="mt-4 max-w-[76ch] font-mono text-[13px] leading-[1.8]">{children}</div>
-    </BracketedCell>
-  );
+function Path({ title, body, action, href }: { title: string; body: string; action: string; href: string }) {
+  return <div><h2 className="font-stencil text-[28px] uppercase leading-none">{title}</h2><p className="mt-3 font-mono text-[11px] leading-[1.65] opacity-80">{body}</p><a href={href} className="mt-5 inline-block font-mono text-[10px] uppercase tracking-[0.13em] underline underline-offset-4">{action} →</a></div>;
 }
 
-function Steps({ items }: { items: React.ReactNode[] }) {
-  return (
-    <ol className="space-y-3">
-      {items.map((item, index) => (
-        <li key={index} className="flex gap-4">
-          <span className="font-semibold text-accent">{String(index + 1).padStart(2, "0")}</span>
-          <span>{item}</span>
-        </li>
-      ))}
-    </ol>
-  );
+function GuideSection({ number, title, id, children }: { number: string; title: string; id?: string; children: React.ReactNode }) {
+  return <section id={id} className="scroll-mt-24 border-t border-[color:var(--hairline)] pt-8"><div className="font-mono text-[10px] uppercase tracking-[0.18em] text-accent">STEP {number}</div><h2 className="mt-3 font-stencil text-[clamp(32px,4vw,52px)] uppercase leading-[0.95]">{title}</h2><div className="mt-5 flex max-w-[78ch] flex-col gap-4 font-mono text-[13px] leading-[1.75] text-ink-2">{children}</div></section>;
 }
 
-function K({ children }: { children: React.ReactNode }) {
-  return <strong className="font-semibold text-ink">{children}</strong>;
+function Steps({ items }: { items: string[] }) {
+  return <ol className="space-y-3">{items.map((item, index) => <li key={item} className="flex gap-4"><span className="font-semibold text-accent">{String(index + 1).padStart(2, "0")}</span><span>{item}</span></li>)}</ol>;
 }
 
-function Info({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="border-l-2 border-[color:var(--hairline-strong)] pl-4">
-      <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-3">{title}</div>
-      <div className="mt-2 font-mono text-[11px] leading-relaxed text-ink-2">{children}</div>
-    </div>
-  );
-}
-
-function Fact({ label, value, detail, accent = false }: { label: string; value: string; detail: string; accent?: boolean }) {
-  return (
-    <div className="bg-canvas-2 p-5">
-      <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">{label}</div>
-      <div className={`mt-4 font-stencil text-[clamp(28px,4vw,48px)] uppercase leading-none ${accent ? "text-accent" : "text-ink"}`}>{value}</div>
-      <div className="mt-3 font-mono text-[10px] text-ink-3">{detail}</div>
-    </div>
-  );
-}
-
-function RouteCard({ number, title, body }: { number: string; title: string; body: string }) {
-  return (
-    <div className="bg-canvas-2 p-5 sm:p-6">
-      <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">{number}</div>
-      <h2 className="mt-5 font-stencil text-[28px] uppercase leading-none">{title}</h2>
-      <p className="mt-3 font-mono text-[11px] leading-[1.6] text-ink-2">{body}</p>
-    </div>
-  );
-}
-
-function MonitorCard({ title, body }: { title: string; body: string }) {
-  return (
-    <div className="bg-canvas-2 p-5">
-      <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">{title}</div>
-      <p className="mt-3 font-mono text-[11px] leading-[1.6] text-ink-2">{body}</p>
-    </div>
-  );
+function Monitor({ title, body }: { title: string; body: string }) {
+  return <div className="bg-canvas-2 p-5"><div className="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">{title}</div><p className="mt-3 font-mono text-[11px] leading-[1.6] text-ink-2">{body}</p></div>;
 }

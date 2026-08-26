@@ -15,7 +15,9 @@ import {
   verifyEmailOtp,
 } from "@/lib/auth";
 import { useAuth } from "@/hooks/useAuth";
-import { ModalClose, Robot } from "@/components/redesign";
+import { ModalClose } from "@/components/redesign";
+import { ProductMark } from "@/components/redesign/ProductMark";
+import { PRODUCT_NAME } from "@/lib/product";
 import { friendlyError } from "@/lib/errors";
 import { logRawError, reportEvent } from "@/lib/report";
 
@@ -397,7 +399,7 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
                   {me ? (
                     <>
                       <div className="flex items-center gap-4">
-                        <Robot variant="pink" size={56} decorative />
+                        <ProductMark name={PRODUCT_NAME} />
                         <div>
                           <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">
                             <span aria-hidden className="text-accent">■</span> SIGNED IN
@@ -444,7 +446,7 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
                   ) : view === "choose" ? (
                     <>
                       <div className="flex items-center gap-4">
-                        <Robot variant="pink" size={56} decorative />
+                        <ProductMark name={PRODUCT_NAME} />
                         <div>
                           <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">
                             <span aria-hidden className="text-accent">■</span> SIGN IN
@@ -482,7 +484,7 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
                   ) : view === "email" ? (
                     <>
                       <div className="flex items-center gap-4">
-                        <Robot variant="pink" size={56} decorative />
+                        <ProductMark name={PRODUCT_NAME} />
                         <div>
                           <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">
                             <span aria-hidden className="text-accent">■</span> EMAIL
@@ -529,7 +531,7 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
                   ) : (
                     <>
                       <div className="flex items-center gap-4">
-                        <Robot variant="pink" size={56} decorative />
+                        <ProductMark name={PRODUCT_NAME} />
                         <div>
                           <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink-3">
                             <span aria-hidden className="text-accent">■</span> VERIFY EMAIL

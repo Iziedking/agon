@@ -161,16 +161,16 @@ export function X402ExecutionReview({ intentId, refreshKey }: Props) {
     <section aria-labelledby="x402-execution-review" className="mt-4 border-t border-current pt-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="font-mono text-[9px] uppercase tracking-[0.15em] opacity-60">CONTROLLED REVIEW</div>
-          <h3 id="x402-execution-review" className="mt-1 font-mono text-[12px] uppercase tracking-[0.1em]">EXECUTION REVIEW</h3>
+          <div className="font-mono text-[9px] uppercase tracking-[0.15em] opacity-60">FINAL STEP</div>
+          <h3 id="x402-execution-review" className="mt-1 font-mono text-[12px] uppercase tracking-[0.1em]">PAY AND RUN</h3>
         </div>
         <span className={`font-mono text-[9px] uppercase tracking-[0.1em] ${adapterReady ? "text-[color:var(--ok)]" : "text-[color:var(--warn)]"}`}>
-          {adapterReady ? "ARC TESTNET READY" : "SETTLEMENT OFF"}
+          {adapterReady ? "READY" : "NOT AVAILABLE"}
         </span>
       </div>
 
       {error ? <p role="alert" className="mt-3 border-l-2 border-[color:var(--err)] pl-3 font-mono text-[10px] leading-relaxed text-[color:var(--err)]">{error}</p> : null}
-      {!readiness && !error ? <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.08em] opacity-60">READING TESTNET PLAN...</p> : null}
+      {!readiness && !error ? <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.08em] opacity-60">CHECKING PAYMENT...</p> : null}
 
       {readiness ? <>
         <div className="mt-3 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.1em]" style={{ color: readinessToneColor(executionReadinessTone(readiness.status)) }}>
@@ -178,53 +178,50 @@ export function X402ExecutionReview({ intentId, refreshKey }: Props) {
         </div>
         <p className="mt-2 font-mono text-[10px] leading-relaxed opacity-75">{readiness.reason}</p>
         <dl className="mt-4 grid gap-px bg-current/20 sm:grid-cols-2">
-          <ReviewFact label="NETWORK" value="ARC TESTNET / 5042002" />
-          <ReviewFact label="RAIL" value="CIRCLE GATEWAY / x402" />
-          <ReviewFact label="AMOUNT" value={`${formatUSDCBaseUnits(readiness.plan.requirements.amount)} / ${readiness.plan.requirements.amount} BASE UNITS`} />
+          <ReviewFact label="NETWORK" value="ARC TESTNET" />
+          <ReviewFact label="PAYMENT METHOD" value="USDC PAY PER USE" />
+          <ReviewFact label="AMOUNT" value={formatUSDCBaseUnits(readiness.plan.requirements.amount)} />
           <ReviewFact label="RECIPIENT" value={readiness.plan.requirements.payTo} />
           <ReviewFact label="VALID UNTIL" value={formatExecutionTimestamp(fromUnixSeconds(readiness.plan.paymentPayloadPreview.payload.authorization.validBefore))} />
           <ReviewFact label="CHECKED" value={formatExecutionTimestamp(readiness.checkedAt)} />
         </dl>
-        <div className="mt-4 space-y-2 border-t border-current pt-3 font-mono text-[10px] leading-relaxed">
-          <div><span className="opacity-60">PLAN HASH / </span><span className="break-all">{readiness.plan.planHash}</span></div>
-          <div><span className="opacity-60">AUTHORIZATION HASH / </span><span className="break-all">{readiness.plan.authorizationHash}</span></div>
-        </div>
+        <details className="mt-4 border-t border-current pt-3 font-mono text-[10px] leading-relaxed"><summary className="cursor-pointer uppercase tracking-[0.1em]">TECHNICAL PAYMENT PROOF</summary><div className="mt-3"><span className="opacity-60">PLAN HASH / </span><span className="break-all">{readiness.plan.planHash}</span></div><div className="mt-2"><span className="opacity-60">AUTHORIZATION HASH / </span><span className="break-all">{readiness.plan.authorizationHash}</span></div></details>
 
-        {!adapterReady ? <div className="mt-4 border-l-2 border-[color:var(--warn)] pl-3 font-mono text-[10px] leading-relaxed text-[color:var(--warn)]"><div className="uppercase tracking-[0.1em]">NO PAYMENT WILL BE SENT</div><p className="mt-1 text-current/80">The Circle Arc Testnet settlement adapter is disabled in this environment.</p></div> : null}
+        {!adapterReady ? <div className="mt-4 border-l-2 border-[color:var(--warn)] pl-3 font-mono text-[10px] leading-relaxed text-[color:var(--warn)]"><div className="uppercase tracking-[0.1em]">PAID USE IS NOT AVAILABLE</div><p className="mt-1 text-current/80">This environment is not accepting service payments right now.</p></div> : null}
 
         {readiness.status === "approval_required" && !approval ? <ConfirmationBox
-          title="EXPLICIT EXECUTION APPROVAL"
-          description="Confirm the exact plan above. The approval is retry-safe and expires with the authorization."
+          title="CONFIRM THIS TASK"
+          description="Confirm the exact amount, recipient, and expiry above. This step is safe to retry."
           value={confirmation}
           onChange={setConfirmation}
           phrase="APPROVE_ARC_TESTNET_X402"
-          action={busy === "approve" ? "RECORDING APPROVAL..." : "APPROVE EXACT PLAN"}
+          action={busy === "approve" ? "SAVING CONFIRMATION..." : "CONFIRM TASK"}
           disabled={busy !== null}
           onSubmit={() => void approve()}
           footnote={`RETRY-SAFE APPROVAL KEY / ${approvalKey}`}
         /> : null}
 
-        {approval ? <div className="mt-4 border-l-2 border-[color:var(--ok)] pl-3 font-mono text-[10px] leading-relaxed text-[color:var(--ok)]"><div className="uppercase tracking-[0.1em]">APPROVED{adapterReady ? " / READY" : " / ADAPTER OFF"}</div><p className="mt-1 break-all text-current/80">{approval.approvalHash} / expires {formatExecutionTimestamp(approval.expiresAt)}</p></div> : null}
+        {approval ? <div className="mt-4 border-l-2 border-[color:var(--ok)] pl-3 font-mono text-[10px] leading-relaxed text-[color:var(--ok)]"><div className="uppercase tracking-[0.1em]">CONFIRMED{adapterReady ? " / READY" : " / PAYMENT UNAVAILABLE"}</div><p className="mt-1 text-current/80">Expires {formatExecutionTimestamp(approval.expiresAt)}</p></div> : null}
 
         {approval ? <section aria-labelledby="x402-facilitator-verification" className="mt-4 border border-current p-3">
-          <div className="flex flex-wrap items-center justify-between gap-3"><h4 id="x402-facilitator-verification" className="font-mono text-[9px] uppercase tracking-[0.14em]">CIRCLE SIGNATURE CHECK</h4>{verification ? <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-[color:var(--ok)]">VERIFIED</span> : null}</div>
-          <p className="mt-2 font-mono text-[10px] leading-relaxed opacity-75">Checks this authorization with Circle. Verification never settles payment.</p>
+          <div className="flex flex-wrap items-center justify-between gap-3"><h4 id="x402-facilitator-verification" className="font-mono text-[9px] uppercase tracking-[0.14em]">PAYMENT APPROVAL CHECK</h4>{verification ? <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-[color:var(--ok)]">ACCEPTED</span> : null}</div>
+          <p className="mt-2 font-mono text-[10px] leading-relaxed opacity-75">Checks the wallet approval before payment. This check cannot move funds.</p>
           {!signature && !settlement ? <p className="mt-3 border-l-2 border-[color:var(--warn)] pl-3 font-mono text-[10px] leading-relaxed text-[color:var(--warn)]">WALLET SIGNATURE REQUIRED / complete the authorization step first.</p> : null}
-          {!verification ? <ConfirmationBox title="VERIFY BEFORE SETTLEMENT" description="Optional preflight. The signature stays in memory for settlement after a successful check." value={verificationConfirmation} onChange={setVerificationConfirmation} phrase="VERIFY_ARC_TESTNET_X402" action={busy === "verify" ? "CHECKING WITH CIRCLE..." : "VERIFY SIGNATURE"} disabled={busy !== null || !signature} onSubmit={() => void verifyWithCircle()} /> : <div className="mt-3 space-y-1 border-t border-current pt-3 font-mono text-[10px] leading-relaxed text-[color:var(--ok)]"><div>PAYER / {verification.payer ?? "NOT RETURNED"}</div><div className="break-all">EVIDENCE / {verification.evidenceHash}</div><div>RECORDED / {formatExecutionTimestamp(verification.verifiedAt)}</div></div>}
+          {!verification ? <ConfirmationBox title="CHECK BEFORE PAYMENT" description="Optional safety check. It confirms the wallet approval without sending payment." value={verificationConfirmation} onChange={setVerificationConfirmation} phrase="VERIFY_ARC_TESTNET_X402" action={busy === "verify" ? "CHECKING..." : "CHECK WALLET APPROVAL"} disabled={busy !== null || !signature} onSubmit={() => void verifyWithCircle()} /> : <details className="mt-3 border-t border-current pt-3 font-mono text-[10px] leading-relaxed text-[color:var(--ok)]"><summary className="cursor-pointer">CHECK DETAILS</summary><div className="mt-2">PAYER / {verification.payer ?? "NOT RETURNED"}</div><div className="mt-1 break-all">EVIDENCE / {verification.evidenceHash}</div><div className="mt-1">RECORDED / {formatExecutionTimestamp(verification.verifiedAt)}</div></details>}
         </section> : null}
 
         {settlementReadiness ? <section aria-labelledby="x402-settlement-readiness" className="mt-4 border-t border-current pt-4">
-          <div className="flex flex-wrap items-center justify-between gap-3"><h4 id="x402-settlement-readiness" className="font-mono text-[9px] uppercase tracking-[0.14em] opacity-70">SETTLEMENT</h4><span className="font-mono text-[9px] uppercase tracking-[0.1em]" style={{ color: readinessToneColor(settlementReadinessTone(settlementReadiness.status)) }}>{settlementReadinessLabel(settlementReadiness.status)}</span></div>
+          <div className="flex flex-wrap items-center justify-between gap-3"><h4 id="x402-settlement-readiness" className="font-mono text-[9px] uppercase tracking-[0.14em] opacity-70">SERVICE PAYMENT</h4><span className="font-mono text-[9px] uppercase tracking-[0.1em]" style={{ color: readinessToneColor(settlementReadinessTone(settlementReadiness.status)) }}>{settlementReadinessLabel(settlementReadiness.status)}</span></div>
           <p className="mt-2 font-mono text-[10px] leading-relaxed opacity-75">{settlementReadiness.reason}</p>
-          <dl className="mt-3 grid gap-px bg-current/20 sm:grid-cols-2"><ReviewFact label="STATE" value={settlementReadiness.state.replaceAll("_", " ")} /><ReviewFact label="NEXT ACTION" value={settlementReadiness.nextAction.replaceAll("_", " ")} /><ReviewFact label="SETTLEMENT REF" value={settlementReadiness.settlementRef ?? "NOT RECORDED"} /><ReviewFact label="PROVIDER TRANSFER" value={settlementReadiness.providerTransferId ?? "NOT RECORDED"} /></dl>
-          {settlementReadiness.status === "ready" ? <ConfirmationBox title="EXECUTE PAID AGENT TASK" description="This sends the reviewed x402 authorization to the exact provider resource. The provider settles testnet USDC and must return both the task result and PAYMENT-RESPONSE proof." value={settlementConfirmation} onChange={setSettlementConfirmation} phrase="EXECUTE_ARC_TESTNET_X402" action={busy === "settle" ? "RUNNING PAID TASK..." : "PAY AND RUN AGENT"} disabled={busy !== null || !signature || AGON_PREVIEW_MODE} onSubmit={() => void settle()} /> : null}
+          <details className="mt-3"><summary className="cursor-pointer font-mono text-[9px] uppercase tracking-[0.1em]">TECHNICAL PAYMENT STATUS</summary><dl className="mt-3 grid gap-px bg-current/20 sm:grid-cols-2"><ReviewFact label="STATE" value={settlementReadiness.state.replaceAll("_", " ")} /><ReviewFact label="NEXT ACTION" value={settlementReadiness.nextAction.replaceAll("_", " ")} /><ReviewFact label="PAYMENT REFERENCE" value={settlementReadiness.settlementRef ?? "NOT RECORDED"} /><ReviewFact label="PROVIDER TRANSFER" value={settlementReadiness.providerTransferId ?? "NOT RECORDED"} /></dl></details>
+          {settlementReadiness.status === "ready" ? <ConfirmationBox title="PAY AND RUN THIS AGENT" description="This sends the approved payment to the selected service and returns the agent result with payment proof." value={settlementConfirmation} onChange={setSettlementConfirmation} phrase="EXECUTE_ARC_TESTNET_X402" action={busy === "settle" ? "RUNNING AGENT..." : "PAY AND RUN AGENT"} disabled={busy !== null || !signature || AGON_PREVIEW_MODE} onSubmit={() => void settle()} /> : null}
           {settlement ? <div role="status" className="mt-3 border-l-2 border-[color:var(--ok)] pl-3 font-mono text-[10px] leading-relaxed text-[color:var(--ok)]"><p>{settlement.state === "service_delivered" ? "SERVICE DELIVERED" : "PAYMENT SUBMITTED"} / {settlement.providerTransferId ?? settlement.transaction ?? "REFERENCE PENDING"}</p>{settlement.responseHash ? <p className="mt-1 break-all">RESPONSE HASH / {settlement.responseHash}</p> : null}{settlement.serviceResult !== undefined ? <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap border border-current/30 p-3 text-current">{JSON.stringify(settlement.serviceResult, null, 2)}</pre> : null}</div> : null}
         </section> : null}
 
         {reconciliationReadiness ? <section className="mt-4 border-t border-current pt-4">
-          <div className="font-mono text-[9px] uppercase tracking-[0.12em]">RECEIPT RECONCILIATION / {reconciliationReadiness.status.replaceAll("_", " ")}</div>
+          <div className="font-mono text-[9px] uppercase tracking-[0.12em]">CONFIRM PAYMENT RECEIPT</div>
           <p className="mt-2 font-mono text-[10px] leading-relaxed opacity-75">{reconciliationReadiness.reason}</p>
-          {reconciliationReadiness.lookupEnabled && (reconciliationReadiness.status === "lookup_required" || reconciliationReadiness.nextAction === "reconcile_receipt") ? <ConfirmationBox title="READ PROVIDER RECEIPT" description="This performs a read-only Circle transfer lookup. It cannot submit another payment." value={reconciliationConfirmation} onChange={setReconciliationConfirmation} phrase="RECONCILE_ARC_TESTNET_X402" action={busy === "reconcile" ? "RECONCILING..." : "RECONCILE RECEIPT"} disabled={busy !== null} onSubmit={() => void reconcile()} /> : null}
+          {reconciliationReadiness.lookupEnabled && (reconciliationReadiness.status === "lookup_required" || reconciliationReadiness.nextAction === "reconcile_receipt") ? <ConfirmationBox title="CHECK THE PROVIDER RECEIPT" description="This is a read-only payment lookup. It cannot submit another payment." value={reconciliationConfirmation} onChange={setReconciliationConfirmation} phrase="RECONCILE_ARC_TESTNET_X402" action={busy === "reconcile" ? "CHECKING RECEIPT..." : "CHECK RECEIPT"} disabled={busy !== null} onSubmit={() => void reconcile()} /> : null}
           {reconciliation ? <p role="status" className="mt-3 border-l-2 border-[color:var(--ok)] pl-3 font-mono text-[10px] leading-relaxed text-[color:var(--ok)]">LOOKUP {reconciliation.status.toUpperCase()} / STATE {reconciliation.state.replaceAll("_", " ").toUpperCase()}</p> : null}
         </section> : null}
       </> : null}

@@ -10,12 +10,12 @@ const STYLES: Record<VerificationStatus, string> = {
 };
 
 const LABELS: Record<VerificationStatus, string> = {
-  Verified: "Verified",
-  Pending: "Verification pending",
-  Unverified: "Provider listed",
-  Expired: "Verification expired",
-  Suspended: "Verification suspended",
-  Revoked: "Verification revoked",
+  Verified: "Tested by Agon",
+  Pending: "Test in progress",
+  Unverified: "Not yet tested",
+  Expired: "Test expired",
+  Suspended: "Test suspended",
+  Revoked: "Test revoked",
 };
 
 export function VerificationBadge({ status, quarantined = false }: { status: VerificationStatus; quarantined?: boolean }) {
@@ -40,7 +40,7 @@ export function VerificationBadge({ status, quarantined = false }: { status: Ver
                   : "var(--ink-3)",
         }}
       />
-      {quarantined ? "Quarantined" : LABELS[status]}
+      {quarantined ? "Unavailable" : LABELS[status]}
     </span>
   );
 }

@@ -42,16 +42,15 @@ const LEGACY_ROUTES = [
 
 const AGON_ROUTES = [
   { href: "/market", label: "MARKET", exact: true },
-  { href: "/agon", label: "PROTOCOL", exact: true },
-  { href: "/app", label: "PLAYGROUND", exact: true },
-  { href: "/docs/list-agents", label: "BUILD", exact: false },
-  { href: "/docs", label: "DOCUMENTATION", exact: false },
+  { href: "/market/new", label: "LIST AN AGENT", exact: true },
+  { href: "/agon/playground", label: "PLAYGROUND", exact: true },
+  { href: "/docs", label: "DOCS", exact: false },
 ];
 
 export function TopNav() {
   const pathname = usePathname() ?? "/";
   const isLogin = pathname === "/login";
-  const isAgon = IS_AGON_DEPLOYMENT || pathname === "/market" || pathname.startsWith("/market/") || pathname === "/agon" || pathname === "/docs" || pathname.startsWith("/docs/") || pathname.startsWith("/cli/");
+  const isAgon = IS_AGON_DEPLOYMENT || pathname === "/market" || pathname.startsWith("/market/") || pathname === "/agon" || pathname.startsWith("/agon/") || pathname === "/docs" || pathname.startsWith("/docs/") || pathname.startsWith("/cli/");
   const routes = isAgon ? AGON_ROUTES : LEGACY_ROUTES;
   const [open, setOpen] = useState(false);
   // The marketplace is public. Keep its route links visible before sign-in so
