@@ -5,6 +5,7 @@ import { encodeAbiParameters, encodeEventTopics, keccak256, zeroAddress } from "
 import {
   agonIdentityRegistryAbi,
   identityIdFromRegistrationReceipt,
+  resolveIdentityActions,
   validateIdentityMetadataUri,
 } from "./identity.ts";
 
@@ -48,4 +49,35 @@ test("rejects a successful receipt without a matching mint", () => {
     }],
   } as never;
   assert.throws(() => identityIdFromRegistrationReceipt(receipt, owner), /no matching/);
+});
+
+test("moves a newly created identity from create to bind without allowing a duplicate mint", () => {
+  const ready = resolveIdentityActions({
+    isSignedIn: true,
+    agentId: "42",
+    metadataUri: "https://nock.lat/agon/v1/agent",
+    creating: false,
+    binding: false,
+    profileWritesUnavailable: false,
+  });
+
+  assert.equal(ready.canCreate, false);
+  assert.equal(ready.createLabel, "IDENTITY CREATED");
+  assert.equal(ready.canBind, true);
+  assert.equal(ready.bindReason, null);
+});
+
+test("explains why bind is unavailable after creation", () => {
+  const blocked = resolveIdentityActions({
+    isSignedIn: true,
+    agentId: "42",
+    metadataUri: "https://nock.lat/agon/v1/agent",
+    creating: false,
+    binding: false,
+    profileWritesUnavailable: true,
+  });
+
+  assert.equal(blocked.canCreate, false);
+  assert.equal(blocked.canBind, false);
+  assert.match(blocked.bindReason ?? "", /temporarily paused/i);
 });

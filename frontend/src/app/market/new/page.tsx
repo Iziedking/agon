@@ -24,7 +24,7 @@ import { canonicalManifestHash } from "@/lib/agon/canonical";
 import { buildServiceManifest, validateServiceDraft } from "@/lib/agon/draft";
 import type { AgonCapabilities, PaymentRail } from "@/lib/agon/types";
 import { AGON_NETWORK } from "@/lib/agon/network";
-import { AGON_IDENTITY_REGISTRY, agonIdentityRegistryAbi, identityIdFromRegistrationReceipt, validateIdentityMetadataUri } from "@/lib/agon/identity";
+import { AGON_IDENTITY_REGISTRY, agonIdentityRegistryAbi, identityIdFromRegistrationReceipt, resolveIdentityActions, validateIdentityMetadataUri } from "@/lib/agon/identity";
 
 const INPUT_CLASS = "h-12 w-full border border-[color:var(--hairline-strong)] bg-canvas px-4 font-mono text-[12px] text-ink outline-none placeholder:text-ink-3 focus:border-ink focus:ring-2 focus:ring-ink focus:ring-offset-2 focus:ring-offset-canvas disabled:opacity-50";
 
@@ -92,6 +92,14 @@ export default function NewListingPage() {
   const writeReadinessMessage = capabilities
     ? readinessMessage(capabilities.writeReadiness.reasons)
     : null;
+  const identityActions = useMemo(() => resolveIdentityActions({
+    isSignedIn,
+    agentId,
+    metadataUri,
+    creating: creatingIdentity,
+    binding,
+    profileWritesUnavailable,
+  }), [agentId, binding, creatingIdentity, isSignedIn, metadataUri, profileWritesUnavailable]);
   const manifestUriValid = /^(https:\/\/|ipfs:\/\/).+/i.test(manifestUri.trim());
   const readyToPublish = Boolean(isSignedIn && serviceKey && manifestHash && manifestUriValid && !listingWritesUnavailable);
 
@@ -308,20 +316,22 @@ export default function NewListingPage() {
                   <TagButton
                     type="button"
                     variant="ghost"
-                    disabled={!isSignedIn || binding || profileWritesUnavailable || !agentId || !metadataUri}
+                    disabled={!identityActions.canBind}
                     onClick={() => { void submitBinding(); }}
                   >
-                    {binding ? "BINDING IDENTITY..." : "BIND EXISTING IDENTITY"}
+                    {identityActions.bindLabel}
                   </TagButton>
                   <TagButton
                     type="button"
                     variant="ghost"
-                    disabled={!isSignedIn || creatingIdentity || !metadataUri || !validateIdentityMetadataUri(metadataUri)}
+                    disabled={!identityActions.canCreate}
                     onClick={() => { void createIdentity(); }}
                   >
-                    {creatingIdentity ? "CREATING IDENTITY..." : "CREATE NEW ERC-8004 IDENTITY"}
+                    {identityActions.createLabel}
                   </TagButton>
-                  <span className="font-mono text-[10px] leading-relaxed text-ink-3">Already bound? Continue to the service details.</span>
+                  <span className="font-mono text-[10px] leading-relaxed text-ink-3">
+                    {identityActions.bindReason ?? (agentId ? `Identity #${agentId} is ready to bind.` : "Already bound? Continue to the service details.")}
+                  </span>
                 </div>
               </BracketedCell>
 

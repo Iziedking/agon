@@ -22,6 +22,44 @@ export function validateIdentityMetadataUri(value: string): boolean {
   }
 }
 
+export type IdentityActionState = {
+  canCreate: boolean;
+  canBind: boolean;
+  createLabel: string;
+  bindLabel: string;
+  bindReason: string | null;
+};
+
+export function resolveIdentityActions(input: {
+  isSignedIn: boolean;
+  agentId: string;
+  metadataUri: string;
+  creating: boolean;
+  binding: boolean;
+  profileWritesUnavailable: boolean;
+}): IdentityActionState {
+  const hasAgentId = /^[1-9]\d*$/.test(input.agentId.trim());
+  const hasMetadata = validateIdentityMetadataUri(input.metadataUri);
+
+  let bindReason: string | null = null;
+  if (!input.isSignedIn) bindReason = "Sign in with the wallet that owns this identity.";
+  else if (!hasAgentId) bindReason = "Create an identity or enter an existing agent ID first.";
+  else if (!hasMetadata) bindReason = "Provide a permanent HTTPS or IPFS agent profile URL.";
+  else if (input.profileWritesUnavailable) bindReason = "Identity binding is temporarily paused in this environment.";
+
+  return {
+    canCreate: input.isSignedIn && !hasAgentId && hasMetadata && !input.creating && !input.profileWritesUnavailable,
+    canBind: bindReason === null && !input.binding,
+    createLabel: input.creating
+      ? "CREATING IDENTITY..."
+      : hasAgentId
+        ? "IDENTITY CREATED"
+        : "CREATE NEW ERC-8004 IDENTITY",
+    bindLabel: input.binding ? "BINDING IDENTITY..." : "BIND EXISTING IDENTITY",
+    bindReason,
+  };
+}
+
 /**
  * A successful receipt is not enough to identify the new agent. Registration
  * is confirmed only when the ERC-721 mint Transfer event targets the signing
