@@ -43,6 +43,7 @@ import type {
   ListingPage,
   ListingQuery,
   PublishListingRequest,
+  PublishListingVersionRequest,
   SubmittedOperation,
   X402CallIntentRequest,
   X402CallIntentView,
@@ -115,6 +116,10 @@ export type AgonWriteAdapter = {
   publishListing(
     actor: string,
     request: PublishListingRequest,
+  ): Promise<Result<SubmittedOperation, AgonServiceError>>;
+  publishListingVersion(
+    actor: string,
+    request: PublishListingVersionRequest,
   ): Promise<Result<SubmittedOperation, AgonServiceError>>;
   confirmOperation(
     actor: string,
@@ -785,6 +790,19 @@ export class PostgresAgonMarketService implements AgonMarketService {
       };
     }
     return this.options.writer.publishListing(actor, request);
+  }
+
+  async publishListingVersion(
+    actor: string,
+    request: PublishListingVersionRequest,
+  ): Promise<Result<SubmittedOperation, AgonServiceError>> {
+    if (!this.options.writer) {
+      return {
+        ok: false,
+        error: { code: "capability_unavailable", message: "listing writes are unavailable" },
+      };
+    }
+    return this.options.writer.publishListingVersion(actor, request);
   }
 
   async confirmOperation(

@@ -6,6 +6,7 @@ import type {
   BindProfileRequest,
   ListListingsQuery,
   PublishListingRequest,
+  PublishListingVersionRequest,
   SubmittedOperation,
   X402CallIntentRequest,
   X402CallIntentView,
@@ -152,6 +153,17 @@ export function publishListing(payload: PublishListingRequest, principal?: `0x${
   return request<SubmittedOperation>("/listings", {
     method: "POST",
     body: JSON.stringify(payload),
+  }, principal);
+}
+
+export function publishListingVersion(
+  listingId: string,
+  payload: Omit<PublishListingVersionRequest, "listingId">,
+  principal?: `0x${string}`,
+): Promise<SubmittedOperation> {
+  return request<SubmittedOperation>(`/listings/${encodeURIComponent(listingId)}/versions`, {
+    method: "POST",
+    body: JSON.stringify({ ...payload, listingId }),
   }, principal);
 }
 

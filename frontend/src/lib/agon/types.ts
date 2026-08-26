@@ -127,6 +127,14 @@ export type PublishListingRequest = {
   paymentRail: PaymentRail;
 };
 
+export type PublishListingVersionRequest = {
+  chainId: string;
+  listingId: string;
+  manifestHash: string;
+  manifestUri: string;
+  paymentRail: PaymentRail;
+};
+
 export type SubmittedOperation = {
   operationId: string;
   state: "prepared" | "confirmed";
@@ -134,7 +142,7 @@ export type SubmittedOperation = {
     chainId: string;
     to: `0x${string}`;
     data: `0x${string}`;
-    functionName: "bindProfile" | "publish";
+    functionName: "bindProfile" | "publish" | "publishVersion";
     args: string[];
   };
   txHash: `0x${string}` | null;

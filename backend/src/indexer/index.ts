@@ -18,6 +18,7 @@ import {
 import { getLatestMarkets, isOpen } from "../lib/arcana.js";
 import { pinArcanaMarketsForContest } from "../lib/arcanaPins.js";
 import { notify, notifyMany } from "../notifications/index.js";
+import { agonIndexerLoop } from "../agon/indexer.js";
 
 /// Polls eth_getLogs over block ranges, writes raw events to events_log, and
 /// updates the denormalized read tables. Resumes from the last processed block
@@ -812,6 +813,7 @@ async function main() {
   // Kick off Arcana indexing in parallel. It owns its own cursor + error
   // handling so a partner-contract issue can't stall ArcRun-native indexing.
   const arcanaPromise = arcanaLoop();
+  const agonPromise = agonIndexerLoop(currentHead);
 
   // This loop used to run bare, so one rejected RPC call rejected main() and
   // took the process down with it. Under `restart: unless-stopped` that made a
@@ -853,6 +855,7 @@ async function main() {
   }
 
   await arcanaPromise;
+  await agonPromise;
   await pool.end();
 }
 

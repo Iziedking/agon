@@ -9,6 +9,7 @@ const address = z.string().regex(/^0x[a-fA-F0-9]{40}$/, "expected deployed contr
 const sourceVerification = z.record(z.unknown()).optional();
 const schema = z.object({
   chainId: z.number().int().positive(),
+  deployBlock: z.number().int().nonnegative().optional(),
   contracts: z.object({
     AgonProfileRegistry: z.string(),
     AgonServiceRegistry: z.string(),

@@ -56,6 +56,11 @@ export default function NewListingPage() {
     txHash: `0x${string}` | null;
     blockNumber: string | null;
   } | null>(null);
+  const [listingPublicationProof, setListingPublicationProof] = useState<{
+    txHash: `0x${string}` | null;
+    blockNumber: string | null;
+    resultReference: string | null;
+  } | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -106,7 +111,7 @@ export default function NewListingPage() {
     profileWritesUnavailable,
   }), [agentId, binding, creatingIdentity, identityBindingProof, isSignedIn, metadataUri, profileWritesUnavailable]);
   const manifestUriValid = /^(https:\/\/|ipfs:\/\/).+/i.test(manifestUri.trim());
-  const readyToPublish = Boolean(isSignedIn && serviceKey && manifestHash && manifestUriValid && !listingWritesUnavailable);
+  const readyToPublish = Boolean(isSignedIn && serviceKey && manifestHash && manifestUriValid && !listingWritesUnavailable && !listingPublicationProof);
 
   async function submitBinding() {
     if (!address) {
@@ -200,6 +205,11 @@ export default function NewListingPage() {
         paymentRail,
       }, address);
       if (operation.state === "confirmed") {
+        setListingPublicationProof({
+          txHash: operation.txHash,
+          blockNumber: operation.proof?.blockNumber ?? null,
+          resultReference: operation.resultReference,
+        });
         setNotice({ tone: "ok", message: `This service is already published${operation.resultReference ? `: ${operation.resultReference}` : "."} It remains Not yet tested until this version passes an Agon review.` });
         return;
       }
@@ -225,6 +235,11 @@ export default function NewListingPage() {
       setPendingConfirmation({ operationId: operation.operationId, txHash: hash, label: "listing publication" });
       const confirmed = await confirmAgonOperation(operation.operationId, hash, address);
       setPendingConfirmation(null);
+      setListingPublicationProof({
+        txHash: confirmed.txHash ?? hash,
+        blockNumber: confirmed.proof?.blockNumber ?? null,
+        resultReference: confirmed.resultReference,
+      });
       setNotice({
         tone: "ok",
         message: `Service published${confirmed.resultReference ? `: ${confirmed.resultReference}` : "."} It remains Not yet tested until this version passes an Agon review.`,
@@ -250,6 +265,18 @@ export default function NewListingPage() {
         address,
       );
       setPendingConfirmation(null);
+      if (pendingConfirmation.label === "listing publication") {
+        setListingPublicationProof({
+          txHash: confirmed.txHash ?? pendingConfirmation.txHash,
+          blockNumber: confirmed.proof?.blockNumber ?? null,
+          resultReference: confirmed.resultReference,
+        });
+      } else {
+        setIdentityBindingProof({
+          txHash: confirmed.txHash ?? pendingConfirmation.txHash,
+          blockNumber: confirmed.proof?.blockNumber ?? null,
+        });
+      }
       setNotice({
         tone: "ok",
         message: confirmed.resultReference
@@ -490,12 +517,38 @@ export default function NewListingPage() {
                   <p className="mt-4 font-mono text-[10px] leading-relaxed text-[color:var(--warn)]">Manifest URL must use HTTPS or IPFS.</p>
                 ) : null}
 
-                <TagButton type="submit" disabled={!readyToPublish || publishing} className="mt-7 w-full justify-center">
-                  {publishing ? "PUBLISHING..." : listingWritesUnavailable ? "PUBLISHING UNAVAILABLE" : "PUBLISH SERVICE"}
-                </TagButton>
-                <p className="mt-4 font-mono text-[9px] uppercase leading-relaxed tracking-[0.1em] opacity-60">
-                  New services appear as Not yet tested. Use the Playground to request testing for this exact version.
-                </p>
+                {listingPublicationProof ? (
+                  <div className="mt-7 border-l-[3px] border-[color:var(--ok)] bg-canvas-2 px-4 py-4">
+                    <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-[color:var(--ok)]">SERVICE PUBLISHED</div>
+                    <p className="mt-2 font-mono text-[10px] leading-relaxed text-ink-2">
+                      {listingPublicationProof.resultReference ?? "Receipt confirmed on Arc Testnet."} This version is now locked and cannot be published again from this form.
+                    </p>
+                    <div className="mt-4 flex flex-wrap gap-3">
+                      {listingPublicationProof.txHash ? (
+                        <TagButton
+                          href={`${AGON_NETWORK.explorerUrl.replace(/\/$/, "")}/tx/${listingPublicationProof.txHash}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          variant="ghost"
+                          size="sm"
+                        >
+                          VIEW TRANSACTION
+                        </TagButton>
+                      ) : null}
+                      <TagButton href="/market" variant="ghost" size="sm">VIEW MARKET</TagButton>
+                      <TagButton href="/market/version" variant="ghost" size="sm">PUBLISH NEW VERSION</TagButton>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <TagButton type="submit" disabled={!readyToPublish || publishing} className="mt-7 w-full justify-center">
+                      {publishing ? "PUBLISHING..." : listingWritesUnavailable ? "PUBLISHING UNAVAILABLE" : "PUBLISH SERVICE"}
+                    </TagButton>
+                    <p className="mt-4 font-mono text-[9px] uppercase leading-relaxed tracking-[0.1em] opacity-60">
+                      New services appear as Not yet tested. Use the Playground to request testing for this exact version.
+                    </p>
+                  </>
+                )}
               </BracketedCell>
             </aside>
           </form>

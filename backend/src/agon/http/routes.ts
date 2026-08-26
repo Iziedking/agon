@@ -13,6 +13,7 @@ import type {
   ListingPage,
   ListingQuery,
   PublishListingRequest,
+  PublishListingVersionRequest,
   SubmittedOperation,
   X402ApprovalRequest,
   X402ApprovalView,
@@ -95,6 +96,10 @@ export type AgonMarketService = {
   publishListing(
     actor: string,
     request: PublishListingRequest,
+  ): Promise<Result<SubmittedOperation, AgonServiceError>>;
+  publishListingVersion(
+    actor: string,
+    request: PublishListingVersionRequest,
   ): Promise<Result<SubmittedOperation, AgonServiceError>>;
   confirmOperation(
     actor: string,
@@ -350,6 +355,14 @@ const publishListingSchema = z.object({
   manifestHash: bytes32,
   manifestUri: z.string().min(1).max(2048),
   category: positiveDecimal,
+  paymentRail: z.enum(["X402", "Escrow"]),
+});
+
+const publishListingVersionSchema = z.object({
+  chainId: positiveDecimal,
+  listingId: positiveDecimal,
+  manifestHash: bytes32,
+  manifestUri: z.string().min(1).max(2048),
   paymentRail: z.enum(["X402", "Escrow"]),
 });
 
@@ -1156,6 +1169,15 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
     const parsed = publishListingSchema.safeParse(body);
     if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
     const result = await options.service.publishListing(context.get("address"), parsed.data);
+    return result.ok ? context.json(result.value, 201) : serviceErrorResponse(context, result.error);
+  });
+
+  app.post("/listings/:listingId/versions", options.requireListingWriteAuth ?? options.requireAuth, requirePrincipal, async (context) => {
+    const body = await parseJson(context);
+    if (isApiError(body)) return context.json(body, 400);
+    const parsed = publishListingVersionSchema.safeParse({ ...(body as Record<string, unknown>), listingId: context.req.param("listingId") });
+    if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
+    const result = await options.service.publishListingVersion(context.get("address"), parsed.data);
     return result.ok ? context.json(result.value, 201) : serviceErrorResponse(context, result.error);
   });
 

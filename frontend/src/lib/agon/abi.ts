@@ -9,6 +9,7 @@ export const agonProfileRegistryAbi = parseAbi([
 
 export const agonServiceRegistryAbi = parseAbi([
   "function publish(uint256 agentId, bytes32 serviceKey, bytes32 manifestHash, string uri, uint256 category, uint8 rail) returns (uint256 id)",
+  "function publishVersion(uint256 id, bytes32 hash, string uri, uint8 rail)",
 ]);
 
 export const agonJobEscrowAbi = parseAbi([
