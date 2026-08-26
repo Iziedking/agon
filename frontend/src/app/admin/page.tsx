@@ -275,7 +275,7 @@ function AgonVerificationPanel({ token }: { token: string }) {
         {evidence.length ? <div className="mt-3 flex flex-col gap-2">{evidence.map((run) => <div key={run.id} className="border-t border-[color:var(--hairline)] pt-2 font-mono text-[10px]"><span style={{ color: run.passed ? "var(--ok)" : "var(--err)" }}>{run.passed ? "PASS" : "FAIL"}</span> · {new Date(run.createdAt).toLocaleString()}<div className="mt-1 break-all text-ink-3">{run.evidenceHash}</div>{run.evidence.error ? <div className="text-[color:var(--err)]">{run.evidence.error}</div> : null}</div>)}</div> : null}
       </BracketedCell>
       <BracketedCell pad="sm">
-        <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3"><span aria-hidden className="text-accent">â– </span> ARENA EVALUATOR ROLE</div>
+        <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3"><span aria-hidden className="text-accent">■</span> ARENA EVALUATOR ROLE</div>
         <p className="mt-1 font-mono text-[10px] text-ink-3">Authorize the wallet that may start and score AgonArena evaluations. The coordinator must already be AgonArena admin.</p>
         <input value={evaluator} onChange={(e) => setEvaluator(e.target.value)} placeholder="0x evaluator wallet" className="mt-3 w-full border border-[color:var(--hairline-strong)] bg-canvas px-3 py-2 font-mono text-sm text-ink outline-none focus:border-ink" />
         <div className="mt-2 flex gap-2">

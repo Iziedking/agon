@@ -166,6 +166,7 @@ test("presents indexed manifest details and honest fallbacks", () => {
       body: {
         name: "Protocol security review",
         description: "Reviews smart contracts and returns prioritized findings.",
+        logoUrl: "https://example.com/logo.png",
         endpoint: "https://example.com/review",
         tags: ["security", "solidity"],
         pricing: { rail: "x402", amountUSDC: "12.50" },
@@ -176,6 +177,7 @@ test("presents indexed manifest details and honest fallbacks", () => {
   assert.deepEqual(presentListing(richListing), {
     name: "Protocol security review",
     description: "Reviews smart contracts and returns prioritized findings.",
+    logoUrl: "https://example.com/logo.png",
     category: categoryById("3"),
     tags: ["security", "solidity"],
     endpoint: "https://example.com/review",
@@ -194,6 +196,7 @@ test("builds the browser manifest from user-facing service fields", () => {
     agentId: "42",
     name: "Protocol security review",
     description: "Reviews smart contracts and returns prioritized findings.",
+    logoUrl: "https://example.com/logo.png",
     categoryId: "8",
     serviceKey: "protocol-security-review",
     endpoint: "https://example.com/review",
@@ -206,6 +209,7 @@ test("builds the browser manifest from user-facing service fields", () => {
     name: "Protocol security review",
     version: 1,
     description: "Reviews smart contracts and returns prioritized findings.",
+    logoUrl: "https://example.com/logo.png",
     category: "verification",
     endpoint: "https://example.com/review",
     tags: ["security", "solidity"],

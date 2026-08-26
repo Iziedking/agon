@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 
 import { ServiceProof } from "@/components/agon/ServiceProof";
+import { AgentLogo } from "@/components/agon/ListingCard";
 import { AgonAuthAction } from "@/components/agon/AgonAuthAction";
 import { UnverifiedWarning } from "@/components/agon/UnverifiedWarning";
 import { VerificationBadge } from "@/components/agon/VerificationBadge";
@@ -16,7 +17,7 @@ import { Footer } from "@/components/redesign/Footer";
 import { SectionHeader } from "@/components/redesign/SectionHeader";
 import { TagButton } from "@/components/redesign/TagButton";
 import { presentListing } from "@/lib/agon/catalog";
-import { getListing } from "@/lib/agon/client";
+import { getListing, inspectManifest } from "@/lib/agon/client";
 import type { AgonListing } from "@/lib/agon/types";
 import { assessListingAssurance, canUseEscrow, verifyManifestAnchor } from "@/lib/agon/verify";
 
@@ -28,13 +29,23 @@ export default function ListingDetailPage() {
   const [listing, setListing] = useState<AgonListing | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [manifestBody, setManifestBody] = useState<unknown | undefined>(undefined);
 
   useEffect(() => {
     let live = true;
     setListing(undefined);
     setError(null);
     getListing(reference)
-      .then((value) => { if (live) setListing(value); })
+      .then((value) => {
+        if (!live) return;
+        setListing(value);
+        setManifestBody(value.manifest.body);
+        if (value.manifest.body !== undefined) return;
+        void inspectManifest(value.manifest.uri).then((inspection) => {
+          if (!live || !inspection.validation.ok || inspection.manifestHash.toLowerCase() !== value.manifest.hash.toLowerCase()) return;
+          setManifestBody(inspection.body);
+        }).catch(() => { /* The anchor-only view remains safe and usable. */ });
+      })
       .catch((failure) => {
         if (!live) return;
         setListing(null);
@@ -43,8 +54,9 @@ export default function ListingDetailPage() {
     return () => { live = false; };
   }, [reference, reloadKey]);
 
-  const service = listing ? presentListing(listing) : null;
-  const proof = listing ? verifyManifestAnchor(listing.manifest.hash, listing.manifest.body ?? undefined) : null;
+  const hydratedListing = listing ? { ...listing, manifest: { ...listing.manifest, body: manifestBody } } : null;
+  const service = hydratedListing ? presentListing(hydratedListing) : null;
+  const proof = hydratedListing ? verifyManifestAnchor(hydratedListing.manifest.hash, hydratedListing.manifest.body ?? undefined) : null;
   const assurance = listing && proof ? assessListingAssurance(listing, proof) : null;
   const escrowEligible = listing && proof ? canUseEscrow(listing, proof) : false;
   const quarantined = Boolean(listing?.risk.quarantineReason);
@@ -59,7 +71,7 @@ export default function ListingDetailPage() {
             eyebrow={service && listing ? `${service.category.label} / AGENT #${listing.agentId}` : "AGON MARKET / SERVICE"}
             heading={service?.name ?? "SERVICE DETAILS"}
             subDeck={service?.description ?? "Reading the service description and trust record from the Agon catalog."}
-            right={<><TagButton variant="ghost" href="/market">BACK TO MARKET</TagButton><AgonAuthAction href="/market/new">LIST YOUR AGENT</AgonAuthAction></>}
+            right={<><TagButton variant="ghost" href="/market">BACK TO MARKET</TagButton>{listing ? <TagButton variant="ghost" href={`/market/version?listingId=${encodeURIComponent(listing.listingId)}&manifestUri=${encodeURIComponent(listing.manifest.uri)}`}>UPDATE THIS SERVICE</TagButton> : null}<AgonAuthAction href="/market/new">LIST YOUR AGENT</AgonAuthAction></>}
           />
         </section>
 
@@ -88,9 +100,12 @@ export default function ListingDetailPage() {
                 <div className="space-y-5">
                   <BracketedCell pad="lg">
                     <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[color:var(--hairline)] pb-5">
-                      <div>
+                      <div className="flex items-start gap-4">
+                        <AgentLogo logoUrl={service.logoUrl} name={service.name} />
+                        <div>
                         <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">WHAT YOU GET</div>
                         <h2 className="mt-2 font-stencil text-[30px] uppercase leading-none text-ink sm:text-[36px]">SERVICE OVERVIEW</h2>
+                        </div>
                       </div>
                       <VerificationBadge status={listing.verification.status} quarantined={quarantined} />
                     </div>

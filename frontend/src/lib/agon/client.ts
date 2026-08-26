@@ -2,6 +2,7 @@ import type {
   AgonHealth,
   AgonListing,
   AgonListingPage,
+  AgonManifestInspection,
   ApiErrorBody,
   BindProfileRequest,
   ListListingsQuery,
@@ -147,6 +148,10 @@ export function bindProfile(payload: BindProfileRequest, principal?: `0x${string
     method: "POST",
     body: JSON.stringify(payload),
   }, principal);
+}
+
+export function inspectManifest(uri: string): Promise<AgonManifestInspection> {
+  return request<AgonManifestInspection>(`/manifests/inspect?uri=${encodeURIComponent(uri)}`);
 }
 
 export function publishListing(payload: PublishListingRequest, principal?: `0x${string}`): Promise<SubmittedOperation> {

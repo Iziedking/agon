@@ -104,6 +104,15 @@ export type AgonListingPage = {
   nextCursor: string | null;
 };
 
+export type AgonManifestInspection = {
+  uri: string;
+  manifestHash: string;
+  body: unknown;
+  contentType: string | null;
+  byteLength: number;
+  validation: { ok: true } | { ok: false; code: string; message: string };
+};
+
 export type ListListingsQuery = {
   limit?: number;
   cursor?: string | null;

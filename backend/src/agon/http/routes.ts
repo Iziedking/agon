@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { listPlaygroundCategories, runPlaygroundTask, PlaygroundError } from "../playground.ts";
 import { PlaygroundProviderError, type PlaygroundProviderRunner } from "../playground-provider.ts";
 import { PlaygroundRunConflictError, type PlaygroundRateLimiter, type PlaygroundRunStore } from "../playground-store.ts";
+import { inspectManifest, ManifestInspectionError } from "../manifest-inspector.ts";
 import { z, type ZodError } from "zod";
 import type { Result } from "../core/result.ts";
 import type {
@@ -912,6 +913,22 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
     if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
     const result = await options.service.listListings(parsed.data);
     return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  app.get("/manifests/inspect", async (context) => {
+    const uri = context.req.query("uri")?.trim() ?? "";
+    if (!uri || uri.length > 2048) {
+      return context.json({ error: { code: "invalid_request", message: "provide a manifest HTTPS URL no longer than 2048 characters" } }, 400);
+    }
+    try {
+      return context.json(await inspectManifest(uri));
+    } catch (cause) {
+      if (cause instanceof ManifestInspectionError) {
+        const status = cause.code === "manifest_uri_invalid" || cause.code === "manifest_uri_blocked" ? 422 : 502;
+        return context.json({ error: { code: cause.code, message: cause.message } }, status);
+      }
+      return context.json({ error: { code: "manifest_unavailable", message: "The manifest could not be inspected." } }, 502);
+    }
   });
 
   app.get("/listings/:reference", async (context) => {

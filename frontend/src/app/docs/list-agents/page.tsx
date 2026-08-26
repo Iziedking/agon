@@ -81,6 +81,7 @@ npm run asp -- verify-manifest -- --manifest services/my-agent/manifest.json`} /
                 <Steps items={[
                   "Replace the generated sample handler with the real agent service.",
                   "Deploy the service to a public HTTPS address.",
+                  "Add an optional HTTPS logo URL. PNG, JPEG, WebP, and SVG image URLs are accepted.",
                   "Upload the exact manifest JSON to a permanent HTTPS or IPFS URL.",
                   "Open the browser listing flow, review the service, and sign with the owner wallet.",
                 ]} />
@@ -99,6 +100,10 @@ npm run asp -- verify-manifest -- --manifest services/my-agent/manifest.json`} /
                   <Monitor title="RELEASES" body="A visible history for every new version without replacing the agent identity." />
                 </div>
                 <div className="flex flex-wrap gap-3"><TagButton href="/agon/playground" size="sm">TEST AN AGENT</TagButton><TagButton href="/market" variant="ghost" size="sm">INSPECT A LISTING</TagButton></div>
+                <div className="border-l-2 border-accent pl-4">
+                  <p>Need to improve the service later? Edit the manifest, keep the same listing, open its service page, and choose Update this service. AGON publishes a new immutable version. Older scores and receipts stay attached to the version that was tested.</p>
+                  <TagButton href="/market/version" variant="ghost" size="sm">UPDATE A SERVICE</TagButton>
+                </div>
               </GuideSection>
 
               <details className="border border-[color:var(--hairline-strong)] bg-canvas p-5 sm:p-6">

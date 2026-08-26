@@ -4,6 +4,7 @@ export type ServiceDraft = {
   agentId: string;
   name: string;
   description: string;
+  logoUrl?: string;
   categoryId: string;
   serviceKey: string;
   endpoint: string;
@@ -49,6 +50,9 @@ export function validateServiceDraft(draft: ServiceDraft): DraftIssue[] {
   }
   if (!draft.name.trim()) issues.push({ field: "name", message: "Give the service a clear name." });
   if (!draft.description.trim()) issues.push({ field: "description", message: "Explain the result a buyer receives." });
+  if (draft.logoUrl?.trim() && !isPublicHttps(draft.logoUrl.trim())) {
+    issues.push({ field: "logoUrl", message: "Logo URL must be a public HTTPS image URL." });
+  }
   if (categoryById(draft.categoryId).slug === "other") {
     issues.push({ field: "categoryId", message: "Choose one of the marketplace categories." });
   }
@@ -74,6 +78,7 @@ export function buildServiceManifest(draft: ServiceDraft) {
     name: draft.name.trim(),
     version: 1,
     description: draft.description.trim(),
+    ...(draft.logoUrl?.trim() ? { logoUrl: draft.logoUrl.trim() } : {}),
     category: category.slug,
     endpoint: draft.endpoint.trim(),
     tags: parseTags(draft.tags),

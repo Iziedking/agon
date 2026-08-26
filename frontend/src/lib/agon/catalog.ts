@@ -25,6 +25,7 @@ export type PresentedCategory = AgonCategory | {
 export type ListingPresentation = {
   name: string;
   description: string;
+  logoUrl: string | null;
   category: PresentedCategory;
   tags: string[];
   endpoint: string | null;
@@ -67,6 +68,7 @@ export function presentListing(listing: AgonListing): ListingPresentation {
   return {
     name: text(body?.name) ?? `${category.label} service`,
     description: text(body?.description) ?? `Published by ERC-8004 Agent #${listing.agentId}. Full manifest details are not indexed yet.`,
+    logoUrl: text(body?.logoUrl),
     category,
     tags,
     endpoint: text(body?.endpoint) ?? text(execution?.endpoint),
