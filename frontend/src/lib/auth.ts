@@ -229,6 +229,16 @@ export class OtpRequiredError extends Error {
   }
 }
 
+/// Signals that the server does not offer email-code login. The modal uses
+/// this only to fall back to the passkey flow; delivery or rate-limit errors
+/// must remain visible to the user instead of silently changing auth modes.
+export class EmailOtpUnavailableError extends Error {
+  constructor() {
+    super("email otp unavailable");
+    this.name = "EmailOtpUnavailableError";
+  }
+}
+
 export async function startEmailOtp(email: string): Promise<void> {
   const res = await fetch(`${AUTH_URL}/auth/email/otp/start`, {
     method: "POST",
@@ -238,7 +248,11 @@ export async function startEmailOtp(email: string): Promise<void> {
   });
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new Error(body.error ?? "could not send the code");
+    const message = body.error ?? "could not send the code";
+    if (res.status === 503 && message.toLowerCase().includes("disabled")) {
+      throw new EmailOtpUnavailableError();
+    }
+    throw new Error(message);
   }
 }
 

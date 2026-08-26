@@ -134,8 +134,10 @@ const envSchema = z.object({
   // WebAuthn (passkey) configuration. RP_ID is the registrable domain the
   // passkey is bound to (no port, no protocol). ORIGIN must include the
   // protocol and port. For local dev RP_ID="localhost" and
-  // ORIGIN="http://localhost:3003". For prod, RP_ID="arcrun.xyz" and
-  // ORIGIN="https://arcrun.xyz".
+  // ORIGIN="http://localhost:3003". For the canonical AGON deployment, use
+  // RP_ID="agon.surf" and ORIGIN="https://agon.surf". A passkey is scoped to
+  // this relying-party domain, so changing it silently invalidates credentials
+  // from the old domain; email-code login remains the recovery path.
   WEBAUTHN_RP_NAME: z.string().default("Agon"),
   WEBAUTHN_RP_ID: z.string().default("localhost"),
   WEBAUTHN_ORIGIN: z.string().default("http://localhost:3003"),

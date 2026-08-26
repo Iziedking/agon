@@ -7,6 +7,7 @@ import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { arcTestnet } from "@/lib/arc";
 import {
   enrollPasskey,
+  EmailOtpUnavailableError,
   loginWithSigner,
   OtpRequiredError,
   sessionFromEmail,
@@ -201,10 +202,10 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
     }
   }
 
-  /// Email sign-in. POSTs the email to the backend, which either resumes the
-  /// user's existing Circle wallet or mints a fresh one and seeds it with
-  /// testnet USDC. The backend sets the session cookie inline, so we just
-  /// refresh useAuth and we're in. No passkey, no WebAuthn, no SIWE step.
+  /// Email sign-in. Prefer a verified email code whenever the server offers
+  /// it. That keeps the flow reliable across devices and lets users recover
+  /// accounts whose old passkey was registered on a previous AGON domain.
+  /// Servers without OTP enabled fall back to the passkey ceremony.
   async function handleEmailSignIn() {
     const trimmed = email.trim();
     if (!trimmed) {
@@ -214,6 +215,15 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
     setCircleBusy(true);
     setError(null);
     try {
+      try {
+        await startEmailOtp(trimmed);
+        setView("otp");
+        setOtp("");
+        return;
+      } catch (otpErr) {
+        if (!(otpErr instanceof EmailOtpUnavailableError)) throw otpErr;
+      }
+
       const result = await signInWithEmail(trimmed);
       await refresh();
       reportEvent("login", { context: { method: "email", isNew: result.isNew, seeded: result.seeded } });
