@@ -52,6 +52,10 @@ export default function NewListingPage() {
     txHash: `0x${string}`;
     label: string;
   } | null>(null);
+  const [identityBindingProof, setIdentityBindingProof] = useState<{
+    txHash: `0x${string}` | null;
+    blockNumber: string | null;
+  } | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -98,8 +102,9 @@ export default function NewListingPage() {
     metadataUri,
     creating: creatingIdentity,
     binding,
+    bound: Boolean(identityBindingProof),
     profileWritesUnavailable,
-  }), [agentId, binding, creatingIdentity, isSignedIn, metadataUri, profileWritesUnavailable]);
+  }), [agentId, binding, creatingIdentity, identityBindingProof, isSignedIn, metadataUri, profileWritesUnavailable]);
   const manifestUriValid = /^(https:\/\/|ipfs:\/\/).+/i.test(manifestUri.trim());
   const readyToPublish = Boolean(isSignedIn && serviceKey && manifestHash && manifestUriValid && !listingWritesUnavailable);
 
@@ -113,6 +118,10 @@ export default function NewListingPage() {
     try {
       const operation = await bindProfile({ chainId: AGON_NETWORK.chainId, agentId, metadataUri }, address);
       if (operation.state === "confirmed") {
+        setIdentityBindingProof({
+          txHash: operation.txHash,
+          blockNumber: operation.proof?.blockNumber ?? null,
+        });
         setNotice({ tone: "ok", message: `This identity binding is already confirmed${operation.proof ? ` in block ${operation.proof.blockNumber}` : ""}.` });
         return;
       }
@@ -131,6 +140,10 @@ export default function NewListingPage() {
       setPendingConfirmation({ operationId: operation.operationId, txHash: hash, label: "identity binding" });
       const confirmed = await confirmAgonOperation(operation.operationId, hash, address);
       setPendingConfirmation(null);
+      setIdentityBindingProof({
+        txHash: confirmed.txHash,
+        blockNumber: confirmed.proof?.blockNumber ?? null,
+      });
       setNotice({ tone: "ok", message: `Identity binding confirmed in block ${confirmed.proof?.blockNumber ?? "unknown"}.` });
     } catch (error) {
       setNotice({ tone: "error", message: error instanceof Error ? error.message : "Identity binding failed." });
@@ -342,9 +355,25 @@ export default function NewListingPage() {
                   >
                     {identityActions.createLabel}
                   </TagButton>
-                  <span className="font-mono text-[10px] leading-relaxed text-ink-3">
-                    {identityActions.bindReason ?? (agentId ? `Identity #${agentId} is ready to bind.` : "Already bound? Continue to the service details.")}
-                  </span>
+                  {identityBindingProof ? (
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[10px] leading-relaxed text-ink-3">
+                      <span>Identity #{agentId} bound{identityBindingProof.blockNumber ? ` in block ${identityBindingProof.blockNumber}` : ""}.</span>
+                      {identityBindingProof.txHash ? (
+                        <a
+                          href={`${AGON_NETWORK.explorerUrl.replace(/\/$/, "")}/tx/${identityBindingProof.txHash}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-accent underline underline-offset-4"
+                        >
+                          VIEW TRANSACTION
+                        </a>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <span className="font-mono text-[10px] leading-relaxed text-ink-3">
+                      {identityActions.bindReason ?? (agentId ? `Identity #${agentId} is ready to bind.` : "Already bound? Continue to the service details.")}
+                    </span>
+                  )}
                 </div>
               </BracketedCell>
 

@@ -36,6 +36,7 @@ export function resolveIdentityActions(input: {
   metadataUri: string;
   creating: boolean;
   binding: boolean;
+  bound: boolean;
   profileWritesUnavailable: boolean;
 }): IdentityActionState {
   const hasAgentId = /^[1-9]\d*$/.test(input.agentId.trim());
@@ -45,6 +46,7 @@ export function resolveIdentityActions(input: {
   if (!input.isSignedIn) bindReason = "Sign in with the wallet that owns this identity.";
   else if (!hasAgentId) bindReason = "Create an identity or enter an existing agent ID first.";
   else if (!hasMetadata) bindReason = "Provide a permanent HTTPS or IPFS agent profile URL.";
+  else if (input.bound) bindReason = "This identity is already bound to Agon.";
   else if (input.profileWritesUnavailable) bindReason = "Identity binding is temporarily paused in this environment.";
 
   return {
@@ -55,7 +57,7 @@ export function resolveIdentityActions(input: {
       : hasAgentId
         ? "IDENTITY CREATED"
         : "CREATE NEW ERC-8004 IDENTITY",
-    bindLabel: input.binding ? "BINDING IDENTITY..." : "BIND EXISTING IDENTITY",
+    bindLabel: input.binding ? "BINDING IDENTITY..." : input.bound ? "IDENTITY BOUND" : "BIND EXISTING IDENTITY",
     bindReason,
   };
 }

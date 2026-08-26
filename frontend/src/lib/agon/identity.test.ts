@@ -58,6 +58,7 @@ test("moves a newly created identity from create to bind without allowing a dupl
     metadataUri: "https://nock.lat/agon/v1/agent",
     creating: false,
     binding: false,
+    bound: false,
     profileWritesUnavailable: false,
   });
 
@@ -74,10 +75,27 @@ test("explains why bind is unavailable after creation", () => {
     metadataUri: "https://nock.lat/agon/v1/agent",
     creating: false,
     binding: false,
+    bound: false,
     profileWritesUnavailable: true,
   });
 
   assert.equal(blocked.canCreate, false);
   assert.equal(blocked.canBind, false);
   assert.match(blocked.bindReason ?? "", /temporarily paused/i);
+});
+
+test("disables binding after the confirmed profile proof is recorded", () => {
+  const bound = resolveIdentityActions({
+    isSignedIn: true,
+    agentId: "42",
+    metadataUri: "https://nock.lat/agon/v1/agent",
+    creating: false,
+    binding: false,
+    bound: true,
+    profileWritesUnavailable: false,
+  });
+
+  assert.equal(bound.canBind, false);
+  assert.equal(bound.bindLabel, "IDENTITY BOUND");
+  assert.match(bound.bindReason ?? "", /already bound/i);
 });
