@@ -5,10 +5,14 @@ import { dirname, join, resolve } from "node:path";
 import {
   AspCommandError,
   confirmAspOperation,
+  evaluateAspListing,
   fetchAspListing,
   getAspHealth,
+  prepareAspListingVersion,
   prepareAspListing,
   publishAspListing,
+  publishAspListingVersion,
+  requestAspVerification,
   verifyAspManifest,
 } from "../src/lib/agon/asp.ts";
 import { scaffoldServiceProject, writeServiceScaffold } from "../src/lib/agon/service-scaffold.ts";
@@ -73,7 +77,7 @@ function output(value: unknown, json: boolean): void {
 }
 
 function help(): void {
-  console.log(`Agon ASP CLI\n\nCommands:\n  auth-device --api-url URL [--client-name NAME] [--scopes CSV] [--json]\n  categories [--json]\n  init --directory DIR --service-key KEY --name NAME --category SLUG [--description TEXT] [--force]\n  deploy --directory DIR [--target docker] [--port PORT] [--run] [--force]\n  prepare --config FILE --manifest-out FILE --payload-out FILE [--force]\n  verify-manifest --manifest FILE [--expected-hash HASH] [--json]\n  health --api-url URL [--json]\n  demo-run --api-url URL --category SLUG --task TASK_ID [--input FILE] [--json]\n  inspect --api-url URL --reference REF [--manifest FILE] [--current-owner ADDRESS] [--json]\n  publish --api-url URL --config FILE --manifest FILE --token-env NAME --yes [--json]\n  confirm --api-url URL --operation ID --tx-hash HASH --token-env NAME [--json]\n\nAuthentication is a browser approval flow. The CLI never accepts a private key or seed phrase.`);
+  console.log(`Agon ASP CLI\n\nCommands:\n  auth-device --api-url URL [--client-name NAME] [--scopes CSV] [--json]\n  categories [--json]\n  init --directory DIR --service-key KEY --name NAME --category SLUG [--description TEXT] [--force]\n  deploy --directory DIR [--target docker] [--port PORT] [--run] [--force]\n  prepare --config FILE --manifest-out FILE --payload-out FILE [--force]\n  verify-manifest --manifest FILE [--expected-hash HASH] [--json]\n  health --api-url URL [--json]\n  demo-run --api-url URL --category SLUG --task TASK_ID [--input FILE] [--json]\n  inspect --api-url URL --reference REF [--manifest FILE] [--current-owner ADDRESS] [--json]\n  publish --api-url URL --config FILE --manifest FILE --token-env NAME --yes [--json]\n  confirm --api-url URL --operation ID --tx-hash HASH --token-env NAME [--json]\n  update --api-url URL --listing-id ID --config FILE --manifest FILE --token-env NAME --yes [--json]\n  evaluate --api-url URL --reference REF --version N --category SLUG --task TASK_ID --token-env NAME [--input FILE] [--json]\n  request-verification --api-url URL --reference REF --playground-run ID --token-env NAME --yes [--expires-at ISO] [--idempotency-key KEY] [--json]\n\nAuthentication is a browser approval flow. The CLI never accepts a private key or seed phrase.`);
 }
 
 async function main(): Promise<void> {
@@ -99,8 +103,8 @@ async function main(): Promise<void> {
       pollInterval: number;
     };
     try {
-      const allowedScopes = new Set(["agon:read", "listing:prepare", "listing:write", "listing:confirm"]);
-      const scopes = stringOption(options, "scopes", "agon:read,listing:prepare,listing:write,listing:confirm")
+      const allowedScopes = new Set(["agon:read", "listing:prepare", "listing:write", "listing:confirm", "playground:run", "arena:prepare"]);
+      const scopes = stringOption(options, "scopes", "agon:read,listing:prepare,listing:write,listing:confirm,playground:run,arena:prepare")
         .split(",")
         .map((scope) => scope.trim())
         .filter(Boolean);
@@ -259,6 +263,54 @@ async function main(): Promise<void> {
       confirmed: options.yes === true,
       prepared,
       localManifest: readJson(requiredOption(options, "manifest")),
+    }), json);
+    return;
+  }
+  if (command === "update" || command === "publish-version") {
+    const manifest = readJson(requiredOption(options, "manifest"));
+    const prepared = prepareAspListingVersion(
+      readJson(requiredOption(options, "config")),
+      manifest,
+      requiredOption(options, "listing-id"),
+    );
+    const tokenEnv = requiredOption(options, "token-env");
+    output(await publishAspListingVersion({
+      apiUrl: requiredOption(options, "api-url"),
+      token: process.env[tokenEnv] ?? "",
+      confirmed: options.yes === true,
+      prepared,
+      localManifest: manifest,
+    }), json);
+    return;
+  }
+  if (command === "evaluate") {
+    const inputPath = stringOption(options, "input");
+    const input = inputPath ? readJson(inputPath) : undefined;
+    const tokenEnv = requiredOption(options, "token-env");
+    const category = stringOption(options, "category") as Parameters<typeof evaluateAspListing>[0]["category"];
+    output(await evaluateAspListing({
+      apiUrl: requiredOption(options, "api-url"),
+      token: process.env[tokenEnv] ?? "",
+      listingReference: requiredOption(options, "reference"),
+      listingVersion: requiredOption(options, "version"),
+      category,
+      taskId: requiredOption(options, "task"),
+      idempotencyKey: stringOption(options, "idempotency-key", crypto.randomUUID()),
+      input,
+    }), json);
+    return;
+  }
+  if (command === "request-verification") {
+    const tokenEnv = requiredOption(options, "token-env");
+    const expiresAt = stringOption(options, "expires-at", new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString());
+    output(await requestAspVerification({
+      apiUrl: requiredOption(options, "api-url"),
+      token: process.env[tokenEnv] ?? "",
+      confirmed: options.yes === true,
+      listingReference: requiredOption(options, "reference"),
+      playgroundRunId: requiredOption(options, "playground-run"),
+      idempotencyKey: stringOption(options, "idempotency-key", crypto.randomUUID()),
+      expiresAt,
     }), json);
     return;
   }

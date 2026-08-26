@@ -9,9 +9,12 @@ import {
 import { canonicalManifestHash, canonicalizeManifest } from "./canonical.ts";
 import { buildServiceManifest, parseTags, validateServiceDraft } from "./draft.ts";
 import type {
+  AgonArenaEvaluationView,
   AgonHealth,
   AgonListing,
+  AgonPlaygroundRun,
   PublishListingRequest,
+  PublishListingVersionRequest,
   SubmittedOperation,
 } from "./types.ts";
 import { assessListingAssurance, canUseEscrow, verifyManifestAnchor } from "./verify.ts";
@@ -37,6 +40,7 @@ export type AspConfig = {
   manifestUri: string;
   name: string;
   description: string;
+  logoUrl?: string;
   category: string;
   endpoint: string;
   tags: string[];
@@ -51,6 +55,17 @@ export type PreparedAspListing = {
   manifestHash: `0x${string}`;
   serviceKeyHash: `0x${string}`;
   request: PublishListingRequest;
+  initialTrustState: "Provider listed";
+};
+
+export type PreparedAspVersion = {
+  config: AspConfig;
+  listingId: string;
+  version: number;
+  manifest: ReturnType<typeof buildServiceManifest>;
+  canonicalManifest: string;
+  manifestHash: `0x${string}`;
+  request: PublishListingVersionRequest;
   initialTrustState: "Provider listed";
 };
 
@@ -85,6 +100,38 @@ type PublishAspListingOptions = {
   confirmed: boolean;
   prepared: PreparedAspListing;
   localManifest: unknown;
+  fetchImpl?: typeof fetch;
+};
+
+type PublishAspVersionOptions = {
+  apiUrl: string;
+  token: string;
+  confirmed: boolean;
+  prepared: PreparedAspVersion;
+  localManifest: unknown;
+  fetchImpl?: typeof fetch;
+};
+
+export type EvaluateAspListingOptions = {
+  apiUrl: string;
+  token: string;
+  listingReference: string;
+  listingVersion: string;
+  category: AgonPlaygroundRun["task"]["category"];
+  taskId: string;
+  idempotencyKey: string;
+  input?: unknown;
+  fetchImpl?: typeof fetch;
+};
+
+export type RequestAspVerificationOptions = {
+  apiUrl: string;
+  token: string;
+  confirmed: boolean;
+  listingReference: string;
+  playgroundRunId: string;
+  idempotencyKey: string;
+  expiresAt: string;
   fetchImpl?: typeof fetch;
 };
 
@@ -141,6 +188,7 @@ function parseConfig(input: unknown): { config: AspConfig; category: AgonCategor
     manifestUri: cleanString(source.manifestUri),
     name: cleanString(source.name),
     description: cleanString(source.description),
+    logoUrl: cleanString(source.logoUrl) || undefined,
     category: cleanString(source.category),
     endpoint: cleanString(source.endpoint),
     tags,
@@ -165,6 +213,7 @@ function parseConfig(input: unknown): { config: AspConfig; category: AgonCategor
     agentId: config.agentId,
     name: config.name,
     description: config.description,
+    logoUrl: config.logoUrl,
     categoryId: category?.id ?? "",
     serviceKey: config.serviceKey,
     endpoint: config.endpoint,
@@ -188,6 +237,7 @@ export function prepareAspListing(input: unknown): PreparedAspListing {
     agentId: config.agentId,
     name: config.name,
     description: config.description,
+    logoUrl: config.logoUrl,
     categoryId: category.id,
     serviceKey: config.serviceKey,
     endpoint: config.endpoint,
@@ -216,6 +266,57 @@ export function prepareAspListing(input: unknown): PreparedAspListing {
   };
 }
 
+export function prepareAspListingVersion(input: unknown, localManifest: unknown, listingId: string): PreparedAspVersion {
+  const normalizedListingId = cleanString(listingId);
+  if (!/^[1-9]\d*$/.test(normalizedListingId)) {
+    throw new AspCommandError("invalid_arguments", "Listing ID must be a positive decimal number.");
+  }
+  const { config, category } = parseConfig(input);
+  const source = object(localManifest);
+  const version = source?.version;
+  if (!Number.isSafeInteger(version) || Number(version) < 2) {
+    throw new AspCommandError("invalid_manifest", "An update manifest must use an integer version of 2 or higher.");
+  }
+  const proof = verifyAspManifest(localManifest);
+  if (!proof.valid || !proof.recomputedHash) {
+    throw new AspCommandError("invalid_manifest", "The update manifest is not valid.", proof.issues);
+  }
+  const expectedManifest = buildServiceManifest({
+    agentId: config.agentId,
+    version: Number(version),
+    name: config.name,
+    description: config.description,
+    logoUrl: config.logoUrl,
+    categoryId: category.id,
+    serviceKey: config.serviceKey,
+    endpoint: config.endpoint,
+    tags: config.tags.join(","),
+    amountUSDC: config.amountUSDC,
+  });
+  if (canonicalizeManifest(localManifest) !== canonicalizeManifest(expectedManifest)) {
+    throw new AspCommandError(
+      "manifest_mismatch",
+      "The update manifest differs from the reviewed service config. Update both files, then retry.",
+    );
+  }
+  return {
+    config,
+    listingId: normalizedListingId,
+    version: Number(version),
+    manifest: expectedManifest,
+    canonicalManifest: canonicalizeManifest(expectedManifest),
+    manifestHash: proof.recomputedHash,
+    request: {
+      chainId: config.chainId,
+      listingId: normalizedListingId,
+      manifestHash: proof.recomputedHash,
+      manifestUri: config.manifestUri,
+      paymentRail: "X402",
+    },
+    initialTrustState: "Provider listed",
+  };
+}
+
 function manifestIssues(input: unknown): AspIssue[] {
   const manifest = object(input);
   if (!manifest) return [{ field: "manifest", message: "Manifest must be a JSON object." }];
@@ -225,7 +326,9 @@ function manifestIssues(input: unknown): AspIssue[] {
   const rawTags = manifest.tags;
   const tagsAreStrings = Array.isArray(rawTags) && rawTags.every((tag) => typeof tag === "string");
   const issues: AspIssue[] = [];
-  if (manifest.version !== 1) issues.push({ field: "version", message: "Manifest version must be 1." });
+  if (!Number.isSafeInteger(manifest.version) || Number(manifest.version) < 1) {
+    issues.push({ field: "version", message: "Manifest version must be a positive integer." });
+  }
   if (!category || category.slug !== cleanString(manifest.category).toLowerCase()) {
     issues.push({ field: "category", message: "Manifest category must use a registered category slug." });
   }
@@ -241,11 +344,16 @@ function manifestIssues(input: unknown): AspIssue[] {
     }
   }
 
+  if (manifest.logoUrl !== undefined && typeof manifest.logoUrl !== "string") {
+    issues.push({ field: "logoUrl", message: "Manifest logoUrl must be a public HTTPS image URL." });
+  }
+
   if (category && pricing && tagsAreStrings) {
     const draftIssues = validateServiceDraft({
       agentId: "1",
       name: cleanString(manifest.name),
       description: cleanString(manifest.description),
+      logoUrl: cleanString(manifest.logoUrl) || undefined,
       categoryId: category.id,
       serviceKey: "manifest-check",
       endpoint: cleanString(manifest.endpoint),
@@ -462,6 +570,113 @@ export async function publishAspListing(options: PublishAspListingOptions): Prom
   return body as SubmittedOperation;
 }
 
+export async function publishAspListingVersion(options: PublishAspVersionOptions): Promise<SubmittedOperation> {
+  if (!options.confirmed) {
+    throw new AspCommandError("confirmation_required", "Version publication requires explicit --yes confirmation");
+  }
+  const localProof = verifyAspManifest(options.localManifest, options.prepared.manifestHash);
+  if (!localProof.valid || localProof.state !== "match") {
+    throw new AspCommandError("manifest_mismatch", "Local update manifest does not match the prepared version anchor", localProof.issues);
+  }
+  if (canonicalizeManifest(options.localManifest) !== options.prepared.canonicalManifest) {
+    throw new AspCommandError("manifest_mismatch", "Local update manifest differs from the reviewed service config");
+  }
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const apiUrl = normalizeApiUrl(options.apiUrl);
+  const health = await getAspHealth(apiUrl, fetchImpl);
+  if (!health.capabilities.listingWrites) {
+    throw new AspCommandError("capability_unavailable", "Agon listing writes are unavailable; no update request was sent");
+  }
+  if (!options.token.trim()) {
+    throw new AspCommandError("authentication_required", "Set the selected session-token environment variable");
+  }
+  let response: Response;
+  try {
+    response = await fetchImpl(`${apiUrl}/agon/listings/${encodeURIComponent(options.prepared.listingId)}/versions`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${options.token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(options.prepared.request),
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch {
+    throw new AspCommandError("network_unavailable", "Agon version publication request did not complete");
+  }
+  const body = await readJson(response);
+  if (!response.ok) throw apiFailure(response.status, body);
+  const operation = object(body);
+  if (!validWriteOperation(operation) || operation.transaction.functionName !== "publishVersion") {
+    throw new AspCommandError("invalid_response", "Agon version publication response is malformed");
+  }
+  return body as SubmittedOperation;
+}
+
+export async function evaluateAspListing(options: EvaluateAspListingOptions): Promise<AgonPlaygroundRun> {
+  if (!options.token.trim()) throw new AspCommandError("authentication_required", "Set the selected session-token environment variable");
+  const apiUrl = normalizeApiUrl(options.apiUrl);
+  if (!/^[1-9]\d*$/.test(options.listingVersion)) throw new AspCommandError("invalid_arguments", "Listing version must be a positive decimal number");
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/.test(options.idempotencyKey)) throw new AspCommandError("invalid_arguments", "Idempotency key must be 8-128 safe characters");
+  let response: Response;
+  try {
+    response = await (options.fetchImpl ?? fetch)(`${apiUrl}/agon/playground/evaluate`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${options.token}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        listingReference: options.listingReference,
+        listingVersion: options.listingVersion,
+        category: options.category,
+        taskId: options.taskId,
+        idempotencyKey: options.idempotencyKey,
+        input: options.input,
+      }),
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch {
+    throw new AspCommandError("network_unavailable", "Agon Playground did not respond");
+  }
+  const body = await readJson(response);
+  if (!response.ok) throw apiFailure(response.status, body);
+  const run = object(body);
+  if (!run || !cleanString(run.runId) || typeof run.score !== "number" || !object(run.evidence)) {
+    throw new AspCommandError("invalid_response", "Agon Playground response is malformed");
+  }
+  return body as AgonPlaygroundRun;
+}
+
+export async function requestAspVerification(options: RequestAspVerificationOptions): Promise<AgonArenaEvaluationView> {
+  if (!options.confirmed) throw new AspCommandError("confirmation_required", "Verification request requires explicit --yes confirmation");
+  if (!options.token.trim()) throw new AspCommandError("authentication_required", "Set the selected session-token environment variable");
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/.test(options.idempotencyKey)) throw new AspCommandError("invalid_arguments", "Idempotency key must be 8-128 safe characters");
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(options.playgroundRunId)) throw new AspCommandError("invalid_arguments", "Playground run ID must be a UUID");
+  if (Number.isNaN(Date.parse(options.expiresAt))) throw new AspCommandError("invalid_arguments", "Verification expiry must be an ISO timestamp");
+  const apiUrl = normalizeApiUrl(options.apiUrl);
+  let response: Response;
+  try {
+    response = await (options.fetchImpl ?? fetch)(`${apiUrl}/agon/arena/evaluations`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${options.token}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        listingReference: options.listingReference,
+        idempotencyKey: options.idempotencyKey,
+        playgroundRunId: options.playgroundRunId,
+        expiresAt: options.expiresAt,
+      }),
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch {
+    throw new AspCommandError("network_unavailable", "Agon verification request did not complete");
+  }
+  const body = await readJson(response);
+  if (!response.ok) throw apiFailure(response.status, body);
+  const evaluation = object(body);
+  if (!evaluation || !cleanString(evaluation.intentId) || evaluation.listingReference !== options.listingReference) {
+    throw new AspCommandError("invalid_response", "Agon verification response is malformed");
+  }
+  return body as AgonArenaEvaluationView;
+}
+
 export async function confirmAspOperation(options: ConfirmAspOperationOptions): Promise<SubmittedOperation> {
   if (!options.token.trim()) {
     throw new AspCommandError("authentication_required", "Set the selected session-token environment variable");
@@ -510,7 +725,7 @@ function validWriteOperation(operation: Record<string, unknown> | null): operati
     cleanString(transaction.chainId) &&
     /^0x[0-9a-fA-F]{40}$/.test(cleanString(transaction.to) ?? "") &&
     /^0x[0-9a-fA-F]+$/.test(cleanString(transaction.data) ?? "") &&
-    (transaction.functionName === "bindProfile" || transaction.functionName === "publish") &&
+    (transaction.functionName === "bindProfile" || transaction.functionName === "publish" || transaction.functionName === "publishVersion") &&
     Array.isArray(transaction.args),
   );
 }

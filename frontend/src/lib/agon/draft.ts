@@ -2,6 +2,7 @@ import { categoryById } from "./catalog.ts";
 
 export type ServiceDraft = {
   agentId: string;
+  version?: number;
   name: string;
   description: string;
   logoUrl?: string;
@@ -76,7 +77,7 @@ export function buildServiceManifest(draft: ServiceDraft) {
   if (category.slug === "other") throw new Error("category is outside the marketplace registry");
   return {
     name: draft.name.trim(),
-    version: 1,
+    version: draft.version ?? 1,
     description: draft.description.trim(),
     ...(draft.logoUrl?.trim() ? { logoUrl: draft.logoUrl.trim() } : {}),
     category: category.slug,

@@ -1,6 +1,6 @@
 ---
 name: agon-asp
-description: Prepare, publish, inspect, and verify ASP service listings in Agon Market through the repository CLI. Use when a coding agent needs to turn a service into an x402 manifest, choose an Agon marketplace category, compute canonical manifest and service-key hashes, submit a provider listing, inspect public listing evidence, or distinguish Provider listed, Verified, Quarantined, stale-ownership, and manifest-mismatch states.
+description: Build, update, publish, inspect, and request verification for service listings in Agon Market through the repository CLI. Use when a coding agent needs to turn a service into an x402 manifest, choose a category, create an immutable listing version, prepare an owner-wallet transaction, run a scoped Playground test, request Arena verification, or distinguish Provider listed, Verified, Quarantined, stale-ownership, and manifest-mismatch states.
 ---
 
 # Agon ASP
@@ -25,16 +25,38 @@ Read [references/cli.md](references/cli.md) before preparing, publishing, or ver
 
 1. Confirm the current directory is the Agon repository root and `frontend/package.json` exposes the `asp` script.
 2. Run `npm run asp -- categories` and select by plain-language buyer intent. Never type or maintain a separate numeric category map.
-3. Inspect the provider's actual service implementation and create an ASP config from observed facts. Do not invent endpoints, capabilities, prices, ownership, or manifest URIs.
-4. Run `npm run asp -- prepare` to generate the exact manifest and listing payload. Start x402 price examples at `0.01 USDC` unless the provider specifies another amount.
+3. Inspect the provider's actual service implementation. If it is a new service, create it with `init` and replace the sample implementation. If it already exists, preserve its ERC-8004 `agentId`, stable `serviceKey`, public listing reference, and trust history.
+4. Create or update the ASP config from observed facts. Do not invent endpoints, capabilities, prices, ownership, or manifest URIs. For a new service, run `prepare`. For an existing service update, edit the implementation and manifest, increment the manifest's integer `version` to 2 or higher, then use `update`.
 5. Have the provider upload that exact manifest to its permanent HTTPS or IPFS URI. Run `verify-manifest` against the local artifact before any publication request.
 6. Run `health`. If `listingWrites` is false, stop and report that publication is unavailable. Preserve the generated artifacts; do not imply a transaction.
 7. Before `publish`, show the agent ID, service name, category, endpoint host, price, manifest URI, manifest hash, and initial trust state. Ask for explicit approval if the user has not already authorized this exact publication.
-8. Read the session token from an environment variable. Never request or accept a private key, seed phrase, or token in a CLI argument, file, prompt, or chat response.
+8. Read the session token from an environment variable. For the full build, update, Playground, and verification workflow, request only the required device scopes: `agon:read`, `listing:prepare`, `listing:write`, `listing:confirm`, `playground:run`, and `arena:prepare`. Never request or accept a private key, seed phrase, or token in a CLI argument, file, prompt, or chat response.
 9. Run `publish` only with the reviewed config, matching local manifest, and `--yes`. It creates a durable `prepared` operation and exact transaction intent; it does not broadcast and is not yet Provider listed.
 10. Show the exact chain, contract, function, arguments, and operation ID before using an approved wallet tool. A real transaction requires explicit approval for that exact intent. Never handle a private key or seed phrase.
 11. After the transaction succeeds, run `confirm` with the operation ID and transaction hash. Report Provider listed only when the backend returns `confirmed` receipt proof. Never report it as Agon verified.
 12. Run `inspect` with the confirmed listing reference and local manifest. Report hash evidence, scoped trust state, payment eligibility, quarantine reason, ownership freshness when supplied, and provenance separately.
+
+## Update an existing agent
+
+An update never replaces an old record and never needs a new ERC-8004 identity. Keep the same `agentId` and `serviceKey`, deploy the improved service, increment the manifest `version`, and publish a new immutable listing version:
+
+```text
+npm run asp -- verify-manifest -- --manifest services/my-agent/manifest-v2.json
+npm run asp -- update -- --api-url https://api.agon.surf --listing-id 7 --config services/my-agent/agon.service.json --manifest services/my-agent/manifest-v2.json --token-env AGON_API_TOKEN --yes --json
+```
+
+The update command checks that the local manifest exactly matches the reviewed config and returns a `prepared` operation. It does not broadcast. The coding agent must show the chain, ServiceRegistry, `publishVersion` call, listing ID, new version, manifest URI, and canonical hash, then stop for the owner wallet to sign. After the owner wallet returns a successful transaction hash, run `confirm` with the operation ID. The old version, scores, receipts, and evidence remain attached to their original version.
+
+## Run a real test and request verification
+
+After a confirmed listing version is live, run the exact category challenge through the approved provider scope:
+
+```text
+npm run asp -- evaluate -- --api-url https://api.agon.surf --reference 5042002:0xServiceRegistry:7 --version 2 --category analysis --task evidence-under-pressure --token-env AGON_API_TOKEN --json
+npm run asp -- request-verification -- --api-url https://api.agon.surf --reference 5042002:0xServiceRegistry:7 --playground-run <run-id> --token-env AGON_API_TOKEN --yes --json
+```
+
+`evaluate` returns the real run ID, score, output, evidence root, provider host, and exact listing scope. `request-verification` creates the scoped Arena evaluation request from that run and returns the owner-wallet transaction intent. It may be unavailable until Agon Arena is enabled for the environment. A Playground result is evidence for the version, not proof that the official Arena record is already verified. Any Arena transaction must be reviewed and signed by the owner wallet, then reconciled through the Arena workflow.
 
 ## Monitor a published agent
 

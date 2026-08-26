@@ -327,6 +327,8 @@ export type CreateAgonRoutesOptions = {
   requireAuth: MiddlewareHandler<{ Variables: AgonRouteVariables }>;
   requireListingWriteAuth?: MiddlewareHandler<{ Variables: AgonRouteVariables }>;
   requireListingConfirmAuth?: MiddlewareHandler<{ Variables: AgonRouteVariables }>;
+  requirePlaygroundAuth?: MiddlewareHandler<{ Variables: AgonRouteVariables }>;
+  requireArenaAuth?: MiddlewareHandler<{ Variables: AgonRouteVariables }>;
   requirePrincipal?: MiddlewareHandler<{ Variables: AgonRouteVariables }>;
   playgroundStore?: PlaygroundRunStore;
   playgroundRateLimiter?: PlaygroundRateLimiter;
@@ -644,7 +646,7 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
     }
   });
 
-  app.post("/playground/evaluate", options.requireAuth, async (context) => {
+  app.post("/playground/evaluate", options.requirePlaygroundAuth ?? options.requireAuth, async (context) => {
     if (!(await consumePlaygroundLimit(context, "evaluation"))) {
       return context.json({ error: { code: "rate_limited", message: "evaluation capacity is temporarily exhausted" } }, 429);
     }
@@ -700,7 +702,7 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
     }
   });
 
-  app.post("/arena/evaluations", options.requireAuth, async (context) => {
+  app.post("/arena/evaluations", options.requireArenaAuth ?? options.requireAuth, async (context) => {
     const body = await parseJson(context);
     if (isApiError(body)) return context.json(body, 400);
     const parsed = agonArenaEvaluationSchema.safeParse(body);

@@ -4,9 +4,13 @@ import test from "node:test";
 import {
   AspCommandError,
   confirmAspOperation,
+  evaluateAspListing,
   inspectAspListing,
+  prepareAspListingVersion,
   prepareAspListing,
   publishAspListing,
+  publishAspListingVersion,
+  requestAspVerification,
   verifyAspManifest,
 } from "./asp.ts";
 
@@ -134,6 +138,28 @@ test("validates and hashes local manifests before publication", () => {
   assert.equal(invalid.valid, false);
   assert.equal(duplicateTags.state, "invalid");
   assert.equal(duplicateTags.valid, false);
+});
+
+test("prepares an immutable update without changing the agent identity", () => {
+  const manifest = {
+    ...prepareAspListing(config).manifest,
+    version: 2,
+  };
+  const prepared = prepareAspListingVersion(config, manifest, "7");
+
+  assert.equal(prepared.listingId, "7");
+  assert.equal(prepared.version, 2);
+  assert.equal(prepared.request.listingId, "7");
+  assert.equal(prepared.request.paymentRail, "X402");
+  assert.equal(prepared.manifestHash, verifyAspManifest(manifest).recomputedHash);
+});
+
+test("rejects an update when config and hosted manifest drift", () => {
+  const manifest = { ...prepareAspListing(config).manifest, version: 2, endpoint: "https://other.example.com/run" };
+  assert.throws(
+    () => prepareAspListingVersion(config, manifest, "7"),
+    (error: unknown) => error instanceof AspCommandError && error.code === "manifest_mismatch",
+  );
 });
 
 test("reports provider-listed and verified evidence without conflating them", () => {
@@ -287,4 +313,66 @@ test("confirms a published transaction through the receipt-verification endpoint
   });
   assert.equal(confirmed.state, "confirmed");
   assert.equal(confirmed.txHash, txHash);
+});
+
+test("publishes an update only when writes are available and the operation is publishVersion", async () => {
+  const manifest = { ...prepareAspListing(config).manifest, version: 2 };
+  const prepared = prepareAspListingVersion(config, manifest, "7");
+  const operation = {
+    ...preparedOperation,
+    transaction: { ...preparedOperation.transaction, functionName: "publishVersion" as const },
+  };
+  const fetchImpl: typeof fetch = async (input, init) => {
+    if (String(input).endsWith("/agon/health")) {
+      return new Response(JSON.stringify({ ok: true, service: "agon", capabilities: { listingWrites: true } }), { status: 200 });
+    }
+    assert.equal(String(input), "https://api.example.com/agon/listings/7/versions");
+    assert.equal(new Headers(init?.headers).get("authorization"), "Bearer test-session-token");
+    assert.deepEqual(JSON.parse(String(init?.body)), prepared.request);
+    return new Response(JSON.stringify(operation), { status: 201 });
+  };
+  const result = await publishAspListingVersion({
+    apiUrl: "https://api.example.com",
+    token: "test-session-token",
+    confirmed: true,
+    prepared,
+    localManifest: manifest,
+    fetchImpl,
+  });
+  assert.equal(result.operationId, "op_123");
+});
+
+test("evaluates an exact listing version and requests scoped verification", async () => {
+  const requests: Array<{ url: string; init?: RequestInit }> = [];
+  const fetchImpl: typeof fetch = async (input, init) => {
+    requests.push({ url: String(input), init });
+    if (String(input).endsWith("/playground/evaluate")) {
+      return new Response(JSON.stringify({ runId: "11111111-1111-4111-8111-111111111111", score: 96, evidence: {} }), { status: 201 });
+    }
+    return new Response(JSON.stringify({ intentId: "arena_123", listingReference: "5042002:0x1111111111111111111111111111111111111111:7" }), { status: 201 });
+  };
+  const run = await evaluateAspListing({
+    apiUrl: "https://api.example.com",
+    token: "test-session-token",
+    listingReference: "5042002:0x1111111111111111111111111111111111111111:7",
+    listingVersion: "2",
+    category: "analysis",
+    taskId: "evidence-under-pressure",
+    idempotencyKey: "eval-123456",
+    fetchImpl,
+  });
+  const verification = await requestAspVerification({
+    apiUrl: "https://api.example.com",
+    token: "test-session-token",
+    confirmed: true,
+    listingReference: "5042002:0x1111111111111111111111111111111111111111:7",
+    playgroundRunId: run.runId,
+    idempotencyKey: "verify-123456",
+    expiresAt: "2026-08-27T12:00:00.000Z",
+    fetchImpl,
+  });
+  assert.equal(verification.intentId, "arena_123");
+  assert.equal(requests.length, 2);
+  assert.equal(requests[0]?.url, "https://api.example.com/agon/playground/evaluate");
+  assert.equal(requests[1]?.url, "https://api.example.com/agon/arena/evaluations");
 });

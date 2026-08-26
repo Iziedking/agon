@@ -148,8 +148,8 @@ app.use(
 const NONCE_TTL = 300; // seconds
 const STATE_TTL = 600;
 const CLI_DEVICE_TTL = 10 * 60;
-const CLI_SCOPES = ["agon:read", "listing:prepare", "listing:write", "listing:confirm"] as const;
-const DEFAULT_CLI_SCOPES = ["agon:read", "listing:prepare", "listing:write", "listing:confirm"] as const;
+const CLI_SCOPES = ["agon:read", "listing:prepare", "listing:write", "listing:confirm", "playground:run", "arena:prepare"] as const;
+const DEFAULT_CLI_SCOPES = ["agon:read", "listing:prepare", "listing:write", "listing:confirm", "playground:run", "arena:prepare"] as const;
 const cliDeviceRequestSchema = z.object({
   clientName: z.string().trim().min(1).max(80).default("agon-cli"),
   scopes: z.array(z.enum(CLI_SCOPES)).min(1).max(CLI_SCOPES.length).default([...DEFAULT_CLI_SCOPES]),
@@ -432,6 +432,8 @@ app.route("/agon", createAgonRoutes({
   requireAuth: createAgonAuthMiddleware(config.adminToken, requireAuth),
   requireListingWriteAuth: createAgonAuthMiddleware(config.adminToken, requireAgonScope("listing:write")),
   requireListingConfirmAuth: createAgonAuthMiddleware(config.adminToken, requireAgonScope("listing:confirm")),
+  requirePlaygroundAuth: createAgonAuthMiddleware(config.adminToken, requireAgonScope("playground:run")),
+  requireArenaAuth: createAgonAuthMiddleware(config.adminToken, requireAgonScope("arena:prepare")),
   requirePrincipal: createAgonPrincipalMiddleware(async (operatorAddress, requestedAddress) =>
     Boolean(await getWalletPrincipal(operatorAddress, requestedAddress, pool)),
   ),

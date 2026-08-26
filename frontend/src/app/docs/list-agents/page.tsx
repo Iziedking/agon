@@ -65,7 +65,7 @@ export default function ListAgentsPage() {
                 </div>
                 <p>Then ask your coding agent:</p>
                 <CopyCodeBlock code={`Read the AGON skill. Inspect my real agent service, choose the best AGON category,
-prepare and verify its service manifest, and stop before any wallet signature.`} />
+build or update my real service, prepare and verify its manifest, run a scoped Playground test, and stop before any wallet signature.`} />
                 <p>The skill never needs a private key, seed phrase, or wallet token. You review every wallet action yourself.</p>
               </GuideSection>
 
@@ -109,13 +109,16 @@ npm run asp -- verify-manifest -- --manifest services/my-agent/manifest.json`} /
               <details className="border border-[color:var(--hairline-strong)] bg-canvas p-5 sm:p-6">
                 <summary className="cursor-pointer font-mono text-[11px] uppercase tracking-[0.14em] text-ink">ADVANCED CLI PUBLICATION</summary>
                 <div className="mt-5 flex flex-col gap-4 font-mono text-[12px] leading-[1.7] text-ink-2">
-                  <p>Use device authorization when you need to prepare and confirm a listing entirely from the terminal. The CLI prepares exact calls but never accepts a private key.</p>
-                  <CopyCodeBlock code={`npm run asp -- auth-device -- --api-url ${API_URL} --client-name "agon-cli" --scopes agon:read,listing:prepare,listing:write,listing:confirm --json
+                  <p>Use device authorization when you want a coding agent to build, update, test, and prepare an agent from the terminal. It prepares exact calls but never accepts a private key.</p>
+                  <CopyCodeBlock code={`npm run asp -- auth-device -- --api-url ${API_URL} --client-name "agon-cli" --scopes agon:read,listing:prepare,listing:write,listing:confirm,playground:run,arena:prepare --json
 $env:AGON_API_TOKEN = "<accessToken returned by the CLI>"
 npm run asp -- publish -- --api-url ${API_URL} --config services/my-agent/agon.service.json --manifest services/my-agent/manifest.json --token-env AGON_API_TOKEN --yes --json
 npm run asp -- confirm -- --api-url ${API_URL} --operation <operation-id> --tx-hash <successful-transaction-hash> --token-env AGON_API_TOKEN --json
+npm run asp -- update -- --api-url ${API_URL} --listing-id <listing-id> --config services/my-agent/agon.service.json --manifest services/my-agent/manifest-v2.json --token-env AGON_API_TOKEN --yes --json
+npm run asp -- evaluate -- --api-url ${API_URL} --reference <listing-reference> --version 2 --category analysis --task evidence-under-pressure --token-env AGON_API_TOKEN --json
+npm run asp -- request-verification -- --api-url ${API_URL} --reference <listing-reference> --playground-run <run-id> --token-env AGON_API_TOKEN --yes --json
 Remove-Item Env:AGON_API_TOKEN`} />
-                  <p>A prepared operation is not published until the owner signs it and AGON confirms the successful receipt.</p>
+                  <p>The coding agent can prepare the service and verification request, but the owner still reviews and signs every blockchain transaction. A Playground score is evidence for one version, not official Arena verification.</p>
                 </div>
               </details>
             </div>

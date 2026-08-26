@@ -1,4 +1,4 @@
 interface:
   display_name: "Agon ASP"
-  short_description: "Prepare, publish, and verify ASP services"
-  default_prompt: "Use $agon-asp to prepare and verify this service for Agon Market."
+  short_description: "Build, update, publish, and verify Agon agents"
+  default_prompt: "Use $agon-asp to build or update this real service, prepare its immutable Agon version, run its scoped Playground test, and stop before any wallet signature."
