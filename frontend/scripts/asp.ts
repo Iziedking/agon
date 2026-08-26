@@ -1,10 +1,13 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
+import { createPublicClient, createWalletClient, getAddress, http, type Hex } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 
 import {
   AspCommandError,
   confirmAspOperation,
+  executeCircleAspOperation,
   evaluateAspListing,
   fetchAspListing,
   getAspHealth,
@@ -77,7 +80,114 @@ function output(value: unknown, json: boolean): void {
 }
 
 function help(): void {
-  console.log(`Agon ASP CLI\n\nCommands:\n  auth-device --api-url URL [--client-name NAME] [--scopes CSV] [--json]\n  categories [--json]\n  init --directory DIR --service-key KEY --name NAME --category SLUG [--description TEXT] [--force]\n  deploy --directory DIR [--target docker] [--port PORT] [--run] [--force]\n  prepare --config FILE --manifest-out FILE --payload-out FILE [--force]\n  verify-manifest --manifest FILE [--expected-hash HASH] [--json]\n  health --api-url URL [--json]\n  demo-run --api-url URL --category SLUG --task TASK_ID [--input FILE] [--json]\n  inspect --api-url URL --reference REF [--manifest FILE] [--current-owner ADDRESS] [--json]\n  publish --api-url URL --config FILE --manifest FILE --token-env NAME --yes [--json]\n  confirm --api-url URL --operation ID --tx-hash HASH --token-env NAME [--json]\n  update --api-url URL --listing-id ID --config FILE --manifest FILE --token-env NAME --yes [--json]\n  evaluate --api-url URL --reference REF --version N --category SLUG --task TASK_ID --token-env NAME [--input FILE] [--json]\n  request-verification --api-url URL --reference REF --playground-run ID --token-env NAME --yes [--expires-at ISO] [--idempotency-key KEY] [--json]\n\nAuthentication is a browser approval flow. The CLI never accepts a private key or seed phrase.`);
+  console.log(`Agon ASP CLI\n\nCommands:\n  auth-device --api-url URL [--client-name NAME] [--scopes CSV] [--json]\n  categories [--json]\n  init --directory DIR --service-key KEY --name NAME --category SLUG [--description TEXT] [--force]\n  deploy --directory DIR [--target docker] [--port PORT] [--run] [--force]\n  prepare --config FILE --manifest-out FILE --payload-out FILE [--force]\n  verify-manifest --manifest FILE [--expected-hash HASH] [--json]\n  health --api-url URL [--json]\n  demo-run --api-url URL --category SLUG --task TASK_ID [--input FILE] [--json]\n  inspect --api-url URL --reference REF [--manifest FILE] [--current-owner ADDRESS] [--json]\n  publish --api-url URL --config FILE --manifest FILE --token-env NAME --yes [--signer circle|private-key] [--private-key-env NAME] [--rpc-url URL] [--json]\n  confirm --api-url URL --operation ID --tx-hash HASH --token-env NAME [--json]\n  update --api-url URL --listing-id ID --config FILE --manifest FILE --token-env NAME --yes [--signer circle|private-key] [--private-key-env NAME] [--rpc-url URL] [--json]\n  evaluate --api-url URL --reference REF --version N --category SLUG --task TASK_ID --token-env NAME [--input FILE] [--json]\n  request-verification --api-url URL --reference REF --playground-run ID --token-env NAME --yes [--expires-at ISO] [--idempotency-key KEY] [--json]\n\nAuthentication uses browser approval. Transaction signing is explicit: Circle uses --signer circle; Web3 uses --signer private-key with --private-key-env and --rpc-url. The CLI never accepts a private key as a command argument.`);
+}
+
+function signerOption(options: Options): "manual" | "circle" | "private-key" {
+  const signer = stringOption(options, "signer", "manual");
+  if (signer !== "manual" && signer !== "circle" && signer !== "private-key") {
+    throw new AspCommandError("invalid_arguments", "--signer must be manual, circle, or private-key");
+  }
+  return signer;
+}
+
+async function authenticatedAddress(apiUrl: string, token: string): Promise<`0x${string}`> {
+  let response: Response;
+  try {
+    response = await fetch(`${apiUrl.replace(/\/$/, "")}/auth/me`, {
+      headers: { authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch {
+    throw new AspCommandError("network_unavailable", "Could not load the authenticated Agon wallet");
+  }
+  const body = await readJsonResponse(response);
+  const address = typeof body === "object" && body && "address" in body ? String(body.address) : "";
+  if (!response.ok || !/^0x[0-9a-fA-F]{40}$/.test(address)) {
+    throw new AspCommandError("authentication_required", "The Agon session wallet could not be verified");
+  }
+  return getAddress(address);
+}
+
+async function executeWeb3AspOperation(options: {
+  apiUrl: string;
+  token: string;
+  operation: import("../src/lib/agon/types.ts").SubmittedOperation;
+  privateKeyEnv: string;
+  rpcUrl: string;
+}): Promise<`0x${string}`> {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(options.privateKeyEnv)) {
+    throw new AspCommandError("invalid_arguments", "--private-key-env must be an environment variable name");
+  }
+  const privateKey = process.env[options.privateKeyEnv]?.trim() ?? "";
+  if (!/^0x[0-9a-fA-F]{64}$/.test(privateKey)) {
+    throw new AspCommandError("private_key_missing", "The selected private-key environment variable is missing or invalid");
+  }
+  let rpc: URL;
+  try {
+    rpc = new URL(options.rpcUrl);
+    if (rpc.protocol !== "https:" && !(rpc.protocol === "http:" && ["localhost", "127.0.0.1"].includes(rpc.hostname))) {
+      throw new Error("unsafe rpc");
+    }
+  } catch {
+    throw new AspCommandError("invalid_rpc_url", "--rpc-url must be HTTPS, or HTTP on localhost");
+  }
+
+  let account;
+  try {
+    account = privateKeyToAccount(privateKey as Hex);
+  } catch {
+    throw new AspCommandError("private_key_invalid", "The selected private-key environment variable is invalid");
+  }
+  const operator = await authenticatedAddress(options.apiUrl, options.token);
+  if (getAddress(account.address) !== operator) {
+    throw new AspCommandError("signer_mismatch", "The private-key account does not match the authenticated Agon wallet");
+  }
+
+  const chainId = Number(options.operation.transaction.chainId);
+  if (!Number.isSafeInteger(chainId) || chainId <= 0) throw new AspCommandError("invalid_operation", "Prepared operation has an invalid chain ID");
+  const publicClient = createPublicClient({ transport: http(rpc.toString()) });
+  if (await publicClient.getChainId() !== chainId) {
+    throw new AspCommandError("chain_mismatch", "The RPC chain does not match the prepared Agon transaction");
+  }
+  const walletClient = createWalletClient({ account, transport: http(rpc.toString()) });
+  try {
+    const txHash = await walletClient.sendTransaction({
+      account,
+      to: options.operation.transaction.to,
+      data: options.operation.transaction.data,
+      chain: null,
+    });
+    const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+    if (receipt.status !== "success") throw new AspCommandError("transaction_failed", "Web3 transaction reverted on chain");
+    return txHash;
+  } catch (error) {
+    if (error instanceof AspCommandError) throw error;
+    throw new AspCommandError("transaction_failed", "Web3 transaction could not be broadcast or confirmed");
+  }
+}
+
+async function executePreparedAspOperation(options: {
+  apiUrl: string;
+  token: string;
+  operation: import("../src/lib/agon/types.ts").SubmittedOperation;
+  signer: "manual" | "circle" | "private-key";
+  privateKeyEnv?: string;
+  rpcUrl?: string;
+}): Promise<unknown> {
+  if (options.signer === "manual") return options.operation;
+  if (!options.operation.operationId) throw new AspCommandError("invalid_operation", "Prepared operation has no operation ID");
+  let txHash: `0x${string}`;
+  let execution: unknown = null;
+  if (options.signer === "circle") {
+    execution = await executeCircleAspOperation({ apiUrl: options.apiUrl, token: options.token, confirmed: true, operation: options.operation });
+    txHash = (execution as { txHash: `0x${string}` }).txHash;
+  } else {
+    if (!options.privateKeyEnv || !options.rpcUrl) throw new AspCommandError("invalid_arguments", "Private-key signing requires --private-key-env and --rpc-url");
+    txHash = await executeWeb3AspOperation({ apiUrl: options.apiUrl, token: options.token, operation: options.operation, privateKeyEnv: options.privateKeyEnv, rpcUrl: options.rpcUrl });
+  }
+  const confirmed = await confirmAspOperation({ apiUrl: options.apiUrl, token: options.token, operationId: options.operation.operationId, txHash });
+  return { signer: options.signer, execution, transaction: confirmed };
 }
 
 async function main(): Promise<void> {
@@ -257,12 +367,20 @@ async function main(): Promise<void> {
   if (command === "publish") {
     const prepared = prepareAspListing(readJson(requiredOption(options, "config")));
     const tokenEnv = requiredOption(options, "token-env");
-    output(await publishAspListing({
+    const operation = await publishAspListing({
       apiUrl: requiredOption(options, "api-url"),
       token: process.env[tokenEnv] ?? "",
       confirmed: options.yes === true,
       prepared,
       localManifest: readJson(requiredOption(options, "manifest")),
+    });
+    output(await executePreparedAspOperation({
+      apiUrl: requiredOption(options, "api-url"),
+      token: process.env[tokenEnv] ?? "",
+      operation,
+      signer: signerOption(options),
+      privateKeyEnv: stringOption(options, "private-key-env") || undefined,
+      rpcUrl: stringOption(options, "rpc-url") || undefined,
     }), json);
     return;
   }
@@ -274,12 +392,20 @@ async function main(): Promise<void> {
       requiredOption(options, "listing-id"),
     );
     const tokenEnv = requiredOption(options, "token-env");
-    output(await publishAspListingVersion({
+    const operation = await publishAspListingVersion({
       apiUrl: requiredOption(options, "api-url"),
       token: process.env[tokenEnv] ?? "",
       confirmed: options.yes === true,
       prepared,
       localManifest: manifest,
+    });
+    output(await executePreparedAspOperation({
+      apiUrl: requiredOption(options, "api-url"),
+      token: process.env[tokenEnv] ?? "",
+      operation,
+      signer: signerOption(options),
+      privateKeyEnv: stringOption(options, "private-key-env") || undefined,
+      rpcUrl: stringOption(options, "rpc-url") || undefined,
     }), json);
     return;
   }

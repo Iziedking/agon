@@ -109,16 +109,20 @@ npm run asp -- verify-manifest -- --manifest services/my-agent/manifest.json`} /
               <details className="border border-[color:var(--hairline-strong)] bg-canvas p-5 sm:p-6">
                 <summary className="cursor-pointer font-mono text-[11px] uppercase tracking-[0.14em] text-ink">ADVANCED CLI PUBLICATION</summary>
                 <div className="mt-5 flex flex-col gap-4 font-mono text-[12px] leading-[1.7] text-ink-2">
-                  <p>Use device authorization when you want a coding agent to build, update, test, and prepare an agent from the terminal. It prepares exact calls but never accepts a private key.</p>
-                  <CopyCodeBlock code={`npm run asp -- auth-device -- --api-url ${API_URL} --client-name "agon-cli" --scopes agon:read,listing:prepare,listing:write,listing:confirm,playground:run,arena:prepare --json
+                  <p>Use device authorization when you want a coding agent to build, update, test, and publish from the terminal. Circle users can submit an exact prepared call after human approval. Web3 users can choose protected local signing with a private key environment variable.</p>
+                  <CopyCodeBlock code={`npm run asp -- auth-device -- --api-url ${API_URL} --client-name "agon-cli" --scopes agon:read,listing:prepare,listing:write,listing:confirm,wallet:execute,playground:run,arena:prepare --json
 $env:AGON_API_TOKEN = "<accessToken returned by the CLI>"
 npm run asp -- publish -- --api-url ${API_URL} --config services/my-agent/agon.service.json --manifest services/my-agent/manifest.json --token-env AGON_API_TOKEN --yes --json
+npm run asp -- publish -- --api-url ${API_URL} --config services/my-agent/agon.service.json --manifest services/my-agent/manifest.json --token-env AGON_API_TOKEN --signer circle --yes --json
+$env:AGON_PRIVATE_KEY = "<64-hex-character key>"
+npm run asp -- publish -- --api-url ${API_URL} --config services/my-agent/agon.service.json --manifest services/my-agent/manifest.json --token-env AGON_API_TOKEN --signer private-key --private-key-env AGON_PRIVATE_KEY --rpc-url https://rpc.testnet.arc.io --yes --json
+Remove-Item Env:AGON_PRIVATE_KEY
 npm run asp -- confirm -- --api-url ${API_URL} --operation <operation-id> --tx-hash <successful-transaction-hash> --token-env AGON_API_TOKEN --json
 npm run asp -- update -- --api-url ${API_URL} --listing-id <listing-id> --config services/my-agent/agon.service.json --manifest services/my-agent/manifest-v2.json --token-env AGON_API_TOKEN --yes --json
 npm run asp -- evaluate -- --api-url ${API_URL} --reference <listing-reference> --version 2 --category analysis --task evidence-under-pressure --token-env AGON_API_TOKEN --json
 npm run asp -- request-verification -- --api-url ${API_URL} --reference <listing-reference> --playground-run <run-id> --token-env AGON_API_TOKEN --yes --json
 Remove-Item Env:AGON_API_TOKEN`} />
-                  <p>The coding agent can prepare the service and verification request, but the owner still reviews and signs every blockchain transaction. A Playground score is evidence for one version, not official Arena verification.</p>
+                  <p>The coding agent can build, update, test, and publish. Every broadcast still requires explicit <code>--yes</code>. Circle execution keeps signing in Circle; Web3 terminal signing keeps the key local. A Playground score is evidence for one version, not official Arena verification.</p>
                 </div>
               </details>
             </div>

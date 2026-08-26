@@ -148,8 +148,8 @@ app.use(
 const NONCE_TTL = 300; // seconds
 const STATE_TTL = 600;
 const CLI_DEVICE_TTL = 10 * 60;
-const CLI_SCOPES = ["agon:read", "listing:prepare", "listing:write", "listing:confirm", "playground:run", "arena:prepare"] as const;
-const DEFAULT_CLI_SCOPES = ["agon:read", "listing:prepare", "listing:write", "listing:confirm", "playground:run", "arena:prepare"] as const;
+const CLI_SCOPES = ["agon:read", "listing:prepare", "listing:write", "listing:confirm", "wallet:execute", "playground:run", "arena:prepare"] as const;
+const DEFAULT_CLI_SCOPES = ["agon:read", "listing:prepare", "listing:write", "listing:confirm", "wallet:execute", "playground:run", "arena:prepare"] as const;
 const cliDeviceRequestSchema = z.object({
   clientName: z.string().trim().min(1).max(80).default("agon-cli"),
   scopes: z.array(z.enum(CLI_SCOPES)).min(1).max(CLI_SCOPES.length).default([...DEFAULT_CLI_SCOPES]),
@@ -949,7 +949,7 @@ const executeBodySchema = {
   },
 };
 
-app.post("/wallet/execute", requireAuth, async (c) => {
+app.post("/wallet/execute", requireAgonScope("wallet:execute"), async (c) => {
   if (!circleDevConfigured()) {
     return c.json({ error: "Circle Dev-Controlled wallets are not configured on this server" }, 503);
   }
@@ -1269,7 +1269,7 @@ app.post("/wallet/topup/bridge", requireAuth, async (c) => {
   }
 });
 
-app.get("/wallet/tx/:id", requireAuth, async (c) => {
+app.get("/wallet/tx/:id", requireAgonScope("wallet:execute"), async (c) => {
   if (!circleDevConfigured()) {
     return c.json({ error: "Circle Dev-Controlled wallets are not configured on this server" }, 503);
   }

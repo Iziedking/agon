@@ -82,8 +82,30 @@ npm run asp -- publish -- --api-url https://api.example.com --config asp.json --
 ```
 
 The response state is `prepared` and includes the exact chain, contract, calldata,
-function, and arguments. This command does not broadcast. Review that intent and
-obtain explicit transaction approval before passing it to an approved wallet tool.
+function, and arguments. This command does not broadcast unless a signer mode is
+selected. Review that intent before choosing an explicit signing mode.
+
+For a Circle-managed email wallet, the CLI can submit the exact prepared call
+after a human explicitly approves the command:
+
+```text
+npm run asp -- publish -- --api-url https://api.example.com --config asp.json --manifest manifest.json --token-env AGON_API_TOKEN --signer circle --yes --json
+```
+
+For a Web3 wallet, keep the private key in the process environment only. The
+CLI checks that the key address matches the authenticated Agon wallet and that
+the RPC chain matches the prepared operation. It signs only the prepared
+calldata, never sends the key to Agon, and requires `--yes`:
+
+```text
+$env:AGON_PRIVATE_KEY = "<64-hex-character key>"
+npm run asp -- publish -- --api-url https://api.example.com --config asp.json --manifest manifest.json --token-env AGON_API_TOKEN --signer private-key --private-key-env AGON_PRIVATE_KEY --rpc-url https://rpc.testnet.arc.io --yes --json
+Remove-Item Env:AGON_PRIVATE_KEY
+```
+
+Use the same `--signer` options with `update`. Do not put a key in a config,
+manifest, shell history, source file, CI log, or chat message. Without
+`--signer`, the operation remains prepared for a browser wallet to sign.
 
 After the wallet reports a successful transaction hash, ask Agon to verify its
 canonical receipt and event:

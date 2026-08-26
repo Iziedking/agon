@@ -5,6 +5,7 @@ import {
   AspCommandError,
   confirmAspOperation,
   evaluateAspListing,
+  executeCircleAspOperation,
   inspectAspListing,
   prepareAspListingVersion,
   prepareAspListing,
@@ -13,8 +14,9 @@ import {
   requestAspVerification,
   verifyAspManifest,
 } from "./asp.ts";
+import type { SubmittedOperation } from "./types.ts";
 
-const preparedOperation = {
+const preparedOperation: SubmittedOperation = {
   operationId: "op_123",
   state: "prepared" as const,
   transaction: {
@@ -313,6 +315,36 @@ test("confirms a published transaction through the receipt-verification endpoint
   });
   assert.equal(confirmed.state, "confirmed");
   assert.equal(confirmed.txHash, txHash);
+});
+
+test("executes the exact prepared operation through Circle after explicit approval", async () => {
+  const requests: Array<{ url: string; init?: RequestInit }> = [];
+  const txHash = `0x${"88".repeat(32)}` as `0x${string}`;
+  const fetchImpl: typeof fetch = async (input, init) => {
+    requests.push({ url: String(input), init });
+    if (String(input).endsWith("/wallet/execute")) {
+      assert.deepEqual(JSON.parse(String(init?.body)), {
+        contractAddress: preparedOperation.transaction.to,
+        abiFunctionSignature: "publish(uint256,bytes32,bytes32,string,uint256,uint8)",
+        abiParameters: preparedOperation.transaction.args,
+        refId: preparedOperation.operationId,
+      });
+      return new Response(JSON.stringify({ id: "circle_tx_123", state: "QUEUED" }), { status: 200 });
+    }
+    assert.equal(String(input), "https://api.example.com/wallet/tx/circle_tx_123");
+    return new Response(JSON.stringify({ state: "COMPLETE", txHash }), { status: 200 });
+  };
+  const execution = await executeCircleAspOperation({
+    apiUrl: "https://api.example.com",
+    token: "test-session-token",
+    confirmed: true,
+    operation: preparedOperation,
+    fetchImpl,
+    pollIntervalMs: 0,
+  });
+  assert.equal(execution.circleTransactionId, "circle_tx_123");
+  assert.equal(execution.txHash, txHash);
+  assert.equal(requests.length, 2);
 });
 
 test("publishes an update only when writes are available and the operation is publishVersion", async () => {

@@ -143,6 +143,22 @@ export type ConfirmAspOperationOptions = {
   fetchImpl?: typeof fetch;
 };
 
+export type ExecuteCircleAspOperationOptions = {
+  apiUrl: string;
+  token: string;
+  confirmed: boolean;
+  operation: SubmittedOperation;
+  fetchImpl?: typeof fetch;
+  pollIntervalMs?: number;
+  timeoutMs?: number;
+};
+
+export type CircleAspExecution = {
+  circleTransactionId: string;
+  state: string;
+  txHash: `0x${string}`;
+};
+
 function object(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -713,6 +729,69 @@ export async function confirmAspOperation(options: ConfirmAspOperationOptions): 
     throw new AspCommandError("invalid_response", "Agon confirmation response is malformed");
   }
   return body as SubmittedOperation;
+}
+
+export async function executeCircleAspOperation(options: ExecuteCircleAspOperationOptions): Promise<CircleAspExecution> {
+  if (!options.confirmed) throw new AspCommandError("confirmation_required", "Circle execution requires explicit --yes confirmation");
+  if (!options.token.trim()) throw new AspCommandError("authentication_required", "Set the selected session-token environment variable");
+  if (!validWriteOperation(options.operation) || options.operation.state !== "prepared") {
+    throw new AspCommandError("invalid_operation", "Only a prepared Agon operation can be executed");
+  }
+  const signatures: Record<SubmittedOperation["transaction"]["functionName"], string> = {
+    bindProfile: "bindProfile(uint256,string)",
+    publish: "publish(uint256,bytes32,bytes32,string,uint256,uint8)",
+    publishVersion: "publishVersion(uint256,bytes32,string,uint8)",
+  };
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const apiUrl = normalizeApiUrl(options.apiUrl);
+  let response: Response;
+  try {
+    response = await fetchImpl(`${apiUrl}/wallet/execute`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${options.token}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        contractAddress: options.operation.transaction.to,
+        abiFunctionSignature: signatures[options.operation.transaction.functionName],
+        abiParameters: options.operation.transaction.args,
+        refId: options.operation.operationId,
+      }),
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch {
+    throw new AspCommandError("network_unavailable", "Circle transaction submission did not complete");
+  }
+  const submitted = await readJson(response);
+  if (!response.ok) throw apiFailure(response.status, submitted);
+  const submittedObject = object(submitted);
+  const circleTransactionId = cleanString(submittedObject?.id);
+  if (!circleTransactionId) throw new AspCommandError("invalid_response", "Circle returned no transaction ID");
+
+  const deadline = Date.now() + (options.timeoutMs ?? 120_000);
+  const pollIntervalMs = options.pollIntervalMs ?? 1_200;
+  while (Date.now() < deadline) {
+    let statusResponse: Response;
+    try {
+      statusResponse = await fetchImpl(`${apiUrl}/wallet/tx/${encodeURIComponent(circleTransactionId)}`, {
+        headers: { authorization: `Bearer ${options.token}` },
+        signal: AbortSignal.timeout(15_000),
+      });
+    } catch {
+      throw new AspCommandError("network_unavailable", "Circle transaction status could not be loaded");
+    }
+    const statusBody = await readJson(statusResponse);
+    if (!statusResponse.ok) throw apiFailure(statusResponse.status, statusBody);
+    const status = object(statusBody);
+    const txHash = cleanString(status?.txHash);
+    const state = cleanString(status?.state);
+    if (txHash && /^0x[0-9a-fA-F]{64}$/.test(txHash)) {
+      return { circleTransactionId, state, txHash: txHash as `0x${string}` };
+    }
+    if (["FAILED", "REJECTED", "CANCELLED"].includes(state.toUpperCase())) {
+      throw new AspCommandError("transaction_failed", `Circle transaction ${state.toLowerCase()}`);
+    }
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, pollIntervalMs));
+  }
+  throw new AspCommandError("transaction_timeout", "Circle did not return a transaction hash before the polling deadline");
 }
 
 function validWriteOperation(operation: Record<string, unknown> | null): operation is Record<string, unknown> & SubmittedOperation {

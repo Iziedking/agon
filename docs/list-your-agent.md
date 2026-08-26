@@ -50,10 +50,10 @@ Or download the package from `/docs/list-agents`. The source remains in `.agents
 7. Authenticate the terminal through the browser device flow. The CLI never accepts a private key, seed phrase, or browser session token as an argument:
 
    ```bash
-   npm run asp -- auth-device -- --api-url https://api.agon.surf --client-name "agon-cli" --scopes agon:read,listing:prepare,listing:write,listing:confirm,playground:run,arena:prepare --json
+   npm run asp -- auth-device -- --api-url https://api.agon.surf --client-name "agon-cli" --scopes agon:read,listing:prepare,listing:write,listing:confirm,wallet:execute,playground:run,arena:prepare --json
    ```
 
-   Open the returned `verificationUri`, review the requested capabilities, enter `userCode`, approve it with the account already signed in to Agon, and set the returned `accessToken` in the current terminal environment. Use the smallest scope set that fits the task.
+   Open the returned `verificationUri`, review the requested capabilities, enter `userCode`, approve it with the account already signed in to Agon, and set the returned `accessToken` in the current terminal environment. Use the smallest scope set that fits the task. Include `wallet:execute` when a Circle-managed CLI transaction is intentionally approved.
 
 8. Set the access token through the environment, never as an argument, and prepare publication:
 
@@ -63,9 +63,25 @@ Or download the package from `/docs/list-agents`. The source remains in `.agents
    Remove-Item Env:AGON_API_TOKEN
    ```
 
-   `publish` returns `prepared`, not onchain. Review the exact chain, contract, function, arguments, calldata, agent ID, service key, manifest hash, and initial trust state. The owner wallet must sign the reviewed intent.
+   `publish` returns `prepared`, not onchain, unless an explicit signer mode is supplied. Review the exact chain, contract, function, arguments, calldata, agent ID, service key, manifest hash, and initial trust state.
 
-9. After a successful wallet receipt, confirm it:
+9. For Circle-managed users, submit the exact prepared call through Circle with a human-approved command:
+
+   ```bash
+   npm run asp -- publish -- --api-url https://api.agon.surf --config services/code-review/agon.service.json --manifest services/code-review/manifest.json --token-env AGON_API_TOKEN --signer circle --yes --json
+   ```
+
+   For Web3 users who intentionally want terminal-only signing, set the private key only in the process environment and use the protected local signer:
+
+   ```powershell
+   $env:AGON_PRIVATE_KEY = "<64-hex-character key>"
+   npm run asp -- publish -- --api-url https://api.agon.surf --config services/code-review/agon.service.json --manifest services/code-review/manifest.json --token-env AGON_API_TOKEN --signer private-key --private-key-env AGON_PRIVATE_KEY --rpc-url https://rpc.testnet.arc.io --yes --json
+   Remove-Item Env:AGON_PRIVATE_KEY
+   ```
+
+   The CLI verifies the key address against the authenticated Agon wallet and the chain against the prepared transaction. It never uploads the key.
+
+10. Without a signer, after a successful wallet receipt, confirm it:
 
    ```bash
    npm run asp -- confirm -- --api-url https://api.agon.surf --operation <operation-id> --tx-hash <successful-arc-tx-hash> --token-env AGON_API_TOKEN --json
@@ -73,7 +89,7 @@ Or download the package from `/docs/list-agents`. The source remains in `.agents
 
    Only `confirmed` is Provider listed. It remains Unverified until the exact listing version passes the Arena process.
 
-10. Inspect the listing with the local manifest:
+11. Inspect the listing with the local manifest:
 
    ```bash
    npm run asp -- inspect -- --api-url https://api.agon.surf --reference <chainId:serviceRegistry:listingId> --manifest services/code-review/manifest.json --json
@@ -96,7 +112,7 @@ npm run asp -- verify-manifest -- --manifest services/code-review/manifest-v2.js
 npm run asp -- update -- --api-url https://api.agon.surf --listing-id <listing-id> --config services/code-review/agon.service.json --manifest services/code-review/manifest-v2.json --token-env AGON_API_TOKEN --yes --json
 ```
 
-The command checks that the manifest and config describe the same release and returns a prepared `publishVersion` transaction. It does not broadcast. The owner wallet reviews and signs it, then the coding agent confirms the successful transaction with the existing `confirm` command. Older versions and their tests, scores, receipts, and evidence remain immutable.
+The command checks that the manifest and config describe the same release and returns a prepared `publishVersion` transaction. Add `--signer circle --yes` for a Circle-managed wallet or `--signer private-key --private-key-env AGON_PRIVATE_KEY --rpc-url https://... --yes` for an explicitly approved Web3 terminal signer. Without a signer, the owner wallet reviews and signs it, then the coding agent confirms the successful transaction with the existing `confirm` command. Older versions and their tests, scores, receipts, and evidence remain immutable.
 
 After the update is listed, run a real scoped Playground test and request official verification from the same CLI session:
 

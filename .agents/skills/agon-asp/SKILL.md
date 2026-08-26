@@ -15,7 +15,7 @@ Install the public package into detected coding agents with:
 npx skillfish add Iziedking/agon --path .agents/skills/agon-asp --yes
 ```
 
-The same package is downloadable from the Agon BUILD guide at `/downloads/agon-asp.zip`. Review the package before use. Never put private keys, seed phrases, or session tokens in the skill, a repository, a CLI argument, or a chat message.
+The same package is downloadable from the Agon BUILD guide at `/downloads/agon-asp.zip`. Review the package before use. Never put private keys, seed phrases, or session tokens in the skill, a repository, a CLI argument, or a chat message. A Web3 private key may be supplied to the local CLI only through a protected environment variable when the user explicitly chooses CLI signing; it is never sent to Agon or logged.
 
 ## Load the command contract
 
@@ -30,11 +30,12 @@ Read [references/cli.md](references/cli.md) before preparing, publishing, or ver
 5. Have the provider upload that exact manifest to its permanent HTTPS or IPFS URI. Run `verify-manifest` against the local artifact before any publication request.
 6. Run `health`. If `listingWrites` is false, stop and report that publication is unavailable. Preserve the generated artifacts; do not imply a transaction.
 7. Before `publish`, show the agent ID, service name, category, endpoint host, price, manifest URI, manifest hash, and initial trust state. Ask for explicit approval if the user has not already authorized this exact publication.
-8. Read the session token from an environment variable. For the full build, update, Playground, and verification workflow, request only the required device scopes: `agon:read`, `listing:prepare`, `listing:write`, `listing:confirm`, `playground:run`, and `arena:prepare`. Never request or accept a private key, seed phrase, or token in a CLI argument, file, prompt, or chat response.
-9. Run `publish` only with the reviewed config, matching local manifest, and `--yes`. It creates a durable `prepared` operation and exact transaction intent; it does not broadcast and is not yet Provider listed.
-10. Show the exact chain, contract, function, arguments, and operation ID before using an approved wallet tool. A real transaction requires explicit approval for that exact intent. Never handle a private key or seed phrase.
-11. After the transaction succeeds, run `confirm` with the operation ID and transaction hash. Report Provider listed only when the backend returns `confirmed` receipt proof. Never report it as Agon verified.
-12. Run `inspect` with the confirmed listing reference and local manifest. Report hash evidence, scoped trust state, payment eligibility, quarantine reason, ownership freshness when supplied, and provenance separately.
+8. Read the session token from an environment variable. For the full build, update, Playground, and verification workflow, request only the required device scopes: `agon:read`, `listing:prepare`, `listing:write`, `listing:confirm`, `wallet:execute`, `playground:run`, and `arena:prepare`. Never request or accept a token in a CLI argument, file, prompt, or chat response.
+9. Run `publish` or `update` only with the reviewed config, matching local manifest, and `--yes`. Without `--signer`, it creates a durable `prepared` operation and exact transaction intent but does not broadcast.
+10. For Circle-managed email users, use `--signer circle --yes`. The CLI submits only the exact prepared call through Circle and polls for the receipt. The human must approve the command with `--yes`; Circle credentials and key material stay on the server.
+11. For Web3 users who intentionally choose terminal-only signing, use `--signer private-key --private-key-env AGON_PRIVATE_KEY --rpc-url https://... --yes`. The CLI reads the key only from that environment variable, checks that its address matches the authenticated Agon wallet and that the RPC chain matches the prepared operation, signs only the prepared calldata, waits for a successful receipt, and confirms it. Never print, paste, commit, or transmit the key.
+12. Show the exact chain, contract, function, arguments, and operation ID before any signer runs. `--yes` is required for both Circle and Web3 signing and is the human approval boundary. After a successful transaction, report Provider listed only when AGON returns `confirmed` receipt proof. Never report it as Agon verified.
+13. Run `inspect` with the confirmed listing reference and local manifest. Report hash evidence, scoped trust state, payment eligibility, quarantine reason, ownership freshness when supplied, and provenance separately.
 
 ## Update an existing agent
 
@@ -45,7 +46,7 @@ npm run asp -- verify-manifest -- --manifest services/my-agent/manifest-v2.json
 npm run asp -- update -- --api-url https://api.agon.surf --listing-id 7 --config services/my-agent/agon.service.json --manifest services/my-agent/manifest-v2.json --token-env AGON_API_TOKEN --yes --json
 ```
 
-The update command checks that the local manifest exactly matches the reviewed config and returns a `prepared` operation. It does not broadcast. The coding agent must show the chain, ServiceRegistry, `publishVersion` call, listing ID, new version, manifest URI, and canonical hash, then stop for the owner wallet to sign. After the owner wallet returns a successful transaction hash, run `confirm` with the operation ID. The old version, scores, receipts, and evidence remain attached to their original version.
+The update command checks that the local manifest exactly matches the reviewed config and returns a `prepared` operation. The coding agent must show the chain, ServiceRegistry, `publishVersion` call, listing ID, new version, manifest URI, and canonical hash. Use `--signer circle --yes` for a Circle-managed wallet or `--signer private-key --private-key-env AGON_PRIVATE_KEY --rpc-url https://... --yes` for an explicitly approved Web3 terminal signer. Without a signer, the owner signs in the UI and the agent runs `confirm` afterward. The old version, scores, receipts, and evidence remain attached to their original version.
 
 ## Run a real test and request verification
 
