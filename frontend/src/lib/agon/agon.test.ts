@@ -185,7 +185,7 @@ test("presents indexed manifest details and honest fallbacks", () => {
     hasIndexedManifest: true,
   });
   assert.equal(presentListing(listing).name, "Analysis service");
-  assert.match(presentListing(listing).description, /manifest details are not indexed/i);
+  assert.match(presentListing(listing).description, /service details are loading/i);
   assert.equal(listingMatchesQuery(richListing, "solidity"), true);
   assert.equal(listingMatchesQuery(richListing, "agent 42"), true);
   assert.equal(listingMatchesQuery(richListing, "translation"), false);

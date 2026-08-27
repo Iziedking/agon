@@ -68,9 +68,9 @@ export default function ListingDetailPage() {
         <section className="relative mx-auto max-w-[1400px] px-4 pt-14 sm:px-6 sm:pt-16">
           <CornerMarkers />
           <SectionHeader
-            eyebrow={service && listing ? `${service.category.label} / AGENT #${listing.agentId}` : "AGON MARKET / SERVICE"}
+            eyebrow={service?.category.label ?? "AGON MARKET / SERVICE"}
             heading={service?.name ?? "SERVICE DETAILS"}
-            subDeck={service?.description ?? "Reading the service description and trust record from the Agon catalog."}
+            subDeck={service?.description ?? "Reading this service from the Agon catalog."}
             right={<><TagButton variant="ghost" href="/market">BACK TO MARKET</TagButton>{listing ? <TagButton variant="ghost" href={`/market/version?listingId=${encodeURIComponent(listing.listingId)}&manifestUri=${encodeURIComponent(listing.manifest.uri)}`}>UPDATE THIS SERVICE</TagButton> : null}<AgonAuthAction href="/market/new">LIST YOUR AGENT</AgonAuthAction></>}
           />
         </section>
@@ -114,9 +114,9 @@ export default function ListingDetailPage() {
 
                     <dl className="mt-7 grid gap-px bg-[color:var(--hairline)] sm:grid-cols-2">
                       <OverviewFact label="CATEGORY" value={service.category.label} note={service.category.description} />
-                      <OverviewFact label="PROVIDER" value={`Agent #${listing.agentId}`} note="Ownership details are available in Technical proof." />
-                      <OverviewFact label="DELIVERY" value={service.endpoint ? "External HTTPS service" : "Endpoint not indexed"} note={service.endpoint ?? "Open the manifest URL to inspect delivery details."} />
-                      <OverviewFact label="VERSION" value={`Version ${listing.version}`} note={listing.status === "Listed" ? "Current listed version" : `Chain status: ${listing.status}`} />
+                      <OverviewFact label="PROVIDER" value="Independent service" note="The provider owns and operates this service." />
+                      <OverviewFact label="DELIVERY" value={service.endpoint ? "Ready to receive a task" : "Delivery details loading"} note={service.endpoint ? "The service responds through its public endpoint." : "Open the service file to inspect delivery details."} />
+                      <OverviewFact label="VERSION" value={`Current version ${listing.version}`} note={listing.status === "Listed" ? "This is the version shown in the marketplace." : "This service is not currently available."} />
                     </dl>
 
                     {service.tags.length ? (
@@ -157,9 +157,8 @@ export default function ListingDetailPage() {
 
                     <div className="mt-5 border-t border-current pt-4 font-mono text-[10px] leading-relaxed opacity-70">
                       <div className="uppercase tracking-[0.12em]">SERVICE AVAILABILITY</div>
-                      <p className="mt-2">{listing.endpointQa.reason}</p>
-                      {listing.endpointQa.attempts > 0 ? <p className="mt-1 uppercase tracking-[0.08em]">{listing.endpointQa.passedAttempts}/{listing.endpointQa.attempts} checks passed · {listing.endpointQa.successRate}% reliability</p> : null}
-                      {listing.endpointQa.checkedAt ? <p className="mt-1 uppercase tracking-[0.08em]">Checked {listing.endpointQa.checkedAt}</p> : null}
+                      <p className="mt-2">{availabilityMessage(listing.endpointQa.status)}</p>
+                      {listing.endpointQa.status === "passed" && listing.endpointQa.attempts > 0 ? <p className="mt-1 uppercase tracking-[0.08em]">{listing.endpointQa.successRate}% recent reliability</p> : null}
                     </div>
 
                     {listing.payment.rail === "X402" ? (
@@ -198,10 +197,16 @@ function Readiness({ label, state, value }: { label: string; state: "ready" | "c
   return <div className="flex items-center justify-between gap-4 font-mono text-[10px]"><span className="opacity-65">{label}</span><span className="inline-flex items-center gap-2 uppercase"><span className="h-2 w-2" style={{ background: color }} />{value}</span></div>;
 }
 
+function availabilityMessage(status: AgonListing["endpointQa"]["status"]): string {
+  if (status === "passed") return "The service is responding to availability checks.";
+  if (status === "failed") return "The service did not respond reliably. Try again later.";
+  return "Agon is checking whether this service is ready.";
+}
+
 function DetailLoading() {
   return (
     <div aria-label="Loading service" className="border-y border-[color:var(--hairline)] py-10">
-      <div className="font-mono text-[11px] uppercase tracking-[0.15em] text-ink-2">READING SERVICE FROM ARC...</div>
+      <div className="font-mono text-[11px] uppercase tracking-[0.15em] text-ink-2">LOADING SERVICE...</div>
       <div className="mt-4 h-0.5 w-full overflow-hidden bg-canvas-3"><div className="h-full w-1/3 animate-pulse bg-accent" /></div>
     </div>
   );

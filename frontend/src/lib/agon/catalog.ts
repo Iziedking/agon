@@ -67,7 +67,7 @@ export function presentListing(listing: AgonListing): ListingPresentation {
 
   return {
     name: text(body?.name) ?? `${category.label} service`,
-    description: text(body?.description) ?? `Published by ERC-8004 Agent #${listing.agentId}. Full manifest details are not indexed yet.`,
+    description: text(body?.description) ?? "Service details are loading. Open the service to learn more.",
     logoUrl: text(body?.logoUrl),
     category,
     tags,

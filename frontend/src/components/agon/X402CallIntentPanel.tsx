@@ -136,12 +136,12 @@ export function X402CallIntentPanel({ listing, defaultAmount, endpointUrl }: Pro
               </select>
             </label>
             <label className="font-mono text-[9px] uppercase tracking-[0.12em] opacity-65">
-              MAX SPEND · USDC
+              YOUR SPEND LIMIT · USDC
               <input value={maxAmountUSDC} onChange={(event) => setMaxAmountUSDC(event.target.value)} inputMode="decimal" className="mt-2 h-10 w-full border border-current bg-transparent px-3 font-mono text-[11px] text-current" />
             </label>
           </div>
           <label className="mt-4 block font-mono text-[9px] uppercase tracking-[0.12em] opacity-65">
-            JSON INPUT
+            TASK DETAILS (JSON)
             <textarea value={input} onChange={(event) => setInput(event.target.value)} rows={4} spellCheck={false} className="mt-2 w-full resize-y border border-current bg-transparent p-3 font-mono text-[11px] leading-relaxed text-current" />
           </label>
           <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -159,7 +159,7 @@ export function X402CallIntentPanel({ listing, defaultAmount, endpointUrl }: Pro
       {intent ? (
         <div className="mt-5 border border-[color:var(--ok)] p-4 font-mono text-[10px] leading-relaxed">
           <div className="flex items-center justify-between gap-3 uppercase tracking-[0.12em] text-[color:var(--ok)]"><span>{approval ? "SPENDING LIMIT APPROVED" : "TASK READY FOR REVIEW"}</span><span>NO PAYMENT YET</span></div>
-          <div className="mt-3 opacity-75">MAXIMUM SPEND · {intent.maxAmountUSDC} USDC</div>
+          <div className="mt-3 opacity-75">YOUR LIMIT · {intent.maxAmountUSDC} USDC</div>
           <details className="mt-3 border-t border-current pt-3 opacity-70"><summary className="cursor-pointer uppercase tracking-[0.1em]">TECHNICAL REQUEST</summary><div className="mt-2 break-all">INPUT HASH · {intent.inputHash}</div></details>
           {approval ? (
             <div className="mt-4 border-t border-current pt-3">

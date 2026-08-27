@@ -91,12 +91,12 @@ export default function MarketPage() {
   }
 
   const trustOptions: Array<{ value: TrustFilter; label: string; count: number }> = [
-    { value: "available", label: "Available", count: summary.available },
+    { value: "available", label: "Ready to try", count: summary.available },
     { value: "verified", label: "Tested by Agon", count: summary.verified },
     { value: "provider", label: "Not yet tested", count: summary.provider },
     { value: "quarantined", label: "Unavailable", count: summary.quarantined },
   ];
-  const selectedTrustLabel = trustOptions.find((option) => option.value === trust)?.label ?? "Available";
+  const selectedTrustLabel = trustOptions.find((option) => option.value === trust)?.label ?? "Ready to try";
   const hasFilters = Boolean(query || selectedCategory || trust !== "available");
   const resetFilters = () => {
     setQuery("");
@@ -126,35 +126,35 @@ export default function MarketPage() {
             </div>
           ) : null}
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <h2 id="trust-guide-heading" className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">WHAT THE LABELS MEAN</h2>
-            <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">Each test applies to one service version</span>
+            <h2 id="trust-guide-heading" className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink">HOW TO CHOOSE</h2>
+            <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">Every test applies to one service version</span>
           </div>
-          <div className="grid gap-3 lg:grid-cols-3">
-            <TrustGuide tone="ok" title="Tested by Agon" copy="This exact service version passed its category test." />
-            <TrustGuide tone="warn" title="Not yet tested" copy="The owner published the service, but Agon has not tested this version yet." />
-            <TrustGuide tone="err" title="Unavailable" copy="A safety or catalog check failed, so the service cannot be used." />
+          <div className="grid gap-px border border-[color:var(--hairline)] bg-[color:var(--hairline)] sm:grid-cols-3">
+            <TrustGuide tone="ok" title="Tested by Agon" copy="This version passed its category test." />
+            <TrustGuide tone="warn" title="Not yet tested" copy="Try it only after reviewing the service." />
+            <TrustGuide tone="err" title="Unavailable" copy="Agon has blocked this service for now." />
           </div>
         </section>
 
         <section aria-label="Marketplace filters" className="mx-auto max-w-[1600px] px-4 py-8 sm:px-6">
           <div className="border-y border-[color:var(--hairline-strong)] py-6">
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(260px,0.8fr)]">
-              <Field label="SEARCH SERVICES" hint="Name, skill, tag, or agent number">
+            <div className="mb-5 overflow-x-auto pb-1" aria-label="Service categories">
+              <div className="flex min-w-max gap-2">
+                <CategoryTab active={!selectedCategory} label="All" onClick={() => setSelectedCategory("")} />
+                {AGON_CATEGORIES.map((category) => (
+                  <CategoryTab key={category.id} active={selectedCategory === category.id} label={category.label} onClick={() => setSelectedCategory(category.id)} />
+                ))}
+              </div>
+            </div>
+            <div>
+              <Field label="SEARCH SERVICES" hint="Name, skill, or tag">
                 <input
                   type="search"
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Try security, research, or agent 42"
+                  placeholder="Try security, research, or NFT monitoring"
                   className={INPUT_CLASS}
                 />
-              </Field>
-              <Field label="WHAT DO YOU NEED?" hint="Choose the closest result">
-                <select value={selectedCategory} onChange={(event) => setSelectedCategory(event.target.value)} className={INPUT_CLASS}>
-                  <option value="">All service categories</option>
-                  {AGON_CATEGORIES.map((category) => (
-                    <option key={category.id} value={category.id}>{category.label}: {category.description}</option>
-                  ))}
-                </select>
               </Field>
             </div>
 
@@ -190,7 +190,7 @@ export default function MarketPage() {
         <section aria-labelledby="services-heading" className="mx-auto max-w-[1600px] px-4 pb-20 sm:px-6">
           <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
             <div>
-              <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-accent">AVAILABLE AGENTS</div>
+              <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-accent">SERVICES</div>
               <h2 id="services-heading" className="mt-2 font-stencil text-[32px] uppercase leading-none text-ink sm:text-[38px]">{selectedTrustLabel}</h2>
             </div>
             {items ? <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">{filteredItems.length} MATCHING RECORDS</span> : null}
@@ -218,7 +218,7 @@ export default function MarketPage() {
               </div>
             </BracketedCell>
           ) : (
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-2">
               {filteredItems.map((listing) => <ListingCard key={listing.id} listing={listing} />)}
             </div>
           )}
@@ -254,19 +254,32 @@ function Field({ label, hint, children }: { label: string; hint: string; childre
 
 function TrustGuide({ tone, title, copy }: { tone: "ok" | "warn" | "err"; title: string; copy: string }) {
   return (
-    <BracketedCell pad="sm">
+    <div className="bg-canvas p-4">
       <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.13em] text-ink">
         <span className="h-2 w-2" style={{ background: `var(--${tone})` }} />{title}
       </div>
       <p className="mt-3 font-mono text-[11px] leading-relaxed text-ink-2">{copy}</p>
-    </BracketedCell>
+    </div>
+  );
+}
+
+function CategoryTab({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={`min-h-11 border px-4 py-2 font-mono text-[10px] uppercase tracking-[0.12em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas ${active ? "border-ink bg-ink text-[color:var(--canvas)]" : "border-[color:var(--hairline-strong)] text-ink hover:bg-canvas-2"}`}
+    >
+      {label}
+    </button>
   );
 }
 
 function MarketLoading() {
   return (
     <div aria-label="Loading services" className="border-y border-[color:var(--hairline)] py-10">
-      <div className="font-mono text-[11px] uppercase tracking-[0.15em] text-ink-2">READING SERVICES FROM ARC...</div>
+      <div className="font-mono text-[11px] uppercase tracking-[0.15em] text-ink-2">LOADING SERVICES...</div>
       <div className="mt-4 h-0.5 w-full overflow-hidden bg-canvas-3">
         <div className="h-full w-1/3 animate-pulse bg-accent" />
       </div>

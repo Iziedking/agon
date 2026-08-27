@@ -11,7 +11,7 @@ import { UnverifiedWarning } from "./UnverifiedWarning";
 import { VerificationBadge } from "./VerificationBadge";
 
 function priceLabel(amountUSDC: string | null) {
-  return amountUSDC ? `${amountUSDC} USDC` : "Price in manifest";
+  return amountUSDC ? `${amountUSDC} USDC / use` : "Price in service file";
 }
 
 export function ListingCard({ listing }: { listing: AgonListing }) {
@@ -37,44 +37,49 @@ export function ListingCard({ listing }: { listing: AgonListing }) {
   }, [listing.manifest.body, listing.manifest.hash, listing.manifest.uri, metadataState]);
 
   return (
-    <BracketedCell hover className="flex min-h-[360px] flex-col" pad="md">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex items-center gap-3">
+    <BracketedCell hover className="group flex min-h-0 flex-col" pad="md">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex min-w-0 items-center gap-3">
           <AgentLogo logoUrl={service.logoUrl} name={service.name} />
-          <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">
-            {service.category.label} <span aria-hidden>·</span> Agent #{listing.agentId}
+          <div className="min-w-0">
+            <div className="truncate font-mono text-[10px] uppercase tracking-[0.16em] text-accent">{service.category.label}</div>
+            <div className="mt-1 font-mono text-[10px] text-ink-3">{service.hasIndexedManifest ? "Service" : "Details loading"}</div>
           </div>
         </div>
         <VerificationBadge status={listing.verification.status} quarantined={quarantined} />
       </div>
 
-      <h2 className="mt-6 font-stencil text-[27px] uppercase leading-[1.02] text-ink sm:text-[31px]">{service.name}</h2>
-      <p className="mt-4 line-clamp-3 font-mono text-[12px] leading-[1.65] text-ink-2">{service.description}</p>
-      {metadataState === "loading" ? <p className="mt-3 font-mono text-[9px] uppercase tracking-[0.12em] text-ink-3">Reading agent profile</p> : null}
+      <h2 className="mt-6 font-stencil text-[28px] uppercase leading-[1.02] text-ink sm:text-[32px]">{service.name}</h2>
+      <p className="mt-3 line-clamp-2 min-h-[3.3em] font-mono text-[12px] leading-[1.65] text-ink-2">{service.description}</p>
+      {metadataState === "loading" ? <p className="mt-3 font-mono text-[9px] uppercase tracking-[0.12em] text-ink-3">Loading service details</p> : null}
 
       {service.tags.length ? (
-        <div className="mt-5 flex flex-wrap gap-x-4 gap-y-2 font-mono text-[10px] uppercase tracking-[0.1em] text-ink-3">
-          {service.tags.slice(0, 4).map((tag) => <span key={tag}>#{tag}</span>)}
+        <div className="mt-5 flex flex-wrap gap-2">
+          {service.tags.slice(0, 3).map((tag) => <span key={tag} className="border border-[color:var(--hairline-strong)] px-2 py-1 font-mono text-[9px] uppercase tracking-[0.1em] text-ink-3">{tag}</span>)}
         </div>
       ) : null}
 
       <div className="mt-6 grid grid-cols-2 gap-px border border-[color:var(--hairline)] bg-[color:var(--hairline)]">
         <Fact label="PRICE" value={priceLabel(service.amountUSDC)} />
-        <Fact label="PAYMENT" value={listing.payment.rail === "Escrow" ? "Protected project" : "Pay per use"} warning={listing.payment.rail === "Escrow" && !listing.payment.escrowEligible} />
+        <Fact label="USE" value={listing.payment.rail === "Escrow" ? "Protected project" : "Pay per use"} warning={listing.payment.rail === "Escrow" && !listing.payment.escrowEligible} />
       </div>
 
-      {quarantined || listing.risk.unverified ? (
+      {quarantined ? (
         <div className="mt-5"><UnverifiedWarning message={listing.risk.warning} quarantineReason={listing.risk.quarantineReason} /></div>
+      ) : listing.risk.unverified ? (
+        <div className="mt-5 border-l-[3px] border-[color:var(--warn)] bg-canvas-2 px-4 py-3 font-mono text-[11px] leading-relaxed text-ink-2">
+          The owner listed this service. Try it first, then decide whether it fits your work.
+        </div>
       ) : (
         <div className="mt-5 border-l-[3px] border-[color:var(--ok)] bg-canvas-2 px-4 py-3 font-mono text-[11px] leading-relaxed text-ink-2">
-          Tested by Agon for Agent #{listing.agentId}, version {listing.version}. Later versions need a new test.
+          Tested by Agon for this service version. A changed version is tested separately.
         </div>
       )}
 
-      <div className="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--hairline)] pt-5">
-        <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">{unavailable ? "NOT AVAILABLE" : service.hasIndexedManifest ? "READY TO REVIEW" : "LIMITED DETAILS"}</span>
-        <Link href={`/market/${encodeURIComponent(listing.id)}`} className="font-mono text-[11px] uppercase tracking-[0.14em] text-ink hover:text-accent">
-          {quarantined ? "REVIEW RECORD" : "VIEW SERVICE"} →
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--hairline)] pt-5">
+        <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">{unavailable ? "UNAVAILABLE" : "READY TO TRY"}</span>
+        <Link href={`/market/${encodeURIComponent(listing.id)}`} className="font-mono text-[11px] uppercase tracking-[0.14em] text-ink underline decoration-accent underline-offset-4 hover:text-accent">
+          {quarantined ? "VIEW DETAILS" : "TRY SERVICE"} &gt;
         </Link>
       </div>
     </BracketedCell>
@@ -85,7 +90,7 @@ export function AgentLogo({ logoUrl, name }: { logoUrl: string | null; name: str
   const [failed, setFailed] = useState(false);
   const initials = name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "A";
   return (
-    <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden border border-[color:var(--hairline-strong)] bg-pink font-mono text-[13px] text-white" aria-label={`${name} logo`}>
+    <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden border border-[color:var(--hairline-strong)] bg-pink font-mono text-[13px] text-white" aria-label={`${name} logo`}>
       {logoUrl && !failed ? <img src={logoUrl} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(true)} /> : initials}
     </div>
   );

@@ -12,6 +12,8 @@ import { agonProfileRegistryAbi, agonServiceRegistryAbi } from "../../src/agon/w
 import type { AgonReadiness } from "../../src/agon/write/readiness.ts";
 import type {
   AgonOperationStore,
+  AgonListingAnchor,
+  AgonListingAnchorStore,
   ConfirmAgonOperation,
   PrepareAgonOperation,
   StoredAgonWriteOperation,
@@ -132,6 +134,26 @@ function listingLog(overrides: { actor?: `0x${string}`; manifestHash?: `0x${stri
   } as Log;
 }
 
+class MemoryListingAnchors implements AgonListingAnchorStore {
+  anchors: AgonListingAnchor[] = [];
+  reconciled: AgonListingAnchor[] = [];
+
+  async insertValidatedListingVersion(anchor: AgonListingAnchor): Promise<void> {
+    const exists = this.anchors.some((item) =>
+      item.chainId === anchor.chainId &&
+      item.serviceRegistry.toLowerCase() === anchor.serviceRegistry.toLowerCase() &&
+      item.listingId === anchor.listingId &&
+      item.version === anchor.version &&
+      item.manifestHash.toLowerCase() === anchor.manifestHash.toLowerCase(),
+    );
+    if (!exists) this.anchors.push(anchor);
+  }
+
+  async reconcileListingAnchor(anchor: AgonListingAnchor): Promise<void> {
+    this.reconciled.push(anchor);
+  }
+}
+
 function listingVersionLog(overrides: { actor?: `0x${string}`; manifestHash?: `0x${string}` } = {}): Log {
   const actor = overrides.actor ?? ACTOR;
   const manifestHash = overrides.manifestHash ?? MANIFEST_HASH;
@@ -154,12 +176,13 @@ function setup(options: {
   owner?: `0x${string}`;
   readiness?: AgonReadiness;
   transactionReceipt?: TransactionReceipt;
+  listingAnchors?: AgonListingAnchorStore;
 } = {}) {
   const operations = new MemoryOperations();
   let simulations = 0;
   const client = {
     readContract: async ({ functionName }: { functionName?: string }) => functionName === "getListing"
-      ? { agentId: 42n }
+      ? { agentId: 42n, version: 1n }
       : options.owner ?? ACTOR,
     simulateContract: async () => { simulations += 1; return { request: {}, result: undefined }; },
     getTransactionReceipt: async () => options.transactionReceipt ?? receipt([]),
@@ -169,8 +192,9 @@ function setup(options: {
     client,
     readiness: { get: async () => options.readiness ?? ready },
     operations,
+    listingAnchors: options.listingAnchors,
   });
-  return { adapter, operations, simulations: () => simulations };
+  return { adapter, operations, simulations: () => simulations, listingAnchors: options.listingAnchors };
 }
 
 test("does not read ownership or simulate when readiness is false", async () => {
@@ -251,7 +275,8 @@ test("returns an already confirmed operation without simulating a duplicate writ
 });
 
 test("confirms listing publication and returns its canonical reference", async () => {
-  const { adapter } = setup({ transactionReceipt: receipt([listingLog()]) });
+  const listingAnchors = new MemoryListingAnchors();
+  const { adapter } = setup({ transactionReceipt: receipt([listingLog()]), listingAnchors });
   const prepared = await adapter.publishListing(ACTOR, {
     chainId: "5042002",
     agentId: "42",
@@ -267,10 +292,14 @@ test("confirms listing publication and returns its canonical reference", async (
   assert.equal(confirmed.ok, true);
   if (!confirmed.ok) return;
   assert.equal(confirmed.value.resultReference, `5042002:${SERVICE}:9`);
+  assert.equal(listingAnchors.anchors.length, 1);
+  assert.equal(listingAnchors.anchors[0]?.listingId, 9n);
+  assert.equal(listingAnchors.anchors[0]?.version, 1n);
 });
 
 test("confirms listing version publication from its canonical event", async () => {
-  const { adapter } = setup({ transactionReceipt: receipt([listingVersionLog()]) });
+  const listingAnchors = new MemoryListingAnchors();
+  const { adapter } = setup({ transactionReceipt: receipt([listingVersionLog()]), listingAnchors });
   const prepared = await adapter.publishListingVersion(ACTOR, {
     chainId: "5042002",
     listingId: "9",
@@ -280,11 +309,40 @@ test("confirms listing version publication from its canonical event", async () =
   });
   assert.equal(prepared.ok, true);
   if (!prepared.ok) return;
+  assert.equal(listingAnchors.anchors.length, 1);
+  assert.equal(listingAnchors.anchors[0]?.listingId, 9n);
+  assert.equal(listingAnchors.anchors[0]?.version, 2n);
   const confirmed = await adapter.confirmOperation(ACTOR, prepared.value.operationId, TX_HASH);
   assert.equal(confirmed.ok, true);
   if (!confirmed.ok) return;
   assert.equal(confirmed.value.resultReference, `5042002:${SERVICE}:9`);
   assert.deepEqual(confirmed.value.proof, { blockNumber: "123", logIndex: 9 });
+});
+
+test("rechecks an already confirmed listing receipt to repair a missing anchor", async () => {
+  const listingAnchors = new MemoryListingAnchors();
+  const { adapter } = setup({ transactionReceipt: receipt([listingLog()]), listingAnchors });
+  const prepared = await adapter.publishListing(ACTOR, {
+    chainId: "5042002",
+    agentId: "42",
+    serviceKey: SERVICE_KEY,
+    manifestHash: MANIFEST_HASH,
+    manifestUri: "ipfs://manifest",
+    category: "3",
+    paymentRail: "X402",
+  });
+  assert.equal(prepared.ok, true);
+  if (!prepared.ok) return;
+
+  const first = await adapter.confirmOperation(ACTOR, prepared.value.operationId, TX_HASH);
+  assert.equal(first.ok, true);
+  listingAnchors.anchors.length = 0;
+  listingAnchors.reconciled.length = 0;
+
+  const replay = await adapter.confirmOperation(ACTOR, prepared.value.operationId, TX_HASH);
+  assert.equal(replay.ok, true);
+  assert.equal(listingAnchors.anchors.length, 1);
+  assert.equal(listingAnchors.reconciled.length, 1);
 });
 
 test("rejects reverted, mismatched, or duplicate matching receipt evidence", async () => {
