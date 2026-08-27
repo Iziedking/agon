@@ -907,6 +907,9 @@ const WRITE_ALLOWLIST = new Set<string>(
       ? [
           config.agon.deployment.contracts.AgonProfileRegistry,
           config.agon.deployment.contracts.AgonServiceRegistry,
+          // Email-login users create their ERC-8004 identity through the
+          // same Circle signing boundary before binding it to Agon.
+          config.agon.deployment.external.IdentityRegistry.address,
         ]
       : []),
   ].map((a) => a.toLowerCase()),
