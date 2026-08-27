@@ -35,6 +35,7 @@ export default function ListingVersionPage() {
   const [published, setPublished] = useState(false);
   const [publishedTxHash, setPublishedTxHash] = useState<`0x${string}` | null>(null);
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation | null>(null);
+  const [manifestLogoUrl, setManifestLogoUrl] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -72,6 +73,7 @@ export default function ListingVersionPage() {
       const inspection = await inspectManifest(manifestUri.trim());
       if (!inspection.validation.ok) throw new Error(inspection.validation.message);
       setManifestHash(inspection.manifestHash);
+      setManifestLogoUrl(readManifestLogoUrl(inspection.body));
       setNotice(`Manifest loaded and validated. ${inspection.byteLength} bytes. Review the hash, then publish the new immutable version.`);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not load the manifest.");
@@ -96,7 +98,7 @@ export default function ListingVersionPage() {
       sessionStorage.removeItem(PENDING_CONFIRMATION_KEY);
       setNotice(`Version confirmed${confirmed.resultReference ? `: ${confirmed.resultReference}` : "."}`);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "The existing transaction could not be confirmed yet.");
+      setError(presentTransactionError(reason, "The existing transaction could not be confirmed yet."));
     } finally {
       setPublishing(false);
     }
@@ -152,7 +154,7 @@ export default function ListingVersionPage() {
       sessionStorage.removeItem(PENDING_CONFIRMATION_KEY);
       setNotice(`Version published${confirmed.resultReference ? `: ${confirmed.resultReference}` : "."}`);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Version publication failed.");
+      setError(presentTransactionError(reason, "Version publication could not be completed."));
     } finally {
       setPublishing(false);
     }
@@ -198,6 +200,12 @@ export default function ListingVersionPage() {
             </button> : null}
           </div>
           {manifestHash ? <p className="mt-6 break-all font-mono text-xs text-ink-2">Manifest hash: {manifestHash}</p> : null}
+          <div className="mt-6 border-l-2 border-[color:var(--hairline-strong)] bg-canvas-2 px-4 py-4 font-mono text-xs leading-6 text-ink-2">
+            <p className="uppercase tracking-[0.14em] text-ink">Logo and service details</p>
+            <p className="mt-2">Update the hosted manifest first. Set its <code className="text-ink">logoUrl</code> to a public HTTPS PNG, JPG, WEBP, or SVG, deploy the file, then load the new manifest URL here.</p>
+            <p className="mt-2 text-ink-3">AGON verifies the exact hosted manifest; it does not upload files to your service host.</p>
+            {manifestLogoUrl ? <a href={manifestLogoUrl} target="_blank" rel="noreferrer" className="mt-3 inline-flex min-h-11 items-center gap-3 text-ink underline decoration-accent underline-offset-4 hover:text-accent"><img src={manifestLogoUrl} alt="Current service logo" className="h-10 w-10 rounded object-cover" />VIEW CURRENT LOGO</a> : null}
+          </div>
           {pendingConfirmation ? <div role="status" className="mt-6 border-l-2 border-[color:var(--warn)] bg-canvas-2 px-4 py-3 font-mono text-xs leading-6 text-[color:var(--warn)]">
             <p>Transaction submitted. Confirm the existing transaction before publishing again.</p>
             <TagButton href={`${AGON_NETWORK.explorerUrl.replace(/\/$/, "")}/tx/${pendingConfirmation.txHash}`} target="_blank" rel="noreferrer" variant="ghost" size="sm">VIEW TRANSACTION</TagButton>
@@ -219,4 +227,21 @@ export default function ListingVersionPage() {
       <Footer />
     </>
   );
+}
+
+function readManifestLogoUrl(body: unknown): string | null {
+  if (!body || typeof body !== "object") return null;
+  const value = (body as { logoUrl?: unknown }).logoUrl;
+  return typeof value === "string" && /^https:\/\/.+/i.test(value.trim()) ? value.trim() : null;
+}
+
+function presentTransactionError(reason: unknown, fallback: string): string {
+  const message = reason instanceof Error ? reason.message : String(reason ?? "");
+  const normalized = message.toLowerCase();
+  if (normalized.includes("user rejected") || normalized.includes("user denied") || normalized.includes("rejected the request")) {
+    return "Transaction cancelled in your wallet. Nothing was published. Review the manifest and choose Confirm in your wallet when ready.";
+  }
+  if (normalized.includes("insufficient funds")) return "Your wallet does not have enough testnet funds to publish this version.";
+  if (normalized.includes("chain") && normalized.includes("network")) return "Switch your wallet to the AGON testnet, then try again.";
+  return fallback;
 }

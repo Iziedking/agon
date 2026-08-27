@@ -6,6 +6,7 @@ import { AgonMark } from "./AgonMark";
 import { StatusChip } from "./StatusChip";
 import { FeedbackTrigger } from "./FeedbackTrigger";
 import { AGON_NETWORK } from "@/lib/agon/network";
+import { IS_AGON_DEPLOYMENT } from "@/lib/product";
 
 /// Three-column mono list. Flat against canvas. No background card. Status
 /// chip on the bottom row. Copyright in mono `--ink-3`.
@@ -52,6 +53,7 @@ const AGON_PROJECT = [
 
 export function Footer({ variant = "legacy" }: { variant?: "legacy" | "agon" }) {
   const pathname = usePathname() ?? "/";
+  const isAgon = variant === "agon";
   const isInApp = [
     "/app",
     "/dashboard",
@@ -68,11 +70,12 @@ export function Footer({ variant = "legacy" }: { variant?: "legacy" | "agon" }) 
     "/bridge",
   ].some((route) => pathname === route || pathname.startsWith(`${route}/`));
 
-  // Authenticated product surfaces use the nav as their persistent chrome.
-  // The marketing footer remains on public landing, market, and docs routes.
-  if (isInApp) return null;
+  // AGON keeps its editorial footer only on the public landing and sign-in
+  // entry points. Marketplace, docs, listing, and authenticated task flows
+  // stay focused on the action surface.
+  if ((IS_AGON_DEPLOYMENT || isAgon) && pathname !== "/" && pathname !== "/login") return null;
+  if (!isAgon && isInApp) return null;
 
-  const isAgon = variant === "agon";
   return (
     <footer className="mt-24 border-t border-[color:var(--hairline)]">
       <div className="mx-auto grid max-w-[1280px] gap-10 px-6 py-16 lg:grid-cols-12">

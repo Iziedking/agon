@@ -6,6 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { LoginModal } from "@/components/pengu/LoginModal";
 import { AgonMark } from "@/components/redesign/AgonMark";
+import { Footer } from "@/components/redesign/Footer";
 import { TagButton } from "@/components/redesign/TagButton";
 import { AGON_NETWORK } from "@/lib/agon/network";
 
@@ -47,6 +48,7 @@ export default function LoginPage() {
         </div>
       </main>
       <LoginModal open={open} onClose={() => setOpen(false)} />
+      <Footer variant="agon" />
     </div>
   );
 }
