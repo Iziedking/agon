@@ -141,11 +141,11 @@ export default function ListingVersionPage() {
             </button> : null}
           </div>
           {manifestHash ? <p className="mt-6 break-all font-mono text-xs text-ink-2">Manifest hash: {manifestHash}</p> : null}
-          {notice ? <p className="mt-6 border-l-2 border-green-500 bg-green-50 px-4 py-3 font-mono text-xs leading-6 text-ink">{notice}</p> : null}
-          {error ? <p className="mt-6 border-l-2 border-pink bg-pink/10 px-4 py-3 font-mono text-xs leading-6 text-ink">{error}</p> : null}
+          {notice ? <p role="status" className="mt-6 border-l-2 border-[color:var(--ok)] bg-canvas-2 px-4 py-3 font-mono text-xs leading-6 text-[color:var(--ok)]">{notice}</p> : null}
+          {error ? <p role="alert" className="mt-6 border-l-2 border-pink bg-pink/10 px-4 py-3 font-mono text-xs leading-6 text-ink">{error}</p> : null}
           {publishedTxHash ? (
-            <div className="mt-6 border-l-2 border-green-500 bg-green-50 px-4 py-4">
-              <p className="font-mono text-xs leading-6 text-ink">Version confirmed on Arc Testnet. This action is closed. Publish another version only after changing the manifest.</p>
+            <div className="mt-6 border-l-2 border-[color:var(--ok)] bg-canvas-2 px-4 py-4">
+              <p className="font-mono text-xs leading-6 text-[color:var(--ok)]">Version confirmed on Arc Testnet. This action is closed. Publish another version only after changing the manifest.</p>
               <div className="mt-4 flex flex-wrap gap-3">
                 {publishedTxHash ? <TagButton href={`${AGON_NETWORK.explorerUrl.replace(/\/$/, "")}/tx/${publishedTxHash}`} target="_blank" rel="noreferrer" variant="ghost" size="sm">VIEW TRANSACTION</TagButton> : null}
                 <TagButton href="/market" variant="ghost" size="sm">VIEW MARKET</TagButton>
