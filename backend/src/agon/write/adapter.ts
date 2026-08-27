@@ -21,6 +21,8 @@ import type { AgonServiceError } from "../http/routes.ts";
 import type { AgonWriteAdapter } from "../http/service.ts";
 import type { AgonReadiness, CachedAgonReadiness } from "./readiness.ts";
 import {
+  type AgonListingAnchor,
+  type AgonListingAnchorStore,
   type AgonOperationStore,
   type AgonTransactionIntent,
   type StoredAgonWriteOperation,
@@ -84,22 +86,45 @@ function matchingLogs(receipt: TransactionReceipt, address: string): Log[] {
   return receipt.logs.filter((log) => isAddressEqual(log.address, address as `0x${string}`));
 }
 
+function buildListingAnchor(
+  request: PublishListingRequest | PublishListingVersionRequest,
+  serviceRegistry: string,
+  listingId: bigint,
+  version: bigint,
+  providerSnapshot: string,
+): AgonListingAnchor {
+  return {
+    chainId: BigInt(request.chainId),
+    serviceRegistry,
+    listingId,
+    version,
+    manifestHash: request.manifestHash as `0x${string}`,
+    manifestUri: request.manifestUri,
+    paymentRail: request.paymentRail,
+    providerSnapshot: providerSnapshot as `0x${string}`,
+    validatedAt: new Date(),
+  };
+}
+
 export class ViemAgonWriteAdapter implements AgonWriteAdapter {
   private readonly deployment: AgonDeployment;
   private readonly client: WriteClient;
   private readonly readiness: ReadinessProvider;
   private readonly operations: AgonOperationStore;
+  private readonly listingAnchors?: AgonListingAnchorStore;
 
   constructor(options: {
     deployment: AgonDeployment;
     client: WriteClient;
     readiness: ReadinessProvider;
     operations: AgonOperationStore;
+    listingAnchors?: AgonListingAnchorStore;
   }) {
     this.deployment = options.deployment;
     this.client = options.client;
     this.readiness = options.readiness;
     this.operations = options.operations;
+    this.listingAnchors = options.listingAnchors;
   }
 
   getReadiness(force = false): Promise<AgonReadiness> {
@@ -310,6 +335,19 @@ export class ViemAgonWriteAdapter implements AgonWriteAdapter {
         functionName: "publishVersion",
         args,
       });
+      // The next version is known before signing. Persisting this exact tuple
+      // gives the indexer an independent reviewed anchor for the chain event.
+      if (this.listingAnchors) {
+        await this.listingAnchors.insertValidatedListingVersion(
+          buildListingAnchor(
+            request,
+            this.deployment.contracts.AgonServiceRegistry,
+            listingId,
+            BigInt(listing.version) + 1n,
+            actor,
+          ),
+        );
+      }
       const operation = await this.operations.prepare({
         actor: actor.toLowerCase() as `0x${string}`,
         kind: "publish_listing",
@@ -344,9 +382,11 @@ export class ViemAgonWriteAdapter implements AgonWriteAdapter {
     }
     if (!operation) return failure("not_found", "write operation not found");
     if (operation.state === "confirmed") {
-      return operation.txHash === txHash.toLowerCase()
-        ? { ok: true, value: operationView(operation) }
-        : failure("conflict", "operation is already confirmed by a different transaction");
+      if (operation.txHash !== txHash.toLowerCase()) {
+        return failure("conflict", "operation is already confirmed by a different transaction");
+      }
+      // Re-verify the canonical receipt on retries. This also repairs durable
+      // projection anchors created before an earlier confirmation response.
     }
 
     let receipt: TransactionReceipt;
@@ -363,6 +403,11 @@ export class ViemAgonWriteAdapter implements AgonWriteAdapter {
         ? this.verifyListingVersionEvent(operation, receipt)
         : this.verifyListingEvent(operation, receipt);
     if (!proof.ok) return proof;
+
+    if ("anchor" in proof.value && proof.value.anchor && this.listingAnchors) {
+      await this.listingAnchors.insertValidatedListingVersion(proof.value.anchor);
+      await this.listingAnchors.reconcileListingAnchor?.(proof.value.anchor);
+    }
 
     try {
       const confirmed = await this.operations.confirm({
@@ -410,10 +455,10 @@ export class ViemAgonWriteAdapter implements AgonWriteAdapter {
   private verifyListingEvent(
     operation: StoredAgonWriteOperation,
     receipt: TransactionReceipt,
-  ): Result<{ logIndex: number; resultReference: string }, AgonServiceError> {
+  ): Result<{ logIndex: number; resultReference: string; anchor: AgonListingAnchor }, AgonServiceError> {
     const request = operation.request as PublishListingRequest;
     const rail = request.paymentRail === "X402" ? 0 : 1;
-    const matches: Array<{ logIndex: number; resultReference: string }> = [];
+    const matches: Array<{ logIndex: number; resultReference: string; anchor: AgonListingAnchor }> = [];
     for (const log of matchingLogs(receipt, this.deployment.contracts.AgonServiceRegistry)) {
       try {
         const decoded = decodeEventLog({ abi: agonServiceRegistryAbi, ...log, strict: true });
@@ -435,6 +480,13 @@ export class ViemAgonWriteAdapter implements AgonWriteAdapter {
           matches.push({
             logIndex: log.logIndex ?? 0,
             resultReference: `${request.chainId}:${this.deployment.contracts.AgonServiceRegistry.toLowerCase()}:${args.listingId}`,
+            anchor: buildListingAnchor(
+              request,
+              this.deployment.contracts.AgonServiceRegistry,
+              args.listingId,
+              args.version,
+              operation.actor,
+            ),
           });
         }
       } catch {
@@ -449,10 +501,10 @@ export class ViemAgonWriteAdapter implements AgonWriteAdapter {
   private verifyListingVersionEvent(
     operation: StoredAgonWriteOperation,
     receipt: TransactionReceipt,
-  ): Result<{ logIndex: number; resultReference: string }, AgonServiceError> {
+  ): Result<{ logIndex: number; resultReference: string; anchor: AgonListingAnchor }, AgonServiceError> {
     const request = operation.request as PublishListingVersionRequest;
     const rail = request.paymentRail === "X402" ? 0 : 1;
-    const matches: Array<{ logIndex: number; resultReference: string }> = [];
+    const matches: Array<{ logIndex: number; resultReference: string; anchor: AgonListingAnchor }> = [];
     for (const log of matchingLogs(receipt, this.deployment.contracts.AgonServiceRegistry)) {
       try {
         const decoded = decodeEventLog({ abi: agonServiceRegistryAbi, ...log, strict: true });
@@ -468,6 +520,13 @@ export class ViemAgonWriteAdapter implements AgonWriteAdapter {
           matches.push({
             logIndex: log.logIndex ?? 0,
             resultReference: `${request.chainId}:${this.deployment.contracts.AgonServiceRegistry.toLowerCase()}:${args.listingId}`,
+            anchor: buildListingAnchor(
+              request,
+              this.deployment.contracts.AgonServiceRegistry,
+              args.listingId,
+              args.version,
+              operation.actor,
+            ),
           });
         }
       } catch {

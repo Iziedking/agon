@@ -5,6 +5,7 @@ import { validateX402DeliveryEvidence, type X402DeliveryEvidence, type X402Deliv
 import { hashAgonEscrowTerms, isAgonEscrowTransitionAllowed, type AgonEscrowIntentState, type AgonEscrowTerms } from "../escrow-policy.ts";
 import type { AgonPrizeEscrowPoolBinding } from "../execution/escrow-reconciliation.ts";
 import type { AgonEscrowWriteOperation } from "../execution/escrow-write-preflight.ts";
+import type { AgonListingAnchor } from "../write/repository.ts";
 import {
   isAgonJobEscrowTransitionAllowed,
   settlementForAgonJobStatus,
@@ -1074,6 +1075,38 @@ export class PostgresAgonRepository {
       [requirePositive(key.chainId, "chain id"), normalizeAddress(key.serviceRegistry), requirePositive(key.listingId, "listing id")],
     );
     return result.rows[0] ? mapListing(result.rows[0]) : null;
+  }
+
+  async insertValidatedListingVersion(anchor: AgonListingAnchor): Promise<void> {
+    await this.withTransaction((repository) => repository.insertValidatedListingVersion(anchor));
+  }
+
+  async reconcileListingAnchor(anchor: AgonListingAnchor): Promise<void> {
+    await this.pool.query(
+      `update agon_listings
+          set status = chain_status,
+              quarantine_reason = null,
+              updated_at = now()
+        where chain_id = $1
+          and service_registry_address = $2
+          and listing_id = $3
+          and current_version = $4
+          and manifest_hash = $5
+          and manifest_uri = $6
+          and payment_rail = $7
+          and provider_snapshot = $8
+          and quarantine_reason = 'missing_validated_version'`,
+      [
+        anchor.chainId.toString(),
+        anchor.serviceRegistry.toLowerCase(),
+        anchor.listingId.toString(),
+        anchor.version.toString(),
+        anchor.manifestHash.toLowerCase(),
+        anchor.manifestUri,
+        anchor.paymentRail,
+        anchor.providerSnapshot.toLowerCase(),
+      ],
+    );
   }
 
   async getAgonEscrowIntent(intentId: string): Promise<StoredAgonEscrowIntent | null> {

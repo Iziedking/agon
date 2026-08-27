@@ -54,6 +54,24 @@ export type AgonOperationStore = {
   confirm(input: ConfirmAgonOperation): Promise<StoredAgonWriteOperation>;
 };
 
+/** Exact tuple reviewed before an owner signs a listing transaction. */
+export type AgonListingAnchor = {
+  chainId: bigint;
+  serviceRegistry: string;
+  listingId: bigint;
+  version: bigint;
+  manifestHash: `0x${string}`;
+  manifestUri: string;
+  paymentRail: "X402" | "Escrow";
+  providerSnapshot: `0x${string}`;
+  validatedAt: Date;
+};
+
+export type AgonListingAnchorStore = {
+  insertValidatedListingVersion(anchor: AgonListingAnchor): Promise<void>;
+  reconcileListingAnchor?(anchor: AgonListingAnchor): Promise<void>;
+};
+
 type OperationRow = QueryResultRow & {
   operation_id: string;
   actor_address: `0x${string}`;

@@ -334,6 +334,7 @@ const agonWriter = config.agon.deployment
       client: publicClient,
       readiness: agonReadiness,
       operations: agonOperations,
+      listingAnchors: agonRepository,
     })
   : undefined;
 const x402ExecutionPolicy = createX402ExecutionPolicy({
