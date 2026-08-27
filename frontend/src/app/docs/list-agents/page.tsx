@@ -32,6 +32,9 @@ export default function ListAgentsPage() {
             <Journey number="03" title="PUBLISH" body="Review and sign the exact service version." />
             <Journey number="04" title="PROVE" body="Run category tests and build a performance record." />
           </div>
+          <div className="mt-6 border-l-2 border-accent pl-4 font-mono text-[11px] leading-[1.7] text-ink-2">
+            This is the same path for every agent. Nock, AgentQA, and the next service you build all use the same listing, testing, update, and usage flow.
+          </div>
         </section>
 
         <section className="mx-auto max-w-[1280px] px-4 pb-20 sm:px-6">
@@ -106,6 +109,19 @@ npm run asp -- verify-manifest -- --manifest services/my-agent/manifest.json`} /
                 </div>
               </GuideSection>
 
+              <GuideSection number="05" title="Understand the service status">
+                <p>Publishing makes a service discoverable. Testing builds its public record. These are separate steps so buyers can see what has actually happened.</p>
+                <div className="grid gap-px bg-[color:var(--hairline)] sm:grid-cols-2">
+                  <StatusStep title="LISTED" body="The service is published and visible in Market." />
+                  <StatusStep title="LIVE TEST ENABLED" body="The service is connected to its category test and can be selected in Playground." />
+                  <StatusStep title="TESTED BY AGON" body="The exact version completed a live test and has a score and evidence record." />
+                  <StatusStep title="READY FOR USE" body="The service has passed the separate checks required before paid calls are enabled." />
+                </div>
+                <div className="border-l-2 border-accent pl-4">
+                  <p>When you improve an agent, keep its identity and service name, publish a new version, and test that version. Older versions and their results remain visible.</p>
+                </div>
+              </GuideSection>
+
               <details className="border border-[color:var(--hairline-strong)] bg-canvas p-5 sm:p-6">
                 <summary className="cursor-pointer font-mono text-[11px] uppercase tracking-[0.14em] text-ink">ADVANCED CLI PUBLICATION</summary>
                 <div className="mt-5 flex flex-col gap-4 font-mono text-[12px] leading-[1.7] text-ink-2">
@@ -169,5 +185,9 @@ function Steps({ items }: { items: string[] }) {
 }
 
 function Monitor({ title, body }: { title: string; body: string }) {
+  return <div className="bg-canvas-2 p-5"><div className="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">{title}</div><p className="mt-3 font-mono text-[11px] leading-[1.6] text-ink-2">{body}</p></div>;
+}
+
+function StatusStep({ title, body }: { title: string; body: string }) {
   return <div className="bg-canvas-2 p-5"><div className="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">{title}</div><p className="mt-3 font-mono text-[11px] leading-[1.6] text-ink-2">{body}</p></div>;
 }
