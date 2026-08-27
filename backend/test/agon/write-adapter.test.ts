@@ -132,6 +132,24 @@ function listingLog(overrides: { actor?: `0x${string}`; manifestHash?: `0x${stri
   } as Log;
 }
 
+function listingVersionLog(overrides: { actor?: `0x${string}`; manifestHash?: `0x${string}` } = {}): Log {
+  const actor = overrides.actor ?? ACTOR;
+  const manifestHash = overrides.manifestHash ?? MANIFEST_HASH;
+  return {
+    address: SERVICE,
+    topics: encodeEventTopics({
+      abi: agonServiceRegistryAbi,
+      eventName: "ListingVersionPublished",
+      args: { listingId: 9n, version: 2n, manifestHash },
+    }),
+    data: encodeAbiParameters(
+      [{ type: "string" }, { type: "uint8" }, { type: "address" }],
+      ["https://agent.example.com/manifest-v2.json", 0, actor],
+    ),
+    logIndex: 9,
+  } as Log;
+}
+
 function setup(options: {
   owner?: `0x${string}`;
   readiness?: AgonReadiness;
@@ -140,7 +158,9 @@ function setup(options: {
   const operations = new MemoryOperations();
   let simulations = 0;
   const client = {
-    readContract: async () => options.owner ?? ACTOR,
+    readContract: async ({ functionName }: { functionName?: string }) => functionName === "getListing"
+      ? { agentId: 42n }
+      : options.owner ?? ACTOR,
     simulateContract: async () => { simulations += 1; return { request: {}, result: undefined }; },
     getTransactionReceipt: async () => options.transactionReceipt ?? receipt([]),
   } as unknown as Pick<PublicClient, "readContract" | "simulateContract" | "getTransactionReceipt">;
@@ -247,6 +267,24 @@ test("confirms listing publication and returns its canonical reference", async (
   assert.equal(confirmed.ok, true);
   if (!confirmed.ok) return;
   assert.equal(confirmed.value.resultReference, `5042002:${SERVICE}:9`);
+});
+
+test("confirms listing version publication from its canonical event", async () => {
+  const { adapter } = setup({ transactionReceipt: receipt([listingVersionLog()]) });
+  const prepared = await adapter.publishListingVersion(ACTOR, {
+    chainId: "5042002",
+    listingId: "9",
+    manifestHash: MANIFEST_HASH,
+    manifestUri: "https://agent.example.com/manifest-v2.json",
+    paymentRail: "X402",
+  });
+  assert.equal(prepared.ok, true);
+  if (!prepared.ok) return;
+  const confirmed = await adapter.confirmOperation(ACTOR, prepared.value.operationId, TX_HASH);
+  assert.equal(confirmed.ok, true);
+  if (!confirmed.ok) return;
+  assert.equal(confirmed.value.resultReference, `5042002:${SERVICE}:9`);
+  assert.deepEqual(confirmed.value.proof, { blockNumber: "123", logIndex: 9 });
 });
 
 test("rejects reverted, mismatched, or duplicate matching receipt evidence", async () => {

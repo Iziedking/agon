@@ -14,6 +14,13 @@ import { AGON_NETWORK } from "@/lib/agon/network";
 import { confirmAgonOperation, inspectManifest, publishListingVersion } from "@/lib/agon/client";
 import type { PaymentRail } from "@/lib/agon/types";
 
+type PendingConfirmation = {
+  operationId: string;
+  txHash: `0x${string}`;
+};
+
+const PENDING_CONFIRMATION_KEY = "agon:listing-version:pending-confirmation";
+
 const INPUT_CLASS = "h-12 w-full border border-[color:var(--hairline-strong)] bg-canvas px-4 font-mono text-[12px] text-ink outline-none placeholder:text-ink-3 focus:border-ink focus:ring-2 focus:ring-ink focus:ring-offset-2 focus:ring-offset-canvas disabled:opacity-50";
 
 export default function ListingVersionPage() {
@@ -27,6 +34,7 @@ export default function ListingVersionPage() {
   const [publishing, setPublishing] = useState(false);
   const [published, setPublished] = useState(false);
   const [publishedTxHash, setPublishedTxHash] = useState<`0x${string}` | null>(null);
+  const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,8 +42,26 @@ export default function ListingVersionPage() {
     const query = new URLSearchParams(window.location.search);
     const nextListingId = query.get("listingId");
     const nextManifestUri = query.get("manifestUri");
+    const nextOperationId = query.get("operationId");
+    const nextTxHash = query.get("txHash");
     if (nextListingId) setListingId(nextListingId);
     if (nextManifestUri) setManifestUri(nextManifestUri);
+    try {
+      if (nextOperationId && /^[0-9a-f-]{36}$/i.test(nextOperationId) && nextTxHash && /^0x[0-9a-fA-F]{64}$/.test(nextTxHash)) {
+        const pending = { operationId: nextOperationId, txHash: nextTxHash as `0x${string}` } satisfies PendingConfirmation;
+        setPendingConfirmation(pending);
+        sessionStorage.setItem(PENDING_CONFIRMATION_KEY, JSON.stringify(pending));
+        return;
+      }
+      const stored = sessionStorage.getItem(PENDING_CONFIRMATION_KEY);
+      if (!stored) return;
+      const parsed = JSON.parse(stored) as Partial<PendingConfirmation>;
+      if (typeof parsed.operationId === "string" && /^0x[0-9a-fA-F]{64}$/.test(parsed.txHash ?? "")) {
+        setPendingConfirmation({ operationId: parsed.operationId, txHash: parsed.txHash as `0x${string}` });
+      }
+    } catch {
+      sessionStorage.removeItem(PENDING_CONFIRMATION_KEY);
+    }
   }, []);
 
   async function loadManifest() {
@@ -54,7 +80,33 @@ export default function ListingVersionPage() {
     }
   }
 
+  async function confirmPendingVersion(pending: PendingConfirmation) {
+    if (!address || !isSignedIn) {
+      setError("Connect the wallet that submitted this transaction.");
+      return;
+    }
+    setPublishing(true);
+    setNotice(null);
+    setError(null);
+    try {
+      const confirmed = await confirmAgonOperation(pending.operationId, pending.txHash, address);
+      setPublished(true);
+      setPublishedTxHash(confirmed.txHash ?? pending.txHash);
+      setPendingConfirmation(null);
+      sessionStorage.removeItem(PENDING_CONFIRMATION_KEY);
+      setNotice(`Version confirmed${confirmed.resultReference ? `: ${confirmed.resultReference}` : "."}`);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "The existing transaction could not be confirmed yet.");
+    } finally {
+      setPublishing(false);
+    }
+  }
+
   async function publishVersion() {
+    if (pendingConfirmation) {
+      await confirmPendingVersion(pendingConfirmation);
+      return;
+    }
     if (!address || !isSignedIn) {
       setError("Connect the wallet that owns this ERC-8004 identity.");
       return;
@@ -90,9 +142,14 @@ export default function ListingVersionPage() {
         refId: operation.operationId,
       });
       await confirmTx(hash);
+      const pending = { operationId: operation.operationId, txHash: hash } satisfies PendingConfirmation;
+      setPendingConfirmation(pending);
+      sessionStorage.setItem(PENDING_CONFIRMATION_KEY, JSON.stringify(pending));
       const confirmed = await confirmAgonOperation(operation.operationId, hash, address);
       setPublished(true);
       setPublishedTxHash(confirmed.txHash ?? hash);
+      setPendingConfirmation(null);
+      sessionStorage.removeItem(PENDING_CONFIRMATION_KEY);
       setNotice(`Version published${confirmed.resultReference ? `: ${confirmed.resultReference}` : "."}`);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Version publication failed.");
@@ -136,11 +193,15 @@ export default function ListingVersionPage() {
             <button type="button" onClick={loadManifest} disabled={loading || publishing || closed} className="border border-ink px-5 py-3 font-mono text-xs uppercase tracking-[0.16em] disabled:opacity-40">
               {loading ? "READING MANIFEST" : "LOAD MANIFEST"}
             </button>
-            {!closed ? <button type="button" onClick={publishVersion} disabled={!manifestHash || publishing || loading} className="bg-pink px-5 py-3 font-mono text-xs uppercase tracking-[0.16em] text-white disabled:opacity-40">
-              {publishing ? "PREPARING" : "PUBLISH VERSION"}
+            {!closed ? <button type="button" onClick={publishVersion} disabled={(!manifestHash && !pendingConfirmation) || publishing || loading} className="bg-pink px-5 py-3 font-mono text-xs uppercase tracking-[0.16em] text-white disabled:opacity-40">
+              {publishing ? (pendingConfirmation ? "CONFIRMING" : "PREPARING") : pendingConfirmation ? "CONFIRM EXISTING TRANSACTION" : "PUBLISH VERSION"}
             </button> : null}
           </div>
           {manifestHash ? <p className="mt-6 break-all font-mono text-xs text-ink-2">Manifest hash: {manifestHash}</p> : null}
+          {pendingConfirmation ? <div role="status" className="mt-6 border-l-2 border-[color:var(--warn)] bg-canvas-2 px-4 py-3 font-mono text-xs leading-6 text-[color:var(--warn)]">
+            <p>Transaction submitted. Confirm the existing transaction before publishing again.</p>
+            <TagButton href={`${AGON_NETWORK.explorerUrl.replace(/\/$/, "")}/tx/${pendingConfirmation.txHash}`} target="_blank" rel="noreferrer" variant="ghost" size="sm">VIEW TRANSACTION</TagButton>
+          </div> : null}
           {notice ? <p role="status" className="mt-6 border-l-2 border-[color:var(--ok)] bg-canvas-2 px-4 py-3 font-mono text-xs leading-6 text-[color:var(--ok)]">{notice}</p> : null}
           {error ? <p role="alert" className="mt-6 border-l-2 border-pink bg-pink/10 px-4 py-3 font-mono text-xs leading-6 text-ink">{error}</p> : null}
           {publishedTxHash ? (
