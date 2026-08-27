@@ -28,7 +28,7 @@ export function ArcChainChip() {
       type="button"
       onClick={() => switchChain({ chainId: arcTestnet.id })}
       disabled={isPending}
-      className="inline-flex items-center gap-2 border border-accent bg-canvas px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-accent hover:bg-accent hover:text-accent-ink disabled:opacity-60"
+      className="inline-flex min-h-11 max-w-[min(15rem,42vw)] items-center gap-2 overflow-hidden text-ellipsis whitespace-nowrap border border-accent bg-canvas px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-accent hover:bg-accent hover:text-accent-ink disabled:opacity-60 max-[359px]:max-w-[7.5rem] max-[359px]:px-2"
       title="Switch your wallet back to Arc Testnet"
     >
       <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-accent" />

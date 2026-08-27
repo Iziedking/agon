@@ -103,7 +103,7 @@ export function FeedbackPin() {
           type="button"
           onClick={() => setOpen((v) => !v)}
           aria-label="Send feedback"
-          className="fixed bottom-4 right-4 z-modal flex items-center gap-2 border border-[color:var(--accent-ink)] bg-accent px-3 py-2.5 font-mono text-[11px] uppercase tracking-[0.14em] text-accent-ink shadow-[0_8px_24px_rgba(26,22,18,0.18)] transition-transform duration-120 hover:-translate-y-px sm:bottom-6 sm:right-6"
+          className="fixed bottom-4 right-4 z-modal flex min-h-11 items-center gap-2 border border-[color:var(--accent-ink)] bg-accent px-3 py-2.5 font-mono text-[11px] uppercase tracking-[0.14em] text-accent-ink shadow-[0_8px_24px_rgba(26,22,18,0.18)] transition-transform duration-120 hover:-translate-y-px sm:bottom-6 sm:right-6"
           style={{ clipPath: "polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%)" }}
         >
           <BubbleGlyph />
@@ -120,7 +120,7 @@ export function FeedbackPin() {
             <button
               onClick={() => setOpen(false)}
               aria-label="close"
-              className="font-mono text-[14px] leading-none text-ink-3 hover:text-ink"
+              className="inline-flex h-11 w-11 items-center justify-center font-mono text-[14px] leading-none text-ink-3 hover:text-ink"
             >
               ×
             </button>
@@ -155,8 +155,8 @@ export function FeedbackPin() {
                     onClick={() => setKind(k)}
                     className={
                       kind === k
-                        ? "border border-accent bg-accent px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-accent-ink"
-                        : "border border-ink-3 bg-canvas px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:border-ink hover:text-ink"
+                        ? "min-h-11 border border-accent bg-accent px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-accent-ink"
+                        : "min-h-11 border border-ink-3 bg-canvas px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:border-ink hover:text-ink"
                     }
                   >
                     {k === "bug" ? "BUG" : "IDEA"}
@@ -193,7 +193,7 @@ export function FeedbackPin() {
                   <span className="flex-1 font-mono text-[11px] text-ink-2">screenshot attached</span>
                   <button
                     onClick={() => { setImage(null); if (fileRef.current) fileRef.current.value = ""; }}
-                    className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3 hover:text-accent"
+                    className="inline-flex min-h-11 items-center font-mono text-[11px] uppercase tracking-[0.12em] text-ink-3 hover:text-accent"
                   >
                     REMOVE
                   </button>
@@ -201,7 +201,7 @@ export function FeedbackPin() {
               ) : (
                 <button
                   onClick={() => fileRef.current?.click()}
-                  className="mt-3 flex items-center gap-2 border border-ink-3 bg-canvas px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:border-ink hover:text-ink"
+                  className="mt-3 flex min-h-11 items-center gap-2 border border-ink-3 bg-canvas px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:border-ink hover:text-ink"
                 >
                   + ATTACH SCREENSHOT
                 </button>
@@ -213,7 +213,7 @@ export function FeedbackPin() {
                 <button
                   onClick={() => void send()}
                   disabled={!message.trim() || sending}
-                  className="border border-[color:var(--accent-ink)] bg-accent px-4 py-2 font-mono text-[12px] uppercase tracking-[0.12em] text-accent-ink transition-transform duration-120 hover:-translate-y-px disabled:opacity-50"
+                  className="min-h-11 border border-[color:var(--accent-ink)] bg-accent px-4 py-2 font-mono text-[12px] uppercase tracking-[0.12em] text-accent-ink transition-transform duration-120 hover:-translate-y-px disabled:opacity-50"
                   style={{ clipPath: "polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%)" }}
                 >
                   {sending ? "SENDING…" : "SEND →"}

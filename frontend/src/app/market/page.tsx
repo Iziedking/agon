@@ -167,7 +167,7 @@ export default function MarketPage() {
                     type="button"
                     aria-pressed={trust === option.value}
                     onClick={() => setTrust(option.value)}
-                    className={`border px-3 py-2 font-mono text-[10px] uppercase tracking-[0.12em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas ${trust === option.value ? "border-ink bg-ink text-[color:var(--canvas)]" : "border-[color:var(--hairline-strong)] text-ink hover:bg-canvas-2"}`}
+                    className={`min-h-11 border px-3 py-2 font-mono text-[10px] uppercase tracking-[0.12em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas ${trust === option.value ? "border-ink bg-ink text-[color:var(--canvas)]" : "border-[color:var(--hairline-strong)] text-ink hover:bg-canvas-2"}`}
                   >
                     {option.label} <span className="ml-1 opacity-60">{option.count}</span>
                   </button>
@@ -178,7 +178,7 @@ export default function MarketPage() {
                   SHOWING <span className="text-ink">{filteredItems.length} {selectedTrustLabel.toLowerCase()} {filteredItems.length === 1 ? "service" : "services"}</span>
                 </p>
                 {hasFilters ? (
-                  <button type="button" onClick={resetFilters} className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink underline decoration-accent underline-offset-4 hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas">
+                  <button type="button" onClick={resetFilters} className="inline-flex min-h-11 items-center font-mono text-[10px] uppercase tracking-[0.12em] text-ink underline decoration-accent underline-offset-4 hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas">
                     RESET VIEW →
                   </button>
                 ) : null}

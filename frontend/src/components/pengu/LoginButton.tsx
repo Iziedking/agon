@@ -36,14 +36,14 @@ export function LoginButton() {
       {short ? (
         <button
           onClick={() => setOpen(true)}
-          className="border border-ink bg-canvas px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-ink transition-colors hover:bg-canvas-3"
+          className="min-h-11 whitespace-nowrap border border-ink bg-canvas px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-ink transition-colors hover:bg-canvas-3 max-[359px]:px-2"
         >
           {short}
         </button>
       ) : (
         <button
           onClick={() => setOpen(true)}
-          className="inline-flex items-center gap-2 bg-accent px-4 py-2 font-mono text-[12px] uppercase tracking-[0.12em] text-accent-ink transition-colors hover:bg-accent-press"
+          className="inline-flex min-h-11 items-center gap-2 whitespace-nowrap bg-accent px-4 py-2 font-mono text-[12px] uppercase tracking-[0.12em] text-accent-ink transition-colors hover:bg-accent-press max-[359px]:gap-1 max-[359px]:px-2"
           style={{ clipPath: "polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%)" }}
         >
           SIGN IN <span aria-hidden>→</span>

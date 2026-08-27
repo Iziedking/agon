@@ -41,7 +41,7 @@ export type TagButtonProps = AsButton | AsAnchor;
 
 function classes(variant: Variant, size: Size, disabled: boolean): string {
   const base =
-    "group inline-flex items-center gap-2 font-mono uppercase tracking-[0.12em] transition-transform duration-120 select-none";
+    "group inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap font-mono uppercase tracking-[0.12em] transition-transform duration-120 select-none";
   const pad = size === "sm" ? "px-3 py-1.5 text-[11px]" : "px-4 py-2.5 text-[13px]";
   // Ghost variant inherits its color from the parent so it reads correctly
   // on every tone the BracketedCell renders. On an ink-filled card the

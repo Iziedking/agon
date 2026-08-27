@@ -35,7 +35,7 @@ export function ThemeToggle({ className = "" }: ThemeToggleProps) {
       aria-label={dark ? "Switch to light theme" : "Switch to dark theme"}
       title={dark ? "Switch to light theme" : "Switch to dark theme"}
       aria-pressed={dark}
-      className={`inline-flex h-10 w-10 shrink-0 items-center justify-center border border-[color:var(--hairline-strong)] bg-canvas text-ink transition-colors hover:bg-canvas-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2 focus-visible:ring-offset-canvas ${className}`}
+      className={`inline-flex h-11 w-11 min-h-11 min-w-11 shrink-0 items-center justify-center border border-[color:var(--hairline-strong)] bg-canvas text-ink transition-colors hover:bg-canvas-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2 focus-visible:ring-offset-canvas ${className}`}
     >
       {dark ? <SunIcon /> : <MoonIcon />}
     </button>

@@ -124,7 +124,7 @@ function Column({
               href={i.href}
               target={i.external ? "_blank" : undefined}
               rel={i.external ? "noreferrer" : undefined}
-              className="font-mono text-[12px] uppercase tracking-[0.12em] text-ink hover:text-accent"
+              className="inline-flex min-h-11 items-center font-mono text-[12px] uppercase tracking-[0.12em] text-ink hover:text-accent"
             >
               {i.label}
             </a>

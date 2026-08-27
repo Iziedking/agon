@@ -7,7 +7,7 @@ import { openFeedback } from "@/lib/feedback";
 /// the floating pin is intentionally hidden.
 export function FeedbackTrigger({ className = "" }: { className?: string }) {
   return (
-    <button type="button" onClick={() => openFeedback()} className={className}>
+    <button type="button" onClick={() => openFeedback()} className={`inline-flex min-h-11 items-center ${className}`}>
       REPORT A BUG / IDEA
     </button>
   );
