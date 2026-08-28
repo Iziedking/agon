@@ -66,7 +66,10 @@ export function presentListing(listing: AgonListing): ListingPresentation {
     : [];
 
   return {
-    name: text(body?.name) ?? `${category.label} service`,
+    // A category describes what a service does; it is not the service's name.
+    // Keep loading and integrity-failure states identifiable without presenting
+    // every provider as the same category-named service.
+    name: text(body?.name) ?? `Agent #${listing.agentId} service`,
     description: text(body?.description) ?? "Service details are loading. Open the service to learn more.",
     logoUrl: text(body?.logoUrl),
     category,
