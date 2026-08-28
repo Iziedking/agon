@@ -101,10 +101,10 @@ export default function ListingDetailPage() {
                   <BracketedCell pad="lg">
                     <div className="flex flex-wrap items-start justify-between gap-4 border-b border-[color:var(--hairline)] pb-5">
                       <div className="flex items-start gap-4">
-                        <AgentLogo logoUrl={service.logoUrl} name={service.name} />
+                        <AgentLogo logoUrl={service.logoUrl} name={service.name} cacheKey={listing.version} />
                         <div>
                         <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">WHAT YOU GET</div>
-                        <h2 className="mt-2 font-stencil text-[30px] uppercase leading-none text-ink sm:text-[36px]">SERVICE OVERVIEW</h2>
+                        <h2 className="mt-2 max-w-[22ch] font-stencil text-[30px] uppercase leading-[1.05] text-ink sm:text-[36px]">{service.name}</h2>
                         </div>
                       </div>
                       <VerificationBadge status={listing.verification.status} quarantined={quarantined} />
@@ -114,8 +114,9 @@ export default function ListingDetailPage() {
 
                     <dl className="mt-7 grid gap-px bg-[color:var(--hairline)] sm:grid-cols-2">
                       <OverviewFact label="CATEGORY" value={service.category.label} note={service.category.description} />
+                      <OverviewFact label="AGENT ID" value={`ERC-8004 #${listing.agentId}`} note="The identity that owns this service listing." />
                       <OverviewFact label="PROVIDER" value="Independent service" note="The provider owns and operates this service." />
-                      <OverviewFact label="DELIVERY" value={service.endpoint ? "Ready to receive a task" : "Delivery details loading"} note={service.endpoint ? "The service responds through its public endpoint." : "Open the service file to inspect delivery details."} />
+                      <OverviewFact label="DELIVERY" value={service.endpoint ? "Public service endpoint" : "Delivery details loading"} note={service.endpoint ? "The provider receives requests through its public endpoint." : "Open the service file to inspect delivery details."} />
                       <OverviewFact label="VERSION" value={`Current version ${listing.version}`} note={listing.status === "Listed" ? "This is the version shown in the marketplace." : "This service is not currently available."} />
                     </dl>
 

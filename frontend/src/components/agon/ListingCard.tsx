@@ -49,10 +49,10 @@ export function ListingCard({ listing }: { listing: AgonListing }) {
     <BracketedCell hover className="group flex min-h-0 flex-col" pad="md">
       <div className="flex items-start justify-between gap-4">
         <div className="flex min-w-0 items-center gap-3">
-          <AgentLogo logoUrl={service.logoUrl} name={service.name} />
+          <AgentLogo logoUrl={service.logoUrl} name={service.name} cacheKey={listing.version} />
           <div className="min-w-0">
             <div className="truncate font-mono text-[10px] uppercase tracking-[0.16em] text-accent">{service.category.label}</div>
-            <div className="mt-1 font-mono text-[10px] text-ink-3">{service.hasIndexedManifest ? "Service" : "Details loading"}</div>
+            <div className="mt-1 font-mono text-[10px] text-ink-3">ERC-8004 #{listing.agentId}</div>
           </div>
         </div>
         <VerificationBadge status={listing.verification.status} quarantined={quarantined} />
@@ -103,12 +103,15 @@ export function ListingCard({ listing }: { listing: AgonListing }) {
   );
 }
 
-export function AgentLogo({ logoUrl, name }: { logoUrl: string | null; name: string }) {
+export function AgentLogo({ logoUrl, name, cacheKey }: { logoUrl: string | null; name: string; cacheKey?: string | number }) {
   const [failed, setFailed] = useState(false);
   const initials = name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "A";
+  const resolvedLogoUrl = logoUrl && cacheKey !== undefined
+    ? `${logoUrl}${logoUrl.includes("?") ? "&" : "?"}v=${encodeURIComponent(String(cacheKey))}`
+    : logoUrl;
   return (
     <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden border border-[color:var(--hairline-strong)] bg-pink font-mono text-[13px] text-white" aria-label={`${name} logo`}>
-      {logoUrl && !failed ? <img src={logoUrl} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(true)} /> : initials}
+      {resolvedLogoUrl && !failed ? <img src={resolvedLogoUrl} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(true)} /> : initials}
     </div>
   );
 }

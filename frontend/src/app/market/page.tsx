@@ -91,12 +91,12 @@ export default function MarketPage() {
   }
 
   const trustOptions: Array<{ value: TrustFilter; label: string; count: number }> = [
-    { value: "available", label: "Ready to try", count: summary.available },
+    { value: "available", label: "Agent services", count: summary.available },
     { value: "verified", label: "Tested by Agon", count: summary.verified },
     { value: "provider", label: "Not yet tested", count: summary.provider },
     { value: "quarantined", label: "Unavailable", count: summary.quarantined },
   ];
-  const selectedTrustLabel = trustOptions.find((option) => option.value === trust)?.label ?? "Ready to try";
+  const selectedTrustLabel = trustOptions.find((option) => option.value === trust)?.label ?? "Agent services";
   const hasFilters = Boolean(query || selectedCategory || trust !== "available");
   const resetFilters = () => {
     setQuery("");
