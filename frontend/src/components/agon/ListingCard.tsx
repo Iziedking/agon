@@ -16,11 +16,12 @@ function priceLabel(amountUSDC: string | null) {
 
 export function ListingCard({ listing }: { listing: AgonListing }) {
   const [manifestBody, setManifestBody] = useState(listing.manifest.body);
-  const [metadataState, setMetadataState] = useState<"idle" | "loading" | "ready">(listing.manifest.body === undefined ? "idle" : "ready");
+  const [metadataState, setMetadataState] = useState<"idle" | "loading" | "ready" | "mismatch" | "error">(listing.manifest.body === undefined ? "idle" : "ready");
   const hydratedListing = useMemo(() => ({ ...listing, manifest: { ...listing.manifest, body: manifestBody } }), [listing, manifestBody]);
   const service = presentListing(hydratedListing);
   const quarantined = Boolean(listing.risk.quarantineReason);
-  const unavailable = listing.status !== "Listed" || quarantined;
+  const metadataBlocked = metadataState === "mismatch" || metadataState === "error";
+  const unavailable = listing.status !== "Listed" || quarantined || metadataBlocked;
 
   useEffect(() => {
     if (listing.manifest.body !== undefined || metadataState !== "idle") return;
@@ -29,10 +30,18 @@ export function ListingCard({ listing }: { listing: AgonListing }) {
     void inspectManifest(listing.manifest.uri)
       .then((inspection) => {
         if (!active) return;
-        if (inspection.validation.ok && inspection.manifestHash.toLowerCase() === listing.manifest.hash.toLowerCase()) setManifestBody(inspection.body);
+        if (!inspection.validation.ok) {
+          setMetadataState("error");
+          return;
+        }
+        if (inspection.manifestHash.toLowerCase() !== listing.manifest.hash.toLowerCase()) {
+          setMetadataState("mismatch");
+          return;
+        }
+        setManifestBody(inspection.body);
         setMetadataState("ready");
       })
-      .catch(() => { if (active) setMetadataState("ready"); });
+      .catch(() => { if (active) setMetadataState("error"); });
     return () => { active = false; };
   }, [listing.manifest.body, listing.manifest.hash, listing.manifest.uri, metadataState]);
 
@@ -51,7 +60,7 @@ export function ListingCard({ listing }: { listing: AgonListing }) {
 
       <h2 className="mt-6 font-stencil text-[28px] uppercase leading-[1.02] text-ink sm:text-[32px]">{service.name}</h2>
       <p className="mt-3 line-clamp-2 min-h-[3.3em] font-mono text-[12px] leading-[1.65] text-ink-2">{service.description}</p>
-      {metadataState === "loading" ? <p className="mt-3 font-mono text-[9px] uppercase tracking-[0.12em] text-ink-3">Loading service details</p> : null}
+      {metadataState === "loading" ? <p className="mt-3 font-mono text-[9px] uppercase tracking-[0.12em] text-ink-3">Checking service details</p> : null}
 
       {service.tags.length ? (
         <div className="mt-5 flex flex-wrap gap-2">
@@ -64,7 +73,15 @@ export function ListingCard({ listing }: { listing: AgonListing }) {
         <Fact label="USE" value={listing.payment.rail === "Escrow" ? "Protected project" : "Pay per use"} warning={listing.payment.rail === "Escrow" && !listing.payment.escrowEligible} />
       </div>
 
-      {quarantined ? (
+      {metadataState === "mismatch" ? (
+        <div className="mt-5 border-l-[3px] border-[color:var(--err)] bg-canvas-2 px-4 py-3 font-mono text-[11px] leading-relaxed text-ink-2">
+          This service file changed after this version was published. The owner must publish a new version before the logo and details can be trusted.
+        </div>
+      ) : metadataState === "error" ? (
+        <div className="mt-5 border-l-[3px] border-[color:var(--err)] bg-canvas-2 px-4 py-3 font-mono text-[11px] leading-relaxed text-ink-2">
+          Service details could not be checked. Try again later before using this service.
+        </div>
+      ) : quarantined ? (
         <div className="mt-5"><UnverifiedWarning message={listing.risk.warning} quarantineReason={listing.risk.quarantineReason} /></div>
       ) : listing.risk.unverified ? (
         <div className="mt-5 border-l-[3px] border-[color:var(--warn)] bg-canvas-2 px-4 py-3 font-mono text-[11px] leading-relaxed text-ink-2">
@@ -77,7 +94,7 @@ export function ListingCard({ listing }: { listing: AgonListing }) {
       )}
 
       <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--hairline)] pt-5">
-        <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">{unavailable ? "UNAVAILABLE" : "READY TO TRY"}</span>
+        <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">{metadataState === "loading" ? "CHECKING SERVICE" : unavailable ? "UNAVAILABLE" : "READY TO TRY"}</span>
         <Link href={`/market/${encodeURIComponent(listing.id)}`} className="font-mono text-[11px] uppercase tracking-[0.14em] text-ink underline decoration-accent underline-offset-4 hover:text-accent">
           {quarantined ? "VIEW DETAILS" : "TRY SERVICE"} &gt;
         </Link>
