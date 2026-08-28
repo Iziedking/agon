@@ -33,6 +33,7 @@ import { createApprovalBoundAgonEscrowTransactionAdapter } from "../execution/es
 import type { AgonEscrowTransactionWriter } from "../execution/escrow-transaction-writer.ts";
 import { createAgonEscrowLifecycleOrchestrator, type AgonEscrowLifecycleAction } from "../execution/escrow-orchestrator.ts";
 import { createDisabledAgonEscrowAdapter, evaluateAgonEscrowTerms, hashAgonEscrowTerms, type AgonEscrowAdapter, type AgonEscrowListing } from "../escrow-policy.ts";
+import { inspectManifest } from "../manifest-inspector.ts";
 import type {
   AgonCapabilities,
   AgonEndpointQa,
@@ -265,7 +266,48 @@ function endpointQa(evidence: StoredVerificationEvidence | undefined): AgonEndpo
   };
 }
 
-function listingView(listing: StoredListing, evidence?: StoredVerificationEvidence): AgonListingView {
+type CachedManifest = { expiresAt: number; body: unknown };
+
+const MANIFEST_CACHE_TTL_MS = 60_000;
+const MAX_CACHED_MANIFESTS = 100;
+const manifestCache = new Map<string, CachedManifest>();
+const manifestRequests = new Map<string, Promise<unknown | undefined>>();
+
+function pruneManifestCache(now: number): void {
+  for (const [key, value] of manifestCache) {
+    if (value.expiresAt <= now) manifestCache.delete(key);
+  }
+  while (manifestCache.size > MAX_CACHED_MANIFESTS) {
+    const oldest = manifestCache.keys().next().value;
+    if (oldest === undefined) return;
+    manifestCache.delete(oldest);
+  }
+}
+
+async function readValidatedManifest(listing: StoredListing): Promise<unknown | undefined> {
+  if (listing.status !== "Listed" || listing.quarantineReason) return undefined;
+  const cacheKey = `${listing.manifestUri}\n${listing.manifestHash.toLowerCase()}`;
+  pruneManifestCache(Date.now());
+  const cached = manifestCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.body;
+
+  const inFlight = manifestRequests.get(cacheKey);
+  if (inFlight) return inFlight;
+
+  const request = inspectManifest(listing.manifestUri)
+    .then((inspection) => {
+      if (!inspection.validation.ok || inspection.manifestHash.toLowerCase() !== listing.manifestHash.toLowerCase()) return undefined;
+      manifestCache.set(cacheKey, { expiresAt: Date.now() + MANIFEST_CACHE_TTL_MS, body: inspection.body });
+      pruneManifestCache(Date.now());
+      return inspection.body;
+    })
+    .catch(() => undefined)
+    .finally(() => { manifestRequests.delete(cacheKey); });
+  manifestRequests.set(cacheKey, request);
+  return request;
+}
+
+function listingView(listing: StoredListing, evidence?: StoredVerificationEvidence, manifestBody?: unknown): AgonListingView {
   const unverified = listing.verification !== "Verified";
   const warning = listing.quarantineReason
     ? `This listing is quarantined because its indexed anchor failed validation: ${listing.quarantineReason}.`
@@ -281,7 +323,11 @@ function listingView(listing: StoredListing, evidence?: StoredVerificationEviden
     serviceKey: listing.serviceKey,
     category: listing.category.toString(),
     version: listing.currentVersion.toString(),
-    manifest: { hash: listing.manifestHash, uri: listing.manifestUri },
+    manifest: {
+      hash: listing.manifestHash,
+      uri: listing.manifestUri,
+      ...(manifestBody === undefined ? {} : { body: manifestBody }),
+    },
     providerSnapshot: listing.providerSnapshot,
     status: listing.status,
     verification: {
@@ -732,10 +778,13 @@ export class PostgresAgonMarketService implements AgonMarketService {
       const pageRows = rows.slice(0, query.limit);
       const last = pageRows.at(-1);
       const evidence = await this.repository.getLatestVerificationEvidence(pageRows);
+      const manifestBodies = query.includeManifest === true
+        ? await Promise.all(pageRows.map((listing) => readValidatedManifest(listing)))
+        : [];
       return {
         ok: true,
         value: {
-          items: pageRows.map((listing) => listingView(listing, evidence.get(`${listing.listingId}:${listing.agentId}`))),
+          items: pageRows.map((listing, index) => listingView(listing, evidence.get(`${listing.listingId}:${listing.agentId}`), manifestBodies[index])),
           nextCursor: hasMore && last ? encodeCursor(last) : null,
         },
       };

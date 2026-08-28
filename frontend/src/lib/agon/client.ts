@@ -83,6 +83,8 @@ export class AgonApiError extends Error {
 
 async function request<T>(path: string, init?: RequestInit, principal?: `0x${string}`): Promise<T> {
   let response: Response;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12_000);
   try {
     const headers = new Headers(init?.headers);
     if (init?.body) headers.set("content-type", "application/json");
@@ -93,11 +95,17 @@ async function request<T>(path: string, init?: RequestInit, principal?: `0x${str
     }
     response = await fetch(`${AGON_API_URL}/agon${path}`, {
       ...init,
+      signal: controller.signal,
       credentials: "include",
       headers,
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new AgonApiError("request_timeout", "Agon took too long to respond. Try again.", 408);
+    }
     throw new AgonApiError("network_unavailable", "Could not reach the Agon indexer.", 0);
+  } finally {
+    clearTimeout(timeout);
   }
 
   if (!response.ok) {
@@ -124,6 +132,7 @@ export function listListings(query: ListListingsQuery = {}): Promise<AgonListing
   if (query.cursor) params.set("cursor", query.cursor);
   if (query.category) params.set("category", query.category);
   if (query.agentId) params.set("agentId", query.agentId);
+  params.set("includeManifest", "1");
   const suffix = params.size ? `?${params.toString()}` : "";
   return request<AgonListingPage>(`/listings${suffix}`);
 }

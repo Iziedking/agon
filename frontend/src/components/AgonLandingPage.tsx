@@ -4,7 +4,6 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import { AgonMark } from "@/components/redesign/AgonMark";
 import { CornerMarkers, TagButton } from "@/components/redesign";
-import { ThemeToggle } from "@/components/redesign/ThemeToggle";
 import { AGON_NETWORK } from "@/lib/agon/network";
 
 const SLIDE_MS = 6500;
@@ -49,7 +48,7 @@ export function AgonLandingPage() {
       <header className="shrink-0 border-b border-[color:var(--hairline)]">
         <div className="mx-auto flex h-16 max-w-[1280px] items-center justify-between gap-2 px-3 sm:gap-4 sm:px-6">
           <a href="/" aria-label="Agon home" className="inline-flex min-w-0 shrink-0 items-center text-ink"><AgonMark /></a>
-          <div className="flex shrink-0 items-center gap-1 sm:gap-2"><ThemeToggle /><TagButton href="/login" size="sm" variant="ghost" className="max-[359px]:px-2">SIGN IN</TagButton></div>
+          <div className="flex shrink-0 items-center gap-1 sm:gap-2"><TagButton href="/login" size="sm" variant="ghost" className="max-[359px]:px-2">SIGN IN</TagButton></div>
         </div>
       </header>
 

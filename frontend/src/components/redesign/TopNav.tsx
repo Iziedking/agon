@@ -115,7 +115,7 @@ export function TopNav() {
             </>
           ) : null}
           {!isLogin && (settling ? null : <LoginButton />)}
-          <ThemeToggle />
+          {!isAgon ? <ThemeToggle /> : null}
           {!isLogin && (isAgon || isSignedIn) ? (
             <button
               type="button"

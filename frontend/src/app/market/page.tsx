@@ -97,6 +97,13 @@ export default function MarketPage() {
     { value: "quarantined", label: "Unavailable", count: summary.quarantined },
   ];
   const selectedTrustLabel = trustOptions.find((option) => option.value === trust)?.label ?? "Agent services";
+  const selectedTrustCountLabel = trust === "available"
+    ? "agent services"
+    : trust === "verified"
+      ? "tested services"
+      : trust === "provider"
+        ? "untested services"
+        : "unavailable services";
   const hasFilters = Boolean(query || selectedCategory || trust !== "available");
   const resetFilters = () => {
     setQuery("");
@@ -175,7 +182,7 @@ export default function MarketPage() {
               </div>
               <div className="mt-4 flex flex-wrap items-center justify-between gap-3" aria-live="polite">
                 <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
-                  SHOWING <span className="text-ink">{filteredItems.length} {selectedTrustLabel.toLowerCase()} {filteredItems.length === 1 ? "service" : "services"}</span>
+                  SHOWING <span className="text-ink">{filteredItems.length} {selectedTrustCountLabel}</span>
                 </p>
                 {hasFilters ? (
                   <button type="button" onClick={resetFilters} className="inline-flex min-h-11 items-center font-mono text-[10px] uppercase tracking-[0.12em] text-ink underline decoration-accent underline-offset-4 hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas">

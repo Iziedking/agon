@@ -94,7 +94,7 @@ export function ListingCard({ listing }: { listing: AgonListing }) {
       )}
 
       <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--hairline)] pt-5">
-        <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">{metadataState === "loading" ? "CHECKING SERVICE" : unavailable ? "UNAVAILABLE" : "READY TO TRY"}</span>
+        <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">{metadataState === "loading" ? "LOADING SERVICE" : unavailable ? "UNAVAILABLE" : "AVAILABLE"}</span>
         <Link href={`/market/${encodeURIComponent(listing.id)}`} className="font-mono text-[11px] uppercase tracking-[0.14em] text-ink underline decoration-accent underline-offset-4 hover:text-accent">
           {quarantined ? "VIEW DETAILS" : "TRY SERVICE"} &gt;
         </Link>

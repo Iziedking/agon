@@ -343,6 +343,7 @@ const listingQuerySchema = z.object({
   cursor: z.string().min(1).max(2048).nullable().default(null),
   category: positiveDecimal.nullable().default(null),
   agentId: positiveDecimal.nullable().default(null),
+  includeManifest: z.boolean().default(false),
 });
 
 const bindProfileSchema = z.object({
@@ -599,6 +600,7 @@ function queryFromRequest(context: Context, overrides: Partial<ListingQuery> = {
     cursor: context.req.query("cursor") ?? null,
     category: overrides.category ?? context.req.query("category") ?? null,
     agentId: overrides.agentId ?? context.req.query("agentId") ?? null,
+    includeManifest: overrides.includeManifest ?? ["1", "true"].includes(context.req.query("includeManifest") ?? ""),
   });
 }
 

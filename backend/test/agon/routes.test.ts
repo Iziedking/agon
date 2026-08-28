@@ -625,7 +625,11 @@ test("supports stable cursor pagination and category or agent filters", async ()
     cursor: "cursor-1",
     category: "7",
     agentId: "42",
+    includeManifest: false,
   });
+
+  await app.request("/agon/listings?includeManifest=1");
+  assert.equal(service.lastQuery?.includeManifest, true);
 
   await app.request("/agon/categories/9/listings");
   assert.equal(service.lastQuery?.category, "9");

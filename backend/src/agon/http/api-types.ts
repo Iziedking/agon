@@ -122,6 +122,7 @@ export type ListingQuery = {
   cursor: string | null;
   category: string | null;
   agentId: string | null;
+  includeManifest?: boolean;
 };
 
 export type X402CallIntentRequest = {
