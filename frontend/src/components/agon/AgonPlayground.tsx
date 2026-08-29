@@ -7,10 +7,10 @@ import { useAccount } from "wagmi";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { BracketedCell, CornerMarkers, SectionHeader, StatusChip, TagButton } from "@/components/redesign";
 import { useArcWrite } from "@/hooks/useArcWrite";
-import { AGON_CONTRACTS, chainNowSeconds, confirmTx } from "@/lib/arc";
+import { AGON_CONTRACTS, confirmTx } from "@/lib/arc";
 import { agonArenaAbi } from "@/lib/agon/abi";
 import { categoryBySlug, presentListing } from "@/lib/agon/catalog";
-import { evaluatePlaygroundTask, getPlaygroundCategories, listListings, runPlaygroundTask } from "@/lib/agon/client";
+import { evaluatePlaygroundTask, getPlaygroundCategories, listListings, markAgonArenaEvaluationSubmitted, prepareAgonArenaEvaluation, runPlaygroundTask } from "@/lib/agon/client";
 import type { AgonListing, AgonPlaygroundCategory, AgonPlaygroundRun } from "@/lib/agon/types";
 
 const DEFAULT_INPUT = JSON.stringify({ to: "0x0000000000000000000000000000000000001234", value: "0", data: "0xa9059cbb" + "00".repeat(64) }, null, 2);
@@ -52,8 +52,27 @@ export function AgonPlayground() {
       setCategories(catalog.categories);
       setProviderScopes(catalog.providerScopes);
       setListings(page.items);
+
+      const requestedReference = new URLSearchParams(window.location.search).get("listing");
+      const requestedListing = requestedReference ? page.items.find((item) => item.id === requestedReference) ?? null : null;
+      if (requestedListing) {
+        const requestedCategory = presentListing(requestedListing).category.slug;
+        const exactScope = `${requestedListing.id}@${requestedListing.version}`.toLowerCase();
+        if (requestedCategory !== "analysis" || !catalog.providerScopes.includes(exactScope)) {
+          setCategory(requestedCategory === "analysis" ? "analysis" : "development");
+          setTaskId(requestedCategory === "analysis" ? "evidence-under-pressure" : catalog.categories.find((item) => item.slug === "development")?.tasks[0]?.id ?? "selector-guard");
+          setError("This exact service version is not connected to the live Playground yet. The provider can still be reviewed in the market.");
+          return;
+        }
+        setCategory("analysis");
+        setTaskId("evidence-under-pressure");
+        setInput(EVIDENCE_INPUT);
+        setListingIds([requestedListing.listingId, ""]);
+        return;
+      }
+
       setTaskId(catalog.categories.find((item) => item.slug === "development")?.tasks[0]?.id ?? "selector-guard");
-    }).catch((cause) => setError(cause instanceof Error ? cause.message : "The Agon agent runtime is unavailable."));
+    }).catch((cause) => setError(cause instanceof Error ? cause.message : "The Playground is unavailable."));
   }, []);
 
   const selectedCategory = categories.find((item) => item.slug === category) ?? null;
@@ -66,20 +85,22 @@ export function AgonPlayground() {
     ? listings.filter((listing) => listing.category === categoryId && providerScopes.includes(`${listing.id}@${listing.version}`.toLowerCase()))
     : [];
   const liveProviderMessage = category !== "analysis"
-    ? "Live listed services are currently tested in Analysis. Choose Analysis to test a live service."
+    ? "Live listed services are currently available for Analysis. This selection runs AGON's public sample."
     : providerScopes.length === 0
-      ? "No live service is connected to this Playground yet. The owner or operator must enable its exact listing version before it can be tested here."
+      ? "No listed service is connected to the live Playground yet."
       : eligibleListings.length === 0
-        ? "No live service is enabled in this category yet. You can still run the public sample."
+        ? "No live service is available in this category yet."
         : null;
 
   function chooseCategory(next: AgonPlaygroundCategory["slug"]) {
     setCategory(next);
     const nextTask = categories.find((item) => item.slug === next)?.tasks[0];
     if (nextTask) setTaskId(nextTask.id);
+    setInput(next === "analysis" ? EVIDENCE_INPUT : DEFAULT_INPUT);
     setRuns([]);
     setListingIds(["", ""]);
     setNotice(null);
+    setError(null);
   }
 
   function chooseListing(index: 0 | 1, listingId: string) {
@@ -89,6 +110,7 @@ export function AgonPlayground() {
     setListingIds(next);
     setRuns([]);
     setNotice(null);
+    setError(null);
     if (listingId && category === "analysis") {
       setTaskId("evidence-under-pressure");
       setInput(EVIDENCE_INPUT);
@@ -112,35 +134,42 @@ export function AgonPlayground() {
           })))
         : [await runPlaygroundTask(category, selectedTask.id, parsedInput)];
       setRuns(results);
-      setNotice(selectedListings.length > 1
-        ? `comparison complete: ${results.length} listed agents answered the same challenge`
-        : `${selectedListings.length === 1 ? "listed agent evaluation" : "public sample"} complete: ${results[0]?.runId}`);
+      setNotice(selectedListings.length > 1 ? "Both services completed the same live challenge." : selectedListings.length === 1 ? "The live service completed the challenge." : "The public sample completed the challenge.");
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "The agent task failed.");
+      setError(cause instanceof Error ? cause.message : "The test failed.");
     }
   }
 
   async function requestEvaluation(run: AgonPlaygroundRun, selectedListing: AgonListing) {
-    if (run.scope?.listingReference !== selectedListing.id || run.scope.listingVersion !== selectedListing.version) {
-      setError("Run an authenticated evaluation after selecting the exact listing version before anchoring it to Arena.");
+    if (!run.passed || run.scope?.listingReference !== selectedListing.id || run.scope.listingVersion !== selectedListing.version) {
+      setError("Run and pass the live test for this exact service version before requesting verification.");
       return;
     }
     setError(null);
     try {
+      const expiresAt = new Date(Date.now() + 86_400_000).toISOString();
+      const intent = await prepareAgonArenaEvaluation({
+        listingReference: selectedListing.id,
+        playgroundRunId: run.runId,
+        expiresAt,
+        idempotencyKey: `verify-${keccak256(stringToHex(`${selectedListing.id}:${selectedListing.version}:${run.runId}`)).slice(2)}`,
+      });
       const hash = await writeContractAsync({
         address: AGON_CONTRACTS.Arena,
         abi: agonArenaAbi,
         functionName: "requestEvaluation",
-        args: [run.evidence.validationRequestHash, BigInt(selectedListing.listingId), keccak256(stringToHex(run.task.capability)), run.evidence.evaluatorVersionHash, run.evidence.taskCommitment, BigInt((await chainNowSeconds()) + 86400)],
+        args: [intent.validationRequestHash, BigInt(intent.listing.listingId), intent.capabilityHash, intent.evaluatorVersionHash, intent.taskCommitment, BigInt(Math.floor(new Date(intent.expiresAt).getTime() / 1000))],
       });
       const receipt = await confirmTx(hash);
       const event = receipt.logs.map((log) => {
         try { return decodeEventLog({ abi: agonArenaAbi, data: log.data, topics: log.topics }); } catch { return null; }
       }).find((item) => item?.eventName === "EvaluationRequested");
       const id = event && "args" in event && event.args && "evaluationId" in event.args ? String(event.args.evaluationId) : "";
+      if (!id) throw new Error("The verification transaction did not contain an evaluation id.");
+      await markAgonArenaEvaluationSubmitted(intent.intentId, id, hash);
       setNotice(`Verification request confirmed${id ? ` as test #${id}` : ""}. AGON will complete the independent review.`);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Arena request failed.");
+      setError(cause instanceof Error ? cause.message : "The verification request failed.");
     }
   }
 
@@ -148,36 +177,138 @@ export function AgonPlayground() {
     <div className="min-h-screen overflow-x-hidden bg-canvas text-ink">
       <AppHeader />
       <main>
-        <section className="relative mx-auto max-w-[1280px] px-4 pb-12 pt-14 sm:px-6 sm:pb-16 sm:pt-20">
+        <section className="relative mx-auto max-w-[1120px] px-4 pb-10 pt-14 sm:px-6 sm:pb-12 sm:pt-16">
           <CornerMarkers />
-          <SectionHeader eyebrow="AGON PLAYGROUND" heading="TEST AN AGENT" subDeck="Choose a category challenge, run a public sample or test one exact listed agent, then inspect the result." right={<TagButton href="/market" variant="ghost" size="sm">BROWSE AGENTS</TagButton>} size="hero" />
+          <SectionHeader
+            eyebrow="LIVE SANDBOX"
+            heading="TEST AN AGENT SAFELY"
+            subDeck="Run a real adversarial task against one exact service version. No payment and no external writes."
+            right={<TagButton href="/market" variant="ghost" size="sm">BACK TO MARKET</TagButton>}
+          />
         </section>
-        <section className="border-y border-[color:var(--hairline)] bg-canvas-2"><div className="mx-auto grid max-w-[1280px] gap-px bg-[color:var(--hairline)] md:grid-cols-5">{categories.map((item) => <button key={item.slug} type="button" onClick={() => chooseCategory(item.slug)} className={`bg-canvas-2 p-4 text-left ${item.slug === category ? "bg-canvas-3" : ""}`}><div className="font-mono text-[10px] uppercase tracking-[.14em] text-accent">{item.slug}</div><div className="mt-5 font-stencil text-2xl uppercase leading-none">{item.label}</div><p className="mt-3 font-mono text-[10px] leading-5 text-ink-2">{item.description}</p></button>)}</div></section>
-        <section className="mx-auto grid max-w-[1280px] gap-5 px-4 py-12 sm:px-6 lg:grid-cols-[.9fr_1.1fr] lg:py-16">
-          <BracketedCell tone="ink" pad="lg"><div className="font-mono text-[10px] uppercase tracking-[.15em] text-[color:var(--card-ink-fg)]/70">LIVE TEST AGENT</div><h2 className="mt-10 font-stencil text-[clamp(2.4rem,6vw,5rem)] uppercase leading-[.88]">AGON<br />CODER</h2><p className="mt-6 max-w-[34ch] font-mono text-sm leading-[1.65] text-[color:var(--card-ink-fg)]/75">Runs category-specific challenges, returns a structured answer, and creates a tamper-evident result for the selected service version.</p><div className="mt-8 grid grid-cols-3 gap-px bg-[color:var(--card-ink-fg)]/20"><Readout label="VERSION" value="1.0.0" /><Readout label="PAYMENT" value="NONE" /><Readout label="RESULT" value="RECORDED" /></div><p className="mt-8 font-mono text-[10px] uppercase tracking-[.12em] text-[color:var(--card-ink-fg)]/60">{selectedTask?.adversarialPrompt ?? "Load the live catalog to begin."}</p></BracketedCell>
+
+        <section className="mx-auto max-w-[1120px] px-4 pb-14 sm:px-6">
           <BracketedCell pad="lg">
-            <div className="flex items-center justify-between gap-3"><div><div className="font-mono text-[10px] uppercase tracking-[.15em] text-accent">TEST SETUP</div><h2 className="mt-2 font-stencil text-3xl uppercase leading-none sm:text-4xl">RUN THE CHALLENGE</h2></div><StatusChip tone={runs.length === 0 ? "warn" : runs.every((item) => item.passed) ? "ok" : "err"}>{runs.length === 0 ? "READY" : runs.every((item) => item.passed) ? "PASSED" : "REVIEW"}</StatusChip></div>
-            <div className="mt-8 grid gap-4 sm:grid-cols-2">
-              {([0, 1] as const).map((index) => <label key={index} className="block"><span className="mb-2 block font-mono text-[10px] uppercase tracking-[.14em] text-ink-3">{index === 0 ? "FIRST SERVICE" : "COMPARE WITH (OPTIONAL)"}</span><select value={listingIds[index]} onChange={(event) => chooseListing(index, event.target.value)} className="h-11 w-full border border-[color:var(--hairline-strong)] bg-canvas-2 px-3 font-mono text-xs"><option value="">{index === 0 ? "Public sample" : "No comparison service"}</option>{eligibleListings.map((listing) => <option key={listing.id} value={listing.listingId}>{presentListing(listing).name} · version {listing.version}</option>)}</select></label>)}
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <div className="font-mono text-[10px] uppercase tracking-[.15em] text-accent">LIVE TEST</div>
+                <h2 className="mt-2 font-stencil text-3xl uppercase leading-none sm:text-4xl">CHOOSE A SERVICE</h2>
+              </div>
+              <StatusChip tone={runs.length === 0 ? "warn" : runs.every((item) => item.passed) ? "ok" : "err"}>{runs.length === 0 ? "READY" : runs.every((item) => item.passed) ? "PASSED" : "REVIEW"}</StatusChip>
             </div>
-            {liveProviderMessage ? <p className="mt-4 border-l-2 border-[color:var(--warn)] p-3 font-mono text-[10px] leading-5 text-ink-2">{liveProviderMessage}</p> : null}
-            <label className="mt-5 block"><span className="mb-2 block font-mono text-[10px] uppercase tracking-[.14em] text-ink-3">CHALLENGE</span><select value={taskId} onChange={(event) => setTaskId(event.target.value)} className="h-11 w-full border border-[color:var(--hairline-strong)] bg-canvas-2 px-3 font-mono text-xs">{selectedCategory?.tasks.filter((task) => selectedListings.length === 0 || task.id === "evidence-under-pressure").map((task) => <option key={task.id} value={task.id}>{task.title}</option>)}</select></label>
-            <label className="mt-5 block"><span className="mb-2 block font-mono text-[10px] uppercase tracking-[.14em] text-ink-3">TEST INPUT</span><textarea value={input} onChange={(event) => setInput(event.target.value)} rows={8} spellCheck={false} className="w-full resize-y border border-[color:var(--hairline-strong)] bg-canvas-2 px-4 py-3 font-mono text-[12px] leading-[1.6] outline-none focus:border-ink" /></label>
-            <div className="mt-5 flex flex-wrap items-center justify-between gap-4"><TagButton onClick={() => void runAgent()}>{selectedListings.length > 1 ? "COMPARE BOTH SERVICES" : selectedListings.length === 1 ? "TEST THIS SERVICE" : "RUN PUBLIC SAMPLE"}</TagButton><span className="font-mono text-[10px] uppercase tracking-[.12em] text-ink-3">{selectedListings.length > 0 ? `${selectedListings.length} LIVE SERVICE${selectedListings.length > 1 ? "S" : ""} SELECTED` : "NO WALLET OR PAYMENT NEEDED"}</span></div>
-            {notice ? <p role="status" className="mt-4 border-l-2 border-accent p-3 font-mono text-[11px] leading-5 text-ink-2">{notice}</p> : null}{error ? <p role="alert" className="mt-4 border-l-2 border-[color:var(--err)] p-3 font-mono text-[11px] leading-5 text-ink-2">{error}</p> : null}
+
+            <div className="mt-8 grid gap-4 sm:grid-cols-2">
+              <Field label="CATEGORY">
+                <select value={category} onChange={(event) => chooseCategory(event.target.value as AgonPlaygroundCategory["slug"])} className="h-12 w-full border border-[color:var(--hairline-strong)] bg-canvas-2 px-3 font-mono text-xs">
+                  {categories.map((item) => <option key={item.slug} value={item.slug}>{item.label}</option>)}
+                </select>
+              </Field>
+              <Field label="SERVICE">
+                <select value={listingIds[0]} onChange={(event) => chooseListing(0, event.target.value)} className="h-12 w-full border border-[color:var(--hairline-strong)] bg-canvas-2 px-3 font-mono text-xs">
+                  <option value="">AGON public sample</option>
+                  {eligibleListings.map((listing) => <option key={listing.id} value={listing.listingId}>{presentListing(listing).name}</option>)}
+                </select>
+              </Field>
+            </div>
+
+            {eligibleListings.length > 1 ? (
+              <div className="mt-4">
+                <Field label="COMPARE WITH (OPTIONAL)">
+                  <select value={listingIds[1]} onChange={(event) => chooseListing(1, event.target.value)} className="h-12 w-full border border-[color:var(--hairline-strong)] bg-canvas-2 px-3 font-mono text-xs">
+                    <option value="">No comparison</option>
+                    {eligibleListings.map((listing) => <option key={listing.id} value={listing.listingId}>{presentListing(listing).name}</option>)}
+                  </select>
+                </Field>
+              </div>
+            ) : null}
+
+            {liveProviderMessage ? <p className="mt-4 border-l-2 border-[color:var(--warn)] px-4 py-2 font-mono text-[11px] leading-5 text-ink-2">{liveProviderMessage}</p> : null}
+
+            <details className="mt-6 border-y border-[color:var(--hairline)] py-4">
+              <summary className="cursor-pointer font-mono text-[10px] uppercase tracking-[.12em] text-ink">REVIEW TEST DETAILS</summary>
+              <div className="mt-5 grid gap-4">
+                <Field label="CHALLENGE">
+                  <select value={taskId} onChange={(event) => setTaskId(event.target.value)} className="h-12 w-full border border-[color:var(--hairline-strong)] bg-canvas-2 px-3 font-mono text-xs">
+                    {selectedCategory?.tasks.filter((task) => selectedListings.length === 0 || task.id === "evidence-under-pressure").map((task) => <option key={task.id} value={task.id}>{task.title}</option>)}
+                  </select>
+                </Field>
+                <Field label="TEST INPUT">
+                  <textarea value={input} onChange={(event) => setInput(event.target.value)} rows={8} spellCheck={false} className="w-full resize-y border border-[color:var(--hairline-strong)] bg-canvas-2 px-4 py-3 font-mono text-[12px] leading-[1.6] outline-none focus:border-ink" />
+                </Field>
+              </div>
+            </details>
+
+            <div className="mt-6 flex flex-wrap items-center justify-between gap-4">
+              <TagButton onClick={() => void runAgent()}>{selectedListings.length > 1 ? "COMPARE SERVICES" : selectedListings.length === 1 ? "RUN LIVE TEST" : "RUN PUBLIC SAMPLE"}</TagButton>
+              <span className="font-mono text-[10px] uppercase tracking-[.12em] text-ink-3">NO PAYMENT / NO EXTERNAL WRITES</span>
+            </div>
+            {notice ? <p role="status" className="mt-4 border-l-2 border-[color:var(--ok)] px-4 py-2 font-mono text-[11px] leading-5 text-ink-2">{notice}</p> : null}
+            {error ? <p role="alert" className="mt-4 border-l-2 border-[color:var(--err)] px-4 py-2 font-mono text-[11px] leading-5 text-ink-2">{error}</p> : null}
           </BracketedCell>
         </section>
-        {runs.length > 0 ? <section className="mx-auto max-w-[1280px] px-4 pb-16 sm:px-6"><div className="mb-5 flex flex-wrap items-end justify-between gap-4"><div><div className="font-mono text-[10px] uppercase tracking-[.15em] text-accent">TEST RESULT</div><h2 className="mt-2 font-stencil text-4xl uppercase leading-none sm:text-5xl">{runs.length > 1 ? "COMPARE THE ANSWERS" : "THE AGENT ANSWERED"}</h2></div><span className="font-mono text-[10px] uppercase tracking-[.12em] text-ink-3">SAME INPUT / INDEPENDENT AGON SCORE</span></div><div className="grid gap-5 lg:grid-cols-2">{runs.map((run) => { const scopedListing = selectedListings.find((listing) => listing.id === run.scope?.listingReference) ?? null; return <div key={run.runId} className="grid content-start gap-5"><BracketedCell pad="lg"><div className="flex flex-wrap items-start justify-between gap-3"><div><div className="font-mono text-[10px] uppercase tracking-[.14em] text-accent">{run.agent.name}</div><div className="mt-1 font-mono text-[10px] text-ink-3">VERSION {run.agent.version} / {run.durationMs} MS</div></div><StatusChip tone={run.passed ? "ok" : "err"}>SCORE {run.score}</StatusChip></div><pre className="mt-6 max-h-[360px] overflow-auto whitespace-pre-wrap font-mono text-[11px] leading-6 text-ink-2">{JSON.stringify(run.output, null, 2)}</pre><details className="mt-5 border-t border-[color:var(--hairline)] pt-4 font-mono text-[10px] text-ink-3"><summary className="cursor-pointer uppercase tracking-[.12em] text-ink">TECHNICAL EVIDENCE</summary><div className="mt-4 grid gap-2"><HashRow label="EVIDENCE ROOT" value={run.evidence.evidenceRoot} /><HashRow label="RESPONSE HASH" value={run.evidence.responseHash} /><HashRow label="TASK COMMITMENT" value={run.evidence.taskCommitment} /><HashRow label="PROVIDER" value={run.provenance.providerHost ?? "AGON BUILTIN"} /></div></details></BracketedCell><ArenaAnchor run={run} selectedListing={scopedListing} address={address} isPending={isPending} onRequest={() => { if (scopedListing) void requestEvaluation(run, scopedListing); }} /></div>; })}</div></section> : null}
-        <section className="mx-auto max-w-[1280px] px-4 pb-16 sm:px-6"><div className="border-l-2 border-accent pl-4 font-mono text-[11px] leading-[1.65] text-ink-2">Running a challenge does not move funds or write to the network. Requesting an official verification record is a separate wallet action for the selected service version.</div><div className="mt-5 flex flex-wrap gap-3"><TagButton href="/market/new">LIST YOUR AGENT</TagButton><TagButton href="/docs/list-agents" variant="ghost">OPEN PROVIDER GUIDE</TagButton></div></section>
+
+        {runs.length > 0 ? (
+          <section className="mx-auto max-w-[1120px] px-4 pb-16 sm:px-6">
+            <div className="mb-5">
+              <div className="font-mono text-[10px] uppercase tracking-[.15em] text-accent">RESULT</div>
+              <h2 className="mt-2 font-stencil text-4xl uppercase leading-none sm:text-5xl">{runs.every((run) => run.passed) ? "TEST PASSED" : "REVIEW NEEDED"}</h2>
+            </div>
+            <div className="grid gap-5 lg:grid-cols-2">
+              {runs.map((run) => {
+                const scopedListing = selectedListings.find((listing) => listing.id === run.scope?.listingReference) ?? null;
+                return (
+                  <div key={run.runId} className="grid content-start gap-5">
+                    <BracketedCell pad="lg">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <div className="font-mono text-[10px] uppercase tracking-[.14em] text-accent">{run.agent.name}</div>
+                          <h3 className="mt-2 font-stencil text-3xl uppercase leading-none">{run.passed ? "PASSED" : "DID NOT PASS"}</h3>
+                        </div>
+                        <StatusChip tone={run.passed ? "ok" : "err"}>SCORE {run.score}</StatusChip>
+                      </div>
+                      <p className="mt-5 font-mono text-[11px] leading-5 text-ink-2">Completed in {run.durationMs} ms against AGON's category challenge.</p>
+                      <details className="mt-5 border-t border-[color:var(--hairline)] pt-4 font-mono text-[10px] text-ink-3">
+                        <summary className="cursor-pointer uppercase tracking-[.12em] text-ink">VIEW ANSWER AND EVIDENCE</summary>
+                        <pre className="mt-5 max-h-[320px] overflow-auto whitespace-pre-wrap font-mono text-[11px] leading-6 text-ink-2">{JSON.stringify(run.output, null, 2)}</pre>
+                        <div className="mt-5 grid gap-2 border-t border-[color:var(--hairline)] pt-4">
+                          <HashRow label="EVIDENCE ROOT" value={run.evidence.evidenceRoot} />
+                          <HashRow label="RESPONSE HASH" value={run.evidence.responseHash} />
+                          <HashRow label="PROVIDER" value={run.provenance.providerHost ?? "AGON PUBLIC SAMPLE"} />
+                        </div>
+                      </details>
+                    </BracketedCell>
+                    {scopedListing ? <VerificationRequest run={run} listing={scopedListing} address={address} isPending={isPending} onRequest={() => void requestEvaluation(run, scopedListing)} /> : null}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        ) : null}
       </main>
     </div>
   );
 }
 
-function ArenaAnchor({ run, selectedListing, address, isPending, onRequest }: { run: AgonPlaygroundRun; selectedListing: AgonListing | null; address?: `0x${string}`; isPending: boolean; onRequest: () => void }) {
-  const scopedToListing = Boolean(run.scope && selectedListing && run.scope.listingReference === selectedListing.id && run.scope.listingVersion === selectedListing.version);
-  return <BracketedCell pad="lg"><div className="font-mono text-[10px] uppercase tracking-[.15em] text-accent">OFFICIAL RECORD</div><h3 className="mt-3 font-stencil text-3xl uppercase leading-none">REQUEST VERIFICATION</h3><p className="mt-4 font-mono text-[11px] leading-5 text-ink-2">{scopedToListing && selectedListing ? `This result is tied to ${presentListing(selectedListing).name}, version ${selectedListing.version}. Request an independent AGON review to add it to the service record.` : "This was a public sample. Select a listed service above and run the challenge again to request an official record."}</p><button type="button" disabled={isPending || !address || !scopedToListing} onClick={onRequest} className="mt-5 w-full bg-accent px-3 py-3 font-mono text-[11px] uppercase tracking-[.12em] text-accent-ink disabled:opacity-50">{!address ? "CONNECT OWNER WALLET" : "REQUEST AGON VERIFICATION"}</button><p className="mt-4 font-mono text-[10px] leading-5 text-ink-3">The wallet request records the exact service version and test commitment. AGON completes scoring separately.</p></BracketedCell>;
+function VerificationRequest({ run, listing, address, isPending, onRequest }: { run: AgonPlaygroundRun; listing: AgonListing; address?: `0x${string}`; isPending: boolean; onRequest: () => void }) {
+  return (
+    <BracketedCell pad="lg">
+      <div className="font-mono text-[10px] uppercase tracking-[.15em] text-accent">NEXT STEP</div>
+      <h3 className="mt-3 font-stencil text-3xl uppercase leading-none">GET TESTED BY AGON</h3>
+      <p className="mt-4 font-mono text-[11px] leading-5 text-ink-2">
+        Submit this exact test result for independent review. The badge appears only after AGON confirms the evidence and score onchain.
+      </p>
+      <button type="button" disabled={isPending || !address || !run.passed} onClick={onRequest} className="mt-5 w-full bg-accent px-3 py-3 font-mono text-[11px] uppercase tracking-[.12em] text-accent-ink disabled:opacity-50">
+        {!run.passed ? "PASS THE TEST FIRST" : !address ? "CONNECT OWNER WALLET" : "SUBMIT FOR VERIFICATION"}
+      </button>
+      <p className="mt-4 font-mono text-[9px] uppercase leading-5 tracking-[.1em] text-ink-3">{presentListing(listing).name} / VERSION {listing.version}</p>
+    </BracketedCell>
+  );
 }
 
-function HashRow({ label, value }: { label: string; value: string }) { return <div className="grid gap-1"><span>{label}</span><span className="break-all text-ink-2">{value}</span></div>; }
-function Readout({ label, value }: { label: string; value: string }) { return <div className="bg-[color:var(--card-ink-bg)] px-3 py-3"><div className="font-mono text-[9px] uppercase tracking-[.14em] text-[color:var(--card-ink-fg)]/55">{label}</div><div className="mt-1 font-mono text-[11px] text-[color:var(--card-ink-fg)]">{value}</div></div>; }
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return <label className="block"><span className="mb-2 block font-mono text-[10px] uppercase tracking-[.14em] text-ink-3">{label}</span>{children}</label>;
+}
+
+function HashRow({ label, value }: { label: string; value: string }) {
+  return <div className="grid gap-1"><span>{label}</span><span className="break-all text-ink-2">{value}</span></div>;
+}

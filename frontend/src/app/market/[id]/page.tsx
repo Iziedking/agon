@@ -5,7 +5,6 @@ import { useParams } from "next/navigation";
 
 import { ServiceProof } from "@/components/agon/ServiceProof";
 import { AgentLogo } from "@/components/agon/ListingCard";
-import { AgonAuthAction } from "@/components/agon/AgonAuthAction";
 import { UnverifiedWarning } from "@/components/agon/UnverifiedWarning";
 import { VerificationBadge } from "@/components/agon/VerificationBadge";
 import { X402CallIntentPanel } from "@/components/agon/X402CallIntentPanel";
@@ -71,7 +70,7 @@ export default function ListingDetailPage() {
             eyebrow={service?.category.label ?? "AGON MARKET / SERVICE"}
             heading={service?.name ?? "SERVICE DETAILS"}
             subDeck={service?.description ?? "Reading this service from the Agon catalog."}
-            right={<><TagButton variant="ghost" href="/market">BACK TO MARKET</TagButton>{listing ? <TagButton variant="ghost" href={`/market/version?listingId=${encodeURIComponent(listing.listingId)}&manifestUri=${encodeURIComponent(listing.manifest.uri)}`}>UPDATE THIS SERVICE</TagButton> : null}<AgonAuthAction href="/market/new">LIST YOUR AGENT</AgonAuthAction></>}
+            right={<><TagButton variant="ghost" href="/market">BACK TO MARKET</TagButton>{listing?.verification.status !== "Verified" && listing ? <TagButton href={`/agon/playground?listing=${encodeURIComponent(listing.id)}`}>TEST IN PLAYGROUND</TagButton> : null}</>}
           />
         </section>
 
@@ -139,6 +138,9 @@ export default function ListingDetailPage() {
                   <details className="border border-[color:var(--hairline-strong)] bg-canvas">
                     <summary className="cursor-pointer px-5 py-5 font-mono text-[11px] uppercase tracking-[0.14em] text-ink sm:px-6">VIEW TECHNICAL PROOF AND PROVENANCE</summary>
                     <ServiceProof listing={listing} proof={proof} assurance={assurance} identityRegistry={null} currentOwner={null} />
+                    <div className="border-t border-[color:var(--hairline)] px-5 py-5 sm:px-6">
+                      <TagButton variant="ghost" href={`/market/version?listingId=${encodeURIComponent(listing.listingId)}&manifestUri=${encodeURIComponent(listing.manifest.uri)}`}>UPDATE THIS SERVICE</TagButton>
+                    </div>
                   </details>
                 </div>
 
