@@ -7,7 +7,7 @@ import {
   type AgonCategory,
 } from "./catalog.ts";
 import { canonicalManifestHash, canonicalizeManifest } from "./canonical.ts";
-import { buildServiceManifest, parseTags, validateServiceDraft } from "./draft.ts";
+import { buildServiceManifest, parseTags, validateServiceDraft, validateServiceManifestV2 } from "./draft.ts";
 import type {
   AgonArenaEvaluationView,
   AgonHealth,
@@ -289,8 +289,9 @@ export function prepareAspListingVersion(input: unknown, localManifest: unknown,
   }
   const { config, category } = parseConfig(input);
   const source = object(localManifest);
-  const version = source?.version;
-  if (!Number.isSafeInteger(version) || Number(version) < 2) {
+  const sourceService = object(source?.service);
+  const version = sourceService?.version;
+  if (typeof version !== "string" || !/^\d+$/.test(version) || Number(version) < 2) {
     throw new AspCommandError("invalid_manifest", "An update manifest must use an integer version of 2 or higher.");
   }
   const proof = verifyAspManifest(localManifest);
@@ -336,6 +337,10 @@ export function prepareAspListingVersion(input: unknown, localManifest: unknown,
 function manifestIssues(input: unknown): AspIssue[] {
   const manifest = object(input);
   if (!manifest) return [{ field: "manifest", message: "Manifest must be a JSON object." }];
+
+  if (manifest.protocol === "agon-service/2") {
+    return validateServiceManifestV2(manifest).map((issue) => ({ field: issue.field, message: issue.message }));
+  }
 
   const category = resolveCategory(cleanString(manifest.category));
   const pricing = object(manifest.pricing);

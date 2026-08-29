@@ -90,13 +90,29 @@ test("prepares the exact x402 manifest and listing payload from marketplace lang
   const prepared = prepareAspListing(config);
 
   assert.deepEqual(prepared.manifest, {
-    name: config.name,
-    version: 1,
-    description: config.description,
-    category: "verification",
-    endpoint: config.endpoint,
-    tags: config.tags,
-    pricing: { rail: "x402", amountUSDC: "0.01" },
+    protocol: "agon-service/2",
+    identity: { chainId: 5042002, agentId: "42", serviceKey: prepared.serviceKeyHash },
+    service: {
+      name: config.name,
+      version: "1",
+      description: config.description,
+      category: "verification",
+      tags: config.tags,
+      capabilities: ["verification", "security", "solidity"],
+    },
+    invocation: {
+      endpoint: config.endpoint,
+      method: "POST",
+      requestSchema: { type: "object", properties: {}, required: [], additionalProperties: true },
+      responseSchema: { type: "object", properties: {}, required: [], additionalProperties: true },
+      timeoutMs: 15000,
+      maxResponseBytes: 65536,
+      idempotency: "supported",
+      sideEffects: "none",
+      privacy: { retention: "none", sendsToThirdParties: false, description: "The provider does not retain request or response data beyond delivery." },
+    },
+    pricing: { rail: "x402", amountUSDC: "0.01", network: "eip155:5042002", asset: "0x3600000000000000000000000000000000000000" },
+    certification: { adapter: "agon-http", adapterVersion: "1" },
   });
   assert.equal(prepared.category.id, "8");
   assert.match(prepared.manifestHash, /^0x[0-9a-f]{64}$/);
@@ -129,8 +145,8 @@ test("validates and hashes local manifests before publication", () => {
   const prepared = prepareAspListing(config);
   const match = verifyAspManifest(prepared.manifest, prepared.manifestHash);
   const mismatch = verifyAspManifest(prepared.manifest, `0x${"99".repeat(32)}`);
-  const invalid = verifyAspManifest({ ...prepared.manifest, endpoint: "http://localhost:3000" });
-  const duplicateTags = verifyAspManifest({ ...prepared.manifest, tags: ["security", "security"] });
+  const invalid = verifyAspManifest({ ...prepared.manifest, invocation: { ...prepared.manifest.invocation, endpoint: "http://localhost:3000" } });
+  const duplicateTags = verifyAspManifest({ ...prepared.manifest, service: { ...prepared.manifest.service, tags: ["security", "security"] } });
 
   assert.equal(match.state, "match");
   assert.equal(match.valid, true);
@@ -143,10 +159,8 @@ test("validates and hashes local manifests before publication", () => {
 });
 
 test("prepares an immutable update without changing the agent identity", () => {
-  const manifest = {
-    ...prepareAspListing(config).manifest,
-    version: 2,
-  };
+  const base = prepareAspListing(config).manifest;
+  const manifest = { ...base, service: { ...base.service, version: "2" } };
   const prepared = prepareAspListingVersion(config, manifest, "7");
 
   assert.equal(prepared.listingId, "7");
@@ -157,7 +171,12 @@ test("prepares an immutable update without changing the agent identity", () => {
 });
 
 test("rejects an update when config and hosted manifest drift", () => {
-  const manifest = { ...prepareAspListing(config).manifest, version: 2, endpoint: "https://other.example.com/run" };
+  const base = prepareAspListing(config).manifest;
+  const manifest = {
+    ...base,
+    service: { ...base.service, version: "2" },
+    invocation: { ...base.invocation, endpoint: "https://other.example.com/run" },
+  };
   assert.throws(
     () => prepareAspListingVersion(config, manifest, "7"),
     (error: unknown) => error instanceof AspCommandError && error.code === "manifest_mismatch",
@@ -348,7 +367,8 @@ test("executes the exact prepared operation through Circle after explicit approv
 });
 
 test("publishes an update only when writes are available and the operation is publishVersion", async () => {
-  const manifest = { ...prepareAspListing(config).manifest, version: 2 };
+  const base = prepareAspListing(config).manifest;
+  const manifest = { ...base, service: { ...base.service, version: "2" } };
   const prepared = prepareAspListingVersion(config, manifest, "7");
   const operation = {
     ...preparedOperation,
