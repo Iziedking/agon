@@ -424,6 +424,7 @@ export type AgonJobEscrowJobView = {
   deliverableHash: `0x${string}`;
   amount: string;
   fee: string;
+  feeBps?: number;
   reviewHours: number;
   acceptanceDeadline: string;
   reviewDeadline: string | null;

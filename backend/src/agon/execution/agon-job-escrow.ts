@@ -36,6 +36,26 @@ export const AGON_JOB_ESCROW_ABI = [
   ] }] },
 ] as const;
 
+/** Read ABI for the separately deployable V2 escrow. V2 adds feeBps to the
+ * returned job tuple while preserving the legacy lifecycle view functions. */
+export const AGON_JOB_ESCROW_V2_READ_ABI = [
+  { type: "function", name: "usdc", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
+  { type: "function", name: "serviceRegistry", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
+  { type: "function", name: "disputeResolver", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
+  { type: "function", name: "getJob", stateMutability: "view", inputs: [{ name: "jobId", type: "uint256" }], outputs: [{ name: "job", type: "tuple", components: [
+    { name: "jobId", type: "uint256" }, { name: "buyer", type: "address" }, { name: "provider", type: "address" },
+    { name: "listingId", type: "uint256" }, { name: "agentId", type: "uint256" }, { name: "listingVersion", type: "uint256" },
+    { name: "manifestHash", type: "bytes32" }, { name: "termsHash", type: "bytes32" }, { name: "deliverableHash", type: "bytes32" },
+    { name: "amount", type: "uint256" }, { name: "fee", type: "uint256" }, { name: "feeBps", type: "uint16" },
+    { name: "reviewHours", type: "uint64" }, { name: "acceptanceDeadline", type: "uint64" }, { name: "reviewDeadline", type: "uint64" },
+    { name: "createdAt", type: "uint64" }, { name: "submittedAt", type: "uint64" }, { name: "status", type: "uint8" },
+    { name: "settlement", type: "uint8" },
+  ] }] },
+] as const;
+
+export type AgonJobEscrowContractVersion = "v1" | "v2";
+type AgonJobEscrowReadAbi = typeof AGON_JOB_ESCROW_ABI | typeof AGON_JOB_ESCROW_V2_READ_ABI;
+
 export type AgonJobEscrowAction =
   | "create"
   | "accept"
@@ -71,6 +91,8 @@ export type AgonJobEscrowJob = {
   deliverableHash: `0x${string}`;
   amount: string;
   fee: string;
+  /** Present for V2 reads; omitted for legacy V1 jobs. */
+  feeBps?: number;
   reviewHours: number;
   acceptanceDeadline: Date;
   reviewDeadline: Date | null;
@@ -185,6 +207,7 @@ export function validateAgonJobEscrowReceipt(input: {
   action: AgonJobEscrowAction;
   transactionHash: string;
   jobId?: string | bigint;
+  contractVersion?: AgonJobEscrowContractVersion;
 }): AgonJobEscrowReceiptResult {
   const expectedContract = address(input.contractAddress, "AgonJobEscrow contract address");
   const expectedHash = hash(input.transactionHash, "transaction hash");
@@ -192,7 +215,9 @@ export function validateAgonJobEscrowReceipt(input: {
   if (input.receipt.status !== "success" && input.receipt.status !== 1) return { ok: false, code: "receipt_unknown", message: "receipt did not prove a successful AgonJobEscrow transaction" };
   if (!input.receipt.transactionHash || hash(input.receipt.transactionHash, "receipt transaction hash") !== expectedHash) return { ok: false, code: "receipt_invalid", message: "receipt hash does not match the submitted transaction" };
   if (!input.receipt.to || address(input.receipt.to, "receipt contract address") !== expectedContract) return { ok: false, code: "receipt_invalid", message: "receipt is not for the configured AgonJobEscrow contract" };
-  const expectedEvent = EVENTS[input.action];
+  const expectedEvent = input.contractVersion === "v2" && input.action === "create"
+    ? { name: "JobCreated", topic: topic("JobCreated(uint256,bytes32,address,address,uint256,uint256,uint256,bytes32,bytes32,uint256,uint256,uint16,uint64,uint64)") }
+    : EVENTS[input.action];
   const expectedJobTopic = input.action === "create" ? null : toHex(jobId(input.jobId ?? ""), { size: 32 }).toLowerCase();
   const found = (input.receipt.logs ?? []).some((log) => {
     if (!log.address || address(log.address, "receipt log address") !== expectedContract) return false;
@@ -205,7 +230,7 @@ export function validateAgonJobEscrowReceipt(input: {
 
 export type AgonJobEscrowReadClient = {
   getBytecode(input: { address: `0x${string}` }): Promise<unknown>;
-  readContract(input: { address: `0x${string}`; abi: typeof AGON_JOB_ESCROW_ABI; functionName: "usdc" | "serviceRegistry" | "disputeResolver" | "getJob"; args?: readonly unknown[] }): Promise<unknown>;
+  readContract(input: { address: `0x${string}`; abi: AgonJobEscrowReadAbi; functionName: "usdc" | "serviceRegistry" | "disputeResolver" | "getJob"; args?: readonly unknown[] }): Promise<unknown>;
 };
 
 export type AgonJobEscrowReadAdapter = {
@@ -215,10 +240,11 @@ export type AgonJobEscrowReadAdapter = {
 
 function normalizeJob(value: unknown): AgonJobEscrowJob {
   const record = value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+  const hasFeeBps = Array.isArray(value) ? value.length >= 19 : record?.feeBps !== undefined;
   const values = Array.isArray(value) ? value : record ? [
     record.jobId, record.buyer, record.provider, record.listingId, record.agentId,
     record.listingVersion, record.manifestHash, record.termsHash, record.deliverableHash,
-    record.amount, record.fee, record.reviewHours, record.acceptanceDeadline, record.reviewDeadline,
+    record.amount, record.fee, ...(hasFeeBps ? [record.feeBps] : []), record.reviewHours, record.acceptanceDeadline, record.reviewDeadline,
     record.createdAt, record.submittedAt, record.status, record.settlement,
   ] : [];
   if (values.length < 18) throw new Error("AgonJobEscrow returned an invalid job tuple");
@@ -228,16 +254,24 @@ function normalizeJob(value: unknown): AgonJobEscrowJob {
   const termsHash = hash(values[7], "job terms hash");
   const deliverableHash: `0x${string}` = typeof values[8] === "string" && HASH.test(values[8]) ? values[8].toLowerCase() as `0x${string}` : `0x${"0".repeat(64)}`;
   const timestamp = (raw: unknown, label: string) => { const n = Number(raw); if (!Number.isSafeInteger(n) || n < 0) throw new Error(`${label} is invalid`); return n; };
-  const reviewDeadline = timestamp(values[13], "review deadline");
-  const submittedAt = timestamp(values[15], "submitted timestamp");
+  const reviewHoursIndex = hasFeeBps ? 12 : 11;
+  const acceptanceDeadlineIndex = hasFeeBps ? 13 : 12;
+  const reviewDeadlineIndex = hasFeeBps ? 14 : 13;
+  const createdAtIndex = hasFeeBps ? 15 : 14;
+  const submittedAtIndex = hasFeeBps ? 16 : 15;
+  const statusIndex = hasFeeBps ? 17 : 16;
+  const settlementIndex = hasFeeBps ? 18 : 17;
+  const reviewDeadline = timestamp(values[reviewDeadlineIndex], "review deadline");
+  const submittedAt = timestamp(values[submittedAtIndex], "submitted timestamp");
   return {
     jobId: integer(String(values[0]), "job id").toString(), buyer, provider,
     listingId: integer(String(values[3]), "listing id").toString(), agentId: integer(String(values[4]), "agent id").toString(),
     listingVersion: integer(String(values[5]), "listing version").toString(), manifestHash, termsHash, deliverableHash,
     amount: integer(String(values[9]), "job amount").toString(), fee: integer(String(values[10]), "job fee").toString(),
-    reviewHours: timestamp(values[11], "review hours"), acceptanceDeadline: new Date(timestamp(values[12], "acceptance deadline") * 1000),
-    reviewDeadline: reviewDeadline === 0 ? null : new Date(reviewDeadline * 1000), createdAt: new Date(timestamp(values[14], "created timestamp") * 1000),
-    submittedAt: submittedAt === 0 ? null : new Date(submittedAt * 1000), status: timestamp(values[16], "job status"), settlement: timestamp(values[17], "job settlement"),
+    ...(hasFeeBps ? { feeBps: timestamp(values[11], "job fee bps") } : {}),
+    reviewHours: timestamp(values[reviewHoursIndex], "review hours"), acceptanceDeadline: new Date(timestamp(values[acceptanceDeadlineIndex], "acceptance deadline") * 1000),
+    reviewDeadline: reviewDeadline === 0 ? null : new Date(reviewDeadline * 1000), createdAt: new Date(timestamp(values[createdAtIndex], "created timestamp") * 1000),
+    submittedAt: submittedAt === 0 ? null : new Date(submittedAt * 1000), status: timestamp(values[statusIndex], "job status"), settlement: timestamp(values[settlementIndex], "job settlement"),
   };
 }
 
@@ -250,12 +284,20 @@ export function createViemAgonJobEscrowReadAdapter(options: {
   client?: AgonJobEscrowReadClient;
   escrowAddress: string;
   legacyEscrowAddresses?: readonly string[];
+  escrowVersion?: AgonJobEscrowContractVersion;
   expectedServiceRegistry: string;
   expectedAsset?: string;
   expectedDisputeResolver?: string;
 }): AgonJobEscrowReadAdapter {
   const escrowAddress = address(options.escrowAddress, "configured AgonJobEscrow contract address");
-  const escrowAddresses = [...new Set([escrowAddress, ...(options.legacyEscrowAddresses ?? []).map((value) => address(value, "configured legacy AgonJobEscrow contract address"))])];
+  const currentVersion = options.escrowVersion ?? "v1";
+  const escrowCandidates = [
+    { address: escrowAddress, version: currentVersion },
+    ...(options.legacyEscrowAddresses ?? []).map((value) => ({
+      address: address(value, "configured legacy AgonJobEscrow contract address"),
+      version: "v1" as const,
+    })),
+  ].filter((candidate, index, all) => all.findIndex((other) => other.address === candidate.address) === index);
   const serviceRegistry = address(options.expectedServiceRegistry, "configured AgonServiceRegistry address");
   const expectedAsset = address(options.expectedAsset ?? AGON_ESCROW_USDC, "configured AgonJobEscrow USDC asset");
   const expectedResolver = options.expectedDisputeResolver ? address(options.expectedDisputeResolver, "configured dispute resolver") : null;
@@ -266,14 +308,15 @@ export function createViemAgonJobEscrowReadAdapter(options: {
       if (!enabled || !options.client) throw new Error("AgonJobEscrow inspection is disabled by policy");
       const id = jobId(input);
       let lastError: unknown = new Error("AgonJobEscrow job was not found in configured contracts");
-      for (const candidate of escrowAddresses) {
+      for (const candidate of escrowCandidates) {
         try {
+          const abi = candidate.version === "v2" ? AGON_JOB_ESCROW_V2_READ_ABI : AGON_JOB_ESCROW_ABI;
           const [code, asset, registry, resolver, rawJob] = await Promise.all([
-            options.client.getBytecode({ address: candidate }),
-            options.client.readContract({ address: candidate, abi: AGON_JOB_ESCROW_ABI, functionName: "usdc" }),
-            options.client.readContract({ address: candidate, abi: AGON_JOB_ESCROW_ABI, functionName: "serviceRegistry" }),
-            options.client.readContract({ address: candidate, abi: AGON_JOB_ESCROW_ABI, functionName: "disputeResolver" }),
-            options.client.readContract({ address: candidate, abi: AGON_JOB_ESCROW_ABI, functionName: "getJob", args: [id] }),
+            options.client.getBytecode({ address: candidate.address }),
+            options.client.readContract({ address: candidate.address, abi, functionName: "usdc" }),
+            options.client.readContract({ address: candidate.address, abi, functionName: "serviceRegistry" }),
+            options.client.readContract({ address: candidate.address, abi, functionName: "disputeResolver" }),
+            options.client.readContract({ address: candidate.address, abi, functionName: "getJob", args: [id] }),
           ]);
           if (typeof code !== "string" || !/^0x[0-9a-f]+$/i.test(code) || code.length <= 2) throw new Error("AgonJobEscrow contract has no deployed bytecode");
           if (address(asset, "AgonJobEscrow USDC asset") !== expectedAsset) throw new Error("AgonJobEscrow returned a different USDC asset");

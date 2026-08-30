@@ -143,6 +143,7 @@ export function validateAgonJobEscrowJobMatch(
     [job.manifestHash.toLowerCase() === intent.manifestHash.toLowerCase(), "manifest hash does not match the prepared intent"],
     [job.termsHash.toLowerCase() === intent.termsHash.toLowerCase(), "terms hash does not match the prepared intent"],
     [job.amount === intent.amountBaseUnits.toString(), "amount does not match the prepared intent"],
+    [job.feeBps === undefined || job.feeBps === intent.feeBps, "fee rate does not match the prepared intent"],
     [job.fee === ((intent.amountBaseUnits * BigInt(intent.feeBps)) / 10_000n).toString(), "fee does not match the prepared intent"],
     [job.reviewHours === intent.reviewHours, "review hours do not match the prepared intent"],
   ];
