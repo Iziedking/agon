@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   AGON_JOB_ESCROW_ABI,
+  AGON_JOB_ESCROW_V2_READ_ABI,
   buildAgonJobEscrowWritePlan,
   createDisabledAgonJobEscrowReadAdapter,
   createViemAgonJobEscrowReadAdapter,
@@ -71,6 +72,25 @@ test("receipt verification requires the configured contract, successful status, 
   assert.equal(validateAgonJobEscrowReceipt({ receipt: { status: "reverted", transactionHash: TX, to: ESCROW }, contractAddress: ESCROW, action: "accept", transactionHash: TX, jobId }).code, "receipt_reverted");
 });
 
+test("receipt verification accepts the V2 JobCreated event signature", () => {
+  const result = validateAgonJobEscrowReceipt({
+    receipt: {
+      status: "success",
+      transactionHash: TX,
+      to: ESCROW,
+      logs: [{
+        address: ESCROW,
+        topics: [eventTopic("JobCreated(uint256,bytes32,address,address,uint256,uint256,uint256,bytes32,bytes32,uint256,uint256,uint16,uint64,uint64)")],
+      }],
+    },
+    contractAddress: ESCROW,
+    contractVersion: "v2",
+    action: "create",
+    transactionHash: TX,
+  });
+  assert.deepEqual(result, { ok: true, transactionHash: TX, event: "JobCreated" });
+});
+
 test("disabled read adapter never reaches an RPC client", async () => {
   const adapter = createDisabledAgonJobEscrowReadAdapter();
   assert.equal(adapter.enabled, false);
@@ -133,4 +153,37 @@ test("read adapter can inspect a pre-switch job through the legacy contract addr
     },
   });
   assert.equal((await adapter.inspect("7")).listingVersion, "1");
+});
+
+test("read adapter normalizes V2 fee snapshots and keeps legacy fallback readable", async () => {
+  const v2 = "0x7777777777777777777777777777777777777777";
+  const legacy = "0x8888888888888888888888888888888888888888";
+  const job = [
+    7n, BUYER, PROVIDER, 9n, 100n, 2n, `0x${"33".repeat(32)}`, TERMS, `0x${"44".repeat(32)}`,
+    1000000n, 2500n, 250, 24n, 1_900_000_000n, 0n, 1_899_900_000n, 0n, 2, 0,
+  ];
+  const adapter = createViemAgonJobEscrowReadAdapter({
+    enabled: true,
+    escrowAddress: v2,
+    escrowVersion: "v2",
+    legacyEscrowAddresses: [legacy],
+    expectedServiceRegistry: REGISTRY,
+    expectedAsset: USDC,
+    expectedDisputeResolver: RESOLVER,
+    client: {
+      async getBytecode(input) { return input.address === v2 ? "0x6001" : "0x"; },
+      async readContract(input) {
+        assert.equal(input.abi, AGON_JOB_ESCROW_V2_READ_ABI);
+        if (input.functionName === "usdc") return USDC;
+        if (input.functionName === "serviceRegistry") return REGISTRY;
+        if (input.functionName === "disputeResolver") return RESOLVER;
+        return job;
+      },
+    },
+  });
+  const result = await adapter.inspect("7");
+  assert.equal(result.listingVersion, "2");
+  assert.equal(result.feeBps, 250);
+  assert.equal(result.reviewHours, 24);
+  assert.equal(result.status, 2);
 });

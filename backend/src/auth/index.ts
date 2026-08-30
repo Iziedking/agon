@@ -390,6 +390,12 @@ const agonEscrowProductionReadiness = () => evaluateAgonEscrowProductionReadines
 });
 const agonPlaygroundStore = new PostgresPlaygroundRunStore(pool);
 const agonPlaygroundProviderRunner = createHttpPlaygroundProviderRunner(config.agon.playground.providerEndpoints);
+const configuredJobEscrowV2 = config.agon.deployment?.contracts.AgonJobEscrowV2;
+const configuredJobEscrow = configuredJobEscrowV2 ?? config.agon.deployment?.contracts.AgonJobEscrow;
+const configuredServiceRegistry = config.agon.deployment?.contracts.AgonServiceRegistry;
+const legacyJobEscrow = configuredJobEscrowV2 && config.agon.deployment?.contracts.AgonJobEscrow
+  ? [config.agon.deployment.contracts.AgonJobEscrow]
+  : undefined;
 const agonService = new PostgresAgonMarketService(agonRepository, {
   writer: agonWriter,
   x402ExecutionEnabled: config.agon.x402.executionEnabled,
@@ -403,15 +409,17 @@ const agonService = new PostgresAgonMarketService(agonRepository, {
   escrowPoolContract: config.contracts.PrizeEscrow,
   escrowProductionReadiness: agonEscrowProductionReadiness,
   protocolReadiness: () => inspectAgonProtocolReadiness(config.agon.deployment),
-  jobEscrowReadAdapter: config.agon.jobEscrowReadsEnabled && config.agon.deployment?.contracts.AgonJobEscrow
+  jobEscrowReadAdapter: config.agon.jobEscrowReadsEnabled && configuredJobEscrow && configuredServiceRegistry
     ? createViemAgonJobEscrowReadAdapter({
         enabled: true,
         client: publicClient as unknown as AgonJobEscrowReadClient,
-        escrowAddress: config.agon.deployment.contracts.AgonJobEscrow,
-        expectedServiceRegistry: config.agon.deployment.contracts.AgonServiceRegistry,
+        escrowAddress: configuredJobEscrow,
+        escrowVersion: configuredJobEscrowV2 ? "v2" : "v1",
+        legacyEscrowAddresses: legacyJobEscrow,
+        expectedServiceRegistry: configuredServiceRegistry,
       })
     : undefined,
-  agonJobEscrowAddress: config.agon.deployment?.contracts.AgonJobEscrow,
+  agonJobEscrowAddress: configuredJobEscrow,
   agonArenaAddress: config.agon.deployment?.contracts.AgonArena,
   validationRegistryAddress: config.agon.deployment?.external.ValidationRegistry?.address,
   playgroundStore: agonPlaygroundStore,
