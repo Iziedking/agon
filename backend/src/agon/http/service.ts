@@ -889,7 +889,6 @@ export class PostgresAgonMarketService implements AgonMarketService {
       } satisfies AgonEscrowListing,
       buyer: actor,
       amountBaseUnits: request.amountBaseUnits,
-      feeBps: request.feeBps,
       expiresAt: new Date(request.expiresAt),
     });
     if (!terms.ok) {
@@ -1014,7 +1013,6 @@ export class PostgresAgonMarketService implements AgonMarketService {
       BigInt(intent.terms.listing.listingId),
       intent.termsHash as `0x${string}`,
       intent.terms.amountBaseUnits,
-      intent.terms.feeBps,
       0n,
     ] as const;
     const data = encodeFunctionData({
@@ -1027,7 +1025,6 @@ export class PostgresAgonMarketService implements AgonMarketService {
           { name: "listingId", type: "uint256" },
           { name: "termsHash", type: "bytes32" },
           { name: "amount", type: "uint256" },
-          { name: "feeBps", type: "uint16" },
           { name: "reviewHours", type: "uint64" },
         ],
         outputs: [{ name: "jobId", type: "uint256" }],
@@ -1043,7 +1040,7 @@ export class PostgresAgonMarketService implements AgonMarketService {
         chainId: "5042002",
         to: this.options.agonJobEscrowAddress,
         functionName: "createJob",
-        args: [clientReference, intent.terms.listing.listingId, intent.termsHash as `0x${string}`, intent.terms.amountBaseUnits.toString(), intent.terms.feeBps, 0],
+        args: [clientReference, intent.terms.listing.listingId, intent.termsHash as `0x${string}`, intent.terms.amountBaseUnits.toString(), 0],
         data,
         nextAction: "approve_usdc_then_submit",
       },
@@ -1073,7 +1070,6 @@ export class PostgresAgonMarketService implements AgonMarketService {
       } satisfies AgonEscrowListing,
       buyer: actor,
       amountBaseUnits: request.amountBaseUnits,
-      feeBps: request.feeBps,
       expiresAt,
     });
     if (!terms.ok) {
@@ -1158,7 +1154,6 @@ export class PostgresAgonMarketService implements AgonMarketService {
       listingId: intent.listingId,
       termsHash: intent.termsHash,
       amountBaseUnits: intent.amountBaseUnits,
-      feeBps: intent.feeBps,
       reviewHours: intent.reviewHours,
     });
     return {
@@ -1168,7 +1163,7 @@ export class PostgresAgonMarketService implements AgonMarketService {
         chainId: plan.chainId.toString(),
         to: plan.contractAddress,
         functionName: "createJob",
-        args: plan.args as [`0x${string}`, string, `0x${string}`, string, number, number],
+        args: plan.args as [`0x${string}`, string, `0x${string}`, string, number],
         data: plan.data,
         executionEnabled: false,
         nextAction: "approve_usdc_then_submit",

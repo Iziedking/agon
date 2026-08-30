@@ -31,7 +31,6 @@ contract AgonJobEscrowTest is Test {
     address internal treasury = makeAddr("treasury");
     address internal stranger = makeAddr("stranger");
     uint256 internal constant AMOUNT = 100e6;
-    uint16 internal constant FEE_BPS = 250;
     bytes32 internal constant CLIENT_REFERENCE = keccak256("client-reference-1");
     bytes32 internal constant TERMS_HASH = keccak256("terms-v1");
     bytes32 internal constant DELIVERABLE_HASH = keccak256("deliverable-v1");
@@ -67,7 +66,7 @@ contract AgonJobEscrowTest is Test {
 
     function _create() internal returns (uint256 jobId) {
         vm.prank(buyer);
-        return escrow.createJob(CLIENT_REFERENCE, 1, TERMS_HASH, AMOUNT, FEE_BPS, 0);
+        return escrow.createJob(CLIENT_REFERENCE, 1, TERMS_HASH, AMOUNT, 0);
     }
 
     function test_createPinsListingAndFundsExactly() public {
@@ -83,7 +82,7 @@ contract AgonJobEscrowTest is Test {
         assertEq(job.manifestHash, keccak256("manifest-v1"));
         assertEq(job.termsHash, TERMS_HASH);
         assertEq(job.amount, AMOUNT);
-        assertEq(job.fee, (AMOUNT * FEE_BPS) / 10_000);
+        assertEq(job.fee, (AMOUNT * escrow.PROTOCOL_FEE_BPS()) / escrow.BPS());
         assertEq(uint8(job.status), uint8(AgonJobEscrow.Status.Created));
         assertEq(usdc.balanceOf(buyer), beforeBalance - AMOUNT - job.fee);
         assertEq(escrow.escrowedAmount(jobId), AMOUNT + job.fee);
@@ -101,14 +100,14 @@ contract AgonJobEscrowTest is Test {
         );
         vm.prank(buyer);
         vm.expectRevert(AgonJobEscrow.ListingNotEscrowEligible.selector);
-        escrow.createJob(keccak256("client-reference-2"), 2, TERMS_HASH, AMOUNT, FEE_BPS, 35);
+        escrow.createJob(keccak256("client-reference-2"), 2, TERMS_HASH, AMOUNT, 0);
     }
 
     function test_create_rejectsDuplicateClientReference() public {
         _create();
         vm.prank(buyer);
         vm.expectRevert(AgonJobEscrow.JobReferenceAlreadyUsed.selector);
-        escrow.createJob(CLIENT_REFERENCE, 1, TERMS_HASH, AMOUNT, FEE_BPS, 35);
+        escrow.createJob(CLIENT_REFERENCE, 1, TERMS_HASH, AMOUNT, 0);
     }
 
     function test_acceptSubmitAndBuyerAccept_atomicallyPaysProviderAndTreasury() public {
@@ -208,7 +207,7 @@ contract AgonJobEscrowTest is Test {
 
         vm.prank(buyer);
         vm.expectRevert();
-        escrow.createJob(keccak256("paused-reference"), 1, TERMS_HASH, AMOUNT, FEE_BPS, 35);
+        escrow.createJob(keccak256("paused-reference"), 1, TERMS_HASH, AMOUNT, 0);
 
         vm.warp(block.timestamp + 35 hours + 1);
         vm.prank(buyer);

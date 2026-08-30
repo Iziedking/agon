@@ -31,7 +31,6 @@ test("builds exact disabled AgonJobEscrow calldata for every lifecycle action", 
     listingId: "7",
     termsHash: TERMS,
     amountBaseUnits: "1000000",
-    feeBps: 100,
     reviewHours: 24,
   });
   assert.equal(create.functionName, "createJob");
@@ -50,7 +49,7 @@ test("builds exact disabled AgonJobEscrow calldata for every lifecycle action", 
 test("rejects unsafe job plan inputs", () => {
   assert.throws(() => buildAgonJobEscrowWritePlan({ contractAddress: ESCROW, action: "accept", jobId: "0" }), /positive/);
   assert.throws(() => buildAgonJobEscrowWritePlan({ contractAddress: ESCROW, action: "reject", jobId: "1", reasonHash: `0x${"00".repeat(32)}` }), /non-zero/);
-  assert.throws(() => buildAgonJobEscrowWritePlan({ contractAddress: ESCROW, action: "create", clientReference: TERMS, listingId: "1", termsHash: TERMS, amountBaseUnits: "1", feeBps: 1001, reviewHours: 1 }), /fee bps/);
+  assert.throws(() => buildAgonJobEscrowWritePlan({ contractAddress: ESCROW, action: "create", clientReference: TERMS, listingId: "1", termsHash: TERMS, amountBaseUnits: "1", feeBps: 1001, reviewHours: 1 }), /fixed at 500/);
 });
 
 test("receipt verification requires the configured contract, successful status, and lifecycle event", () => {
@@ -107,4 +106,31 @@ test("read adapter pins bytecode, asset, registry, resolver, and job identity", 
   assert.equal(result.status, 2);
   assert.equal(calls, 5);
   assert.deepEqual(AGON_JOB_ESCROW_ABI.some((item) => item.type === "function" && item.name === "getJob"), true);
+});
+
+test("read adapter can inspect a pre-switch job through the legacy contract address", async () => {
+  const legacy = "0x6666666666666666666666666666666666666666";
+  const job = [
+    7n, BUYER, PROVIDER, 9n, 100n, 1n, `0x${"33".repeat(32)}`, TERMS, `0x${"44".repeat(32)}`,
+    1000000n, 10000n, 24n, 1_900_000_000n, 0n, 1_899_900_000n, 0n, 2, 0,
+  ];
+  const adapter = createViemAgonJobEscrowReadAdapter({
+    enabled: true,
+    escrowAddress: ESCROW,
+    legacyEscrowAddresses: [legacy],
+    expectedServiceRegistry: REGISTRY,
+    expectedAsset: USDC,
+    expectedDisputeResolver: RESOLVER,
+    client: {
+      async getBytecode(input) { return input.address === legacy ? "0x6001" : "0x"; },
+      async readContract(input) {
+        if (input.address !== legacy) throw new Error("current escrow has no job");
+        if (input.functionName === "usdc") return USDC;
+        if (input.functionName === "serviceRegistry") return REGISTRY;
+        if (input.functionName === "disputeResolver") return RESOLVER;
+        return job;
+      },
+    },
+  });
+  assert.equal((await adapter.inspect("7")).listingVersion, "1");
 });

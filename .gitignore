@@ -1,5 +1,15 @@
-# Local-only design doc, not committed
+# Internal plans, decisions, research, and staged handoffs stay local. Public
+# product docs, setup guides, Docker, Caddy, lockfiles, and examples remain
+# tracked so a fresh clone is still operable.
 ARCRUN_PLAN.md
+PLAN.md
+PLAN-V*.md
+DECISIONS.md
+HACKATHON_RESEARCH.md
+docs/internal/
+docs/staging/
+staging/
+.staging/
 
 # Internal ops runbook. Names the admin wallet and where its key is stored, and
 # publishes the VPS backup layout. Never ship this in the public repo.
@@ -106,10 +116,6 @@ docs/brandkit/
 backend/circle-recovery/
 backend/circle-bootstrap.env.snippet
 .firecrawl/
-
-# V2 restructure plan (marketplace pivot). Working document, local only until
-# the direction is settled and the public docs are rewritten to match.
-PLAN-V2.md
 
 # Internal research, evidence, and implementation plans are local-only.
 docs/superpowers/

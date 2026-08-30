@@ -21,7 +21,7 @@
     "test:contracts": "cd contracts && forge test"
   },
   "dependencies": {
-    "@circle-fin/adapter-viem-v2": "^1.11.2",
-    "@circle-fin/app-kit": "^1.7.0"
+    "@circle-fin/adapter-viem-v2": "1.11.2",
+    "@circle-fin/app-kit": "1.7.0"
   }
 }

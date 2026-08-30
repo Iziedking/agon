@@ -53,12 +53,12 @@ function input(overrides: Partial<AgonJobEscrowIntentProjection> = {}): AgonJobE
       listingVersion: "3",
       manifestHash: MANIFEST,
       amountBaseUnits: 1_000_000n,
-      feeBps: 100,
+      feeBps: 500,
       reviewHours: 24,
       expiresAt,
     }),
     amountBaseUnits: 1_000_000n,
-    feeBps: 100,
+    feeBps: 500,
     reviewHours: 24,
     expiresAt,
     clientReference: clientReferenceForJobEscrow("job-escrow-db-001"),
@@ -87,7 +87,7 @@ function chainJob(overrides: Partial<AgonJobEscrowJob> = {}): AgonJobEscrowJob {
     termsHash: input().termsHash,
     deliverableHash: `0x${"00".repeat(32)}`,
     amount: "1000000",
-    fee: "10000",
+    fee: "50000",
     reviewHours: 24,
     acceptanceDeadline: new Date("2026-08-22T13:00:00.000Z"),
     reviewDeadline: null,
@@ -114,7 +114,7 @@ test("rejects an idempotency retry whose pinned economics differ", async () => {
   const base = input({ intentId: "00000000-0000-4000-8000-000000000003", idempotencyKey: "job-escrow-db-003" });
   await repository.prepareAgonJobEscrowIntent(base);
   await assert.rejects(
-    () => repository.prepareAgonJobEscrowIntent({ ...base, intentId: "00000000-0000-4000-8000-000000000004", feeBps: 200, termsHash: `0x${"44".repeat(32)}` }),
+    () => repository.prepareAgonJobEscrowIntent({ ...base, intentId: "00000000-0000-4000-8000-000000000004", amountBaseUnits: 2_000_000n, termsHash: `0x${"44".repeat(32)}` }),
     /different terms/i,
   );
 });

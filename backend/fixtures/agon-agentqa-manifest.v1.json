@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "name": "Agent QA Runtime Memory",
+  "description": "Private, portable memory for an agent: store a note, recall context, or retire a folder, encrypted under a passphrase only the caller holds.",
+  "category": "analysis",
+  "endpoint": "https://agentsqa.xyz/x402/agon-memory",
+  "logoUrl": "https://agentsqa.xyz/agon/agentqa.png",
+  "tags": ["agent-memory", "runtime-memory", "context-memory", "encrypted-memory", "mcp", "walrus", "agent-infrastructure", "recall"],
+  "pricing": { "rail": "x402", "amountUSDC": "0.01" },
+  "execution": { "network": "eip155:5042002", "challengeEndpoint": "https://agentsqa.xyz/agon/v1/challenge", "externalWrites": false }
+}

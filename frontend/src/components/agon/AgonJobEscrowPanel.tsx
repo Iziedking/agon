@@ -67,7 +67,6 @@ export function AgonJobEscrowPanel({ listing, defaultAmountUSDC, eligible }: Pro
         listingReference: listing.id,
         idempotencyKey,
         amountBaseUnits: amountBaseUnits.toString(),
-        feeBps: 0,
         reviewHours: reviewHoursNumber,
         expiresAt: new Date(Date.now() + reviewHoursNumber * 60 * 60 * 1000).toISOString(),
       });

@@ -23,7 +23,6 @@ export function ProtocolActions() {
   const [jobHash, setJobHash] = useState("");
   const [listingId, setListingId] = useState("");
   const [amount, setAmount] = useState("");
-  const [feeBps, setFeeBps] = useState("0");
   const [reviewHours, setReviewHours] = useState("24");
   const [termsHash, setTermsHash] = useState("");
 
@@ -47,7 +46,6 @@ export function ProtocolActions() {
 
   const confirmed = confirmation === CONFIRMATION;
   const amountUnits = uint(amount);
-  const feeUnits = uint(feeBps);
   const reviewUnits = uint(reviewHours);
   const principalUnits = uint(principal);
   const poolFeeUnits = uint(poolFeeBps);
@@ -73,7 +71,7 @@ export function ProtocolActions() {
   }
 
   const parsedTerms = bytes32(termsHash) ?? keccak256(stringToHex("Agon admin job terms"));
-  const clientReference = keccak256(stringToHex(`agon-admin:${listingId}:${parsedTerms}:${amount}:${feeBps}:${reviewHours}`));
+  const clientReference = keccak256(stringToHex(`agon-admin:${listingId}:${parsedTerms}:${amount}:${reviewHours}`));
   const parsedPoolKey = bytes32(poolKey);
   const parsedArenaHash = bytes32(arenaHash);
   const deadlineSeconds = claimDeadline ? BigInt(Math.floor(new Date(claimDeadline).getTime() / 1000)) : 0n;
@@ -94,9 +92,9 @@ export function ProtocolActions() {
         <ActionBlock title="Job escrow creation">
           <Field label="LISTING ID" value={listingId} setValue={setListingId} />
           <Field label="TERMS HASH" value={termsHash} setValue={setTermsHash} placeholder="bytes32, or leave blank for admin terms" />
-          <div className="grid grid-cols-3 gap-2"><Field label="AMOUNT" value={amount} setValue={setAmount} /><Field label="FEE BPS" value={feeBps} setValue={setFeeBps} /><Field label="REVIEW HOURS" value={reviewHours} setValue={setReviewHours} /></div>
+          <div className="grid gap-2 sm:grid-cols-3"><Field label="AMOUNT" value={amount} setValue={setAmount} /><div className="border border-[color:var(--hairline-strong)] p-3 font-mono text-[10px] text-ink-2"><span className="block text-[9px] uppercase tracking-[.12em] text-ink-3">PROTOCOL FEE</span><span className="mt-2 block">5% fixed</span></div><Field label="REVIEW HOURS" value={reviewHours} setValue={setReviewHours} /></div>
           <button type="button" disabled={isPending || !confirmed || amountUnits === 0n} className="action" onClick={() => void submit(() => writeContractAsync({ address: USDC, abi: agonUsdcAbi, functionName: "approve", args: [AGON_CONTRACTS.JobEscrow, amountUnits] }), "USDC escrow approval")}>1. APPROVE EXACT PRINCIPAL</button>
-          <button type="button" disabled={isPending || !confirmed || !positive(listingId) || amountUnits === 0n || feeUnits > 1000n || reviewUnits < 1n || reviewUnits > 720n} className="action" onClick={() => void submit(() => writeContractAsync({ address: AGON_CONTRACTS.JobEscrow, abi: agonJobEscrowAbi, functionName: "createJob", args: [clientReference, BigInt(listingId), parsedTerms, amountUnits, Number(feeUnits), reviewUnits] }), "Escrow job creation")}>2. CREATE FUNDED JOB</button>
+          <button type="button" disabled={isPending || !confirmed || !positive(listingId) || amountUnits === 0n || reviewUnits < 1n || reviewUnits > 720n} className="action" onClick={() => void submit(() => writeContractAsync({ address: AGON_CONTRACTS.JobEscrow, abi: agonJobEscrowAbi, functionName: "createJob", args: [clientReference, BigInt(listingId), parsedTerms, amountUnits, reviewUnits] }), "Escrow job creation")}>2. CREATE FUNDED JOB</button>
         </ActionBlock>
 
         <ActionBlock title="Job escrow lifecycle">

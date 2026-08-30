@@ -59,22 +59,25 @@ export function categoryBySlug(slug: string): AgonCategory | null {
 export function presentListing(listing: AgonListing): ListingPresentation {
   const category = categoryById(listing.category);
   const body = record(listing.manifest.body);
+  const service = record(body?.service) ?? body;
+  const invocation = record(body?.invocation);
   const pricing = record(body?.pricing);
   const execution = record(body?.execution);
-  const tags = Array.isArray(body?.tags)
-    ? [...new Set(body.tags.filter((tag): tag is string => typeof tag === "string" && Boolean(tag.trim())).map((tag) => tag.trim()))]
+  const tagsValue = service?.tags;
+  const tags = Array.isArray(tagsValue)
+    ? [...new Set(tagsValue.filter((tag): tag is string => typeof tag === "string" && Boolean(tag.trim())).map((tag) => tag.trim()))]
     : [];
 
   return {
     // A category describes what a service does; it is not the service's name.
     // Keep loading and integrity-failure states identifiable without presenting
     // every provider as the same category-named service.
-    name: text(body?.name) ?? `Agent #${listing.agentId} service`,
-    description: text(body?.description) ?? "Service details are loading. Open the service to learn more.",
-    logoUrl: text(body?.logoUrl),
+    name: text(service?.name) ?? `Agent #${listing.agentId} service`,
+    description: text(service?.description) ?? "Service details are loading. Open the service to learn more.",
+    logoUrl: text(service?.logoUrl),
     category,
     tags,
-    endpoint: text(body?.endpoint) ?? text(execution?.endpoint),
+    endpoint: text(invocation?.endpoint) ?? text(body?.endpoint) ?? text(execution?.endpoint),
     amountUSDC: text(pricing?.amountUSDC) ?? text(pricing?.amount),
     hasIndexedManifest: body !== null,
   };

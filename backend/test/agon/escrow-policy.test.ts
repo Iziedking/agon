@@ -66,13 +66,13 @@ test("rejects malformed amounts, fees, addresses, and expired terms", () => {
   });
   assert.deepEqual(evaluateAgonEscrowTerms({ listing: listing(), buyer: BUYER, amountBaseUnits: 1n, feeBps: 1001, now: NOW, expiresAt: EXPIRY }), {
     ok: false,
-    error: { code: "invalid_escrow_terms", message: "escrow fee must be between 0 and 1000 basis points" },
+    error: { code: "invalid_escrow_terms", message: "escrow fee is fixed at 500 basis points" },
   });
-  assert.deepEqual(evaluateAgonEscrowTerms({ listing: listing(), buyer: BUYER, amountBaseUnits: 1n, feeBps: 0, now: NOW, expiresAt: NOW }), {
+  assert.deepEqual(evaluateAgonEscrowTerms({ listing: listing(), buyer: BUYER, amountBaseUnits: 1n, feeBps: 500, now: NOW, expiresAt: NOW }), {
     ok: false,
     error: { code: "invalid_escrow_terms", message: "escrow expiry must be in the future" },
   });
-  assert.deepEqual(evaluateAgonEscrowTerms({ listing: listing(), buyer: "0x12", amountBaseUnits: 1n, feeBps: 0, now: NOW, expiresAt: EXPIRY }), {
+  assert.deepEqual(evaluateAgonEscrowTerms({ listing: listing(), buyer: "0x12", amountBaseUnits: 1n, feeBps: 500, now: NOW, expiresAt: EXPIRY }), {
     ok: false,
     error: { code: "invalid_escrow_terms", message: "escrow addresses are invalid" },
   });
@@ -87,7 +87,7 @@ test("prepares escrow idempotently and binds the exact terms", () => {
   const replay = ledger.prepare({ intentId: "intent-001", idempotencyKey: "escrow-001", terms: terms(), now: NOW });
   assert.equal(replay.ok, true);
   if (replay.ok) assert.equal(replay.value.decision, "idempotent_replay");
-  assert.deepEqual(ledger.prepare({ intentId: "intent-002", idempotencyKey: "escrow-001", terms: { ...terms(), feeBps: 0 }, now: NOW }), {
+  assert.deepEqual(ledger.prepare({ intentId: "intent-002", idempotencyKey: "escrow-001", terms: { ...terms(), amountBaseUnits: 2_000_000n }, now: NOW }), {
     ok: false,
     error: { code: "idempotency_conflict", message: "escrow idempotency key is bound to different terms" },
   });

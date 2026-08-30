@@ -1,7 +1,7 @@
 import { keccak256, stringToHex } from "viem";
 import { publicClient } from "../chain/arc.js";
 import { config } from "../config/index.js";
-import { canonicalManifestHash, validateManifest } from "./core/manifest.js";
+import { canonicalManifestHash, normalizeManifestV2 } from "./core/manifest.js";
 
 const listingAbi = [{
   type: "function", name: "getListing", stateMutability: "view", inputs: [{ name: "id", type: "uint256" }],
@@ -37,12 +37,15 @@ export async function verifyAgonListing(listingId: bigint): Promise<AgonVerifica
     const manifestResponse = await httpCheck(listing[4]);
     let manifest: unknown = null;
     try { manifest = JSON.parse(manifestResponse.body); } catch { /* recorded below */ }
-    const shape = validateManifest(manifest);
+    // Discovery accepts legacy manifests, but certification is deliberately
+    // restricted to the typed v2 contract so the arena can execute a bounded
+    // request against a declared response and side-effect policy.
+    const shape = normalizeManifestV2(manifest);
     checks.manifest_https = { passed: listing[4].startsWith("https://") && manifestResponse.status === 200, detail: `manifest HTTP ${manifestResponse.status}` };
     checks.manifest_schema = { passed: shape.ok, detail: shape.ok ? "schema accepted" : shape.message };
     const hash = manifest ? canonicalManifestHash(manifest) : "";
     checks.manifest_hash = { passed: hash.toLowerCase() === listing[3].toLowerCase(), detail: `computed ${hash || "unavailable"}; onchain ${listing[3]}` };
-    const endpoint = manifest && typeof manifest === "object" && typeof (manifest as Record<string, unknown>).endpoint === "string" ? String((manifest as Record<string, unknown>).endpoint) : "";
+    const endpoint = shape.ok ? shape.value.invocation.endpoint : "";
     const endpointResponse = endpoint ? await httpCheck(endpoint) : { status: 0, body: "" };
     checks.endpoint_https = { passed: endpoint.startsWith("https://"), detail: endpoint || "missing endpoint" };
     checks.x402_payment = { passed: endpointResponse.status === 402, detail: `endpoint HTTP ${endpointResponse.status}` };

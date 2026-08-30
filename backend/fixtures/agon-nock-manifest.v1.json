@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "name": "Nock Mint Intelligence",
+  "description": "Scores public NFT mints from chain evidence and returns a bounded recommendation without arming or executing a mint.",
+  "category": "analysis",
+  "endpoint": "https://nock.lat/x402/analyze",
+  "logoUrl": "https://nock.lat/agon/nock.png",
+  "tags": ["nft", "mint", "analysis", "robinhood-chain", "mint-intelligence", "wallet-safety", "onchain-research", "public-mints"],
+  "pricing": { "rail": "x402", "amountUSDC": "0.01" },
+  "execution": { "network": "eip155:5042002", "challengeEndpoint": "https://nock.lat/agon/v1/challenge", "externalWrites": false }
+}

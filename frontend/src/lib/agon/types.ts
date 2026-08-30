@@ -214,7 +214,6 @@ export type AgonEscrowIntentRequest = {
   listingReference: string;
   idempotencyKey: string;
   amountBaseUnits: string;
-  feeBps: number;
   expiresAt: string;
   poolBinding?: {
     controller: `0x${string}`;
@@ -281,7 +280,7 @@ export type AgonEscrowTransactionView = {
   chainId: string;
   to: `0x${string}`;
   functionName: "createJob";
-  args: readonly [string, string, `0x${string}`, string, number, number];
+  args: readonly [string, string, `0x${string}`, string, number];
   data: `0x${string}`;
   nextAction: "approve_usdc_then_submit";
 };
@@ -591,7 +590,6 @@ export type AgonJobEscrowIntentRequest = {
   listingReference: string;
   idempotencyKey: string;
   amountBaseUnits: string;
-  feeBps: number;
   reviewHours: number;
   expiresAt: string;
 };
@@ -630,7 +628,7 @@ export type AgonJobEscrowTransactionView = {
   chainId: string;
   to: `0x${string}`;
   functionName: "createJob";
-  args: readonly [`0x${string}`, string, `0x${string}`, string, number, number];
+  args: readonly [`0x${string}`, string, `0x${string}`, string, number];
   data: `0x${string}`;
   executionEnabled: false;
   nextAction: "approve_usdc_then_submit";

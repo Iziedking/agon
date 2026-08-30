@@ -14,7 +14,7 @@ export const agonServiceRegistryAbi = parseAbi([
 
 export const agonJobEscrowAbi = parseAbi([
   "event JobCreated(uint256 indexed jobId,bytes32 indexed clientReference,address indexed buyer,address provider,uint256 listingId,uint256 agentId,uint256 listingVersion,bytes32 manifestHash,bytes32 termsHash,uint256 amount,uint256 fee,uint64 reviewHours,uint64 acceptanceDeadline)",
-  "function createJob(bytes32 clientReference, uint256 listingId, bytes32 termsHash, uint256 amount, uint16 feeBps, uint64 reviewHours) returns (uint256 jobId)",
+  "function createJob(bytes32 clientReference, uint256 listingId, bytes32 termsHash, uint256 amount, uint64 reviewHours) returns (uint256 jobId)",
   "function acceptJob(uint256 jobId)",
   "function submitJob(uint256 jobId, bytes32 deliverableHash)",
   "function acceptSubmission(uint256 jobId)",

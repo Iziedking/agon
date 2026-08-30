@@ -1,4 +1,17 @@
 import { keccak256, stringToHex } from "viem";
+import {
+  AGON_SERVICE_CHAIN_ID,
+  AGON_SERVICE_NETWORK,
+  AGON_SERVICE_PROTOCOL,
+  AGON_SERVICE_USDC,
+  AGON_SERVICE_MANIFEST_V2_JSON_SCHEMA,
+  normalizeManifestV2,
+  type AgonJsonSchema,
+  type AgonServiceManifestV2,
+} from "../invocation/manifest-v2.ts";
+
+export { AGON_SERVICE_CHAIN_ID, AGON_SERVICE_NETWORK, AGON_SERVICE_PROTOCOL, AGON_SERVICE_USDC, AGON_SERVICE_MANIFEST_V2_JSON_SCHEMA, normalizeManifestV2 } from "../invocation/manifest-v2.ts";
+export type { AgonJsonSchema, AgonServiceManifestV2 } from "../invocation/manifest-v2.ts";
 
 export function canonicalManifestHash(value: unknown): `0x${string}` {
   return keccak256(stringToHex(canonicalizeManifest(value)));
@@ -40,9 +53,19 @@ function safePublicHttps(value: string): boolean {
   }
 }
 
+export function validateManifestV2(input: unknown): ManifestValidation {
+  const result = normalizeManifestV2(input);
+  return result.ok ? { ok: true } : result;
+}
+
+export function isManifestCertificationEligible(input: unknown): boolean {
+  return validateManifestV2(input).ok;
+}
+
 export function validateManifest(input: unknown): ManifestValidation {
   if (!input || typeof input !== "object" || Array.isArray(input)) return { ok: false, code: "invalid_shape", message: "manifest must be an object" };
   const manifest = input as Record<string, unknown>;
+  if (manifest.protocol === AGON_SERVICE_PROTOCOL) return validateManifestV2(manifest);
   if (typeof manifest.endpoint !== "string" || !safePublicHttps(manifest.endpoint)) return { ok: false, code: "invalid_endpoint", message: "endpoint must use public HTTPS" };
   if (manifest.logoUrl !== undefined && (typeof manifest.logoUrl !== "string" || !safePublicHttps(manifest.logoUrl))) return { ok: false, code: "invalid_logo", message: "logoUrl must use public HTTPS" };
   const tags = manifest.tags;

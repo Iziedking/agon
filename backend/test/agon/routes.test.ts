@@ -528,7 +528,7 @@ class FakeAgonService implements AgonMarketService {
         beneficiary: ADDRESS,
         listing: { serviceRegistry: REGISTRY, listingId: "1", agentId: "42", version: "1", manifestHash: MANIFEST_HASH },
         amountBaseUnits: request.amountBaseUnits,
-        feeBps: request.feeBps,
+        feeBps: 500,
         expiresAt: request.expiresAt,
         state: "prepared",
         providerReference: null,
@@ -783,7 +783,7 @@ test("prepares and reads an escrow intent without enabling execution", async () 
   const prepared = await app.request("/agon/escrow/intents", {
     method: "POST",
     headers: { "content-type": "application/json", "x-test-address": ADDRESS },
-    body: JSON.stringify({ listingReference: listing.id, idempotencyKey: "escrow-route-001", amountBaseUnits: "1000000", feeBps: 500, expiresAt: "2026-08-23T12:00:00.000Z" }),
+    body: JSON.stringify({ listingReference: listing.id, idempotencyKey: "escrow-route-001", amountBaseUnits: "1000000", expiresAt: "2026-08-23T12:00:00.000Z" }),
   });
   assert.equal(prepared.status, 201);
   const body = (await prepared.json()) as AgonEscrowIntentView;

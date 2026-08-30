@@ -22,7 +22,7 @@ const intent = {
   manifestHash,
   termsHash,
   amountBaseUnits: 1_000_000n,
-  feeBps: 100,
+  feeBps: 500,
   reviewHours: 24,
 };
 
@@ -31,7 +31,7 @@ const job = {
   ...intent,
   deliverableHash: `0x${"cc".repeat(32)}` as `0x${string}`,
   amount: "1000000",
-  fee: "10000",
+  fee: "50000",
   acceptanceDeadline: new Date(),
   reviewDeadline: null,
   createdAt: new Date(),
@@ -76,7 +76,7 @@ test("terms and client references are deterministic", () => {
     listingVersion: "3",
     manifestHash,
     amountBaseUnits: 1_000_000n,
-    feeBps: 100,
+    feeBps: 500,
     reviewHours: 24,
     expiresAt: new Date("2030-01-01T00:00:00.000Z"),
   };

@@ -206,14 +206,34 @@ test("builds the browser manifest from user-facing service fields", () => {
 
   assert.deepEqual(validateServiceDraft(draft), []);
   assert.deepEqual(buildServiceManifest(draft), {
-    name: "Protocol security review",
-    version: 1,
-    description: "Reviews smart contracts and returns prioritized findings.",
-    logoUrl: "https://example.com/logo.png",
-    category: "verification",
-    endpoint: "https://example.com/review",
-    tags: ["security", "solidity"],
-    pricing: { rail: "x402", amountUSDC: "12.50" },
+    protocol: "agon-service/2",
+    identity: {
+      chainId: 5042002,
+      agentId: "42",
+      serviceKey: "0x487faa5ddc622ad838a0b83f4e84da16e0f4f94b02c248d03944a5b30e83e7ba",
+    },
+    service: {
+      name: "Protocol security review",
+      version: "1",
+      description: "Reviews smart contracts and returns prioritized findings.",
+      logoUrl: "https://example.com/logo.png",
+      category: "verification",
+      tags: ["security", "solidity"],
+      capabilities: ["verification", "security", "solidity"],
+    },
+    invocation: {
+      endpoint: "https://example.com/review",
+      method: "POST",
+      requestSchema: { type: "object", properties: {}, required: [], additionalProperties: true },
+      responseSchema: { type: "object", properties: {}, required: [], additionalProperties: true },
+      timeoutMs: 15000,
+      maxResponseBytes: 65536,
+      idempotency: "supported",
+      sideEffects: "none",
+      privacy: { retention: "none", sendsToThirdParties: false, description: "The provider does not retain request or response data beyond delivery." },
+    },
+    pricing: { rail: "x402", amountUSDC: "12.50", network: "eip155:5042002", asset: "0x3600000000000000000000000000000000000000" },
+    certification: { adapter: "agon-http", adapterVersion: "1" },
   });
   assert.deepEqual(
     validateServiceDraft({ ...draft, categoryId: "47", endpoint: "http://localhost:3000" }),

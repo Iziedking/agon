@@ -3,6 +3,7 @@ import { canonicalizeManifest } from "./core/manifest.ts";
 
 export const AGON_ESCROW_NETWORK = "eip155:5042002" as const;
 export const AGON_ESCROW_USDC = "0x3600000000000000000000000000000000000000" as const;
+export const AGON_ESCROW_PROTOCOL_FEE_BPS = 500;
 export const AGON_ESCROW_MAX_FEE_BPS = 1_000;
 export const AGON_BPS = 10_000n;
 
@@ -115,9 +116,7 @@ function validTerms(terms: AgonEscrowTerms, now: Date): boolean {
     && POSITIVE_INTEGER.test(terms.listing.version)
     && /^0x[a-fA-F0-9]{64}$/.test(terms.listing.manifestHash)
     && positiveAmount(terms.amountBaseUnits) === terms.amountBaseUnits
-    && Number.isInteger(terms.feeBps)
-    && terms.feeBps >= 0
-    && terms.feeBps <= AGON_ESCROW_MAX_FEE_BPS
+    && terms.feeBps === AGON_ESCROW_PROTOCOL_FEE_BPS
     && validDate(terms.expiresAt)
     && terms.expiresAt > now;
 }
@@ -143,7 +142,8 @@ export function evaluateAgonEscrowTerms(input: {
   listing: AgonEscrowListing;
   buyer: string;
   amountBaseUnits: string | bigint;
-  feeBps: number;
+  /** @deprecated The protocol fee is fixed; callers must not choose it. */
+  feeBps?: number;
   now?: Date;
   expiresAt: Date;
 }): AgonEscrowResult<AgonEscrowTerms> {
@@ -160,8 +160,8 @@ export function evaluateAgonEscrowTerms(input: {
   }
   const amount = positiveAmount(input.amountBaseUnits);
   if (amount === null) return error("invalid_escrow_terms", "escrow amount must be a positive integer base-unit value");
-  if (!Number.isInteger(input.feeBps) || input.feeBps < 0 || input.feeBps > AGON_ESCROW_MAX_FEE_BPS) {
-    return error("invalid_escrow_terms", `escrow fee must be between 0 and ${AGON_ESCROW_MAX_FEE_BPS} basis points`);
+  if (input.feeBps !== undefined && input.feeBps !== AGON_ESCROW_PROTOCOL_FEE_BPS) {
+    return error("invalid_escrow_terms", `escrow fee is fixed at ${AGON_ESCROW_PROTOCOL_FEE_BPS} basis points`);
   }
   const now = input.now ?? new Date();
   if (!validDate(now) || !validDate(input.expiresAt) || input.expiresAt <= now) return error("invalid_escrow_terms", "escrow expiry must be in the future");
@@ -180,7 +180,7 @@ export function evaluateAgonEscrowTerms(input: {
         manifestHash: input.listing.manifestHash.toLowerCase() as `0x${string}`,
       },
       amountBaseUnits: amount,
-      feeBps: input.feeBps,
+      feeBps: AGON_ESCROW_PROTOCOL_FEE_BPS,
       expiresAt: new Date(input.expiresAt),
     },
   };

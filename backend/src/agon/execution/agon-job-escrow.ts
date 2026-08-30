@@ -1,5 +1,5 @@
 import { getAddress, keccak256, stringToHex, toHex, encodeFunctionData } from "viem";
-import { AGON_ESCROW_NETWORK, AGON_ESCROW_USDC } from "../escrow-policy.ts";
+import { AGON_ESCROW_NETWORK, AGON_ESCROW_PROTOCOL_FEE_BPS, AGON_ESCROW_USDC } from "../escrow-policy.ts";
 
 const ADDRESS = /^0x[0-9a-f]{40}$/i;
 const HASH = /^0x[0-9a-f]{64}$/i;
@@ -13,7 +13,7 @@ export const AGON_JOB_ESCROW_ABI = [
   { type: "function", name: "createJob", stateMutability: "nonpayable", inputs: [
     { name: "clientReference", type: "bytes32" }, { name: "listingId", type: "uint256" },
     { name: "termsHash", type: "bytes32" }, { name: "amount", type: "uint256" },
-    { name: "feeBps", type: "uint16" }, { name: "reviewHours", type: "uint64" },
+    { name: "reviewHours", type: "uint64" },
   ], outputs: [{ name: "jobId", type: "uint256" }] },
   { type: "function", name: "acceptJob", stateMutability: "nonpayable", inputs: [{ name: "jobId", type: "uint256" }], outputs: [] },
   { type: "function", name: "submitJob", stateMutability: "nonpayable", inputs: [{ name: "jobId", type: "uint256" }, { name: "deliverableHash", type: "bytes32" }], outputs: [] },
@@ -134,6 +134,7 @@ export function buildAgonJobEscrowWritePlan(input: {
   listingId?: string | bigint;
   termsHash?: string;
   amountBaseUnits?: string | bigint;
+  /** @deprecated The protocol fee is fixed and is not encoded in createJob. */
   feeBps?: number;
   reviewHours?: number;
   jobId?: string | bigint;
@@ -147,9 +148,9 @@ export function buildAgonJobEscrowWritePlan(input: {
     const termsHash = hash(input.termsHash, "terms hash");
     const amount = integer(input.amountBaseUnits ?? "", "amount");
     if (amount === 0n) throw new Error("amount must be positive");
-    if (!Number.isInteger(input.feeBps) || (input.feeBps ?? -1) < 0 || (input.feeBps ?? 10001) > 1000) throw new Error("fee bps must be between 0 and 1000");
+    if (input.feeBps !== undefined && input.feeBps !== AGON_ESCROW_PROTOCOL_FEE_BPS) throw new Error(`fee bps is fixed at ${AGON_ESCROW_PROTOCOL_FEE_BPS}`);
     if (!Number.isInteger(input.reviewHours) || (input.reviewHours ?? 0) < 0 || (input.reviewHours ?? 721) > 720) throw new Error("review hours must be between 0 and 720");
-    return plan({ contractAddress: input.contractAddress, action: input.action, functionName: "createJob", args: [clientReference, listingId, termsHash, amount, input.feeBps, input.reviewHours] });
+    return plan({ contractAddress: input.contractAddress, action: input.action, functionName: "createJob", args: [clientReference, listingId, termsHash, amount, input.reviewHours] });
   }
 
   const id = jobId(input.jobId ?? "");
@@ -248,11 +249,13 @@ export function createViemAgonJobEscrowReadAdapter(options: {
   enabled: boolean;
   client?: AgonJobEscrowReadClient;
   escrowAddress: string;
+  legacyEscrowAddresses?: readonly string[];
   expectedServiceRegistry: string;
   expectedAsset?: string;
   expectedDisputeResolver?: string;
 }): AgonJobEscrowReadAdapter {
   const escrowAddress = address(options.escrowAddress, "configured AgonJobEscrow contract address");
+  const escrowAddresses = [...new Set([escrowAddress, ...(options.legacyEscrowAddresses ?? []).map((value) => address(value, "configured legacy AgonJobEscrow contract address"))])];
   const serviceRegistry = address(options.expectedServiceRegistry, "configured AgonServiceRegistry address");
   const expectedAsset = address(options.expectedAsset ?? AGON_ESCROW_USDC, "configured AgonJobEscrow USDC asset");
   const expectedResolver = options.expectedDisputeResolver ? address(options.expectedDisputeResolver, "configured dispute resolver") : null;
@@ -262,21 +265,29 @@ export function createViemAgonJobEscrowReadAdapter(options: {
     async inspect(input): Promise<AgonJobEscrowJob> {
       if (!enabled || !options.client) throw new Error("AgonJobEscrow inspection is disabled by policy");
       const id = jobId(input);
-      const [code, asset, registry, resolver, rawJob] = await Promise.all([
-        options.client.getBytecode({ address: escrowAddress }),
-        options.client.readContract({ address: escrowAddress, abi: AGON_JOB_ESCROW_ABI, functionName: "usdc" }),
-        options.client.readContract({ address: escrowAddress, abi: AGON_JOB_ESCROW_ABI, functionName: "serviceRegistry" }),
-        options.client.readContract({ address: escrowAddress, abi: AGON_JOB_ESCROW_ABI, functionName: "disputeResolver" }),
-        options.client.readContract({ address: escrowAddress, abi: AGON_JOB_ESCROW_ABI, functionName: "getJob", args: [id] }),
-      ]);
-      if (typeof code !== "string" || !/^0x[0-9a-f]+$/i.test(code) || code.length <= 2) throw new Error("AgonJobEscrow contract has no deployed bytecode");
-      if (address(asset, "AgonJobEscrow USDC asset") !== expectedAsset) throw new Error("AgonJobEscrow returned a different USDC asset");
-      if (address(registry, "AgonJobEscrow service registry") !== serviceRegistry) throw new Error("AgonJobEscrow returned a different service registry");
-      const normalizedResolver = address(resolver, "AgonJobEscrow dispute resolver");
-      if (expectedResolver && normalizedResolver !== expectedResolver) throw new Error("AgonJobEscrow returned a different dispute resolver");
-      const job = normalizeJob(rawJob);
-      if (job.jobId !== id.toString()) throw new Error("AgonJobEscrow returned a different job");
-      return job;
+      let lastError: unknown = new Error("AgonJobEscrow job was not found in configured contracts");
+      for (const candidate of escrowAddresses) {
+        try {
+          const [code, asset, registry, resolver, rawJob] = await Promise.all([
+            options.client.getBytecode({ address: candidate }),
+            options.client.readContract({ address: candidate, abi: AGON_JOB_ESCROW_ABI, functionName: "usdc" }),
+            options.client.readContract({ address: candidate, abi: AGON_JOB_ESCROW_ABI, functionName: "serviceRegistry" }),
+            options.client.readContract({ address: candidate, abi: AGON_JOB_ESCROW_ABI, functionName: "disputeResolver" }),
+            options.client.readContract({ address: candidate, abi: AGON_JOB_ESCROW_ABI, functionName: "getJob", args: [id] }),
+          ]);
+          if (typeof code !== "string" || !/^0x[0-9a-f]+$/i.test(code) || code.length <= 2) throw new Error("AgonJobEscrow contract has no deployed bytecode");
+          if (address(asset, "AgonJobEscrow USDC asset") !== expectedAsset) throw new Error("AgonJobEscrow returned a different USDC asset");
+          if (address(registry, "AgonJobEscrow service registry") !== serviceRegistry) throw new Error("AgonJobEscrow returned a different service registry");
+          const normalizedResolver = address(resolver, "AgonJobEscrow dispute resolver");
+          if (expectedResolver && normalizedResolver !== expectedResolver) throw new Error("AgonJobEscrow returned a different dispute resolver");
+          const job = normalizeJob(rawJob);
+          if (job.jobId !== id.toString()) throw new Error("AgonJobEscrow returned a different job");
+          return job;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+      throw lastError;
     },
   };
 }

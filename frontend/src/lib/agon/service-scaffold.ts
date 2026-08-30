@@ -1,5 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { keccak256, stringToHex } from "viem";
 
 export type ServiceScaffoldInput = {
   serviceKey: string;
@@ -42,19 +43,32 @@ export function scaffoldServiceProject(input: ServiceScaffoldInput): ServiceScaf
   if (!name || name.length > 80) throw new Error("name must be 1-80 characters");
   const description = text(input.description, `A ${category} service delivered by an Agon provider.`);
   if (description.length > 500) throw new Error("description must be 1-500 characters");
+  const serviceKeyHash = keccak256(stringToHex(serviceKey));
 
   const config = {
-    schemaVersion: 1,
-    chainId: "5042002",
-    agentId: "REPLACE_WITH_ERC8004_AGENT_ID",
-    serviceKey,
-    manifestUri: "https://REPLACE_WITH_PUBLIC_HOST/.well-known/agon/manifest.json",
-    name,
-    description,
-    category,
-    endpoint: "https://REPLACE_WITH_PUBLIC_HOST/execute",
-    tags: [category, "agon", "x402"],
-    amountUSDC: "0.001000",
+    protocol: "agon-service/2",
+    identity: { chainId: 5042002, agentId: "REPLACE_WITH_ERC8004_AGENT_ID", serviceKey: serviceKeyHash },
+    service: {
+      name,
+      version: "1",
+      description,
+      category,
+      tags: [category, "agon", "x402"],
+      capabilities: [category, "x402"],
+    },
+    invocation: {
+      endpoint: "https://REPLACE_WITH_PUBLIC_HOST/execute",
+      method: "POST",
+      requestSchema: { type: "object", properties: {}, required: [], additionalProperties: true },
+      responseSchema: { type: "object", properties: {}, required: [], additionalProperties: true },
+      timeoutMs: 15000,
+      maxResponseBytes: 65536,
+      idempotency: "supported",
+      sideEffects: "none",
+      privacy: { retention: "none", sendsToThirdParties: false, description: "The provider does not retain request or response data beyond delivery." },
+    },
+    pricing: { rail: "x402", amountUSDC: "0.001000", network: "eip155:5042002", asset: "0x3600000000000000000000000000000000000000" },
+    certification: { adapter: "agon-http", adapterVersion: "1" },
   };
 
   const runtime = `import { createServer } from "node:http";

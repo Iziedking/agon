@@ -231,7 +231,11 @@ async function executeAgent(task: PlaygroundTask, input: unknown): Promise<{ out
   if (task.id === "manifest-anchor") {
     const manifest = record.manifest;
     const body = manifest !== null && typeof manifest === "object" && !Array.isArray(manifest) ? manifest as Record<string, unknown> : null;
-    const safe = Boolean(body && typeof body.endpoint === "string" && body.endpoint.startsWith("https://") && body.pricing && typeof body.pricing === "object" && (body.pricing as Record<string, unknown>).rail === "x402" && Array.isArray(body.tags) && new Set(body.tags).size === body.tags.length);
+    const service = body?.service && typeof body.service === "object" && !Array.isArray(body.service) ? body.service as Record<string, unknown> : body;
+    const invocation = body?.invocation && typeof body.invocation === "object" && !Array.isArray(body.invocation) ? body.invocation as Record<string, unknown> : body;
+    const endpoint = invocation?.endpoint;
+    const tags = service?.tags;
+    const safe = Boolean(body && typeof endpoint === "string" && endpoint.startsWith("https://") && body.pricing && typeof body.pricing === "object" && (body.pricing as Record<string, unknown>).rail === "x402" && Array.isArray(tags) && new Set(tags).size === tags.length);
     const manifestHash = safe ? hash(manifest) : null;
     return { output: { accepted: safe, manifestHash, reason: safe ? "canonical manifest is safe to anchor" : "unsafe or incomplete manifest" }, passed: safe, score: safe ? 98 : 5, chainId: null, blockNumber: null };
   }

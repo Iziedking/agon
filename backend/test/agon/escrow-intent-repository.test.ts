@@ -71,7 +71,7 @@ test("persists one escrow intent and reuses it for an exact idempotent retry", a
 
 test("rejects an escrow idempotency key reused with different terms", async () => {
   const base = input();
-  const changedTerms = { ...base.terms, feeBps: 0 };
+  const changedTerms = { ...base.terms, amountBaseUnits: 2_000_000n };
   await assert.rejects(
     () => repository.prepareAgonEscrowIntent({
       ...base,

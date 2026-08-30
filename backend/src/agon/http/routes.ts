@@ -425,7 +425,6 @@ const agonEscrowIntentSchema = z.object({
   listingReference: z.string().regex(/^[1-9]\d*:0x[0-9a-fA-F]{40}:[1-9]\d*$/, "must be a chain:registry:listing reference"),
   idempotencyKey: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/, "must be 8-128 safe characters"),
   amountBaseUnits: z.string().regex(/^[1-9]\d*$/, "must be a positive integer base-unit amount"),
-  feeBps: z.number().int().min(0).max(1000),
   expiresAt: z.string().datetime({ offset: true }),
   poolBinding: z.object({
     controller: z.string().regex(/^0x[0-9a-fA-F]{40}$/, "must be an address"),
@@ -446,7 +445,6 @@ const agonJobEscrowIntentSchema = z.object({
   listingReference: z.string().regex(/^[1-9]\d*:0x[0-9a-fA-F]{40}:[1-9]\d*$/, "must be a chain:registry:listing reference"),
   idempotencyKey: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/, "must be 8-128 safe characters"),
   amountBaseUnits: z.string().regex(/^[1-9]\d*$/, "must be a positive integer base-unit amount"),
-  feeBps: z.number().int().min(0).max(1000),
   reviewHours: z.number().int().min(1).max(720),
   expiresAt: z.string().datetime({ offset: true }),
 }).strict();

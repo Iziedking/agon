@@ -20,7 +20,7 @@ contract AgonJobEscrow is AccessControl, Pausable, ReentrancyGuard {
 
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
     uint256 public constant BPS = 10_000;
-    uint256 public constant MAX_FEE_BPS = 1000;
+    uint256 public constant PROTOCOL_FEE_BPS = 500;
     uint64 public constant MAX_REVIEW_HOURS = 720;
     uint64 public constant MIN_REVIEW_HOURS = 1;
 
@@ -99,7 +99,6 @@ contract AgonJobEscrow is AccessControl, Pausable, ReentrancyGuard {
     error ZeroAddress();
     error ZeroAmount();
     error ZeroHash();
-    error InvalidFee();
     error InvalidReviewHours();
     error InvalidReference();
     error ListingNotEscrowEligible();
@@ -144,13 +143,11 @@ contract AgonJobEscrow is AccessControl, Pausable, ReentrancyGuard {
         uint256 listingId,
         bytes32 termsHash,
         uint256 amount,
-        uint16 feeBps,
         uint64 reviewHours
     ) external whenNotPaused nonReentrant returns (uint256 jobId) {
         if (clientReference == bytes32(0)) revert InvalidReference();
         if (termsHash == bytes32(0)) revert ZeroHash();
         if (amount == 0) revert ZeroAmount();
-        if (feeBps > MAX_FEE_BPS) revert InvalidFee();
         if (reviewHours == 0) reviewHours = defaultReviewHours;
         _validateReviewHours(reviewHours);
         if (jobByReference[msg.sender][clientReference] != 0) revert JobReferenceAlreadyUsed();
@@ -161,7 +158,7 @@ contract AgonJobEscrow is AccessControl, Pausable, ReentrancyGuard {
             revert InvalidListingSnapshot();
         }
 
-        uint256 fee = (amount * uint256(feeBps)) / BPS;
+        uint256 fee = (amount * PROTOCOL_FEE_BPS) / BPS;
         uint256 total = amount + fee;
         jobId = _nextJobId++;
         uint64 createdAt = uint64(block.timestamp);
