@@ -133,6 +133,28 @@ gate. The current canonical receipt records all six Agon contracts as verified.
 This clears source verification, but does not enable execution flags or
 replace the final production release gate.
 
+### Escrow fee governance upgrade
+
+`AgonJobEscrowV2` is a separately deployable successor to the deployed
+`AgonJobEscrow`. It starts at the hackathon fee of 500 basis points (5%),
+limits future changes to 1,000 basis points (10%), and requires a two-day
+timelock before a scheduled change can apply. Only the admin or DAO role can
+schedule or cancel a change; applying an elapsed change is permissionless and
+emits `ProtocolFeeChanged`.
+
+Every V2 job stores the exact fee rate and fee amount used at creation. A
+later governance update cannot change an existing buyer's terms. The backend
+reader accepts both the V2 19-field job record and the legacy V1 18-field
+record, so a future deployment can read old jobs through the legacy address
+while using V2 for new jobs. `contracts/script/DeployAgonJobEscrowV2.s.sol`
+performs deployment preflight and defaults the initial fee to 5%; it does not
+change the current deployment receipt.
+
+Direct x402 calls remain outside escrow and carry 0% Agon commission. The
+configurable fee applies only to successfully funded escrow deals. The V2
+address is not part of the canonical deployment receipt until it is actually
+deployed and verified.
+
 ## Public API
 
 The auth service mounts these routes under `/agon`:

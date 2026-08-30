@@ -26,6 +26,32 @@ export const agonJobEscrowAbi = parseAbi([
   "function getJob(uint256 jobId) view returns ((uint256 jobId,address buyer,address provider,uint256 listingId,uint256 agentId,uint256 listingVersion,bytes32 manifestHash,bytes32 termsHash,bytes32 deliverableHash,uint256 amount,uint256 fee,uint64 reviewHours,uint64 acceptanceDeadline,uint64 reviewDeadline,uint64 createdAt,uint64 submittedAt,uint8 status,uint8 settlement))",
 ]);
 
+/** V2 escrow ABI for future deployments. V2 keeps the same lifecycle calls,
+ * adds governance fee controls, and exposes the per-job fee snapshot. */
+export const agonJobEscrowV2Abi = parseAbi([
+  "event ProtocolFeeChangeScheduled(uint256 indexed oldFeeBps,uint256 indexed newFeeBps,uint64 effectiveAt)",
+  "event ProtocolFeeChanged(uint256 indexed oldFeeBps,uint256 indexed newFeeBps)",
+  "event ProtocolFeeChangeCancelled(uint256 indexed pendingFeeBps,uint64 effectiveAt)",
+  "function protocolFeeBps() view returns (uint16)",
+  "function pendingProtocolFeeBps() view returns (uint16)",
+  "function pendingProtocolFeeEffectiveAt() view returns (uint64)",
+  "function MAX_PROTOCOL_FEE_BPS() view returns (uint256)",
+  "function PROTOCOL_FEE_CHANGE_DELAY() view returns (uint64)",
+  "function scheduleProtocolFeeChange(uint16 newFeeBps)",
+  "function applyProtocolFeeChange()",
+  "function cancelProtocolFeeChange()",
+  "function createJob(bytes32 clientReference, uint256 listingId, bytes32 termsHash, uint256 amount, uint64 reviewHours) returns (uint256 jobId)",
+  "function acceptJob(uint256 jobId)",
+  "function submitJob(uint256 jobId, bytes32 deliverableHash)",
+  "function acceptSubmission(uint256 jobId)",
+  "function autoAccept(uint256 jobId)",
+  "function rejectSubmission(uint256 jobId, bytes32 reasonHash)",
+  "function openDispute(uint256 jobId, bytes32 reasonHash)",
+  "function resolveDispute(uint256 jobId, bool payProvider)",
+  "function failJob(uint256 jobId)",
+  "function getJob(uint256 jobId) view returns ((uint256 jobId,address buyer,address provider,uint256 listingId,uint256 agentId,uint256 listingVersion,bytes32 manifestHash,bytes32 termsHash,bytes32 deliverableHash,uint256 amount,uint256 fee,uint16 feeBps,uint64 reviewHours,uint64 acceptanceDeadline,uint64 reviewDeadline,uint64 createdAt,uint64 submittedAt,uint8 status,uint8 settlement))",
+]);
+
 export const agonArenaAbi = parseAbi([
   "event EvaluationRequested(uint256 indexed evaluationId,bytes32 indexed validationRequestHash,uint256 indexed listingId,uint256 agentId,uint256 listingVersion,address participant,bytes32 capabilityHash,bytes32 evaluatorVersionHash,bytes32 taskCommitment,uint64 expiresAt)",
   "function requestEvaluation(bytes32 validationRequestHash,uint256 listingId,bytes32 capabilityHash,bytes32 evaluatorVersionHash,bytes32 taskCommitment,uint64 expiresAt) returns (uint256 evaluationId)",
