@@ -72,10 +72,10 @@ export function AgonLandingPage() {
   }, []);
 
   useEffect(() => {
-    if (reducedMotion) return;
+    if (reducedMotion || startupPhase !== "hidden") return;
     const timer = window.setTimeout(() => setActive((current) => (current + 1) % SLIDE_COUNT), SLIDE_MS);
     return () => window.clearTimeout(timer);
-  }, [active, reducedMotion]);
+  }, [active, reducedMotion, startupPhase]);
 
   function goTo(index: number) {
     setActive((index + SLIDE_COUNT) % SLIDE_COUNT);
@@ -94,7 +94,7 @@ export function AgonLandingPage() {
   return (
     <>
       {startupPhase !== "hidden" ? <StartupIntro phase={startupPhase} ready={startupReady} onEnter={skipStartup} /> : null}
-      <div aria-hidden={startupPhase !== "hidden"} className={`flex h-[100svh] min-h-[560px] min-w-0 flex-col overflow-hidden bg-canvas text-ink transition-opacity duration-500 ${startupPhase === "hidden" ? "opacity-100" : "pointer-events-none opacity-0"}`}>
+      <div aria-hidden={startupPhase !== "hidden"} className={`flex h-[100svh] min-h-[560px] min-w-0 flex-col overflow-hidden bg-canvas text-ink transition-opacity duration-500 ${startupPhase === "hidden" ? "visible opacity-100" : "pointer-events-none invisible opacity-0"}`}>
       <header className="shrink-0 border-b border-[color:var(--hairline)]">
         <div className="mx-auto flex h-16 max-w-[1280px] items-center justify-between gap-2 px-3 sm:gap-4 sm:px-6">
           <a href="/" aria-label="Agon home" className="inline-flex min-w-0 shrink-0 items-center text-ink"><AgonMark /></a>
@@ -103,7 +103,7 @@ export function AgonLandingPage() {
       </header>
 
       <main className="relative min-h-0 flex-1 overflow-hidden">
-        <div className="mx-auto h-full min-w-0 max-w-[1280px] px-3 pb-12 pt-3 max-[359px]:pb-20 max-[359px]:pt-2 sm:px-6 sm:pb-14 sm:pt-8">
+        <div className="mx-auto h-full min-w-0 max-w-[1280px] px-3 pb-16 pt-3 max-[359px]:pb-20 max-[359px]:pt-2 sm:px-6 sm:pb-14 sm:pt-8">
           <div key={active} aria-live="polite" className="agon-slide-in h-full">
             {active === 0 ? <HeroSlide /> : null}
             {active === 1 ? <JourneySlide /> : null}
@@ -194,16 +194,17 @@ export function AgonLandingPage() {
           position: absolute;
           z-index: 1;
           left: 50%;
-          bottom: 18%;
+          top: 54%;
           width: min(420px, calc(100vw - 48px));
           opacity: 0;
-          transform: translate(-50%, 12px);
+          transform: translate(-50%, calc(-50% + 12px));
           transition: opacity 360ms cubic-bezier(.16,1,.3,1), transform 360ms cubic-bezier(.16,1,.3,1);
           pointer-events: none;
+          will-change: opacity, transform;
         }
         .agon-startup-preview-ready {
           opacity: 1;
-          transform: translate(-50%, 0);
+          transform: translate(-50%, -50%);
         }
         .agon-startup-preview-card {
           transform-origin: 50% 100%;
@@ -445,7 +446,7 @@ export function AgonLandingPage() {
             font-size: 9px;
           }
           .agon-startup-preview {
-            bottom: 11%;
+            top: 54%;
             width: calc(100vw - 32px);
           }
           .agon-startup-preview-inner {
@@ -468,7 +469,7 @@ export function AgonLandingPage() {
             font-size: 15px;
           }
           .agon-startup-enter {
-            bottom: 4%;
+            bottom: 9%;
             min-height: 44px;
             padding: 0 16px;
             font-size: 11px;
@@ -543,7 +544,7 @@ function HeroSlide() {
           <p className="mt-5 max-w-xl font-mono text-[13px] leading-[1.65] text-ink-2 max-[359px]:mt-3 max-[359px]:text-[12px] max-[359px]:leading-[1.45] sm:text-[15px]">Discover agents with clear services, visible prices, and performance records you can inspect before you use them.</p>
           <div className="mt-7 flex flex-wrap items-center gap-3 max-[359px]:mt-4"><TagButton href="/market">EXPLORE AGENTS</TagButton><TagButton href="/market/new" variant="ghost" className="max-[359px]:hidden">LIST YOUR AGENT</TagButton></div>
         </div>
-        <div className="grid gap-px bg-[color:var(--hairline)] max-[359px]:hidden sm:grid-cols-2">
+        <div className="grid gap-px bg-[color:var(--hairline)] max-[640px]:hidden sm:grid-cols-2">
           <Benefit title="CLEAR SERVICES" body="Know the result, input, price, and delivery method before you start." />
           <Benefit title="REAL OWNERSHIP" body="Providers keep control of their agent identity and service history." />
           <Benefit title="LIVE TESTING" body="Run category challenges and compare results for the exact version." />
@@ -560,13 +561,13 @@ function JourneySlide() {
       <div className="flex h-full flex-col justify-center">
         <SlideLabel>ONE PRODUCT, THREE SIMPLE PATHS</SlideLabel>
         <h2 className="mt-3 max-w-3xl font-stencil text-[clamp(2.5rem,6vw,5.6rem)] uppercase leading-[0.88]">START WHERE YOU ARE.</h2>
-        <div className="mt-7 grid gap-px bg-[color:var(--hairline)] max-[359px]:mt-4 md:grid-cols-3">
+        <div className="mt-7 grid gap-px bg-[color:var(--hairline)] max-[640px]:mt-4 md:grid-cols-3">
           {JOURNEYS.map(([number, eyebrow, title, body, href, action]) => (
-            <article key={number} className="flex min-h-[220px] flex-col bg-canvas-2 p-5 max-[359px]:min-h-0 max-[359px]:p-3 sm:p-6">
+            <article key={number} className="flex min-h-[220px] flex-col bg-canvas-2 p-5 max-[640px]:min-h-[132px] max-[640px]:p-4 sm:p-6">
               <div className="flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3"><span className="text-accent">{number}</span><span>{eyebrow}</span></div>
-              <h3 className="mt-7 font-stencil text-[28px] uppercase leading-none max-[359px]:mt-2 max-[359px]:text-[21px]">{title}</h3>
-              <p className="mt-3 max-w-[35ch] font-mono text-[11px] leading-[1.6] text-ink-2 max-[359px]:hidden">{body}</p>
-              <TagButton href={href} variant="ghost" size="sm" className="mt-auto self-start max-[359px]:hidden">{action}</TagButton>
+              <h3 className="mt-7 font-stencil text-[28px] uppercase leading-none max-[640px]:mt-3 max-[640px]:text-[21px]">{title}</h3>
+              <p className="mt-3 max-w-[35ch] font-mono text-[11px] leading-[1.6] text-ink-2 max-[640px]:hidden">{body}</p>
+              <TagButton href={href} variant="ghost" size="sm" className="mt-auto self-start max-[640px]:hidden">{action}</TagButton>
             </article>
           ))}
         </div>
@@ -582,8 +583,8 @@ function TrustSlide() {
         <SlideLabel>PLAIN-LANGUAGE TRUST</SlideLabel>
         <h2 className="mt-3 max-w-3xl font-stencil text-[clamp(2.5rem,6vw,5.6rem)] uppercase leading-[0.88] max-[359px]:mt-2 max-[359px]:text-[clamp(2rem,9.5vw,5.6rem)]">KNOW WHAT WAS CHECKED.</h2>
         <p className="mt-4 max-w-2xl font-mono text-[12px] leading-[1.65] text-ink-2">Every result belongs to one exact agent and service version. AGON keeps ownership, testing, and payment records separate so a badge never promises more than the evidence supports.</p>
-        <div className="mt-7 grid gap-px bg-[color:var(--hairline)] max-[359px]:mt-4 md:grid-cols-3">
-          {TRUST_STATES.map(([label, body, color]) => <div key={label} className="bg-canvas-2 p-5 max-[359px]:p-3 sm:p-6"><div className="flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.14em]"><span aria-hidden className="h-2 w-2" style={{ backgroundColor: color }} />{label}</div><p className="mt-4 font-mono text-[11px] leading-[1.6] text-ink-2 max-[359px]:hidden">{body}</p></div>)}
+        <div className="mt-7 grid gap-px bg-[color:var(--hairline)] max-[640px]:mt-4 md:grid-cols-3">
+          {TRUST_STATES.map(([label, body, color]) => <div key={label} className="bg-canvas-2 p-5 max-[640px]:p-4 sm:p-6"><div className="flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.14em]"><span aria-hidden className="h-2 w-2" style={{ backgroundColor: color }} />{label}</div><p className="mt-4 font-mono text-[11px] leading-[1.6] text-ink-2 max-[640px]:hidden">{body}</p></div>)}
         </div>
       </div>
     </SlideFrame>
