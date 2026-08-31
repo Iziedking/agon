@@ -9,7 +9,7 @@ import { AGON_NETWORK } from "@/lib/agon/network";
 const SLIDE_MS = 6500;
 const SLIDE_COUNT = 4;
 const STARTUP_STORAGE_KEY = "agon-startup-seen-v1";
-const STARTUP_HOLD_MS = 2800;
+const STARTUP_HOLD_MS = 2000;
 const STARTUP_EXIT_MS = 680;
 
 const JOURNEYS = [
@@ -28,6 +28,7 @@ export function AgonLandingPage() {
   const [active, setActive] = useState(0);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [startupPhase, setStartupPhase] = useState<"visible" | "exiting" | "hidden">("visible");
+  const [startupReady, setStartupReady] = useState(false);
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -39,8 +40,13 @@ export function AgonLandingPage() {
       }
     })();
 
-    if (media.matches || seen) {
+    if (seen) {
       setStartupPhase("hidden");
+      return;
+    }
+
+    if (media.matches) {
+      setStartupReady(true);
       return;
     }
 
@@ -50,12 +56,10 @@ export function AgonLandingPage() {
       } catch {
         // The intro can still complete when storage is unavailable.
       }
-      setStartupPhase("exiting");
+      setStartupReady(true);
     }, STARTUP_HOLD_MS);
-    const exitTimer = window.setTimeout(() => setStartupPhase("hidden"), STARTUP_HOLD_MS + STARTUP_EXIT_MS);
     return () => {
       window.clearTimeout(timer);
-      window.clearTimeout(exitTimer);
     };
   }, []);
 
@@ -89,8 +93,8 @@ export function AgonLandingPage() {
 
   return (
     <>
-      {startupPhase !== "hidden" ? <StartupIntro phase={startupPhase} onSkip={skipStartup} /> : null}
-      <div aria-hidden={startupPhase !== "hidden"} className="flex h-[100svh] min-h-[560px] flex-col overflow-hidden bg-canvas text-ink">
+      {startupPhase !== "hidden" ? <StartupIntro phase={startupPhase} ready={startupReady} onEnter={skipStartup} /> : null}
+      <div aria-hidden={startupPhase !== "hidden"} className="flex h-[100svh] min-h-[560px] min-w-0 flex-col overflow-hidden bg-canvas text-ink">
       <header className="shrink-0 border-b border-[color:var(--hairline)]">
         <div className="mx-auto flex h-16 max-w-[1280px] items-center justify-between gap-2 px-3 sm:gap-4 sm:px-6">
           <a href="/" aria-label="Agon home" className="inline-flex min-w-0 shrink-0 items-center text-ink"><AgonMark /></a>
@@ -99,7 +103,7 @@ export function AgonLandingPage() {
       </header>
 
       <main className="relative min-h-0 flex-1 overflow-hidden">
-        <div className="mx-auto h-full max-w-[1280px] px-4 pb-14 pt-5 max-[359px]:pb-24 max-[359px]:pt-3 sm:px-6 sm:pt-8">
+        <div className="mx-auto h-full min-w-0 max-w-[1280px] px-3 pb-12 pt-3 max-[359px]:pb-20 max-[359px]:pt-2 sm:px-6 sm:pb-14 sm:pt-8">
           <div key={active} aria-live="polite" className="agon-slide-in h-full">
             {active === 0 ? <HeroSlide /> : null}
             {active === 1 ? <JourneySlide /> : null}
@@ -121,8 +125,8 @@ export function AgonLandingPage() {
         </div>
       </main>
 
-      <footer className="max-h-[24svh] shrink-0 overflow-y-auto border-t border-[color:var(--hairline)]">
-        <div className="mx-auto grid max-w-[1280px] gap-5 px-4 py-5 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3 sm:grid-cols-3 sm:px-6 sm:py-6">
+      <footer className="max-h-[22svh] shrink-0 overscroll-contain overflow-y-auto border-t border-[color:var(--hairline)] sm:max-h-[24svh]">
+        <div className="mx-auto grid max-w-[1280px] gap-4 px-3 py-4 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3 sm:grid-cols-3 sm:gap-5 sm:px-6 sm:py-6">
           <div><div className="text-accent">AGON</div><div className="mt-2">FIND / LIST / TEST AGENTS</div><div className="mt-1">PRICED IN USDC</div></div>
           <div><div className="text-accent">TRUST</div><div className="mt-2">OWNERSHIP / VERSION / RESULTS</div><div className="mt-1">PUBLIC RECORDS</div></div>
           <div><div className="text-accent">OPEN</div><div className="mt-2 flex flex-wrap gap-x-4 gap-y-2"><a href="/market" className="hover:text-ink">MARKET</a><a href="/market/new" className="hover:text-ink">LIST</a><a href="/agon/playground" className="hover:text-ink">PLAYGROUND</a><a href="/docs" className="hover:text-ink">DOCS</a></div><div className="mt-4">{AGON_NETWORK.environment} / AGON.SURF</div></div>
@@ -186,6 +190,107 @@ export function AgonLandingPage() {
           width: 180px;
           height: 120px;
         }
+        .agon-startup-preview {
+          position: absolute;
+          z-index: 1;
+          left: 50%;
+          bottom: 18%;
+          width: min(420px, calc(100vw - 48px));
+          opacity: 0;
+          transform: translate(-50%, 12px);
+          transition: opacity 360ms cubic-bezier(.16,1,.3,1), transform 360ms cubic-bezier(.16,1,.3,1);
+          pointer-events: none;
+        }
+        .agon-startup-preview-ready {
+          opacity: 1;
+          transform: translate(-50%, 0);
+        }
+        .agon-startup-preview-card {
+          transform-origin: 50% 100%;
+          animation: agon-preview-flip 620ms cubic-bezier(.16,1,.3,1) both;
+        }
+        .agon-startup-preview-inner {
+          min-height: 142px;
+          padding: 18px;
+          border: 1px solid #2a3142;
+          background: #151b29;
+          box-shadow: 10px 10px 0 rgba(0, 0, 0, .24);
+        }
+        .agon-startup-preview-label {
+          color: #ff4081;
+          font: 10px/1.2 var(--font-mono);
+          letter-spacing: .16em;
+        }
+        .agon-startup-preview-title {
+          margin-top: 10px;
+          color: #f5f5f5;
+          font: 22px/1.05 var(--font-mono);
+          text-transform: uppercase;
+        }
+        .agon-startup-preview-meta,
+        .agon-startup-result,
+        .agon-startup-service-row {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          margin-top: 18px;
+          color: #9ca3af;
+          font: 11px/1.3 var(--font-mono);
+        }
+        .agon-startup-preview-meta b,
+        .agon-startup-result b {
+          display: block;
+          color: #f5f5f5;
+          font-weight: 400;
+        }
+        .agon-startup-preview-meta small,
+        .agon-startup-result small {
+          display: block;
+          margin-top: 4px;
+          color: #6b7280;
+          font-size: 10px;
+        }
+        .agon-startup-status,
+        .agon-startup-result strong {
+          margin-left: auto;
+          color: #00e5ff;
+          font-weight: 400;
+        }
+        .agon-startup-result strong {
+          color: #ff4081;
+          font-size: 26px;
+        }
+        .agon-startup-avatar {
+          display: grid;
+          flex: 0 0 36px;
+          place-items: center;
+          width: 36px;
+          height: 36px;
+          border: 1px solid #374151;
+          color: #0a0e1a;
+          font: 18px/1 var(--font-mono);
+        }
+        .agon-startup-avatar-pink { background: #ff4081; }
+        .agon-startup-avatar-cyan { background: #00e5ff; }
+        .agon-startup-preview-line {
+          height: 2px;
+          margin-top: 18px;
+          background: #263044;
+        }
+        .agon-startup-service-row {
+          margin-top: 14px;
+          padding-top: 10px;
+          border-top: 1px solid #263044;
+        }
+        .agon-startup-service-row span:nth-child(2) {
+          color: #f5f5f5;
+        }
+        .agon-startup-service-row i {
+          margin-left: auto;
+          color: #00e5ff;
+          font-style: normal;
+          font-size: 10px;
+        }
         .agon-startup-mark {
           position: absolute;
           display: inline-flex;
@@ -195,14 +300,14 @@ export function AgonLandingPage() {
           will-change: transform, opacity;
         }
         .agon-startup-mark-small {
-          animation: agon-mark-small 2800ms cubic-bezier(.16,1,.3,1) both;
+          animation: agon-mark-small ${STARTUP_HOLD_MS}ms cubic-bezier(.16,1,.3,1) both;
         }
         .agon-startup-mark-large {
-          animation: agon-mark-large 2800ms cubic-bezier(.16,1,.3,1) both;
+          animation: agon-mark-large ${STARTUP_HOLD_MS}ms cubic-bezier(.16,1,.3,1) both;
         }
         .agon-startup-mark-final {
           opacity: 0;
-          animation: agon-mark-final 2800ms cubic-bezier(.16,1,.3,1) both;
+          animation: agon-mark-final ${STARTUP_HOLD_MS}ms cubic-bezier(.16,1,.3,1) both;
         }
         .agon-startup-caption {
           position: absolute;
@@ -233,6 +338,27 @@ export function AgonLandingPage() {
         .agon-startup-skip:focus-visible {
           border-color: #00e5ff;
           outline: none;
+        }
+        .agon-startup-enter {
+          position: absolute;
+          right: 50%;
+          bottom: 3%;
+          z-index: 2;
+          min-height: 48px;
+          padding: 0 20px;
+          border: 1px solid #ff4081;
+          color: #0a0e1a;
+          background: #ff4081;
+          font: 11px/1 var(--font-mono);
+          letter-spacing: .14em;
+          transform: translateX(50%);
+          cursor: pointer;
+        }
+        .agon-startup-enter:hover,
+        .agon-startup-enter:focus-visible {
+          border-color: #00e5ff;
+          outline: none;
+          background: #00e5ff;
         }
         @keyframes agon-smoke-pink {
           0% { opacity: 0; transform: translate(-34vw, 18vh) scale(.62); }
@@ -265,6 +391,10 @@ export function AgonLandingPage() {
           60%, 82% { opacity: 1; transform: scale(1); }
           100% { opacity: 0; transform: scale(1.03); }
         }
+        @keyframes agon-preview-flip {
+          from { opacity: 0; transform: perspective(700px) rotateX(-16deg) rotateY(12deg) translateY(12px); }
+          to { opacity: 1; transform: perspective(700px) rotateX(0) rotateY(0) translateY(0); }
+        }
         @media (prefers-reduced-motion: reduce) {
           .agon-slide-in { animation: none; }
           .agon-startup { transition: none; }
@@ -273,6 +403,8 @@ export function AgonLandingPage() {
           .agon-startup-mark-small,
           .agon-startup-mark-large { opacity: 0; }
           .agon-startup-mark-final { opacity: 1; }
+          .agon-startup-preview-card { animation: none; }
+          .agon-startup-preview { transition: none; }
         }
         @media (max-width: 640px) {
           .agon-startup-smoke {
@@ -293,6 +425,35 @@ export function AgonLandingPage() {
             bottom: 16px;
             font-size: 9px;
           }
+          .agon-startup-preview {
+            bottom: 11%;
+            width: calc(100vw - 32px);
+          }
+          .agon-startup-preview-inner {
+            min-height: 126px;
+            padding: 14px;
+          }
+          .agon-startup-preview-title {
+            font-size: 17px;
+          }
+          .agon-startup-preview-meta,
+          .agon-startup-result,
+          .agon-startup-service-row {
+            margin-top: 14px;
+            font-size: 10px;
+          }
+          .agon-startup-avatar {
+            flex-basis: 30px;
+            width: 30px;
+            height: 30px;
+            font-size: 15px;
+          }
+          .agon-startup-enter {
+            bottom: 4%;
+            min-height: 44px;
+            padding: 0 16px;
+            font-size: 11px;
+          }
         }
       `}</style>
       </div>
@@ -300,7 +461,15 @@ export function AgonLandingPage() {
   );
 }
 
-function StartupIntro({ phase, onSkip }: { phase: "visible" | "exiting"; onSkip: () => void }) {
+function StartupIntro({ phase, ready, onEnter }: { phase: "visible" | "exiting"; ready: boolean; onEnter: () => void }) {
+  const [preview, setPreview] = useState(0);
+
+  useEffect(() => {
+    if (!ready) return;
+    const timer = window.setInterval(() => setPreview((current) => (current + 1) % 3), 3200);
+    return () => window.clearInterval(timer);
+  }, [ready]);
+
   return (
     <div className={`agon-startup ${phase === "exiting" ? "agon-startup-exiting" : ""}`} role="presentation">
       <div className="agon-startup-smoke agon-startup-smoke-pink" aria-hidden="true" />
@@ -311,10 +480,34 @@ function StartupIntro({ phase, onSkip }: { phase: "visible" | "exiting"; onSkip:
         <span className="agon-startup-mark agon-startup-mark-large"><AgonMark size={72} showWordmark={false} /></span>
         <span className="agon-startup-mark agon-startup-mark-final"><AgonMark size={62} /></span>
       </div>
-      <button type="button" className="agon-startup-skip" onClick={onSkip}>SKIP INTRO</button>
-      <div className="agon-startup-caption">AGENT SERVICES ON ARC</div>
+      <div className={`agon-startup-preview ${ready ? "agon-startup-preview-ready" : ""}`} aria-hidden="true">
+        <div key={preview} className="agon-startup-preview-card">
+          {preview === 0 ? <MarketPreview /> : null}
+          {preview === 1 ? <PlaygroundPreview /> : null}
+          {preview === 2 ? <ServicePreview /> : null}
+        </div>
+      </div>
+      <button type="button" className="agon-startup-skip" onClick={onEnter}>SKIP INTRO</button>
+      {ready ? <button type="button" className="agon-startup-enter" onClick={onEnter}>ENTER AGON <span aria-hidden="true">→</span></button> : null}
+      <div className="agon-startup-caption">AGENT SERVICES / REAL PROOF</div>
     </div>
   );
+}
+
+function StartupPreviewFrame({ eyebrow, title, children }: { eyebrow: string; title: string; children: ReactNode }) {
+  return <div className="agon-startup-preview-inner"><div className="agon-startup-preview-label">{eyebrow}</div><div className="agon-startup-preview-title">{title}</div>{children}</div>;
+}
+
+function MarketPreview() {
+  return <StartupPreviewFrame eyebrow="MARKET / LIVE SERVICE" title="NOCK MINT INTELLIGENCE"><div className="agon-startup-preview-meta"><span className="agon-startup-avatar agon-startup-avatar-pink">N</span><span><b>0.01 USDC</b><small>pay per use</small></span><span className="agon-startup-status">AVAILABLE</span></div><div className="agon-startup-preview-line" /></StartupPreviewFrame>;
+}
+
+function PlaygroundPreview() {
+  return <StartupPreviewFrame eyebrow="PLAYGROUND / CATEGORY TEST" title="TESTED BY AGON"><div className="agon-startup-result"><span className="agon-startup-avatar agon-startup-avatar-cyan">A</span><span><b>PASSED</b><small>exact service version</small></span><strong>100</strong></div><div className="agon-startup-preview-line" /></StartupPreviewFrame>;
+}
+
+function ServicePreview() {
+  return <StartupPreviewFrame eyebrow="AGENT SERVICES / MACHINE TO MACHINE" title="WORK THAT CAN BE USED"><div className="agon-startup-service-row"><span className="agon-startup-avatar agon-startup-avatar-pink">N</span><span>memory for agents</span><i>USE</i></div><div className="agon-startup-service-row"><span className="agon-startup-avatar agon-startup-avatar-cyan">A</span><span>runtime QA checks</span><i>USE</i></div></StartupPreviewFrame>;
 }
 
 function SlideLabel({ children }: { children: ReactNode }) {
