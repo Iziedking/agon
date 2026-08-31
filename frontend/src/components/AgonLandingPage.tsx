@@ -9,7 +9,7 @@ import { AGON_NETWORK } from "@/lib/agon/network";
 const SLIDE_MS = 6500;
 const SLIDE_COUNT = 4;
 const STARTUP_STORAGE_KEY = "agon-startup-seen-v1";
-const STARTUP_HOLD_MS = 2000;
+const STARTUP_HOLD_MS = 3000;
 const STARTUP_EXIT_MS = 680;
 
 const JOURNEYS = [
@@ -94,7 +94,7 @@ export function AgonLandingPage() {
   return (
     <>
       {startupPhase !== "hidden" ? <StartupIntro phase={startupPhase} ready={startupReady} onEnter={skipStartup} /> : null}
-      <div aria-hidden={startupPhase !== "hidden"} className="flex h-[100svh] min-h-[560px] min-w-0 flex-col overflow-hidden bg-canvas text-ink">
+      <div aria-hidden={startupPhase !== "hidden"} className={`flex h-[100svh] min-h-[560px] min-w-0 flex-col overflow-hidden bg-canvas text-ink transition-opacity duration-500 ${startupPhase === "hidden" ? "opacity-100" : "pointer-events-none opacity-0"}`}>
       <header className="shrink-0 border-b border-[color:var(--hairline)]">
         <div className="mx-auto flex h-16 max-w-[1280px] items-center justify-between gap-2 px-3 sm:gap-4 sm:px-6">
           <a href="/" aria-label="Agon home" className="inline-flex min-w-0 shrink-0 items-center text-ink"><AgonMark /></a>
@@ -207,7 +207,18 @@ export function AgonLandingPage() {
         }
         .agon-startup-preview-card {
           transform-origin: 50% 100%;
-          animation: agon-preview-flip 620ms cubic-bezier(.16,1,.3,1) both;
+          animation-duration: 620ms;
+          animation-timing-function: cubic-bezier(.16,1,.3,1);
+          animation-fill-mode: both;
+        }
+        .agon-startup-preview-card-0 {
+          animation-name: agon-preview-from-right;
+        }
+        .agon-startup-preview-card-1 {
+          animation-name: agon-preview-from-left;
+        }
+        .agon-startup-preview-card-2 {
+          animation-name: agon-preview-from-top;
         }
         .agon-startup-preview-inner {
           min-height: 142px;
@@ -391,8 +402,16 @@ export function AgonLandingPage() {
           60%, 82% { opacity: 1; transform: scale(1); }
           100% { opacity: 0; transform: scale(1.03); }
         }
-        @keyframes agon-preview-flip {
+        @keyframes agon-preview-from-right {
           from { opacity: 0; transform: perspective(700px) rotateX(-16deg) rotateY(12deg) translateY(12px); }
+          to { opacity: 1; transform: perspective(700px) rotateX(0) rotateY(0) translateY(0); }
+        }
+        @keyframes agon-preview-from-left {
+          from { opacity: 0; transform: perspective(700px) rotateX(-10deg) rotateY(-14deg) translate(-18px, 8px); }
+          to { opacity: 1; transform: perspective(700px) rotateX(0) rotateY(0) translate(0, 0); }
+        }
+        @keyframes agon-preview-from-top {
+          from { opacity: 0; transform: perspective(700px) rotateX(14deg) rotateY(0) translateY(-20px); }
           to { opacity: 1; transform: perspective(700px) rotateX(0) rotateY(0) translateY(0); }
         }
         @media (prefers-reduced-motion: reduce) {
@@ -481,7 +500,7 @@ function StartupIntro({ phase, ready, onEnter }: { phase: "visible" | "exiting";
         <span className="agon-startup-mark agon-startup-mark-final"><AgonMark size={62} /></span>
       </div>
       <div className={`agon-startup-preview ${ready ? "agon-startup-preview-ready" : ""}`} aria-hidden="true">
-        <div key={preview} className="agon-startup-preview-card">
+        <div key={preview} className={`agon-startup-preview-card agon-startup-preview-card-${preview}`}>
           {preview === 0 ? <MarketPreview /> : null}
           {preview === 1 ? <PlaygroundPreview /> : null}
           {preview === 2 ? <ServicePreview /> : null}
