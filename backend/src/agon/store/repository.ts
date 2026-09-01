@@ -623,6 +623,22 @@ type VersionRow = QueryResultRow & {
   validated_at: Date;
 };
 
+type CertificationBackfillRow = QueryResultRow & {
+  chain_id: string;
+  service_registry_address: string;
+  listing_id: string;
+  agent_id: string;
+  service_key: string;
+  category: string;
+  version: string;
+  manifest_hash: string;
+  manifest_uri: string;
+  payment_rail: PaymentRail;
+  provider_snapshot: string;
+  status: ListingStatus;
+  quarantine_reason: string | null;
+};
+
 type CursorRow = QueryResultRow & {
   stream_name: string;
   chain_id: string;
@@ -672,6 +688,13 @@ function requireLogIndex(value: number): number {
 
 function requireText(value: string, label: string): string {
   if (value.length === 0) throw new AgonStoreInvariantError(`${label} must not be empty`);
+  return value;
+}
+
+function requireCertificationBackfillLimit(value: number): number {
+  if (!Number.isSafeInteger(value) || value < 1 || value > 500) {
+    throw new AgonStoreInvariantError("certification backfill limit must be between 1 and 500");
+  }
   return value;
 }
 
@@ -1234,6 +1257,12 @@ export class PostgresAgonRepository {
   async claimAgonCertification(now = new Date()): Promise<AgonCertificationJob | null> {
     if (!Number.isFinite(now.getTime())) throw new AgonStoreInvariantError("certification claim time is invalid");
     return this.withTransaction(async (repository) => repository.claimAgonCertification(now));
+  }
+
+  async backfillAgonCertifications(limit = 100, now = new Date()): Promise<number> {
+    requireCertificationBackfillLimit(limit);
+    if (!Number.isFinite(now.getTime())) throw new AgonStoreInvariantError("certification backfill time is invalid");
+    return this.withTransaction((repository) => repository.backfillAgonCertifications(limit, now));
   }
 
   async deferAgonCertification(jobId: string, nextAttemptAt: Date, reason: string): Promise<void> {
@@ -2516,6 +2545,52 @@ export class AgonTransactionRepository {
       throw new AgonStoreInvariantError("immutable listing version conflicts with certification job");
     }
     return value;
+  }
+
+  async backfillAgonCertifications(limit = 100, now = new Date()): Promise<number> {
+    requireCertificationBackfillLimit(limit);
+    if (!Number.isFinite(now.getTime())) throw new AgonStoreInvariantError("certification backfill time is invalid");
+    const candidates = await this.client.query<CertificationBackfillRow>(
+      `select v.chain_id, v.service_registry_address, v.listing_id, l.agent_id,
+              l.service_key, l.category, v.version, v.manifest_hash, v.manifest_uri,
+              v.payment_rail, v.provider_snapshot, l.status, l.quarantine_reason
+         from agon_listing_versions v
+         join agon_listings l
+           on l.chain_id = v.chain_id
+          and l.service_registry_address = v.service_registry_address
+          and l.listing_id = v.listing_id
+        where not exists (
+          select 1
+            from agon_certification_jobs j
+           where j.chain_id = v.chain_id
+             and j.service_registry_address = v.service_registry_address
+             and j.listing_id = v.listing_id
+             and j.listing_version = v.version
+        )
+        order by v.chain_id, v.service_registry_address, v.listing_id, v.version
+        limit $1`,
+      [limit],
+    );
+
+    for (const row of candidates.rows) {
+      await this.scheduleAgonCertification({
+        chainId: BigInt(row.chain_id),
+        serviceRegistry: row.service_registry_address,
+        listingId: BigInt(row.listing_id),
+        agentId: BigInt(row.agent_id),
+        listingVersion: BigInt(row.version),
+        serviceKey: row.service_key,
+        category: BigInt(row.category),
+        manifestHash: row.manifest_hash,
+        manifestUri: row.manifest_uri,
+        paymentRail: row.payment_rail,
+        providerSnapshot: row.provider_snapshot,
+        listingStatus: row.status,
+        quarantineReason: row.quarantine_reason,
+        now,
+      });
+    }
+    return candidates.rows.length;
   }
 
   async claimAgonCertification(now: Date): Promise<AgonCertificationJob | null> {

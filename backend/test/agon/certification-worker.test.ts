@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { buildAgonCertificationJob, type AgonCertificationJob } from "../../src/agon/certification.ts";
-import { runAgonCertificationOnce } from "../../src/agon/certification-worker.ts";
+import { agonCertificationWorkerLoop, runAgonCertificationOnce } from "../../src/agon/certification-worker.ts";
 import { InMemoryPlaygroundRunStore } from "../../src/agon/playground-store.ts";
 import type { PlaygroundProviderRunner } from "../../src/agon/playground-provider.ts";
 import type { PlaygroundRun } from "../../src/agon/playground.ts";
@@ -33,12 +33,19 @@ function job(overrides: Partial<AgonCertificationJob> = {}): AgonCertificationJo
 
 class FakeCertificationRepository {
   current: AgonCertificationJob | null;
+  backfillResults: number[] = [];
+  backfillCalls = 0;
   completed: PlaygroundRun | null = null;
   deferred: string | null = null;
   failed: { code: string; retryAt: Date | null } | null = null;
 
   constructor(value: AgonCertificationJob) {
     this.current = value;
+  }
+
+  async backfillAgonCertifications(): Promise<number> {
+    this.backfillCalls += 1;
+    return this.backfillResults.shift() ?? 0;
   }
 
   async claimAgonCertification(): Promise<AgonCertificationJob | null> {
@@ -123,4 +130,20 @@ test("certification worker retries provider failures and then stops after max at
   assert.equal(result, "failed");
   assert.deepEqual(repository.failed, { code: "certification_worker_error", retryAt: null });
   assert.equal(repository.current?.state, "failed");
+});
+
+test("certification worker backfills existing versions before processing the queue", async () => {
+  const repository = new FakeCertificationRepository(job());
+  repository.backfillResults = [100, 2];
+  await agonCertificationWorkerLoop(
+    {
+      repository,
+      playgroundStore: new InMemoryPlaygroundRunStore(),
+      providerRunner: runner(),
+      now: () => NOW,
+    },
+    { once: true },
+  );
+  assert.equal(repository.backfillCalls, 2);
+  assert.equal(repository.current?.state, "completed");
 });

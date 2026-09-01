@@ -122,6 +122,19 @@ claim until the Arena and ValidationRegistry lifecycle completes.
 The video sequence and CLI commands are in
 [`docs/demo/agon-coder-live.md`](demo/agon-coder-live.md).
 
+When the indexer accepts a new listed service version, it creates exactly one
+hidden certification job for that immutable version. On worker startup, the
+same idempotent query backfills older indexed versions that do not have a job.
+The job pins the chain,
+registry, listing, service key, version, manifest hash, and provider snapshot;
+replaying the chain event cannot create a second job. The opt-in certification
+worker uses the same allowlisted HTTPS provider challenge as the Playground,
+stores the resulting score and evidence hashes, retries bounded provider
+failures, and defers providers that are not enabled. This automatic job is not
+a payment, Arena write, badge claim, or public Playground run. A passing result
+is evidence for the later Arena and ValidationRegistry review lifecycle; it does
+not mark the listing as verified by itself.
+
 The Arc Testnet deployment and verification procedure is documented in [the Agon foundation runbook](ops/agon-arc-testnet-deploy.md).
 
 The canonical receipt also records the external ERC-8004 registries used by

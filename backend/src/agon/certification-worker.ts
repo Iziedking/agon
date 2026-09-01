@@ -14,6 +14,7 @@ import {
 import { certificationBackoffMs, type AgonCertificationJob } from "./certification.ts";
 
 export type CertificationWorkerRepository = {
+  backfillAgonCertifications?: (limit?: number, now?: Date) => Promise<number>;
   claimAgonCertification(now?: Date): Promise<AgonCertificationJob | null>;
   deferAgonCertification(jobId: string, nextAttemptAt: Date, reason: string): Promise<void>;
   completeAgonCertification(jobId: string, result: PlaygroundRun): Promise<void>;
@@ -42,6 +43,21 @@ function assertCertificationJob(job: AgonCertificationJob): asserts job is AgonC
 } {
   if (job.category !== "analysis" || job.taskId !== "evidence-under-pressure") {
     throw new PlaygroundProviderError("provider_task_unsupported", "This certification task is not available.");
+  }
+}
+
+const CERTIFICATION_BACKFILL_BATCH_SIZE = 100;
+
+async function backfillCertificationQueue(repository: CertificationWorkerRepository, now: Date): Promise<number> {
+  if (!repository.backfillAgonCertifications) return 0;
+  let processed = 0;
+  for (;;) {
+    const batch = await repository.backfillAgonCertifications(CERTIFICATION_BACKFILL_BATCH_SIZE, now);
+    if (!Number.isSafeInteger(batch) || batch < 0 || batch > CERTIFICATION_BACKFILL_BATCH_SIZE) {
+      throw new Error("certification backfill returned an invalid batch size");
+    }
+    processed += batch;
+    if (batch < CERTIFICATION_BACKFILL_BATCH_SIZE) return processed;
   }
 }
 
@@ -96,9 +112,15 @@ export async function agonCertificationWorkerLoop(
   const pollMs = config.pollMs ?? 5_000;
   if (!Number.isInteger(pollMs) || pollMs < 100) throw new Error("certification worker poll must be at least 100ms");
   let consecutiveFailures = 0;
+  let backfillCompleted = false;
   for (;;) {
     let result: CertificationWorkerResult;
     try {
+      if (!backfillCompleted) {
+        const processed = await backfillCertificationQueue(options.repository, options.now?.() ?? new Date());
+        backfillCompleted = true;
+        if (processed > 0) console.log(`agon certification backfill processed ${processed} listing version(s)`);
+      }
       result = await runAgonCertificationOnce(options);
       consecutiveFailures = 0;
     } catch (error) {
