@@ -17,6 +17,8 @@ import {
 } from "../execution/job-escrow-state.ts";
 import type { AgonJobEscrowJob } from "../execution/agon-job-escrow.ts";
 import type { AgonArenaEvaluation, AgonArenaEvaluationInput, AgonArenaEvaluationState } from "../execution/arena-verification.ts";
+import { buildAgonCertificationJob, type AgonCertificationJob, type AgonCertificationScheduleInput } from "../certification.ts";
+import type { PlaygroundRun } from "../playground.ts";
 import type {
   AgonPrizeClaim,
   AgonPrizeClaimInput,
@@ -527,6 +529,43 @@ type AgonArenaEvaluationRow = QueryResultRow & {
   updated_at: Date;
 };
 
+type AgonCertificationRow = QueryResultRow & {
+  job_id: string;
+  chain_id: string;
+  service_registry_address: string;
+  listing_id: string;
+  agent_id: string;
+  listing_version: string;
+  service_key: string;
+  category: string;
+  task_id: string | null;
+  listing_reference: string;
+  manifest_hash: string;
+  manifest_uri: string;
+  payment_rail: PaymentRail;
+  provider_snapshot: string;
+  state: AgonCertificationJob["state"];
+  attempts: number;
+  max_attempts: number;
+  next_attempt_at: Date;
+  lease_expires_at: Date | null;
+  blocked_reason: string | null;
+  last_error_code: string | null;
+  playground_run_id: string | null;
+  passed: boolean | null;
+  score: number | null;
+  evidence_root: string | null;
+  response_hash: string | null;
+  task_commitment: string | null;
+  validation_request_hash: string | null;
+  evaluator_version_hash: string | null;
+  provider_host: string | null;
+  created_at: Date;
+  started_at: Date | null;
+  completed_at: Date | null;
+  updated_at: Date;
+};
+
 type AgonSyndicateContributionRow = QueryResultRow & {
   intent_id: string;
   actor_address: string;
@@ -900,6 +939,45 @@ function mapAgonArenaEvaluation(row: AgonArenaEvaluationRow): StoredAgonArenaEva
   };
 }
 
+function mapAgonCertification(row: AgonCertificationRow): AgonCertificationJob {
+  return {
+    jobId: row.job_id,
+    chainId: BigInt(row.chain_id),
+    serviceRegistry: row.service_registry_address,
+    listingId: row.listing_id,
+    agentId: row.agent_id,
+    listingVersion: row.listing_version,
+    serviceKey: row.service_key as `0x${string}`,
+    category: row.category,
+    taskId: row.task_id,
+    listingReference: row.listing_reference,
+    manifestHash: row.manifest_hash as `0x${string}`,
+    manifestUri: row.manifest_uri,
+    paymentRail: row.payment_rail,
+    providerSnapshot: row.provider_snapshot as `0x${string}`,
+    state: row.state,
+    attempts: row.attempts,
+    maxAttempts: row.max_attempts,
+    nextAttemptAt: row.next_attempt_at,
+    leaseExpiresAt: row.lease_expires_at,
+    blockedReason: row.blocked_reason,
+    lastErrorCode: row.last_error_code,
+    playgroundRunId: row.playground_run_id,
+    passed: row.passed,
+    score: row.score,
+    evidenceRoot: row.evidence_root as `0x${string}` | null,
+    responseHash: row.response_hash as `0x${string}` | null,
+    taskCommitment: row.task_commitment as `0x${string}` | null,
+    validationRequestHash: row.validation_request_hash as `0x${string}` | null,
+    evaluatorVersionHash: row.evaluator_version_hash as `0x${string}` | null,
+    providerHost: row.provider_host,
+    createdAt: row.created_at,
+    startedAt: row.started_at,
+    completedAt: row.completed_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 function mapAgonSyndicateContribution(row: AgonSyndicateContributionRow): StoredAgonSyndicateContribution {
   return {
     intentId: row.intent_id,
@@ -1023,6 +1101,14 @@ const AGON_ARENA_EVALUATION_COLUMNS = `
   validation_request_hash, evidence_root, playground_run_id, expires_at, state,
   evaluation_id, request_transaction_hash, start_transaction_hash, evidence_transaction_hash, created_at, updated_at`;
 
+const AGON_CERTIFICATION_COLUMNS = `
+  job_id, chain_id, service_registry_address, listing_id, agent_id, listing_version,
+  service_key, category, task_id, listing_reference, manifest_hash, manifest_uri, payment_rail,
+  provider_snapshot, state, attempts, max_attempts, next_attempt_at, lease_expires_at,
+  blocked_reason, last_error_code, playground_run_id, passed, score, evidence_root,
+  response_hash, task_commitment, validation_request_hash, evaluator_version_hash,
+  provider_host, created_at, started_at, completed_at, updated_at`;
+
 const AGON_SYNDICATE_CONTRIBUTION_COLUMNS = `
   intent_id, actor_address, idempotency_key, registry_contract_address,
   syndicate_id, agent_id, contribution_key, score, evidence_hash, state,
@@ -1134,6 +1220,69 @@ export class PostgresAgonRepository {
       [intentId],
     );
     return result.rows[0] ? mapAgonArenaEvaluation(result.rows[0]) : null;
+  }
+
+  async getAgonCertification(jobId: string): Promise<AgonCertificationJob | null> {
+    if (!/^[0-9a-f-]{36}$/i.test(jobId)) return null;
+    const result = await this.pool.query<AgonCertificationRow>(
+      `select ${AGON_CERTIFICATION_COLUMNS} from agon_certification_jobs where job_id = $1`,
+      [jobId],
+    );
+    return result.rows[0] ? mapAgonCertification(result.rows[0]) : null;
+  }
+
+  async claimAgonCertification(now = new Date()): Promise<AgonCertificationJob | null> {
+    if (!Number.isFinite(now.getTime())) throw new AgonStoreInvariantError("certification claim time is invalid");
+    return this.withTransaction(async (repository) => repository.claimAgonCertification(now));
+  }
+
+  async deferAgonCertification(jobId: string, nextAttemptAt: Date, reason: string): Promise<void> {
+    await this.pool.query(
+      `update agon_certification_jobs
+          set state = 'scheduled', attempts = greatest(attempts - 1, 0),
+              lease_expires_at = null, next_attempt_at = $2,
+              last_error_code = $3, updated_at = now()
+        where job_id = $1 and state = 'running'`,
+      [jobId, nextAttemptAt, reason.slice(0, 80)],
+    );
+  }
+
+  async completeAgonCertification(jobId: string, result: PlaygroundRun): Promise<void> {
+    const evidence = result.evidence;
+    const updated = await this.pool.query(
+      `update agon_certification_jobs
+          set state = 'completed', lease_expires_at = null, completed_at = now(), updated_at = now(),
+              playground_run_id = $2, passed = $3, score = $4, evidence_root = $5,
+              response_hash = $6, task_commitment = $7, validation_request_hash = $8,
+              evaluator_version_hash = $9, provider_host = $10, last_error_code = null
+        where job_id = $1 and state = 'running'`,
+      [
+        jobId,
+        result.runId,
+        result.passed,
+        result.score,
+        evidence.evidenceRoot,
+        evidence.responseHash,
+        evidence.taskCommitment,
+        evidence.validationRequestHash,
+        evidence.evaluatorVersionHash,
+        result.provenance.providerHost,
+      ],
+    );
+    if (updated.rowCount !== 1) throw new AgonStoreInvariantError("certification job was not running");
+  }
+
+  async failAgonCertification(jobId: string, errorCode: string, nextAttemptAt: Date | null): Promise<void> {
+    const updated = await this.pool.query(
+      `update agon_certification_jobs
+          set state = case when $2::timestamptz is null then 'failed' else 'scheduled' end,
+              lease_expires_at = null, next_attempt_at = coalesce($2::timestamptz, next_attempt_at),
+              completed_at = case when $2::timestamptz is null then now() else null end,
+              last_error_code = $3, updated_at = now()
+        where job_id = $1 and state = 'running'`,
+      [jobId, nextAttemptAt, errorCode.slice(0, 80)],
+    );
+    if (updated.rowCount !== 1) throw new AgonStoreInvariantError("certification job was not running");
   }
 
   async prepareAgonArenaEvaluation(input: AgonArenaEvaluationProjection): Promise<StoredAgonArenaEvaluation> {
@@ -2319,6 +2468,84 @@ export class AgonTransactionRepository {
       [requirePositive(key.chainId, "chain id"), normalizeAddress(key.serviceRegistry), requirePositive(key.listingId, "listing id")],
     );
     return result.rows[0] ? mapListing(result.rows[0]) : null;
+  }
+
+  async scheduleAgonCertification(input: AgonCertificationScheduleInput): Promise<AgonCertificationJob> {
+    const job = buildAgonCertificationJob(input);
+    const inserted = await this.client.query<AgonCertificationRow>(
+      `insert into agon_certification_jobs (
+         job_id, chain_id, service_registry_address, listing_id, agent_id, listing_version,
+         service_key, category, task_id, listing_reference, manifest_hash, manifest_uri, payment_rail,
+         provider_snapshot, state, attempts, max_attempts, next_attempt_at, lease_expires_at,
+         blocked_reason, last_error_code
+       ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 0, $16, $17, null, $18, null)
+       on conflict (chain_id, service_registry_address, listing_id, listing_version) do nothing
+       returning ${AGON_CERTIFICATION_COLUMNS}`,
+      [
+        job.jobId,
+        job.chainId.toString(),
+        job.serviceRegistry,
+        job.listingId,
+        job.agentId,
+        job.listingVersion,
+        job.serviceKey,
+        job.category,
+        job.taskId,
+        job.listingReference,
+        job.manifestHash,
+        job.manifestUri,
+        job.paymentRail,
+        job.providerSnapshot,
+        job.state,
+        job.maxAttempts,
+        job.nextAttemptAt,
+        job.blockedReason,
+      ],
+    );
+    if (inserted.rows[0]) return mapAgonCertification(inserted.rows[0]);
+    const existing = await this.client.query<AgonCertificationRow>(
+      `select ${AGON_CERTIFICATION_COLUMNS}
+         from agon_certification_jobs
+        where chain_id = $1 and service_registry_address = $2 and listing_id = $3 and listing_version = $4`,
+      [job.chainId.toString(), job.serviceRegistry, job.listingId, job.listingVersion],
+    );
+    const row = existing.rows[0];
+    if (!row) throw new AgonStoreInvariantError("certification idempotency record could not be loaded");
+    const value = mapAgonCertification(row);
+    if (value.manifestHash !== job.manifestHash || value.providerSnapshot !== job.providerSnapshot || value.serviceKey !== job.serviceKey || value.taskId !== job.taskId) {
+      throw new AgonStoreInvariantError("immutable listing version conflicts with certification job");
+    }
+    return value;
+  }
+
+  async claimAgonCertification(now: Date): Promise<AgonCertificationJob | null> {
+    const expired = await this.client.query(
+      `update agon_certification_jobs
+          set state = 'scheduled', lease_expires_at = null, next_attempt_at = now(), updated_at = now()
+        where state = 'running' and lease_expires_at <= $1`,
+      [now],
+    );
+    void expired;
+    const claimed = await this.client.query<AgonCertificationRow>(
+      `select ${AGON_CERTIFICATION_COLUMNS}
+         from agon_certification_jobs
+        where state = 'scheduled' and next_attempt_at <= $1
+        order by next_attempt_at asc, created_at asc
+        for update skip locked
+        limit 1`,
+      [now],
+    );
+    const row = claimed.rows[0];
+    if (!row) return null;
+    const updated = await this.client.query<AgonCertificationRow>(
+      `update agon_certification_jobs
+          set state = 'running', attempts = attempts + 1,
+              lease_expires_at = $2, started_at = coalesce(started_at, $1), updated_at = $1
+        where job_id = $3 and state = 'scheduled'
+        returning ${AGON_CERTIFICATION_COLUMNS}`,
+      [now, new Date(now.getTime() + 60_000), row.job_id],
+    );
+    return updated.rows[0] ? mapAgonCertification(updated.rows[0]) : null;
   }
 
   async upsertListing(listing: ListingProjection): Promise<void> {

@@ -138,7 +138,7 @@ export const PLAYGROUND_CATEGORIES = [
   { slug: "execution", label: "Execution", description: "Review an operation before it can leave the boundary.", tasks: TASKS.filter((task) => task.category === "execution") },
 ] as const;
 
-function taskFor(category: PlaygroundCategory, taskId: string): PlaygroundTask {
+export function getPlaygroundTask(category: PlaygroundCategory, taskId: string): PlaygroundTask {
   const task = TASKS.find((candidate) => candidate.category === category && candidate.id === taskId);
   if (!task) throw new PlaygroundError("task_not_found", "That category task is not available.");
   return task;
@@ -169,7 +169,7 @@ function hex(value: unknown): string {
   return typeof value === "string" && /^0x[0-9a-fA-F]*$/.test(value) ? value.toLowerCase() : "";
 }
 
-function defaultInput(taskId: string): unknown {
+export function defaultPlaygroundInput(taskId: string): unknown {
   switch (taskId) {
     case "selector-guard":
       return { to: "0x0000000000000000000000000000000000001234", value: "0", data: "0xa9059cbb" + "00".repeat(64) };
@@ -261,8 +261,8 @@ export function listPlaygroundCategories() {
 }
 
 export async function runPlaygroundTask(request: PlaygroundRunRequest, options: PlaygroundRunOptions = {}): Promise<PlaygroundRun> {
-  const task = taskFor(request.category, request.taskId);
-  const input = boundedInput(request.input ?? defaultInput(task.id));
+  const task = getPlaygroundTask(request.category, request.taskId);
+  const input = boundedInput(request.input ?? defaultPlaygroundInput(task.id));
   const runId = randomUUID();
   const requestId = options.requestId ?? randomUUID();
   const inputHash = hash(input);

@@ -84,6 +84,10 @@ const envSchema = z.object({
   // Playground. A static map avoids turning permissionless listing URLs into an
   // SSRF primitive. Keys pin chain:registry:listing@version to one endpoint.
   AGON_PLAYGROUND_PROVIDER_ENDPOINTS: z.string().default("{}"),
+  // Certification scheduling is durable but the worker is opt-in. Scheduling
+  // remains safe with this off; enabling it permits bounded calls to the same
+  // allowlisted providers used by Playground and never enables Arena writes.
+  AGON_CERTIFICATION_WORKER_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
 
   // Auth service
   JWT_SECRET: z.string().default("dev-insecure-secret-change-me"),
@@ -715,6 +719,9 @@ export const config = {
     },
     playground: {
       providerEndpoints: parsePlaygroundProviderEndpoints(env.AGON_PLAYGROUND_PROVIDER_ENDPOINTS),
+    },
+    certification: {
+      workerEnabled: env.AGON_CERTIFICATION_WORKER_ENABLED,
     },
   },
   adminToken: env.ADMIN_TOKEN,

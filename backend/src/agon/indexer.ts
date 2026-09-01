@@ -6,6 +6,9 @@ import { config } from "../config/index.js";
 import { pool } from "../db/pool.js";
 import { AgonProjector, type AgonChainEvent, type AgonProjectableEvent } from "./store/projector.ts";
 import { PostgresAgonRepository } from "./store/repository.ts";
+import { PostgresPlaygroundRunStore } from "./playground-store.ts";
+import { createHttpPlaygroundProviderRunner } from "./playground-provider.ts";
+import { agonCertificationWorkerLoop } from "./certification-worker.ts";
 
 const profileEvents = parseAbi([
   "event ProfileBound(uint256 indexed agentId,address indexed owner,string metadataURI)",
@@ -32,11 +35,14 @@ const serviceRegistry = config.agon.deployment?.contracts.AgonServiceRegistry;
 const identityRegistry = config.agon.deployment?.external.IdentityRegistry.address;
 const repository = new PostgresAgonRepository(pool);
 const projector = new AgonProjector(repository);
+const certificationPlaygroundStore = new PostgresPlaygroundRunStore(pool);
+const certificationProviderRunner = createHttpPlaygroundProviderRunner(config.agon.playground.providerEndpoints);
 
 const DEFAULT_BATCH_BLOCKS = 500n;
 const MAX_BATCH_BLOCKS = 5_000n;
 const POLL_INTERVAL_MS = 3_000;
 const ONCE = process.env.INDEXER_ONCE === "1";
+let certificationWorkerStarted = false;
 
 function readBatchBlocks(raw: string | undefined): bigint {
   if (!raw?.trim()) return DEFAULT_BATCH_BLOCKS;
@@ -278,6 +284,17 @@ export async function agonIndexerLoop(currentHead: () => Promise<bigint>): Promi
   if (!profileRegistry || !serviceRegistry || !identityRegistry) {
     console.log("agon indexer disabled: canonical deployment is unavailable");
     return;
+  }
+  if (config.agon.certification.workerEnabled && !ONCE && !certificationWorkerStarted) {
+    certificationWorkerStarted = true;
+    void agonCertificationWorkerLoop({
+      repository,
+      playgroundStore: certificationPlaygroundStore,
+      providerRunner: certificationProviderRunner,
+    }).catch((error) => {
+      console.error("agon certification worker stopped:", error instanceof Error ? error.message : error);
+    });
+    console.log("agon certification worker enabled");
   }
   let failures = 0;
   for (;;) {

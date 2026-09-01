@@ -23,6 +23,7 @@ const AGON_TABLES = [
   "agon_write_operations",
   "agon_verification_evidence",
   "agon_playground_runs",
+  "agon_certification_jobs",
   "agon_x402_call_intents",
   "agon_x402_call_receipts",
   "agon_x402_facilitator_verifications",

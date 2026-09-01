@@ -1363,6 +1363,52 @@ create index if not exists agon_playground_runs_actor_idx
 create index if not exists agon_playground_runs_state_idx
   on agon_playground_runs(state, created_at desc);
 
+-- One hidden, idempotent certification job is scheduled for each immutable
+-- listed service version. A worker may call the allowlisted provider and save
+-- the resulting Playground evidence, but this table never authorizes Arena
+-- writes, badge claims, or payments.
+create table if not exists agon_certification_jobs (
+  job_id                    uuid primary key,
+  chain_id                  numeric(78, 0) not null check (chain_id > 0),
+  service_registry_address  text not null check (service_registry_address ~ '^0x[0-9a-f]{40}$'),
+  listing_id                numeric(78, 0) not null check (listing_id > 0),
+  agent_id                  numeric(78, 0) not null check (agent_id > 0),
+  listing_version           numeric(78, 0) not null check (listing_version > 0),
+  service_key               text not null check (service_key ~ '^0x[0-9a-f]{64}$'),
+  category                  text not null check (char_length(category) > 0),
+  task_id                   text check (task_id is null or task_id ~ '^[a-z0-9-]{1,64}$'),
+  listing_reference         text not null check (listing_reference ~ '^[1-9][0-9]*:0x[0-9a-f]{40}:[1-9][0-9]*$'),
+  manifest_hash             text not null check (manifest_hash ~ '^0x[0-9a-f]{64}$'),
+  manifest_uri              text not null check (char_length(manifest_uri) between 1 and 2048),
+  payment_rail              text not null check (payment_rail in ('X402', 'Escrow')),
+  provider_snapshot         text not null check (provider_snapshot ~ '^0x[0-9a-f]{40}$'),
+  state                     text not null default 'scheduled' check (state in ('scheduled', 'running', 'completed', 'failed', 'blocked')),
+  attempts                  integer not null default 0 check (attempts >= 0),
+  max_attempts              integer not null default 3 check (max_attempts between 1 and 10),
+  next_attempt_at           timestamptz not null default now(),
+  lease_expires_at          timestamptz,
+  blocked_reason            text,
+  last_error_code           text,
+  playground_run_id         uuid unique references agon_playground_runs(run_id),
+  passed                    boolean,
+  score                     integer check (score is null or score between 0 and 100),
+  evidence_root             text check (evidence_root is null or evidence_root ~ '^0x[0-9a-f]{64}$'),
+  response_hash             text check (response_hash is null or response_hash ~ '^0x[0-9a-f]{64}$'),
+  task_commitment           text check (task_commitment is null or task_commitment ~ '^0x[0-9a-f]{64}$'),
+  validation_request_hash   text check (validation_request_hash is null or validation_request_hash ~ '^0x[0-9a-f]{64}$'),
+  evaluator_version_hash    text check (evaluator_version_hash is null or evaluator_version_hash ~ '^0x[0-9a-f]{64}$'),
+  provider_host             text,
+  created_at                timestamptz not null default now(),
+  started_at                timestamptz,
+  completed_at              timestamptz,
+  updated_at                timestamptz not null default now(),
+  unique (chain_id, service_registry_address, listing_id, listing_version)
+);
+create index if not exists agon_certification_jobs_due_idx
+  on agon_certification_jobs(state, next_attempt_at, created_at);
+create index if not exists agon_certification_jobs_listing_idx
+  on agon_certification_jobs(chain_id, service_registry_address, listing_id, listing_version);
+
 -- Additive upgrade for installations created before run leases existed.
 alter table agon_playground_runs
   add column if not exists lease_expires_at timestamptz;

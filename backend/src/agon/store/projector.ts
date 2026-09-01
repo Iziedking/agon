@@ -307,6 +307,21 @@ async function projectListingPublished(
       eventPayload(event),
     ),
   );
+  await repository.scheduleAgonCertification({
+    chainId: chainEvent.chainId,
+    serviceRegistry: chainEvent.contractAddress,
+    listingId: event.args.listingId,
+    agentId: event.args.agentId,
+    listingVersion: event.args.version,
+    serviceKey: event.args.serviceKey,
+    category: event.args.category,
+    manifestHash: event.args.manifestHash,
+    manifestUri: event.args.manifestUri,
+    paymentRail: event.args.paymentRail,
+    providerSnapshot: event.args.providerSnapshot,
+    listingStatus: mismatch ? "Suspended" : event.args.status,
+    quarantineReason: mismatch,
+  });
   if (mismatch) {
     await repository.appendListingEvent(
       listingAudit(chainEvent, event.args.listingId, event.args.version, "quarantined", {
@@ -360,6 +375,21 @@ async function projectListingVersion(
       eventPayload(event),
     ),
   );
+  await repository.scheduleAgonCertification({
+    chainId: chainEvent.chainId,
+    serviceRegistry: chainEvent.contractAddress,
+    listingId: event.args.listingId,
+    agentId: current.agentId,
+    listingVersion: event.args.version,
+    serviceKey: current.serviceKey,
+    category: current.category,
+    manifestHash: event.args.manifestHash,
+    manifestUri: event.args.manifestUri,
+    paymentRail: event.args.paymentRail,
+    providerSnapshot: event.args.providerSnapshot,
+    listingStatus: mismatch ? "Suspended" : current.chainStatus,
+    quarantineReason: mismatch,
+  });
   if (mismatch) {
     await repository.appendListingEvent(
       listingAudit(chainEvent, event.args.listingId, event.args.version, "quarantined", {
