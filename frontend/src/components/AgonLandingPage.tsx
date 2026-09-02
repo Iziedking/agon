@@ -85,7 +85,7 @@ export function AgonLandingPage() {
     setActive((index + SLIDE_COUNT) % SLIDE_COUNT);
   }
 
-  function skipStartup() {
+  function finishStartup() {
     try {
       window.sessionStorage.setItem(STARTUP_STORAGE_KEY, "1");
     } catch {
@@ -97,7 +97,7 @@ export function AgonLandingPage() {
 
   return (
     <>
-      {startupPhase !== "hidden" ? <StartupIntro phase={startupPhase} ready={startupReady} onEnter={skipStartup} /> : null}
+      {startupPhase !== "hidden" ? <StartupIntro phase={startupPhase} ready={startupReady} onEnter={finishStartup} /> : null}
       <div
         aria-hidden={startupPhase !== "hidden"}
         style={startupPhase === "hidden" ? undefined : { visibility: "hidden", opacity: 0 }}
@@ -111,7 +111,7 @@ export function AgonLandingPage() {
       </header>
 
       <main className="agon-landing-main relative min-h-0 flex-1 overflow-hidden">
-        <div className="agon-landing-content mx-auto h-full min-w-0 max-w-[1280px] px-3 pb-16 pt-3 max-[359px]:pb-20 max-[359px]:pt-2 sm:px-6 sm:pb-14 sm:pt-8">
+        <div className="agon-landing-content mx-auto h-full min-w-0 max-w-[1280px] px-3 pb-16 pt-8 max-[359px]:pb-20 max-[359px]:pt-6 sm:px-6 sm:pb-14 sm:pt-8">
           <div key={active} aria-live="polite" className="agon-slide-in h-full">
             {active === 0 ? <HeroSlide network={network} /> : null}
             {active === 1 ? <JourneySlide /> : null}
@@ -360,26 +360,6 @@ export function AgonLandingPage() {
           letter-spacing: .16em;
           text-transform: uppercase;
         }
-        .agon-startup-skip {
-          position: absolute;
-          top: 20px;
-          right: 24px;
-          z-index: 2;
-          min-height: 44px;
-          padding: 0 12px;
-          border: 1px solid #2a3142;
-          color: #f5f5f5;
-          background: transparent;
-          font-family: var(--font-mono);
-          font-size: 10px;
-          letter-spacing: .12em;
-          cursor: pointer;
-        }
-        .agon-startup-skip:hover,
-        .agon-startup-skip:focus-visible {
-          border-color: #00e5ff;
-          outline: none;
-        }
         .agon-startup-enter {
           position: absolute;
           right: 50%;
@@ -489,10 +469,6 @@ export function AgonLandingPage() {
             width: 150px;
             height: 110px;
           }
-          .agon-startup-skip {
-            top: 16px;
-            right: 16px;
-          }
           .agon-startup-caption {
             right: 16px;
             bottom: 16px;
@@ -560,7 +536,6 @@ function StartupIntro({ phase, ready, onEnter }: { phase: "visible" | "exiting";
           {preview === 2 ? <ServicePreview /> : null}
         </div>
       </div>
-      <button type="button" className="agon-startup-skip" onClick={onEnter}>SKIP INTRO</button>
       {ready ? <button type="button" className="agon-startup-enter" onClick={onEnter}>ENTER AGON <span aria-hidden="true">→</span></button> : null}
       <div className="agon-startup-caption">AGENT SERVICES / REAL PROOF</div>
     </div>

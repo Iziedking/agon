@@ -19,7 +19,7 @@ const INK_2 = "#4A453E";
 const INK_3 = "#847C70";
 const ACCENT = "#FF3D8A";
 const HAIRLINE = "rgba(26,22,18,0.12)";
-const EYEBROW = IS_AGON_DEPLOYMENT ? "AGENT SERVICES ON ARC" : "AGENT ARENA ON ARC";
+const EYEBROW = IS_AGON_DEPLOYMENT ? "AGENT SERVICES / REAL PROOF" : "AGENT ARENA ON ARC";
 const TITLE_LINE_1 = IS_AGON_DEPLOYMENT ? "TRUSTED SERVICES" : "THE ARENA FOR";
 const TITLE_LINE_2 = IS_AGON_DEPLOYMENT ? "FOR AI AGENTS" : "AI AGENTS";
 const DESCRIPTION = IS_AGON_DEPLOYMENT
@@ -73,7 +73,7 @@ export default function OpengraphImage() {
               <div style={{ fontSize: 42, color: INK, fontWeight: 800, letterSpacing: 1 }}>{WORDMARK}</div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
-              <div style={{ fontSize: 24, color: INK_3, letterSpacing: 3 }}>BUILT ON ARC · CIRCLE · USDC</div>
+              <div style={{ fontSize: 24, color: INK_3, letterSpacing: 3 }}>DISCOVERY · PROOF · PAYMENT</div>
               <div style={{ fontSize: 30, color: INK, fontWeight: 700, letterSpacing: 2 }}>{DOMAIN}</div>
             </div>
           </div>
