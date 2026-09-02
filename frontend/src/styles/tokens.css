@@ -11,8 +11,8 @@
 
 :root {
   /* === brand palette === */
-  /* Canvas: warm paper, never lavender, never pure white */
-  --canvas: #F4F1ED;
+  /* Canvas: AGON white theme reference, never lavender, never pure white */
+  --canvas: #EEF0F4;
   --canvas-2: #EDE8E1;
   --canvas-3: #E4DED5;
   /* Ink: three weights of near-black warm */
@@ -21,6 +21,9 @@
   --ink-3: #847C70;
   --hairline: rgba(26, 22, 18, 0.12);
   --hairline-strong: rgba(26, 22, 18, 0.22);
+  /* Pattern D: a quiet route map behind the landing frames. */
+  --route-line: rgba(26, 22, 18, 0.13);
+  --route-node: rgba(26, 22, 18, 0.26);
   /* Accent: flat rose pink, used sparingly. Pulled back from the prior
      #FF3D8A neon: less saturation, more grounded, no longer glows. */
   --accent: #D6336C;
@@ -56,7 +59,7 @@
   --card-cream-fg: #1A1612;
 
   /* === legacy pengu palette (kept while pages transition) === */
-  --pengu-bg: 244 241 237;
+  --pengu-bg: 238 240 244;
   --pengu-bg-2: 237 232 225;
   --pengu-card: 244 241 237;
   --pengu-card-2: 237 232 225;
@@ -86,8 +89,8 @@
   /* Accent */
   --color-accent-pink: #FF4081;
   --color-accent-pink-dim: #C2185B;
-  --color-accent-cyan: #00E5FF;
-  --color-accent-cyan-dim: #0097A7;
+  --color-accent-cyan: #08758A;
+  --color-accent-cyan-dim: #075A6C;
 
   /* Outcome */
   --color-win: #FFD54F;
@@ -181,11 +184,134 @@
   --z-toast: 50;
 }
 
+/* AGON intro critical paint.
+   The animation remains component-owned, but its first-frame geometry must be
+   available with the global stylesheet so raw intro markup never flashes at
+   the top-left while the component styles are being attached. */
+.agon-startup {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  isolation: isolate;
+  background: #0a0e1a;
+  opacity: 1;
+}
+
+.agon-startup-logo {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 180px;
+  height: 120px;
+}
+
+.agon-startup-mark {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #f5f5f5;
+}
+
+.agon-startup-smoke,
+.agon-startup-noise,
+.agon-startup-preview {
+  position: absolute;
+  pointer-events: none;
+}
+
+.agon-startup-smoke {
+  width: min(56vw, 760px);
+  height: min(56vw, 760px);
+  border-radius: 50%;
+  filter: blur(92px);
+  opacity: .42;
+  mix-blend-mode: screen;
+}
+
+.agon-startup-noise {
+  inset: 0;
+  opacity: .13;
+}
+
+.agon-startup-preview {
+  z-index: 1;
+  left: 50%;
+  top: 54%;
+  width: min(420px, calc(100vw - 48px));
+  opacity: 0;
+  transform: translate(-50%, calc(-50% + 12px));
+}
+
+.agon-startup-preview-ready {
+  opacity: 1;
+  transform: translate(-50%, -50%);
+}
+
+.agon-startup-skip,
+.agon-startup-enter {
+  position: absolute;
+  z-index: 2;
+  min-height: 44px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+}
+
+.agon-startup-skip {
+  top: 20px;
+  right: 24px;
+}
+
+.agon-startup-enter {
+  right: 50%;
+  bottom: 3%;
+  transform: translateX(50%);
+}
+
+.agon-startup-caption {
+  position: absolute;
+  right: 24px;
+  bottom: 20px;
+  font-family: var(--font-mono);
+}
+
+@media (max-width: 640px) {
+  .agon-startup-logo {
+    width: 150px;
+    height: 110px;
+  }
+
+  .agon-startup-smoke {
+    width: 72vw;
+    height: 72vw;
+    filter: blur(64px);
+  }
+
+  .agon-startup-skip {
+    top: 16px;
+    right: 16px;
+  }
+
+  .agon-startup-caption {
+    right: 16px;
+    bottom: 16px;
+    font-size: 9px;
+  }
+
+  .agon-startup-preview {
+    width: calc(100vw - 32px);
+  }
+}
+
 /* Base body: brand canvas. Light only.
    The four-layer body background gives a "real paper under
-   stage lighting" feel: a warm vertical gradient, a faint minor grid at 60px,
+   stage lighting" feel: a cool white vertical wash, a faint minor grid at 60px,
    a slightly stronger major grid at 240px, and small L-bracket corner marks
-   at every major intersection. Everything sits on the warm cream canvas and
+   at every major intersection. Everything sits on the AGON white canvas and
    uses ink at low alpha so the texture reads without ever competing with
    content. Cards and bracketed cells layer their own bg-canvas on top, which
    covers the grid where it would distract. */
@@ -216,13 +342,13 @@ body {
     /* Minor grid: 60x60, a whisper. Four minor cells make one major cell. */
     linear-gradient(to right, rgba(26, 22, 18, 0.015) 1px, transparent 1px),
     linear-gradient(to bottom, rgba(26, 22, 18, 0.015) 1px, transparent 1px),
-    /* Vertical paper gradient: slightly warmer at the top, slightly cooler
-       lower, so the page reads like a sheet of paper under stage lighting. */
+    /* Vertical white-theme wash: a restrained cool lift at the edges keeps the
+       reference background from reading as a dead flat fill. */
     linear-gradient(180deg,
-      rgba(228, 222, 213, 0.55) 0%,
-      rgba(244, 241, 237, 0) 360px,
-      rgba(244, 241, 237, 0) calc(100% - 360px),
-      rgba(228, 222, 213, 0.4) 100%
+      rgba(215, 221, 230, 0.55) 0%,
+      rgba(238, 240, 244, 0) 360px,
+      rgba(238, 240, 244, 0) calc(100% - 360px),
+      rgba(215, 221, 230, 0.4) 100%
     );
   background-size:
     240px 240px,
@@ -290,6 +416,8 @@ html.dark {
 
   --hairline: rgba(244, 241, 237, 0.12);
   --hairline-strong: rgba(244, 241, 237, 0.22);
+  --route-line: rgba(244, 241, 237, 0.13);
+  --route-node: rgba(244, 241, 237, 0.24);
 
   --accent: #FF4D8A;
   --accent-press: #FF2D72;

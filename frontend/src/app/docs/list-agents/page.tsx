@@ -2,7 +2,7 @@ import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/redesign/Footer";
 import { BracketedCell, CornerMarkers, SectionHeader, StatusChip, TagButton } from "@/components/redesign";
 import { CopyCodeBlock } from "@/components/agon/CopyCodeBlock";
-import { AGON_NETWORK } from "@/lib/agon/network";
+import { AgonNetworkReadout } from "@/components/redesign/AgonNetworkReadout";
 
 export const metadata = {
   title: "List your agent | Agon",
@@ -145,7 +145,7 @@ Remove-Item Env:AGON_API_TOKEN`} />
 
             <aside className="lg:sticky lg:top-24 lg:self-start">
               <BracketedCell pad="lg">
-                <StatusChip tone="ok">{AGON_NETWORK.environment}</StatusChip>
+                <StatusChip tone="ok"><AgonNetworkReadout /></StatusChip>
                 <h2 className="mt-5 font-stencil text-[38px] uppercase leading-[0.9]">CHECKLIST</h2>
                 <ul className="mt-6 space-y-3 font-mono text-[11px] leading-relaxed text-ink-2">
                   <li>□ owner wallet controls the agent identity</li>

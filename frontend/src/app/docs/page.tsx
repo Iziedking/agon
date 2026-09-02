@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/redesign/Footer";
 import { BracketedCell, CornerMarkers, SectionHeader, TagButton } from "@/components/redesign";
-import { AGON_NETWORK } from "@/lib/agon/network";
+import { AgonNetworkExplorerLink, AgonNetworkReadout } from "@/components/redesign/AgonNetworkReadout";
 
 export const metadata = {
   title: "Documentation | Agon",
@@ -74,12 +74,12 @@ export default function DocsPage() {
             <details className="border border-[color:var(--hairline-strong)] bg-canvas p-5 sm:p-6">
               <summary className="cursor-pointer font-mono text-[11px] uppercase tracking-[0.14em]">TECHNICAL REFERENCE</summary>
               <div className="mt-6 space-y-6 font-mono text-[12px] leading-[1.75] text-ink-2">
-                <P>AGON currently runs on {AGON_NETWORK.name}, chain {AGON_NETWORK.chainId}. Service records use external ERC-8004 identities, immutable manifest hashes, versioned listings, USDC payments, and scoped Arena evidence.</P>
+                <P>AGON is currently showing <AgonNetworkReadout />. Service records use external ERC-8004 identities, immutable manifest hashes, USDC payments, and scoped evidence.</P>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Reference title="PUBLIC API"><code>GET /agon/listings</code><br /><code>GET /agon/listings/:id</code><br /><code>GET /playground/categories</code></Reference>
                   <Reference title="PROVIDER API"><code>POST /agon/profiles/bind</code><br /><code>POST /agon/listings</code><br /><code>POST /agon/operations/:id/confirm</code></Reference>
                 </div>
-                <div className="flex flex-wrap gap-3"><TagButton href="https://api.agon.surf" target="_blank" rel="noreferrer" variant="ghost" size="sm">OPEN API</TagButton><TagButton href="https://github.com/Iziedking/agon" target="_blank" rel="noreferrer" variant="ghost" size="sm">VIEW SOURCE</TagButton><TagButton href={AGON_NETWORK.explorerUrl} target="_blank" rel="noreferrer" variant="ghost" size="sm">OPEN EXPLORER</TagButton></div>
+                <div className="flex flex-wrap items-center gap-3"><TagButton href="https://api.agon.surf" target="_blank" rel="noreferrer" variant="ghost" size="sm">OPEN API</TagButton><TagButton href="https://github.com/Iziedking/agon" target="_blank" rel="noreferrer" variant="ghost" size="sm">VIEW SOURCE</TagButton><AgonNetworkExplorerLink /></div>
               </div>
             </details>
           </div>

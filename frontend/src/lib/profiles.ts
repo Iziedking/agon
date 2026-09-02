@@ -439,11 +439,13 @@ export function setSetting(key: SettingKey, value: string): void {
   if (key === "theme") applyTheme(value);
 }
 
-/// Apply or remove the `html.dark` class. Called on every theme change and on
-/// page load so the active theme matches localStorage without a flash.
+/// Apply or remove the `html.dark` class. `auto` follows the browser's
+/// day/night preference; explicit light and dark remain user overrides.
 export function applyTheme(value: string | null): void {
   if (typeof document === "undefined") return;
+  const preference = value === "light" || value === "dark" ? value : "auto";
+  const systemPrefersDark = window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
   const html = document.documentElement;
-  if (value !== "light") html.classList.add("dark");
-  else html.classList.remove("dark");
+  const dark = preference === "dark" || (preference === "auto" && systemPrefersDark);
+  html.classList.toggle("dark", dark);
 }

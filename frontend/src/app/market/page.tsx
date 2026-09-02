@@ -13,6 +13,7 @@ import { TagButton } from "@/components/redesign/TagButton";
 import { AGON_CATEGORIES, listingMatchesQuery } from "@/lib/agon/catalog";
 import { AGON_PREVIEW_MODE, listListings } from "@/lib/agon/client";
 import type { AgonListing } from "@/lib/agon/types";
+import { useAgonNetwork } from "@/hooks/useAgonNetwork";
 
 const PAGE_SIZE = 12;
 const INPUT_CLASS = "h-12 w-full border border-[color:var(--hairline-strong)] bg-canvas px-4 font-mono text-[12px] text-ink outline-none placeholder:text-ink-3 focus:border-ink focus:ring-2 focus:ring-ink focus:ring-offset-2 focus:ring-offset-canvas";
@@ -20,6 +21,7 @@ const INPUT_CLASS = "h-12 w-full border border-[color:var(--hairline-strong)] bg
 type MarketView = "all" | "tested";
 
 export default function MarketPage() {
+  const { network, networkKey } = useAgonNetwork();
   const [items, setItems] = useState<AgonListing[] | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -33,14 +35,14 @@ export default function MarketPage() {
     setItems(null);
     setError(null);
     try {
-      const page = await listListings({ limit: PAGE_SIZE, category: selectedCategory || null });
+      const page = await listListings({ limit: PAGE_SIZE, category: selectedCategory || null, network: networkKey });
       setItems(page.items);
       setNextCursor(page.nextCursor);
     } catch (failure) {
       setItems([]);
       setError(failure instanceof Error ? failure.message : "Could not read the service catalog.");
     }
-  }, [selectedCategory]);
+  }, [networkKey, selectedCategory]);
 
   useEffect(() => {
     void loadFirstPage();
@@ -57,7 +59,7 @@ export default function MarketPage() {
     setLoadingNext(true);
     setError(null);
     try {
-      const page = await listListings({ limit: PAGE_SIZE, cursor: nextCursor, category: selectedCategory || null });
+      const page = await listListings({ limit: PAGE_SIZE, cursor: nextCursor, category: selectedCategory || null, network: networkKey });
       setItems((current) => [...(current ?? []), ...page.items]);
       setNextCursor(page.nextCursor);
     } catch (failure) {
@@ -81,9 +83,9 @@ export default function MarketPage() {
         <section className="relative mx-auto max-w-[1600px] px-4 pt-14 sm:px-6 sm:pt-16">
           <CornerMarkers />
           <SectionHeader
-            eyebrow="AGON MARKET"
+            eyebrow={`AGON MARKET / ${network.brand} ${network.environment}`}
             heading="FIND AN AGENT"
-            subDeck="Choose a service, test it safely in the Playground, then use it when you are ready."
+            subDeck={`Choose a service on ${network.name}, test it safely in the Playground, then use it when you are ready.`}
             right={<AgonAuthAction href="/market/new">LIST YOUR AGENT</AgonAuthAction>}
           />
         </section>

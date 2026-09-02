@@ -23,13 +23,14 @@ import { bindProfile, confirmAgonOperation, getAgonHealth, publishListing } from
 import { canonicalManifestHash } from "@/lib/agon/canonical";
 import { buildServiceManifest, validateServiceDraft } from "@/lib/agon/draft";
 import type { AgonCapabilities, PaymentRail } from "@/lib/agon/types";
-import { AGON_NETWORK } from "@/lib/agon/network";
+import { useAgonNetwork } from "@/hooks/useAgonNetwork";
 import { AGON_IDENTITY_REGISTRY, agonIdentityRegistryAbi, identityIdFromRegistrationReceipt, resolveIdentityActions, validateIdentityMetadataUri } from "@/lib/agon/identity";
 
 const INPUT_CLASS = "h-12 w-full border border-[color:var(--hairline-strong)] bg-canvas px-4 font-mono text-[12px] text-ink outline-none placeholder:text-ink-3 focus:border-ink focus:ring-2 focus:ring-ink focus:ring-offset-2 focus:ring-offset-canvas disabled:opacity-50";
 
 export default function NewListingPage() {
   const { isSignedIn, settling } = useOperatorAddress();
+  const { network, networkKey } = useAgonNetwork();
   const { writeContractAsync, signerAddress: address } = useArcWrite();
   const [capabilities, setCapabilities] = useState<AgonCapabilities | null>(null);
   const [agentId, setAgentId] = useState("");
@@ -62,14 +63,19 @@ export default function NewListingPage() {
     blockNumber: string | null;
     resultReference: string | null;
   } | null>(null);
+  const arcWritePathAvailable = networkKey === "arc-testnet";
 
   useEffect(() => {
     let live = true;
-    getAgonHealth()
+    if (!network.apiUrl) {
+      setCapabilities(null);
+      return () => { live = false; };
+    }
+    getAgonHealth(networkKey)
       .then((health) => { if (live) setCapabilities(health.capabilities); })
       .catch(() => { if (live) setCapabilities(null); });
     return () => { live = false; };
-  }, []);
+  }, [network.apiUrl, networkKey]);
 
   const automaticServiceKey = useMemo(
     () => name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 64),
@@ -98,8 +104,8 @@ export default function NewListingPage() {
   const manifestJson = useMemo(() => manifest ? JSON.stringify(manifest, null, 2) : "", [manifest]);
   const manifestHash = useMemo(() => manifest ? canonicalManifestHash(manifest) : "", [manifest]);
 
-  const profileWritesUnavailable = capabilities ? !capabilities.profileWrites : false;
-  const listingWritesUnavailable = capabilities ? !capabilities.listingWrites : false;
+  const profileWritesUnavailable = !arcWritePathAvailable || (capabilities ? !capabilities.profileWrites : false);
+  const listingWritesUnavailable = !arcWritePathAvailable || (capabilities ? !capabilities.listingWrites : false);
   const writeReadinessMessage = capabilities
     ? readinessMessage(capabilities.writeReadiness.reasons)
     : null;
@@ -116,6 +122,10 @@ export default function NewListingPage() {
   const readyToPublish = Boolean(isSignedIn && serviceKey && manifestHash && manifestUriValid && !listingWritesUnavailable && !listingPublicationProof);
 
   async function submitBinding() {
+    if (!arcWritePathAvailable) {
+      setNotice({ tone: "warn", message: `${network.name} identity writes are not connected yet. Switch to Arc Testnet to use the currently verified provider flow.` });
+      return;
+    }
     if (!address) {
       setNotice({ tone: "error", message: "Choose the wallet that owns this identity before binding it." });
       return;
@@ -123,7 +133,7 @@ export default function NewListingPage() {
     setNotice(null);
     setBinding(true);
     try {
-      const operation = await bindProfile({ chainId: AGON_NETWORK.chainId, agentId, metadataUri }, address);
+      const operation = await bindProfile({ chainId: String(network.chainId), agentId, metadataUri }, address);
       if (operation.state === "confirmed") {
         setIdentityBindingProof({
           txHash: operation.txHash,
@@ -160,6 +170,10 @@ export default function NewListingPage() {
   }
 
   async function createIdentity() {
+    if (!arcWritePathAvailable) {
+      setNotice({ tone: "warn", message: `${network.name} identity writes are not connected yet. Switch to Arc Testnet to use the currently verified provider flow.` });
+      return;
+    }
     if (!address || !validateIdentityMetadataUri(metadataUri)) {
       setNotice({ tone: "error", message: "Provide a permanent HTTPS or IPFS metadata URL before creating the identity." });
       return;
@@ -187,6 +201,10 @@ export default function NewListingPage() {
   async function submitListing(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setNotice(null);
+    if (!arcWritePathAvailable) {
+      setNotice({ tone: "warn", message: `${network.name} listing publication is not connected yet. The form is review-only until a BNB adapter is verified.` });
+      return;
+    }
     if (!address) {
       setNotice({ tone: "error", message: "Choose the wallet that owns this identity before publishing." });
       return;
@@ -198,7 +216,7 @@ export default function NewListingPage() {
     setPublishing(true);
     try {
       const operation = await publishListing({
-        chainId: AGON_NETWORK.chainId,
+        chainId: String(network.chainId),
         agentId,
         serviceKey,
         manifestHash,
@@ -255,6 +273,10 @@ export default function NewListingPage() {
 
   async function retryReceiptConfirmation() {
     if (!pendingConfirmation) return;
+    if (!arcWritePathAvailable) {
+      setNotice({ tone: "warn", message: "Receipt confirmation is scoped to the network that prepared this operation. Return to Arc Testnet before retrying." });
+      return;
+    }
     if (!address) {
       setNotice({ tone: "error", message: "Reconnect the wallet that signed this transaction before checking its receipt." });
       return;
@@ -332,11 +354,14 @@ export default function NewListingPage() {
               Publishing is unavailable: {writeReadinessMessage}. You can still complete the form and review the service without signing anything.
             </Notice>
           ) : null}
+          {!arcWritePathAvailable ? (
+            <Notice tone="warn">{network.name} is selected. BNB publication and identity contracts are not connected to this release yet, so this page is review-only and will not send an Arc transaction under a BNB label.</Notice>
+          ) : null}
           {notice ? <Notice tone={notice.tone}>{notice.message}</Notice> : null}
           {pendingConfirmation ? (
             <div className="mb-5 border border-[color:var(--warn)] bg-canvas-2 px-5 py-4">
               <p className="font-mono text-[11px] leading-relaxed text-ink-2">
-                The transaction succeeded on Arc, but Agon has not stored its receipt proof yet. Do not send it again. Retry confirmation with operation <span className="break-all text-ink">{pendingConfirmation.operationId}</span>.
+                The transaction succeeded on {network.name}, but Agon has not stored its receipt proof yet. Do not send it again. Retry confirmation with operation <span className="break-all text-ink">{pendingConfirmation.operationId}</span>.
               </p>
               <div className="mt-3 flex flex-wrap items-center gap-3">
                 <TagButton type="button" variant="ghost" onClick={() => { void retryReceiptConfirmation(); }}>
@@ -357,7 +382,7 @@ export default function NewListingPage() {
                   </Field>
                   <Field label="NETWORK" hint="Fixed for this foundation release">
                     <div className={`${INPUT_CLASS} flex items-center justify-between gap-3`}>
-                      <span>{AGON_NETWORK.name}</span><span className="text-ink-3">Chain {AGON_NETWORK.chainId}</span>
+                      <span>{network.name}</span><span className="text-ink-3">Chain {network.chainId}</span>
                     </div>
                   </Field>
                   <Field label="AGENT PROFILE URL" hint="Public metadata for the agent identity" className="sm:col-span-2">
@@ -389,7 +414,7 @@ export default function NewListingPage() {
                       <span>Identity #{agentId} bound{identityBindingProof.blockNumber ? ` in block ${identityBindingProof.blockNumber}` : ""}.</span>
                       {identityBindingProof.txHash ? (
                         <a
-                          href={`${AGON_NETWORK.explorerUrl.replace(/\/$/, "")}/tx/${identityBindingProof.txHash}`}
+                          href={`${network.explorerUrl.replace(/\/$/, "")}/tx/${identityBindingProof.txHash}`}
                           target="_blank"
                           rel="noreferrer"
                           className="text-accent underline underline-offset-4"
@@ -526,12 +551,12 @@ export default function NewListingPage() {
                   <div className="mt-7 border-l-[3px] border-[color:var(--ok)] bg-canvas-2 px-4 py-4">
                     <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-[color:var(--ok)]">SERVICE PUBLISHED</div>
                     <p className="mt-2 font-mono text-[10px] leading-relaxed text-ink-2">
-                      {listingPublicationProof.resultReference ?? "Receipt confirmed on Arc Testnet."} This version is now locked and cannot be published again from this form.
+                      {listingPublicationProof.resultReference ?? `Receipt confirmed on ${network.name}.`} This version is now locked and cannot be published again from this form.
                     </p>
                     <div className="mt-4 flex flex-wrap gap-3">
                       {listingPublicationProof.txHash ? (
                         <TagButton
-                          href={`${AGON_NETWORK.explorerUrl.replace(/\/$/, "")}/tx/${listingPublicationProof.txHash}`}
+                          href={`${network.explorerUrl.replace(/\/$/, "")}/tx/${listingPublicationProof.txHash}`}
                           target="_blank"
                           rel="noreferrer"
                           variant="ghost"

@@ -4,7 +4,7 @@ import "@rainbow-me/rainbowkit/styles.css";
 import { WagmiProvider } from "wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RainbowKitProvider } from "@rainbow-me/rainbowkit";
-import { useState, type ReactNode } from "react";
+import { Suspense, useState, type ReactNode } from "react";
 import { config } from "@/lib/wagmi";
 import { arcTestnet } from "@/lib/arc";
 import { arcrunRainbowTheme } from "@/lib/rainbowTheme";
@@ -19,17 +19,18 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <WagmiProvider config={config}>
       <QueryClientProvider client={queryClient}>
-        {/* RainbowKit supplies the branded wallet picker. initialChain points
-            the modal at Arc so a freshly connected wallet defaults to the home
-            chain. modalSize "compact" keeps it close to our own modal scale. */}
+        {/* RainbowKit supplies the branded wallet picker. Agon opens on BNB
+            Mainnet; the legacy ArcRun deployment keeps Arc Testnet as home. */}
         <RainbowKitProvider
           theme={arcrunRainbowTheme}
-          initialChain={arcTestnet}
+          initialChain={IS_AGON_DEPLOYMENT ? undefined : arcTestnet}
           modalSize="compact"
           appInfo={{ appName: PRODUCT_NAME }}
         >
           <AuthProvider>
-            <AgonAccessGate>{children}</AgonAccessGate>
+            <Suspense fallback={null}>
+              <AgonAccessGate>{children}</AgonAccessGate>
+            </Suspense>
             {/* Surfaces a friendly toast when the auth context clears a
                 stale wallet session, so the user understands why the
                 login button reappeared. */}

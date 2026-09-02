@@ -54,6 +54,7 @@ import type {
   AgonSyndicatePrizeTransactionView,
 } from "./types";
 import { AGON_PREVIEW_HEALTH, AGON_PREVIEW_LISTINGS } from "./preview";
+import { getAgonNetwork, getAgonNetworkKey, type AgonNetworkKey } from "./network";
 
 export const AGON_PREVIEW_MODE = process.env.NEXT_PUBLIC_AGON_PREVIEW_FIXTURES === "1";
 
@@ -62,12 +63,6 @@ let adminAuthorization: { token: string; actor: `0x${string}` } | null = null;
 export function setAgonAdminAuthorization(token: string | null, actor: `0x${string}` | null): void {
   adminAuthorization = token && actor ? { token, actor } : null;
 }
-
-const AGON_API_URL = (
-  process.env.NEXT_PUBLIC_AGON_API_URL ??
-  process.env.NEXT_PUBLIC_AUTH_URL ??
-  "http://localhost:8082"
-).replace(/\/$/, "");
 
 export class AgonApiError extends Error {
   readonly code: string;
@@ -81,7 +76,11 @@ export class AgonApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit, principal?: `0x${string}`): Promise<T> {
+async function request<T>(path: string, init?: RequestInit, principal?: `0x${string}`, networkKey: AgonNetworkKey = "arc-testnet"): Promise<T> {
+  const apiUrl = getAgonNetwork(networkKey).apiUrl;
+  if (!apiUrl) {
+    throw new AgonApiError("network_unavailable", `${getAgonNetwork(networkKey).name} catalog is not connected yet.`, 503);
+  }
   let response: Response;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 12_000);
@@ -93,7 +92,7 @@ async function request<T>(path: string, init?: RequestInit, principal?: `0x${str
       headers.set("x-admin-token", adminAuthorization.token);
       headers.set("x-agon-actor", adminAuthorization.actor);
     }
-    response = await fetch(`${AGON_API_URL}/agon${path}`, {
+    response = await fetch(`${apiUrl}/agon${path}`, {
       ...init,
       signal: controller.signal,
       credentials: "include",
@@ -120,6 +119,11 @@ async function request<T>(path: string, init?: RequestInit, principal?: `0x${str
 }
 
 export function listListings(query: ListListingsQuery = {}): Promise<AgonListingPage> {
+  const networkKey = getAgonNetworkKey(query.network || "arc-testnet");
+  const network = getAgonNetwork(networkKey);
+  if (!network.apiUrl) {
+    return Promise.reject(new AgonApiError("network_unavailable", `${network.name} catalog is not connected yet.`, 503));
+  }
   if (AGON_PREVIEW_MODE) {
     const items = AGON_PREVIEW_LISTINGS
       .filter((listing) => !query.category || listing.category === query.category)
@@ -134,22 +138,26 @@ export function listListings(query: ListListingsQuery = {}): Promise<AgonListing
   if (query.agentId) params.set("agentId", query.agentId);
   params.set("includeManifest", "1");
   const suffix = params.size ? `?${params.toString()}` : "";
-  return request<AgonListingPage>(`/listings${suffix}`);
+  return request<AgonListingPage>(`/listings${suffix}`, undefined, undefined, networkKey);
 }
 
-export function getListing(reference: string): Promise<AgonListing> {
+export function getListing(reference: string, networkKey: AgonNetworkKey = "arc-testnet"): Promise<AgonListing> {
+  const network = getAgonNetwork(networkKey);
+  if (!network.apiUrl) {
+    return Promise.reject(new AgonApiError("network_unavailable", `${network.name} catalog is not connected yet.`, 503));
+  }
   if (AGON_PREVIEW_MODE) {
     const listing = AGON_PREVIEW_LISTINGS.find((item) => item.id === reference || item.listingId === reference);
     return listing
       ? Promise.resolve(listing)
       : Promise.reject(new AgonApiError("listing_not_found", "This preview listing does not exist.", 404));
   }
-  return request<AgonListing>(`/listings/${encodeURIComponent(reference)}`);
+  return request<AgonListing>(`/listings/${encodeURIComponent(reference)}`, undefined, undefined, networkKey);
 }
 
-export function getAgonHealth(): Promise<AgonHealth> {
+export function getAgonHealth(networkKey: AgonNetworkKey = "arc-testnet"): Promise<AgonHealth> {
   if (AGON_PREVIEW_MODE) return Promise.resolve(AGON_PREVIEW_HEALTH);
-  return request<AgonHealth>("/health");
+  return request<AgonHealth>("/health", undefined, undefined, networkKey);
 }
 
 export function bindProfile(payload: BindProfileRequest, principal?: `0x${string}`): Promise<SubmittedOperation> {

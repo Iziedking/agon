@@ -7,10 +7,10 @@ import { CornerMarkers } from "@/components/redesign/CornerMarkers";
 import { Footer } from "@/components/redesign/Footer";
 import { TagButton } from "@/components/redesign/TagButton";
 import { useOperatorAddress } from "@/hooks/useAuth";
+import { useAgonNetwork } from "@/hooks/useAgonNetwork";
 import { useArcWrite } from "@/hooks/useArcWrite";
 import { confirmTx } from "@/lib/arc";
 import { AGON_SERVICE_REGISTRY, agonServiceRegistryAbi } from "@/lib/agon/abi";
-import { AGON_NETWORK } from "@/lib/agon/network";
 import { confirmAgonOperation, inspectManifest, publishListingVersion } from "@/lib/agon/client";
 import type { PaymentRail } from "@/lib/agon/types";
 
@@ -25,7 +25,9 @@ const INPUT_CLASS = "h-12 w-full border border-[color:var(--hairline-strong)] bg
 
 export default function ListingVersionPage() {
   const { isSignedIn } = useOperatorAddress();
+  const { network, networkKey } = useAgonNetwork();
   const { writeContractAsync, signerAddress: address } = useArcWrite();
+  const arcWritePathAvailable = networkKey === "arc-testnet";
   const [listingId, setListingId] = useState("2");
   const [manifestUri, setManifestUri] = useState("https://nock.lat/agon/manifest.json");
   const [paymentRail, setPaymentRail] = useState<PaymentRail>("X402");
@@ -83,6 +85,10 @@ export default function ListingVersionPage() {
   }
 
   async function confirmPendingVersion(pending: PendingConfirmation) {
+    if (!arcWritePathAvailable) {
+      setError("This pending receipt belongs to Arc Testnet. Return to Arc Testnet before confirming it.");
+      return;
+    }
     if (!address || !isSignedIn) {
       setError("Connect the wallet that submitted this transaction.");
       return;
@@ -105,6 +111,10 @@ export default function ListingVersionPage() {
   }
 
   async function publishVersion() {
+    if (!arcWritePathAvailable) {
+      setError(`${network.name} version publication is not connected yet. This page is review-only until a BNB adapter is verified.`);
+      return;
+    }
     if (pendingConfirmation) {
       await confirmPendingVersion(pendingConfirmation);
       return;
@@ -122,7 +132,7 @@ export default function ListingVersionPage() {
     setError(null);
     try {
       const operation = await publishListingVersion(listingId, {
-        chainId: AGON_NETWORK.chainId,
+        chainId: String(network.chainId),
         manifestHash,
         manifestUri: manifestUri.trim(),
         paymentRail,
@@ -166,7 +176,7 @@ export default function ListingVersionPage() {
       <AppHeader />
       <main className="mx-auto max-w-[1180px] px-6 py-16 md:px-10">
         <CornerMarkers />
-        <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-pink">Listing maintenance</p>
+        <p className="font-mono text-[11px] uppercase tracking-[0.24em] text-pink">Listing maintenance / {network.name}</p>
         <h1 className="mt-5 max-w-[760px] font-display text-5xl uppercase leading-[0.9] md:text-7xl">Publish a new version</h1>
         <p className="mt-6 max-w-[680px] font-mono text-sm leading-7 text-ink-2">
           Update the manifest behind your service. The current listing stays in place, while this change becomes a new version with its own hash and trust record.
@@ -174,6 +184,7 @@ export default function ListingVersionPage() {
         <p className="mt-3 max-w-[680px] font-mono text-[11px] leading-6 text-ink-3">Change the name, price, endpoint, description, tags, or logo in the manifest first. Then load it here and publish once.</p>
 
         <section className="mt-12 border border-[color:var(--hairline-strong)] p-6 md:p-10">
+          {!arcWritePathAvailable ? <p role="status" className="mb-6 border-l-2 border-[color:var(--warn)] bg-canvas-2 px-4 py-4 font-mono text-xs leading-6 text-[color:var(--warn)]">{network.name} is selected. Manifest inspection remains available, but publication is not connected and no Arc transaction can be sent from this network context.</p> : null}
           <div className="grid gap-6 md:grid-cols-2">
             <label className="font-mono text-xs uppercase tracking-[0.16em] text-ink-2">
               Listing ID
@@ -195,8 +206,8 @@ export default function ListingVersionPage() {
             <button type="button" onClick={loadManifest} disabled={loading || publishing || closed} className="border border-ink px-5 py-3 font-mono text-xs uppercase tracking-[0.16em] disabled:opacity-40">
               {loading ? "READING MANIFEST" : "LOAD MANIFEST"}
             </button>
-            {!closed ? <button type="button" onClick={publishVersion} disabled={(!manifestHash && !pendingConfirmation) || publishing || loading} className="bg-pink px-5 py-3 font-mono text-xs uppercase tracking-[0.16em] text-white disabled:opacity-40">
-              {publishing ? (pendingConfirmation ? "CONFIRMING" : "PREPARING") : pendingConfirmation ? "CONFIRM EXISTING TRANSACTION" : "PUBLISH VERSION"}
+            {!closed ? <button type="button" onClick={publishVersion} disabled={(!manifestHash && !pendingConfirmation) || publishing || loading || !arcWritePathAvailable} className="bg-pink px-5 py-3 font-mono text-xs uppercase tracking-[0.16em] text-white disabled:opacity-40">
+              {!arcWritePathAvailable ? "PUBLISHING UNAVAILABLE" : publishing ? (pendingConfirmation ? "CONFIRMING" : "PREPARING") : pendingConfirmation ? "CONFIRM EXISTING TRANSACTION" : "PUBLISH VERSION"}
             </button> : null}
           </div>
           {manifestHash ? <p className="mt-6 break-all font-mono text-xs text-ink-2">Manifest hash: {manifestHash}</p> : null}
@@ -208,15 +219,15 @@ export default function ListingVersionPage() {
           </div>
           {pendingConfirmation ? <div role="status" className="mt-6 border-l-2 border-[color:var(--warn)] bg-canvas-2 px-4 py-3 font-mono text-xs leading-6 text-[color:var(--warn)]">
             <p>Transaction submitted. Confirm the existing transaction before publishing again.</p>
-            <TagButton href={`${AGON_NETWORK.explorerUrl.replace(/\/$/, "")}/tx/${pendingConfirmation.txHash}`} target="_blank" rel="noreferrer" variant="ghost" size="sm">VIEW TRANSACTION</TagButton>
+            <TagButton href={`${network.explorerUrl.replace(/\/$/, "")}/tx/${pendingConfirmation.txHash}`} target="_blank" rel="noreferrer" variant="ghost" size="sm">VIEW TRANSACTION</TagButton>
           </div> : null}
           {notice ? <p role="status" className="mt-6 border-l-2 border-[color:var(--ok)] bg-canvas-2 px-4 py-3 font-mono text-xs leading-6 text-[color:var(--ok)]">{notice}</p> : null}
           {error ? <p role="alert" className="mt-6 border-l-2 border-pink bg-pink/10 px-4 py-3 font-mono text-xs leading-6 text-ink">{error}</p> : null}
           {publishedTxHash ? (
             <div className="mt-6 border-l-2 border-[color:var(--ok)] bg-canvas-2 px-4 py-4">
-              <p className="font-mono text-xs leading-6 text-[color:var(--ok)]">Version confirmed on Arc Testnet. This action is closed. Publish another version only after changing the manifest.</p>
+              <p className="font-mono text-xs leading-6 text-[color:var(--ok)]">Version confirmed on {network.name}. This action is closed. Publish another version only after changing the manifest.</p>
               <div className="mt-4 flex flex-wrap gap-3">
-                {publishedTxHash ? <TagButton href={`${AGON_NETWORK.explorerUrl.replace(/\/$/, "")}/tx/${publishedTxHash}`} target="_blank" rel="noreferrer" variant="ghost" size="sm">VIEW TRANSACTION</TagButton> : null}
+                {publishedTxHash ? <TagButton href={`${network.explorerUrl.replace(/\/$/, "")}/tx/${publishedTxHash}`} target="_blank" rel="noreferrer" variant="ghost" size="sm">VIEW TRANSACTION</TagButton> : null}
                 <TagButton href="/market" variant="ghost" size="sm">VIEW MARKET</TagButton>
                 <TagButton href={`/market/version?listingId=${encodeURIComponent(listingId)}`} variant="ghost" size="sm">START ANOTHER VERSION</TagButton>
               </div>

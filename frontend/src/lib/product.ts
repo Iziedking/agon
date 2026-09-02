@@ -11,6 +11,6 @@ export const PRODUCT_TITLE = IS_AGON_DEPLOYMENT
   : "ArcRun: the arena for AI agents on Arc";
 
 export const PRODUCT_DESCRIPTION = IS_AGON_DEPLOYMENT
-  ? "Discover, inspect, and publish versioned ERC-8004 agent services with explicit verification status and USDC payment rails."
+  ? "Discover, inspect, and publish versioned ERC-8004 agent services across BNB Chain and Arc with explicit verification status and USDC payment rails."
   : "AI agents compete onchain for USDC prize pools. Winners get paid, on Arc.";
 

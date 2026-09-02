@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useAccount, useChainId, useDisconnect, useSignMessage, useSwitchChain } from "wagmi";
 import { useConnectModal } from "@rainbow-me/rainbowkit";
@@ -16,9 +17,11 @@ import {
   verifyEmailOtp,
 } from "@/lib/auth";
 import { useAuth } from "@/hooks/useAuth";
+import { useAgonNetwork } from "@/hooks/useAgonNetwork";
 import { ModalClose } from "@/components/redesign";
 import { ProductMark } from "@/components/redesign/ProductMark";
-import { PRODUCT_NAME } from "@/lib/product";
+import { IS_AGON_DEPLOYMENT, PRODUCT_NAME } from "@/lib/product";
+import { isAgonRoute } from "@/lib/agon/routes";
 import { friendlyError } from "@/lib/errors";
 import { logRawError, reportEvent } from "@/lib/report";
 
@@ -147,6 +150,10 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
   const { switchChain } = useSwitchChain();
   const { signMessageAsync } = useSignMessage();
   const { me, refresh, signOut } = useAuth();
+  const pathname = usePathname() ?? "/";
+  const { network, networkKey } = useAgonNetwork();
+  const agonExperience = IS_AGON_DEPLOYMENT || isAgonRoute(pathname);
+  const networkAuthAvailable = !agonExperience || networkKey === "arc-testnet";
 
   const [view, setView] = useState<"choose" | "email" | "otp">("choose");
   const [email, setEmail] = useState("");
@@ -182,6 +189,10 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
   // component keeps the MANUAL "SIGN IN WITH WALLET" button below as the retry
   // path (e.g. after a rejection).
   async function signInWeb3() {
+    if (!networkAuthAvailable) {
+      setError(`${network.name} wallet sign-in is not connected yet. Browse freely, or switch to Arc Testnet for the current protected provider flow.`);
+      return;
+    }
     if (!address) return;
     setBusy(true);
     setError(null);
@@ -207,6 +218,10 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
   /// accounts whose old passkey was registered on a previous AGON domain.
   /// Servers without OTP enabled fall back to the passkey ceremony.
   async function handleEmailSignIn() {
+    if (!networkAuthAvailable) {
+      setError(`${network.name} protected actions are not connected yet. Browse freely, or switch to Arc Testnet for the current provider flow.`);
+      return;
+    }
     const trimmed = email.trim();
     if (!trimmed) {
       setError("enter an email first");
@@ -363,7 +378,11 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
   const wallet: { label: string; onClick?: () => void; disabled: boolean } = !mounted
     ? { label: "CONNECT A WALLET", disabled: true }
     : !isConnected
-      ? { label: "CONNECT A WALLET", onClick: openConnectModal, disabled: !openConnectModal }
+      ? networkAuthAvailable
+        ? { label: "CONNECT A WALLET", onClick: openConnectModal, disabled: !openConnectModal }
+        : { label: `${network.brand} SIGN-IN NOT READY`, disabled: true }
+      : !networkAuthAvailable
+        ? { label: `${network.brand} SIGN-IN NOT READY`, disabled: true }
       : chainId !== arcTestnet.id
         ? { label: "SWITCH TO ARC", onClick: () => switchChain({ chainId: arcTestnet.id }), disabled: false }
         : { label: busy ? "SIGNING" : "SIGN IN WITH WALLET", onClick: signInWeb3, disabled: busy };
@@ -470,7 +489,7 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
                         </div>
                       </div>
                       <div className="mt-6 flex flex-col gap-3">
-                        <PrimaryTag onClick={() => setView("email")}>
+                        <PrimaryTag disabled={!networkAuthAvailable} onClick={() => setView("email")}>
                           <MailIcon /> CONTINUE WITH EMAIL
                         </PrimaryTag>
                         <div className="flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
@@ -489,6 +508,7 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
                             DISCONNECT WALLET
                           </button>
                         ) : null}
+                        {!networkAuthAvailable ? <p className="font-mono text-[10px] leading-relaxed text-[color:var(--warn)]">{network.name} is browse-only in this release. Protected actions will open after its identity and session adapter is verified.</p> : null}
                       </div>
                     </>
                   ) : view === "email" ? (

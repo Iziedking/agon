@@ -282,10 +282,11 @@ function LegacyOperatorPage({ address }: { address: string }) {
                 label="THEME"
                 hint="Select your preferred theme."
                 options={[
+                  { value: "auto", label: "DAYLIGHT" },
                   { value: "light", label: "LIGHT" },
                   { value: "dark", label: "DARK" },
                 ]}
-                fallback="dark"
+                fallback="auto"
               />
               <SettingRow
                 k="lang"

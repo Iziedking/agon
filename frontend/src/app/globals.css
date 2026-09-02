@@ -7,7 +7,7 @@
   --surface: #1a1f2e;
   --surface-2: #222838;
   --pink: #ff4081;
-  --cyan: #00e5ff;
+  --cyan: #08758a;
   --gold: #ffd54f;
   --text: #f5f5f5;
   --muted: #9ca3af;
@@ -117,8 +117,8 @@ a:hover {
   font-family: var(--font-mono);
   font-size: 13px;
   color: var(--cyan);
-  background: rgba(0, 229, 255, 0.08);
-  border: 1px solid rgba(0, 229, 255, 0.25);
+  background: rgba(8, 117, 138, 0.08);
+  border: 1px solid rgba(8, 117, 138, 0.25);
   padding: 6px 12px;
   border-radius: 999px;
 }
@@ -338,7 +338,7 @@ footer {
 }
 .pill-open {
   color: var(--cyan);
-  border-color: rgba(0, 229, 255, 0.4);
+  border-color: rgba(8, 117, 138, 0.4);
 }
 .pill-settled {
   color: var(--gold);

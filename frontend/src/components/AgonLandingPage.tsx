@@ -4,7 +4,10 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import { AgonMark } from "@/components/redesign/AgonMark";
 import { CornerMarkers, TagButton } from "@/components/redesign";
-import { AGON_NETWORK } from "@/lib/agon/network";
+import { AgonNetworkSelector } from "@/components/redesign/AgonNetworkSelector";
+import { MarketRoutePattern } from "@/components/redesign/MarketRoutePattern";
+import { ThemeToggle } from "@/components/redesign/ThemeToggle";
+import { useAgonNetwork } from "@/hooks/useAgonNetwork";
 
 const SLIDE_MS = 6500;
 const SLIDE_COUNT = 4;
@@ -25,6 +28,7 @@ const TRUST_STATES = [
 ] as const;
 
 export function AgonLandingPage() {
+  const { network } = useAgonNetwork();
   const [active, setActive] = useState(0);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [startupPhase, setStartupPhase] = useState<"visible" | "exiting" | "hidden">("visible");
@@ -94,26 +98,22 @@ export function AgonLandingPage() {
   return (
     <>
       {startupPhase !== "hidden" ? <StartupIntro phase={startupPhase} ready={startupReady} onEnter={skipStartup} /> : null}
-<<<<<<< HEAD
-      <div aria-hidden={startupPhase !== "hidden"} className={`flex h-[100svh] min-h-[560px] min-w-0 flex-col overflow-hidden bg-canvas text-ink transition-opacity duration-500 ${startupPhase === "hidden" ? "visible opacity-100" : "pointer-events-none invisible opacity-0"}`}>
-=======
       <div
         aria-hidden={startupPhase !== "hidden"}
         style={startupPhase === "hidden" ? undefined : { visibility: "hidden", opacity: 0 }}
-        className={`flex h-[100svh] min-h-[560px] min-w-0 flex-col overflow-hidden bg-canvas text-ink transition-opacity duration-500 ${startupPhase === "hidden" ? "visible opacity-100" : "pointer-events-none invisible opacity-0"}`}
+        className={`agon-landing-shell flex h-[100svh] min-h-[560px] min-w-0 flex-col overflow-hidden bg-canvas text-ink transition-opacity duration-500 ${startupPhase === "hidden" ? "visible opacity-100" : "pointer-events-none invisible opacity-0"}`}
       >
->>>>>>> 250e22f (fix AGON landing page reload flash)
       <header className="shrink-0 border-b border-[color:var(--hairline)]">
         <div className="mx-auto flex h-16 max-w-[1280px] items-center justify-between gap-2 px-3 sm:gap-4 sm:px-6">
           <a href="/" aria-label="Agon home" className="inline-flex min-w-0 shrink-0 items-center text-ink"><AgonMark /></a>
-          <div className="flex shrink-0 items-center gap-1 sm:gap-2"><TagButton href="/login" size="sm" variant="ghost" className="max-[359px]:px-2">SIGN IN</TagButton></div>
+          <div className="flex shrink-0 items-center gap-1 sm:gap-2"><AgonNetworkSelector /><ThemeToggle /><TagButton href="/login" size="sm" variant="ghost" className="max-[359px]:px-2">SIGN IN</TagButton></div>
         </div>
       </header>
 
-      <main className="relative min-h-0 flex-1 overflow-hidden">
-        <div className="mx-auto h-full min-w-0 max-w-[1280px] px-3 pb-16 pt-3 max-[359px]:pb-20 max-[359px]:pt-2 sm:px-6 sm:pb-14 sm:pt-8">
+      <main className="agon-landing-main relative min-h-0 flex-1 overflow-hidden">
+        <div className="agon-landing-content mx-auto h-full min-w-0 max-w-[1280px] px-3 pb-16 pt-3 max-[359px]:pb-20 max-[359px]:pt-2 sm:px-6 sm:pb-14 sm:pt-8">
           <div key={active} aria-live="polite" className="agon-slide-in h-full">
-            {active === 0 ? <HeroSlide /> : null}
+            {active === 0 ? <HeroSlide network={network} /> : null}
             {active === 1 ? <JourneySlide /> : null}
             {active === 2 ? <TrustSlide /> : null}
             {active === 3 ? <CloseSlide /> : null}
@@ -133,11 +133,11 @@ export function AgonLandingPage() {
         </div>
       </main>
 
-      <footer className="max-h-[22svh] shrink-0 overscroll-contain overflow-y-auto border-t border-[color:var(--hairline)] sm:max-h-[24svh]">
+      <footer className="agon-landing-footer max-h-[22svh] shrink-0 overscroll-contain overflow-y-auto border-t border-[color:var(--hairline)] sm:max-h-[24svh]">
         <div className="mx-auto grid max-w-[1280px] gap-4 px-3 py-4 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3 sm:grid-cols-3 sm:gap-5 sm:px-6 sm:py-6">
           <div><div className="text-accent">AGON</div><div className="mt-2">FIND / LIST / TEST AGENTS</div><div className="mt-1">PRICED IN USDC</div></div>
           <div><div className="text-accent">TRUST</div><div className="mt-2">OWNERSHIP / VERSION / RESULTS</div><div className="mt-1">PUBLIC RECORDS</div></div>
-          <div><div className="text-accent">OPEN</div><div className="mt-2 flex flex-wrap gap-x-4 gap-y-2"><a href="/market" className="hover:text-ink">MARKET</a><a href="/market/new" className="hover:text-ink">LIST</a><a href="/agon/playground" className="hover:text-ink">PLAYGROUND</a><a href="/docs" className="hover:text-ink">DOCS</a></div><div className="mt-4">{AGON_NETWORK.environment} / AGON.SURF</div></div>
+          <div><div className="text-accent">OPEN</div><div className="mt-2 flex flex-wrap gap-x-4 gap-y-2"><a href="/market" className="hover:text-ink">MARKET</a><a href="/market/new" className="hover:text-ink">LIST</a><a href="/agon/playground" className="hover:text-ink">PLAYGROUND</a><a href="/docs" className="hover:text-ink">DOCS</a></div><div className="mt-4">{network.brand} {network.environment} · AGON.SURF</div></div>
         </div>
       </footer>
       <style jsx global>{`
@@ -146,6 +146,27 @@ export function AgonLandingPage() {
           to { opacity: 1; transform: translateY(0); }
         }
         .agon-slide-in { animation: agon-slide-in 420ms cubic-bezier(.22,1,.36,1) both; }
+        .agon-route-pattern {
+          opacity: .76;
+          transition: opacity 240ms ease;
+        }
+        .agon-route-pattern path {
+          stroke: var(--route-line);
+        }
+        .agon-route-pattern rect {
+          fill: var(--route-node);
+        }
+        .agon-route-pattern rect:nth-child(3n) {
+          fill: var(--accent);
+          opacity: .62;
+        }
+        @media (max-width: 640px) {
+          .agon-route-pattern {
+            opacity: .54;
+            transform: scale(1.45);
+            transform-origin: center;
+          }
+        }
         .agon-startup {
           position: fixed;
           inset: 0;
@@ -425,6 +446,7 @@ export function AgonLandingPage() {
         }
         @media (prefers-reduced-motion: reduce) {
           .agon-slide-in { animation: none; }
+          .agon-route-pattern { transition: none; }
           .agon-startup { transition: none; }
           .agon-startup-smoke,
           .agon-startup-mark { animation: none; }
@@ -435,6 +457,29 @@ export function AgonLandingPage() {
           .agon-startup-preview { transition: none; }
         }
         @media (max-width: 640px) {
+          .agon-landing-shell {
+            height: auto;
+            min-height: 100svh;
+            overflow: visible;
+          }
+          .agon-landing-main {
+            flex: none;
+            min-height: 0;
+            overflow: visible;
+          }
+          .agon-landing-content {
+            height: auto;
+            min-height: 620px;
+            padding-bottom: 4.5rem;
+          }
+          .agon-landing-content > .agon-slide-in {
+            height: auto;
+            min-height: 560px;
+          }
+          .agon-landing-shell .agon-landing-footer {
+            max-height: none;
+            overflow: visible;
+          }
           .agon-startup-smoke {
             width: 72vw;
             height: 72vw;
@@ -542,15 +587,16 @@ function SlideLabel({ children }: { children: ReactNode }) {
   return <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-accent">{children}</div>;
 }
 
-function HeroSlide() {
+function HeroSlide({ network }: { network: ReturnType<typeof useAgonNetwork>["network"] }) {
+  const bnb = network.brand === "BNB";
   return (
     <SlideFrame>
         <div className="grid h-full items-center gap-8 lg:grid-cols-[1.05fr_0.95fr] lg:gap-14">
         <div>
-          <SlideLabel>THE MARKET FOR AI AGENTS</SlideLabel>
-          <h1 className="mt-4 max-w-4xl font-stencil text-[clamp(3rem,8vw,7.4rem)] uppercase leading-[0.84] tracking-[-0.04em] max-[359px]:mt-3 max-[359px]:text-[clamp(2.45rem,12.5vw,7.4rem)]">FIND AGENTS.<br />TRUST THE WORK.</h1>
-          <p className="mt-5 max-w-xl font-mono text-[13px] leading-[1.65] text-ink-2 max-[359px]:mt-3 max-[359px]:text-[12px] max-[359px]:leading-[1.45] sm:text-[15px]">Discover agents with clear services, visible prices, and performance records you can inspect before you use them.</p>
-          <div className="mt-7 flex flex-wrap items-center gap-3 max-[359px]:mt-4"><TagButton href="/market">EXPLORE AGENTS</TagButton><TagButton href="/market/new" variant="ghost" className="max-[359px]:hidden">LIST YOUR AGENT</TagButton></div>
+          <SlideLabel>{bnb ? "BNB AGENT MARKET" : "THE MARKET FOR AI AGENTS"}</SlideLabel>
+          <h1 className="mt-4 max-w-4xl font-stencil text-[clamp(3rem,8vw,7.4rem)] uppercase leading-[0.84] tracking-[-0.04em] max-[359px]:mt-3 max-[359px]:text-[clamp(2.45rem,12.5vw,7.4rem)]">{bnb ? <>FIND BNB AGENTS.<br />TRUST THE WORK.</> : <>FIND AGENTS.<br />TRUST THE WORK.</>}</h1>
+          <p className="mt-5 max-w-xl font-mono text-[13px] leading-[1.65] text-ink-2 max-[359px]:mt-3 max-[359px]:text-[12px] max-[359px]:leading-[1.45] sm:text-[15px]">{bnb ? "Discover agents working across the BNB ecosystem with clear services, visible prices, and performance records you can inspect before you use them." : "Discover agents with clear services, visible prices, and performance records you can inspect before you use them."}</p>
+          <div className="mt-7 flex flex-wrap items-center gap-3 max-[359px]:mt-4"><TagButton href="/market">EXPLORE AGENTS</TagButton><TagButton href="/market/new" variant="ghost" className="max-[359px]:hidden">LIST YOUR AGENT</TagButton><span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">{network.name} · CHAIN {network.chainId} · {network.gasAsset} GAS</span></div>
         </div>
         <div className="grid gap-px bg-[color:var(--hairline)] max-[640px]:hidden sm:grid-cols-2">
           <Benefit title="CLEAR SERVICES" body="Know the result, input, price, and delivery method before you start." />
@@ -615,7 +661,15 @@ function CloseSlide() {
 }
 
 function SlideFrame({ children }: { children: ReactNode }) {
-  return <section className="relative h-full"><CornerMarkers />{children}</section>;
+  return (
+    <section className="relative h-full overflow-hidden">
+      <MarketRoutePattern />
+      <div className="relative z-[1] h-full">
+        <CornerMarkers />
+        {children}
+      </div>
+    </section>
+  );
 }
 
 function Benefit({ title, body }: { title: string; body: string }) {

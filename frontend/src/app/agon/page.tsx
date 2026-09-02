@@ -4,15 +4,15 @@ import { useCallback, useState } from "react";
 
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { Footer } from "@/components/redesign/Footer";
-import { AGON_CONTRACTS, EXPLORER, publicClient } from "@/lib/arc";
+import { AGON_CONTRACTS, publicClient } from "@/lib/arc";
 import { agonArenaAbi, agonJobEscrowAbi, agonPrizeVaultAbi, agonSyndicateRegistryAbi } from "@/lib/agon/abi";
-import { AGON_NETWORK } from "@/lib/agon/network";
+import { useAgonNetwork } from "@/hooks/useAgonNetwork";
 
 type ProtocolState = { label: string; value: string };
 
-const explorer = (address: string) => `${EXPLORER}/address/${address}`;
-
 export default function AgonProtocolPage() {
+  const { network, networkKey } = useAgonNetwork();
+  const arcProtocolAvailable = networkKey === "arc-testnet";
   const [jobId, setJobId] = useState("");
   const [job, setJob] = useState<ProtocolState[] | null>(null);
   const [arenaId, setArenaId] = useState("");
@@ -24,6 +24,7 @@ export default function AgonProtocolPage() {
   const [error, setError] = useState<string | null>(null);
 
   const readJob = useCallback(async () => {
+    if (!arcProtocolAvailable) { setError("Protocol inspection is currently available on Arc Testnet only."); return; }
     if (!/^\d+$/.test(jobId)) return;
     setError(null);
     try {
@@ -35,9 +36,10 @@ export default function AgonProtocolPage() {
         { label: "settlement", value: value.settlement.toString() }, { label: "deliverable", value: value.deliverableHash },
       ]);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not read the Agon job."); }
-  }, [jobId]);
+  }, [arcProtocolAvailable, jobId]);
 
   const readArena = useCallback(async () => {
+    if (!arcProtocolAvailable) { setError("Protocol inspection is currently available on Arc Testnet only."); return; }
     if (!/^\d+$/.test(arenaId)) return;
     setError(null);
     try {
@@ -49,9 +51,10 @@ export default function AgonProtocolPage() {
         { label: "evidence", value: value.evidenceRoot }, { label: "response", value: value.validationResponseHash },
       ]);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not read the Arena evaluation."); }
-  }, [arenaId]);
+  }, [arcProtocolAvailable, arenaId]);
 
   const readSyndicate = useCallback(async () => {
+    if (!arcProtocolAvailable) { setError("Protocol inspection is currently available on Arc Testnet only."); return; }
     if (!/^\d+$/.test(syndicateId)) return;
     setError(null);
     try {
@@ -62,9 +65,10 @@ export default function AgonProtocolPage() {
         { label: "campaign", value: value.campaignHash },
       ]);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not read the syndicate."); }
-  }, [syndicateId]);
+  }, [arcProtocolAvailable, syndicateId]);
 
   const readPool = useCallback(async () => {
+    if (!arcProtocolAvailable) { setError("Protocol inspection is currently available on Arc Testnet only."); return; }
     if (!/^0x[0-9a-fA-F]{64}$/.test(poolKey)) return;
     setError(null);
     try {
@@ -76,23 +80,25 @@ export default function AgonProtocolPage() {
         { label: "deadline", value: value.claimDeadline.toString() }, { label: "root", value: value.payoutRoot },
       ]);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not read the prize pool."); }
-  }, [poolKey]);
+  }, [arcProtocolAvailable, poolKey]);
 
   return (
     <div className="min-h-screen bg-canvas text-ink">
       <AppHeader />
       <main className="mx-auto max-w-[1500px] px-4 pb-24 pt-14 sm:px-6">
-        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-accent">AGON PROTOCOL / {AGON_NETWORK.environment} ENVIRONMENT</p>
+        <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-accent">AGON PROTOCOL / {network.name}</p>
         <h1 className="mt-4 max-w-3xl font-stencil text-[clamp(42px,7vw,90px)] uppercase leading-[0.88]">The live rails.</h1>
-        <p className="mt-6 max-w-2xl font-mono text-sm leading-7 text-ink-2">Inspect deployed protocol state and verify immutable Arc receipts. Operational writes are isolated in the token-gated administrator console.</p>
-        <div className="mt-10 grid gap-px bg-[color:var(--hairline)] md:grid-cols-3">
-          <ProtocolCard label="JOB ESCROW" address={AGON_CONTRACTS.JobEscrow} />
-          <ProtocolCard label="ARENA" address={AGON_CONTRACTS.Arena} />
-          <ProtocolCard label="PRIZE VAULT" address={AGON_CONTRACTS.PrizeVault} />
-          <ProtocolCard label="SYNDICATE REGISTRY" address={AGON_CONTRACTS.SyndicateRegistry} />
-          <ProtocolCard label="PROFILE REGISTRY" address={AGON_CONTRACTS.ProfileRegistry} />
-          <ProtocolCard label="SERVICE REGISTRY" address={AGON_CONTRACTS.ServiceRegistry} />
-        </div>
+        <p className="mt-6 max-w-2xl font-mono text-sm leading-7 text-ink-2">Inspect deployed protocol state and verify immutable receipts. Operational writes are isolated in the token-gated administrator console.</p>
+        {!arcProtocolAvailable ? (
+          <div className="mt-10 border-l-[3px] border-[color:var(--warn)] bg-canvas-2 px-5 py-5 font-mono text-xs leading-6 text-ink-2">Protocol inspection is not connected for {network.name} yet. This read-only inspector is scoped to Arc Testnet and will not query Arc contracts from a BNB context.</div>
+        ) : <div className="mt-10 grid gap-px bg-[color:var(--hairline)] md:grid-cols-3">
+          <ProtocolCard label="JOB ESCROW" address={AGON_CONTRACTS.JobEscrow} explorerUrl={network.explorerUrl} />
+          <ProtocolCard label="ARENA" address={AGON_CONTRACTS.Arena} explorerUrl={network.explorerUrl} />
+          <ProtocolCard label="PRIZE VAULT" address={AGON_CONTRACTS.PrizeVault} explorerUrl={network.explorerUrl} />
+          <ProtocolCard label="SYNDICATE REGISTRY" address={AGON_CONTRACTS.SyndicateRegistry} explorerUrl={network.explorerUrl} />
+          <ProtocolCard label="PROFILE REGISTRY" address={AGON_CONTRACTS.ProfileRegistry} explorerUrl={network.explorerUrl} />
+          <ProtocolCard label="SERVICE REGISTRY" address={AGON_CONTRACTS.ServiceRegistry} explorerUrl={network.explorerUrl} />
+        </div>}
         {error ? <p role="alert" className="mt-6 border-l-2 border-[color:var(--err)] bg-canvas-2 p-4 font-mono text-xs leading-6 text-[color:var(--err)]">{error}</p> : null}
         <section className="mt-12 grid gap-5 lg:grid-cols-2">
           <Inspector title="Job escrow" value={jobId} setValue={setJobId} onRead={readJob} data={job} />
@@ -107,8 +113,8 @@ export default function AgonProtocolPage() {
   );
 }
 
-function ProtocolCard({ label, address }: { label: string; address: string }) {
-  return <a href={explorer(address)} target="_blank" rel="noreferrer" className="bg-canvas p-5 transition-colors hover:bg-canvas-2"><span className="block font-mono text-[10px] uppercase tracking-[.15em] text-accent">{label}</span><span className="mt-4 block break-all font-mono text-[11px] text-ink-2">{address}</span><span className="mt-4 block font-mono text-[10px] uppercase tracking-[.12em] text-ink-3">VIEW ARC RECEIPTS</span></a>;
+function ProtocolCard({ label, address, explorerUrl }: { label: string; address: string; explorerUrl: string }) {
+  return <a href={`${explorerUrl.replace(/\/$/, "")}/address/${address}`} target="_blank" rel="noreferrer" className="bg-canvas p-5 transition-colors hover:bg-canvas-2"><span className="block font-mono text-[10px] uppercase tracking-[.15em] text-accent">{label}</span><span className="mt-4 block break-all font-mono text-[11px] text-ink-2">{address}</span><span className="mt-4 block font-mono text-[10px] uppercase tracking-[.12em] text-ink-3">VIEW ARC RECEIPTS</span></a>;
 }
 
 function Inspector({ title, value, setValue, onRead, data, placeholder }: { title: string; value: string; setValue: (value: string) => void; onRead: () => Promise<void>; data: ProtocolState[] | null; placeholder?: string }) {

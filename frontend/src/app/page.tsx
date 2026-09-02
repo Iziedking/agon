@@ -18,10 +18,7 @@ import { BuiltOnLogos } from "@/components/redesign/BuiltOnLogos";
 import { Footer } from "@/components/redesign/Footer";
 import { AgonMark } from "@/components/redesign/AgonMark";
 import { IS_AGON_DEPLOYMENT } from "@/lib/product";
-<<<<<<< HEAD
-=======
 import { ThemeToggle } from "@/components/redesign/ThemeToggle";
->>>>>>> 250e22f (fix AGON landing page reload flash)
 import { AgonLandingPage } from "@/components/AgonLandingPage";
 
 /// Landing page. Marketing only; live state lives at /app and /contests.

@@ -4,6 +4,10 @@ import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { useAccount, useSwitchChain } from "wagmi";
 import { arcTestnet } from "@/lib/arc";
+import { useAgonNetwork } from "@/hooks/useAgonNetwork";
+import { IS_AGON_DEPLOYMENT } from "@/lib/product";
+import { isAgonRoute, isLegacyArcRunRoute } from "@/lib/agon/routes";
+import { getAgonNetwork } from "@/lib/agon/network";
 
 /// Routes where the user legitimately needs the wallet on a non-Arc chain.
 /// The Funds top-up signs the burn step on whatever source chain the user picks,
@@ -26,12 +30,20 @@ export function ChainGuard() {
   // an unconfigured chain (e.g. ETH mainnet), so the banner would never show.
   const { isConnected, chainId } = useAccount();
   const { switchChain, isPending, error } = useSwitchChain();
+  const { network } = useAgonNetwork();
   const autoTried = useRef(false);
 
+  const agonRoute = !isLegacyArcRunRoute(pathname) && (IS_AGON_DEPLOYMENT || isAgonRoute(pathname));
   const onBridgeRoute = NON_ARC_ROUTES.some((r) => pathname.startsWith(r));
-  const wrong = isConnected && chainId !== arcTestnet.id && !onBridgeRoute;
+  const targetNetwork = agonRoute ? network : getAgonNetwork("arc-testnet");
+  const targetChainId = targetNetwork.chainId as 56 | 97 | typeof arcTestnet.id;
+  const wrong = isConnected && chainId !== targetChainId && !(agonRoute ? false : onBridgeRoute);
 
   useEffect(() => {
+    // Discovery should not unexpectedly move a connected wallet between
+    // networks. Agon shows the mismatch and lets the user choose when to
+    // switch; legacy ArcRun retains its established automatic guard.
+    if (agonRoute) return;
     if (wrong && !autoTried.current) {
       autoTried.current = true;
       try {
@@ -42,21 +54,21 @@ export function ChainGuard() {
       }
     }
     if (!wrong) autoTried.current = false;
-  }, [wrong, switchChain]);
+  }, [agonRoute, wrong, switchChain]);
 
   if (!wrong) return null;
 
   return (
     <div className="fixed inset-x-0 top-0 z-[60] flex flex-wrap items-center justify-center gap-3 bg-[#e0466e] px-4 py-2 text-white shadow-[0_2px_12px_rgba(0,0,0,0.15)]">
       <span className="font-mono text-xs">
-        wrong network · Agon runs strictly on Arc Testnet (chain {arcTestnet.id})
+        wrong network · {agonRoute ? "Agon is showing" : "ArcRun requires"} {targetNetwork.name} (chain {targetNetwork.chainId})
       </span>
       <button
-        onClick={() => switchChain({ chainId: arcTestnet.id })}
+        onClick={() => switchChain({ chainId: targetChainId })}
         disabled={isPending}
         className="rounded-full bg-pengu-card px-3 py-1 font-display text-xs uppercase tracking-wide text-[#e0466e] hover:bg-white/90 disabled:opacity-60"
       >
-        {isPending ? "switching…" : "switch to arc"}
+        {isPending ? "switching…" : `switch to ${targetNetwork.brand.toLowerCase()}`}
       </button>
       {error ? <span className="font-mono text-[11px] opacity-90">{error.message}</span> : null}
     </div>

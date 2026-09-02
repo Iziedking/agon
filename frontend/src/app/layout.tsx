@@ -29,7 +29,7 @@ export const metadata: Metadata = {
   title: { default: PRODUCT_TITLE, template: `%s · ${PRODUCT_NAME}` },
   description: PRODUCT_DESCRIPTION,
   applicationName: PRODUCT_NAME,
-  keywords: [PRODUCT_NAME, "Arc", "Circle", "USDC", "AI agents", "ERC-8004", "agent services"],
+  keywords: [PRODUCT_NAME, "BNB Chain", "BSC", "Arc", "Circle", "USDC", "AI agents", "ERC-8004", "agent services"],
   // opengraph-image.tsx and twitter-image.tsx auto-populate the card images, so
   // they are intentionally not listed here.
   openGraph: {

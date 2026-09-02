@@ -5,7 +5,8 @@ import { ArcRunMark } from "./ArcRunMark";
 import { AgonMark } from "./AgonMark";
 import { StatusChip } from "./StatusChip";
 import { FeedbackTrigger } from "./FeedbackTrigger";
-import { AGON_NETWORK } from "@/lib/agon/network";
+import { useAgonNetwork } from "@/hooks/useAgonNetwork";
+import type { AgonNetworkDescriptor } from "@/lib/agon/network";
 import { IS_AGON_DEPLOYMENT } from "@/lib/product";
 
 /// Three-column mono list. Flat against canvas. No background card. Status
@@ -34,12 +35,6 @@ const NETWORK = [
   { label: "CIRCLE DOCS ↗", href: "https://developers.circle.com", external: true },
 ];
 
-const AGON_NETWORK_LINKS = [
-  { label: "NETWORK EXPLORER", href: AGON_NETWORK.explorerUrl, external: true },
-  { label: "USDC FAUCET", href: "https://faucet.circle.com", external: true },
-  { label: "CIRCLE DOCS", href: "https://developers.circle.com", external: true },
-];
-
 const SOCIALS = [
   { label: "X ↗", href: "https://x.com/arc_run", external: true },
   { label: "GITHUB ↗", href: "https://github.com/Iziedking/arcrun", external: true },
@@ -53,6 +48,7 @@ const AGON_PROJECT = [
 
 export function Footer({ variant = "legacy" }: { variant?: "legacy" | "agon" }) {
   const pathname = usePathname() ?? "/";
+  const { network } = useAgonNetwork();
   const isAgon = variant === "agon";
   const isInApp = [
     "/app",
@@ -89,12 +85,12 @@ export function Footer({ variant = "legacy" }: { variant?: "legacy" | "agon" }) 
               : "the competitive arena for ai agents on arc. anyone can open a challenge funded in usdc, agents compete autonomously for the pool, and winners are paid onchain."}
           </p>
           <div className="mt-6">
-            <StatusChip tone="ok">{AGON_NETWORK.environment} ENVIRONMENT</StatusChip>
+            <StatusChip tone={network.readiness === "configured" ? "ok" : "warn"}>{network.brand} {network.environment}</StatusChip>
           </div>
         </div>
 
         <Column title="PRODUCT" items={isAgon ? AGON_PRODUCT : PRODUCT} className="lg:col-span-3" />
-        <Column title="NETWORK" items={isAgon ? AGON_NETWORK_LINKS : NETWORK} className="lg:col-span-2" />
+        <Column title="NETWORK" items={isAgon ? agonNetworkLinks(network) : NETWORK} className="lg:col-span-2" />
         <Column title={isAgon ? "PROJECT" : "SOCIALS"} items={isAgon ? AGON_PROJECT : SOCIALS} className="lg:col-span-2" />
       </div>
 
@@ -106,6 +102,14 @@ export function Footer({ variant = "legacy" }: { variant?: "legacy" | "agon" }) 
       </div>
     </footer>
   );
+}
+
+function agonNetworkLinks(network: AgonNetworkDescriptor) {
+  return [
+    { label: `${network.brand} EXPLORER ↗`, href: network.explorerUrl, external: true },
+    ...(network.faucetUrl ? [{ label: "TESTNET FAUCET ↗", href: network.faucetUrl, external: true }] : []),
+    { label: "NETWORK DOCS ↗", href: network.docsUrl, external: true },
+  ];
 }
 
 function Column({

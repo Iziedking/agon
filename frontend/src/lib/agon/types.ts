@@ -118,6 +118,7 @@ export type ListListingsQuery = {
   cursor?: string | null;
   category?: string | null;
   agentId?: string | null;
+  network?: string | null;
 };
 
 export type BindProfileRequest = {

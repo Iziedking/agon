@@ -6,6 +6,9 @@ import { usePathname, useRouter } from "next/navigation";
 import { AgonMark } from "@/components/redesign/AgonMark";
 import { useOperatorAddress } from "@/hooks/useAuth";
 import { IS_AGON_DEPLOYMENT } from "@/lib/product";
+import { useAgonNetwork } from "@/hooks/useAgonNetwork";
+import { networkHref } from "@/lib/agon/network";
+import { isLegacyArcRunRoute } from "@/lib/agon/routes";
 
 /**
  * Agon has a public discovery layer. Keep the landing page, catalog, service
@@ -16,6 +19,7 @@ export function AgonAccessGate({ children }: { children: ReactNode }) {
   const pathname = usePathname() ?? "/";
   const router = useRouter();
   const { isSignedIn, settling } = useOperatorAddress();
+  const { networkKey } = useAgonNetwork();
   const isLogin = pathname === "/login";
   const isLanding = pathname === "/";
   const isProtocolDocument = pathname.startsWith("/.well-known/");
@@ -26,12 +30,30 @@ export function AgonAccessGate({ children }: { children: ReactNode }) {
   // Admin has its own in-memory ADMIN_TOKEN gate. It must reach the token
   // screen without entering the wallet/email session flow.
   const isAdminRoute = pathname === "/admin" || pathname.startsWith("/admin/");
+  const isLegacyRoute = isLegacyArcRunRoute(pathname);
   const isPublicDiscovery = isLanding || isLogin || isProtocolDocument || isPublicMarket || isPublicDocs || isPublicPlayground || isPublicOperator || isAdminRoute;
   const shouldGate = IS_AGON_DEPLOYMENT && !isPublicDiscovery;
 
   useEffect(() => {
-    if (shouldGate && !settling && !isSignedIn) router.replace("/login");
-  }, [isSignedIn, router, settling, shouldGate]);
+    if (IS_AGON_DEPLOYMENT && isLegacyRoute) {
+      router.replace(networkHref("/market", networkKey));
+      return;
+    }
+    if (shouldGate && !settling && !isSignedIn) router.replace(networkHref("/login", networkKey));
+  }, [isLegacyRoute, isSignedIn, networkKey, router, settling, shouldGate]);
+
+  if (IS_AGON_DEPLOYMENT && isLegacyRoute) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-canvas px-6 text-ink">
+        <div className="w-full max-w-[560px] border border-[color:var(--hairline-strong)] bg-canvas-2 p-8 text-center">
+          <AgonMark />
+          <p className="mt-8 font-mono text-[11px] uppercase tracking-[0.16em] text-accent">AGON MARKET</p>
+          <h1 className="mt-3 font-stencil text-[42px] uppercase leading-none">OPENING THE MARKET</h1>
+          <p className="mx-auto mt-5 max-w-[42ch] font-mono text-[12px] leading-relaxed text-ink-2">That ArcRun arena route is not part of Agon. Returning you to the BNB-led marketplace.</p>
+        </div>
+      </main>
+    );
+  }
 
   if (!shouldGate || isSignedIn) return <>{children}</>;
 

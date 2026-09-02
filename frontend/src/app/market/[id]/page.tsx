@@ -19,12 +19,14 @@ import { presentListing } from "@/lib/agon/catalog";
 import { getListing, inspectManifest } from "@/lib/agon/client";
 import type { AgonListing } from "@/lib/agon/types";
 import { assessListingAssurance, canUseEscrow, verifyManifestAnchor } from "@/lib/agon/verify";
+import { useAgonNetwork } from "@/hooks/useAgonNetwork";
 
 export default function ListingDetailPage() {
   const params = useParams<{ id: string }>();
   const reference = useMemo(() => {
     try { return decodeURIComponent(params.id); } catch { return params.id; }
   }, [params.id]);
+  const { network, networkKey } = useAgonNetwork();
   const [listing, setListing] = useState<AgonListing | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -34,7 +36,7 @@ export default function ListingDetailPage() {
     let live = true;
     setListing(undefined);
     setError(null);
-    getListing(reference)
+    getListing(reference, networkKey)
       .then((value) => {
         if (!live) return;
         setListing(value);
@@ -51,7 +53,7 @@ export default function ListingDetailPage() {
         setError(failure instanceof Error ? failure.message : "Could not read this service.");
       });
     return () => { live = false; };
-  }, [reference, reloadKey]);
+  }, [networkKey, reference, reloadKey]);
 
   const hydratedListing = listing ? { ...listing, manifest: { ...listing.manifest, body: manifestBody } } : null;
   const service = hydratedListing ? presentListing(hydratedListing) : null;
@@ -67,7 +69,7 @@ export default function ListingDetailPage() {
         <section className="relative mx-auto max-w-[1400px] px-4 pt-14 sm:px-6 sm:pt-16">
           <CornerMarkers />
           <SectionHeader
-            eyebrow={service?.category.label ?? "AGON MARKET / SERVICE"}
+            eyebrow={service?.category.label ?? `AGON MARKET / ${network.brand} SERVICE`}
             heading={service?.name ?? "SERVICE DETAILS"}
             subDeck={service?.description ?? "Reading this service from the Agon catalog."}
             right={<><TagButton variant="ghost" href="/market">BACK TO MARKET</TagButton>{listing?.verification.status !== "Verified" && listing ? <TagButton href={`/agon/playground?listing=${encodeURIComponent(listing.id)}`}>TEST IN PLAYGROUND</TagButton> : null}</>}
@@ -171,7 +173,7 @@ export default function ListingDetailPage() {
                     )}
 
                     <div className="mt-7 border-t border-current pt-5 font-mono text-[9px] uppercase leading-relaxed tracking-[0.1em] opacity-55">
-                      Service record {listing.listingId} <span aria-hidden>·</span> Version {listing.version}
+                      {network.name} <span aria-hidden>·</span> Service record {listing.listingId} <span aria-hidden>·</span> Version {listing.version}
                     </div>
                   </BracketedCell>
                 </aside>

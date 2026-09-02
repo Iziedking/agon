@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { StatusChip } from "@/components/redesign";
-import { AGON_NETWORK } from "@/lib/agon/network";
+import { useAgonNetwork } from "@/hooks/useAgonNetwork";
 
 /// The docs table of contents with scrollspy: as the reader scrolls, the section
 /// currently in view is highlighted in the accent color so they always see where
@@ -10,6 +10,7 @@ import { AGON_NETWORK } from "@/lib/agon/network";
 /// sits near the top of the viewport.
 export function DocsToc({ items }: { items: { id: string; label: string }[] }) {
   const [active, setActive] = useState<string>(items[0]?.id ?? "");
+  const { network } = useAgonNetwork();
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -55,7 +56,7 @@ export function DocsToc({ items }: { items: { id: string; label: string }[] }) {
         })}
       </ul>
       <div className="mt-6">
-        <StatusChip tone="ok">{AGON_NETWORK.environment} ENVIRONMENT</StatusChip>
+        <StatusChip tone={network.readiness === "configured" ? "ok" : "warn"}>{network.brand} {network.environment}</StatusChip>
       </div>
     </nav>
   );

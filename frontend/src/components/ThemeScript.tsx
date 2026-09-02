@@ -2,9 +2,9 @@
 /// Without this the page hydrates in light first and then flips to dark on
 /// mount, which produces a visible flash. Reads the same localStorage key
 /// the SettingRow / setSetting helpers use ("arcrun:setting:theme") and
-/// adds the `dark` class to <html> by default, unless the user explicitly
-/// selected light mode. AGON deployments are dark-only so a saved legacy light
-/// preference cannot make the marketplace unreadable.
+/// adds or removes the `dark` class before the page paints. The default is
+/// `auto`, which follows the browser's day/night preference; explicit light or
+/// dark selections remain stable overrides.
 ///
 /// next/script with strategy="beforeInteractive" doesn't run early enough
 /// to dodge the flash. Inlining the script straight into <head> via
@@ -14,13 +14,12 @@ const SCRIPT = `
 (function () {
   try {
     var stored = window.localStorage.getItem("arcrun:setting:theme");
-    var agonDeployment = ${process.env.NEXT_PUBLIC_PRODUCT_VARIANT?.trim().toLowerCase() === "agon" ? "true" : "false"};
-    var agonRoute = /^\\/(?:market|agon|docs|cli)(?:\\/|$)/.test(window.location.pathname);
-    if (agonDeployment || agonRoute || stored !== "light") {
-      document.documentElement.classList.add("dark");
-    }
+    var preference = stored === "light" || stored === "dark" ? stored : "auto";
+    var systemPrefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    var dark = preference === "dark" || (preference === "auto" && systemPrefersDark);
+    document.documentElement.classList.toggle("dark", !!dark);
   } catch (e) {
-    document.documentElement.classList.add("dark");
+    document.documentElement.classList.remove("dark");
   }
 })();
 `;

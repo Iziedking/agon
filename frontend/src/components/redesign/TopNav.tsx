@@ -14,8 +14,10 @@ import { AgonMark } from "@/components/redesign/AgonMark";
 import { NotificationBell } from "@/components/redesign/NotificationBell";
 import { LiveMissionBanner } from "@/components/redesign/LiveMissionBanner";
 import { ThemeToggle } from "@/components/redesign/ThemeToggle";
+import { AgonNetworkSelector } from "@/components/redesign/AgonNetworkSelector";
 import { IS_AGON_DEPLOYMENT } from "@/lib/product";
 import { useDisconnect } from "wagmi";
+import { isAgonRoute, isLegacyArcRunRoute } from "@/lib/agon/routes";
 
 /// The product nav. Left: â–  ARCRUN mono wordmark with the pink square mark.
 /// Center: mono caps route links separated by 32px on desktop. Right: the
@@ -50,7 +52,8 @@ const AGON_ROUTES = [
 export function TopNav() {
   const pathname = usePathname() ?? "/";
   const isLogin = pathname === "/login";
-  const isAgon = IS_AGON_DEPLOYMENT || pathname === "/market" || pathname.startsWith("/market/") || pathname === "/agon" || pathname.startsWith("/agon/") || pathname === "/docs" || pathname.startsWith("/docs/") || pathname.startsWith("/cli/");
+  const isLegacyRoute = isLegacyArcRunRoute(pathname);
+  const isAgon = !isLegacyRoute && (IS_AGON_DEPLOYMENT || isAgonRoute(pathname));
   const routes = isAgon ? AGON_ROUTES : LEGACY_ROUTES;
   const [open, setOpen] = useState(false);
   // The marketplace is public. Keep its route links visible before sign-in so
@@ -100,7 +103,7 @@ export function TopNav() {
           {isSignedIn ? (
             <>
               <WalletBalanceChip />
-              <ArcChainChip />
+              {!isAgon ? <ArcChainChip /> : null}
               <NotificationBell />
               <button
                 type="button"
@@ -114,8 +117,9 @@ export function TopNav() {
               </button>
             </>
           ) : null}
+          {isAgon ? <AgonNetworkSelector /> : null}
           {!isLogin && (settling ? null : <LoginButton />)}
-          {!isAgon ? <ThemeToggle /> : null}
+          <ThemeToggle />
           {!isLogin && (isAgon || isSignedIn) ? (
             <button
               type="button"

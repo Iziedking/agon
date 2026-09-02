@@ -8,7 +8,7 @@ import { LoginModal } from "@/components/pengu/LoginModal";
 import { AgonMark } from "@/components/redesign/AgonMark";
 import { Footer } from "@/components/redesign/Footer";
 import { TagButton } from "@/components/redesign/TagButton";
-import { AGON_NETWORK } from "@/lib/agon/network";
+import { useAgonNetwork } from "@/hooks/useAgonNetwork";
 
 /// Direct sign-in route. The same compact modal used by the product header is
 /// the canonical Agon entry surface, so a deep link and an in-app sign-in
@@ -16,11 +16,12 @@ import { AGON_NETWORK } from "@/lib/agon/network";
 export default function LoginPage() {
   const router = useRouter();
   const { me } = useAuth();
+  const { network } = useAgonNetwork();
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    if (me) router.replace("/market");
-  }, [me, router]);
+    if (me) router.replace(`/market?network=${network.key}`);
+  }, [me, network.key, router]);
 
   return (
     <div className="min-h-screen bg-canvas text-ink">
@@ -43,7 +44,7 @@ export default function LoginPage() {
               <TagButton onClick={() => setOpen(true)}>START SIGN IN</TagButton>
               <TagButton href="/" variant="ghost" size="sm">BACK</TagButton>
             </div>
-            <p className="mt-8 font-mono text-[10px] uppercase tracking-[0.14em] text-ink-3">WALLET OR EMAIL · {AGON_NETWORK.environment} ENVIRONMENT</p>
+            <p className="mt-8 font-mono text-[10px] uppercase tracking-[0.14em] text-ink-3">WALLET OR EMAIL · {network.brand} {network.environment} · CHAIN {network.chainId}</p>
           </section>
         </div>
       </main>

@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 import { LoginModal } from "@/components/pengu/LoginModal";
 import { TagButton, type TagButtonProps } from "@/components/redesign/TagButton";
 import { useAuth } from "@/hooks/useAuth";
-import { fetchAgents } from "@/lib/agents";
+import { useAgonNetwork } from "@/hooks/useAgonNetwork";
+import { networkHref } from "@/lib/agon/network";
 
 type Props = {
   href: string;
@@ -27,6 +28,7 @@ type Props = {
 export function AgonAuthAction({ href, children, ...button }: Props) {
   const router = useRouter();
   const { me } = useAuth();
+  const { networkKey } = useAgonNetwork();
   const [open, setOpen] = useState(false);
   const waitingForAuth = useRef(false);
 
@@ -35,21 +37,12 @@ export function AgonAuthAction({ href, children, ...button }: Props) {
     waitingForAuth.current = false;
     setOpen(false);
 
-    let cancelled = false;
-    void fetchAgents(me.address as `0x${string}`)
-      .then((agents) => {
-        if (cancelled) return;
-        router.replace(agents.length > 0 ? "/app" : "/onboarding/welcome");
-      })
-      .catch(() => {
-        if (!cancelled) router.replace("/onboarding/welcome");
-      });
-    return () => { cancelled = true; };
-  }, [me, open, router]);
+    router.replace(href);
+  }, [href, me, networkKey, open, router]);
 
   function handleClick() {
     if (me) {
-      router.push(href);
+      router.push(networkHref(href, networkKey));
       return;
     }
     waitingForAuth.current = true;
