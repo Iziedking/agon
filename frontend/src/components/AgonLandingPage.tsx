@@ -94,7 +94,15 @@ export function AgonLandingPage() {
   return (
     <>
       {startupPhase !== "hidden" ? <StartupIntro phase={startupPhase} ready={startupReady} onEnter={skipStartup} /> : null}
+<<<<<<< HEAD
       <div aria-hidden={startupPhase !== "hidden"} className={`flex h-[100svh] min-h-[560px] min-w-0 flex-col overflow-hidden bg-canvas text-ink transition-opacity duration-500 ${startupPhase === "hidden" ? "visible opacity-100" : "pointer-events-none invisible opacity-0"}`}>
+=======
+      <div
+        aria-hidden={startupPhase !== "hidden"}
+        style={startupPhase === "hidden" ? undefined : { visibility: "hidden", opacity: 0 }}
+        className={`flex h-[100svh] min-h-[560px] min-w-0 flex-col overflow-hidden bg-canvas text-ink transition-opacity duration-500 ${startupPhase === "hidden" ? "visible opacity-100" : "pointer-events-none invisible opacity-0"}`}
+      >
+>>>>>>> 250e22f (fix AGON landing page reload flash)
       <header className="shrink-0 border-b border-[color:var(--hairline)]">
         <div className="mx-auto flex h-16 max-w-[1280px] items-center justify-between gap-2 px-3 sm:gap-4 sm:px-6">
           <a href="/" aria-label="Agon home" className="inline-flex min-w-0 shrink-0 items-center text-ink"><AgonMark /></a>
