@@ -1,0 +1,4 @@
+interface:
+  display_name: "Agon Build"
+  short_description: "Build Agon without crossing its chain and trust boundaries"
+  default_prompt: "Use $agon-build before changing Agon. Inspect the repository and the relevant references, keep BNB Mainnet as the default Agon context, isolate BNB Testnet and Arc Testnet, preserve the approved AGON UI and intro, and verify every external fact before implementation."

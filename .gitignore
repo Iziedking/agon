@@ -79,6 +79,7 @@ scripts/*
 !scripts/check-agon-boundary.ps1
 !scripts/check-agon-release.ps1
 !scripts/package-agon-skill.ps1
+!scripts/package-agon-build-skill.ps1
 !backend/scripts/
 backend/scripts/*
 !backend/scripts/circle-bootstrap.ts
