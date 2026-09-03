@@ -32,7 +32,7 @@ export function AgonNetworkSelector() {
       </button>
 
       {open ? (
-        <div role="menu" className="absolute right-0 top-[calc(100%+8px)] z-50 w-[min(20rem,calc(100vw-1.5rem))] border border-[color:var(--hairline-strong)] bg-canvas p-2 text-ink shadow-[8px_8px_0_var(--hairline)]">
+        <div role="menu" className="absolute right-0 top-[calc(100%+8px)] z-50 w-[min(20rem,calc(100vw-1.5rem))] border border-[color:var(--hairline-strong)] bg-canvas p-2 text-ink shadow-[8px_8px_0_var(--hairline)] max-[640px]:fixed max-[640px]:left-3 max-[640px]:right-3 max-[640px]:top-[4.5rem] max-[640px]:w-auto">
           <div className="px-3 pb-2 pt-2 font-mono text-[9px] uppercase tracking-[0.16em] text-ink-3">AGON NETWORK</div>
           <NetworkOption networkKey="bnb-mainnet" active={networkKey === "bnb-mainnet"} onChoose={choose} />
           <div className="px-3 pb-2 pt-4 font-mono text-[9px] uppercase tracking-[0.16em] text-ink-3">TESTNET VIEWS</div>
@@ -57,7 +57,7 @@ function NetworkOption({ networkKey, active, onChoose }: { networkKey: AgonNetwo
     >
       <span className="flex min-w-0 items-center gap-2">
         <NetworkGlyph brand={network.brand} className="h-4 w-4 shrink-0" />
-        <span className="truncate text-[10px] uppercase tracking-[0.11em]">{network.name}</span>
+        <span className="text-[10px] uppercase leading-tight tracking-[0.11em] max-[640px]:whitespace-normal">{network.name}</span>
       </span>
       <span className={`shrink-0 text-[9px] uppercase tracking-[0.1em] ${active ? "opacity-70" : "text-ink-3"}`}>CHAIN {network.chainId}</span>
     </button>
