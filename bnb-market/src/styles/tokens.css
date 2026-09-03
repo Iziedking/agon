@@ -1,0 +1,587 @@
+/* ArcRun design tokens. Mirror these in tailwind.config.ts.
+   Do not introduce new tokens without updating SKILL.md.
+   Font families are wired to next/font variables (set in app/layout.tsx),
+   with the skill's named fonts kept as fallbacks.
+
+   The pengu palette is exposed as RGB triplets (space-separated, no parens)
+   so Tailwind 3.4 opacity modifiers (bg-pengu-blue/15) keep working through
+   `rgb(var(--pengu-blue) / <alpha-value>)`. Dark mode swaps the same names
+   under `html.dark` so most surfaces auto-flip with zero per-component
+   changes. */
+
+:root {
+  /* === brand palette === */
+  /* Canvas: warm paper, never lavender, never pure white */
+  --canvas: #F4F1ED;
+  --canvas-2: #EDE8E1;
+  --canvas-3: #E4DED5;
+  /* Ink: three weights of near-black warm */
+  --ink: #1A1612;
+  --ink-2: #4A453E;
+  --ink-3: #847C70;
+  --hairline: rgba(26, 22, 18, 0.12);
+  --hairline-strong: rgba(26, 22, 18, 0.22);
+  /* Accent: flat rose pink, used sparingly. Pulled back from the prior
+     #FF3D8A neon: less saturation, more grounded, no longer glows. */
+  --accent: #D6336C;
+  --accent-press: #B82A5C;
+  --accent-ink: #FFFFFF;
+  /* Syndicate identity colors. The robot fill (decorative) and the tile
+     accent (chrome/halo/ring) are tracked separately for the cyan
+     syndicate, which renders a mint robot inside a cyan tube. */
+  --syn-violet: #7C5CFF;
+  --syn-pink: #D6336C;
+  --syn-gold: #D78A2B;
+  --syn-mint: #2BD4A3;
+  --syn-cyan: #0FA3B1;
+  --syn-crimson: #E0345A;
+  /* Status */
+  --ok: #2BD4A3;
+  --warn: #FFC93A;
+  --err: #E0345A;
+
+  /* Solid-fill card tones. Each pair has a bg + a fg color that drives both
+     text and the corner-bracket vertex inside BracketedCell. Pairs flip in
+     dark mode (see html.dark below) so a black card on a cream canvas
+     becomes a warm-grey card on a near-black canvas rather than disappearing
+     into the background. The bracket vertex always contrasts the card bg by
+     using the fg color. */
+  --card-ink-bg: #1A1612;
+  --card-ink-fg: #F4F1ED;
+  --card-darkgrey-bg: #4D4D4D;
+  --card-darkgrey-fg: #F4F1ED;
+  --card-lightgrey-bg: #DEDEDE;
+  --card-lightgrey-fg: #1A1612;
+  --card-cream-bg: #ECE6DA;
+  --card-cream-fg: #1A1612;
+
+  /* === legacy pengu palette (kept while pages transition) === */
+  --pengu-bg: 244 241 237;
+  --pengu-bg-2: 237 232 225;
+  --pengu-card: 244 241 237;
+  --pengu-card-2: 237 232 225;
+  --pengu-blue: 255 61 138;
+  --pengu-blue-2: 232 50 120;
+  --pengu-soft: 228 222 213;
+  --pengu-text: 26 14 20;
+  --pengu-dim: 132 124 112;
+  --pengu-dark: 26 22 18;
+
+  /* Arena grid line color (used by the scan-grid pattern on stage surfaces) */
+  --pengu-grid: 124 77 255;
+  --pengu-grid-strength: 0.08;
+
+  /* Card surface shadow (subtle in light, near-invisible in dark) */
+  --pengu-card-shadow: 0 10px 30px rgba(70, 45, 150, 0.08);
+  --pengu-card-shadow-soft: 0 8px 24px rgba(70, 45, 150, 0.06);
+  --pengu-card-shadow-hero: 0 18px 50px rgba(70, 45, 150, 0.10);
+
+  /* Canvas and surface (legacy tokens, kept for back-compat) */
+  --color-bg: #0A0E1A;
+  --color-surface: #1A1F2E;
+  --color-surface-2: #222838;
+  --color-border: #1F2937;
+  --color-border-strong: #2A3445;
+
+  /* Accent */
+  --color-accent-pink: #FF4081;
+  --color-accent-pink-dim: #C2185B;
+  --color-accent-cyan: #00E5FF;
+  --color-accent-cyan-dim: #0097A7;
+
+  /* Outcome */
+  --color-win: #FFD54F;
+  --color-win-2: #C0C0C0;
+  --color-win-3: #CD7F32;
+  --color-loss: #FF5252;
+
+  /* Rank tint, contest-detail leaderboard only */
+  --color-rank-leader: #10B981;
+  --color-rank-leader-bg: rgba(16, 185, 129, 0.12);
+  --color-rank-contender-bg: rgba(255, 64, 129, 0.10);
+  --color-rank-back-bg: rgba(255, 64, 129, 0.04);
+
+  /* Text */
+  --color-text: #F5F5F5;
+  --color-text-muted: #9CA3AF;
+  --color-text-dim: #4B5563;
+  --color-text-on-accent: #0A0E1A;
+
+  /* Syndicate identity */
+  --color-syndicate-crimson: #DC2626;
+  --color-syndicate-cyan: #06B6D4;
+  --color-syndicate-gold: #F59E0B;
+  --color-syndicate-violet: #8B5CF6;
+
+  /* Typography families (next/font variables, skill names as fallback) */
+  --font-display: var(--font-geist-sans), "Geist", "Inter", system-ui, sans-serif;
+  --font-body: var(--font-geist-sans), "Geist", "Inter", system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), "Geist Mono", ui-monospace, "SFMono-Regular", monospace;
+
+  /* Type scale */
+  --text-display: clamp(64px, 9vw, 128px);
+  --text-h1: clamp(40px, 5vw, 64px);
+  --text-h2: 32px;
+  --text-h3: 20px;
+  --text-body: 16px;
+  --text-small: 14px;
+  --text-label: 12px;
+
+  --text-mono-xl: 48px;
+  --text-mono-lg: 32px;
+  --text-mono-md: 24px;
+  --text-mono-sm: 14px;
+
+  /* Type metrics */
+  --tracking-display: -0.03em;
+  --tracking-tight: -0.02em;
+  --tracking-label: 0.08em;
+  --leading-tight: 1.05;
+  --leading-snug: 1.2;
+  --leading-body: 1.5;
+
+  /* Spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-24: 96px;
+  --space-32: 128px;
+
+  /* Radius */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-pill: 999px;
+
+  /* Borders */
+  --border-hairline: 1px solid var(--color-border);
+  --border-strong: 1px solid var(--color-border-strong);
+  --border-accent-cyan: 2px solid var(--color-accent-cyan);
+  --border-accent-pink: 2px solid var(--color-accent-pink);
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --duration-fast: 120ms;
+  --duration-base: 240ms;
+  --duration-slow: 600ms;
+  --duration-reveal: 400ms;
+
+  /* Z-index, intentional and finite */
+  --z-base: 0;
+  --z-sticky: 10;
+  --z-ribbon: 20;
+  --z-dropdown: 30;
+  --z-modal: 40;
+  --z-toast: 50;
+}
+
+/* Base body: brand canvas. Light only.
+   The four-layer body background gives a "real paper under
+   stage lighting" feel: a warm vertical gradient, a faint minor grid at 60px,
+   a slightly stronger major grid at 240px, and small L-bracket corner marks
+   at every major intersection. Everything sits on the warm cream canvas and
+   uses ink at low alpha so the texture reads without ever competing with
+   content. Cards and bracketed cells layer their own bg-canvas on top, which
+   covers the grid where it would distract. */
+html, body {
+  background-color: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  background-image:
+    /* L-bracket at the top-left of each 240px cell PLUS a small filled ink
+       square at the bottom-right. Together they bookend every grid cell,
+       which gives the canvas an "instrument panel" feel without
+       adding another bg-image layer (browser only composites one svg here).
+       The filled square is the "tracking pip": visible enough to read as
+       intentional decoration on big empty stretches, faint enough to never
+       distract from content sitting on top of a BracketedCell. */
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><path d='M0 12 L0 0 L12 0' stroke='rgba(26,22,18,0.14)' stroke-width='1' fill='none'/><rect x='232' y='232' width='5' height='5' fill='rgba(26,22,18,0.22)'/></svg>"),
+    /* Major grid: 240x240, slightly stronger ink. Six-ish columns on a 1440
+       viewport, matches the page column rhythm. */
+    linear-gradient(to right, rgba(26, 22, 18, 0.035) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(26, 22, 18, 0.035) 1px, transparent 1px),
+    /* Minor grid: 60x60, a whisper. Four minor cells make one major cell. */
+    linear-gradient(to right, rgba(26, 22, 18, 0.015) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(26, 22, 18, 0.015) 1px, transparent 1px),
+    /* Vertical paper gradient: slightly warmer at the top, slightly cooler
+       lower, so the page reads like a sheet of paper under stage lighting. */
+    linear-gradient(180deg,
+      rgba(228, 222, 213, 0.55) 0%,
+      rgba(244, 241, 237, 0) 360px,
+      rgba(244, 241, 237, 0) calc(100% - 360px),
+      rgba(228, 222, 213, 0.4) 100%
+    );
+  background-size:
+    240px 240px,
+    240px 240px,
+    240px 240px,
+    60px 60px,
+    60px 60px,
+    100% 100%;
+  background-attachment: fixed, fixed, fixed, fixed, fixed, fixed;
+  background-position: 0 0, 0 0, 0 0, 0 0, 0 0, 0 0;
+}
+
+/* Decorative pink "tracking square" anchored just below the nav, mirroring
+   the small pink mark that opens every section. Sits absolutely
+   under the page content so it never blocks clicks and never participates
+   in the modal stacking context. */
+body::before {
+  content: "";
+  position: absolute;
+  top: 88px;
+  left: 24px;
+  width: 6px;
+  height: 6px;
+  background: var(--accent);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Paper grain: a faint feTurbulence noise overlay locked to the viewport.
+   Stops large empty stretches of canvas from looking like dead css fill;
+   keeps the page reading as paper-under-stage-lighting. Generated inline
+   via svg data url so there's no extra network request. pointer-events
+   off, z:0, mix-blend multiply at 4 percent so it tints with the canvas
+   instead of stacking flatly. Modals at z-modal sit on top.
+
+   Reduced-motion disables nothing here because it's static texture, not
+   motion. */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.1  0 0 0 0 0.09  0 0 0 0 0.07  0 0 0 0.85 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  background-size: 220px 220px;
+  opacity: 0.045;
+  mix-blend-mode: multiply;
+}
+
+/* ===== Dark theme =====
+   Mirror of the light tokens with the canvas/ink axis flipped. Pink stays
+   pink because pink looks good on both. Hairline borders go from 12% ink
+   to 12% cream so they still feel like the same product. The accent ink
+   color (text on a pink button) swaps from white to the dark canvas so
+   contrast holds. All status colors lift one notch for AA contrast
+   against the dark canvas. */
+html.dark {
+  --canvas: #0E0C0A;
+  --canvas-2: #181410;
+  --canvas-3: #221C16;
+
+  --ink: #F4F1ED;
+  --ink-2: #B8AC9C;
+  --ink-3: #7A7064;
+
+  --hairline: rgba(244, 241, 237, 0.12);
+  --hairline-strong: rgba(244, 241, 237, 0.22);
+
+  --accent: #FF4D8A;
+  --accent-press: #FF2D72;
+  --accent-ink: #0E0C0A;
+
+  --ok: #3DDDB0;
+  --warn: #FFCC4D;
+  --err: #FF5C7B;
+
+  /* Dark-mode card swaps. The "ink" card stops being pure black (it would
+     vanish on a near-black canvas) and lifts to a warm dark surface. Dark
+     grey lifts a notch up. Light grey and cream both become muted dark
+     surfaces so they read as separate panels, not fields of the canvas. */
+  --card-ink-bg: #2A241E;
+  --card-ink-fg: #F4F1ED;
+  --card-darkgrey-bg: #3A332C;
+  --card-darkgrey-fg: #F4F1ED;
+  --card-lightgrey-bg: #2A241E;
+  --card-lightgrey-fg: #F4F1ED;
+  --card-cream-bg: #221C16;
+  --card-cream-fg: #F4F1ED;
+
+  /* Legacy pengu palette swapped so any page still reading it doesn't
+     read as cream-on-cream. */
+  --pengu-bg: 14 12 10;
+  --pengu-bg-2: 24 20 16;
+  --pengu-card: 24 20 16;
+  --pengu-card-2: 34 28 22;
+  --pengu-soft: 34 28 22;
+  --pengu-text: 244 241 237;
+  --pengu-dim: 184 172 156;
+  --pengu-dark: 244 241 237;
+
+  color-scheme: dark;
+}
+
+/* Body decorations in dark: grid lines lift to cream alpha, the L-bracket
+   SVG is repainted in cream, the soft vertical paper gradient becomes a
+   warm lift at the top and bottom edges, the corner pink mark is left
+   alone (still reads). */
+html.dark body {
+  background-image:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><path d='M0 12 L0 0 L12 0' stroke='rgba(244,241,237,0.16)' stroke-width='1' fill='none'/><rect x='232' y='232' width='5' height='5' fill='rgba(244,241,237,0.22)'/></svg>"),
+    linear-gradient(to right, rgba(244, 241, 237, 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(244, 241, 237, 0.04) 1px, transparent 1px),
+    linear-gradient(to right, rgba(244, 241, 237, 0.02) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(244, 241, 237, 0.02) 1px, transparent 1px),
+    linear-gradient(180deg,
+      rgba(34, 28, 22, 0.55) 0%,
+      rgba(14, 12, 10, 0) 360px,
+      rgba(14, 12, 10, 0) calc(100% - 360px),
+      rgba(34, 28, 22, 0.4) 100%
+    );
+}
+
+/* Paper grain inverted: noise now lifts the dark canvas instead of
+   shadowing the cream. screen blend keeps it as additive grain. */
+html.dark body::after {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.95  0 0 0 0 0.92  0 0 0 0 0.87  0 0 0 0.85 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  opacity: 0.05;
+  mix-blend-mode: screen;
+}
+
+/* Pill label, the small uppercase tag above every major section */
+.pill-label {
+  display: inline-block;
+  padding: 6px 14px;
+  font-family: var(--font-body);
+  font-size: var(--text-label);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--color-accent-cyan);
+  background: var(--color-surface);
+  border: var(--border-hairline);
+  border-radius: var(--radius-pill);
+}
+
+/* Live dot, the single most-used motion in the product */
+@keyframes pulse-live {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.85); }
+}
+.live-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: var(--color-accent-cyan);
+  border-radius: var(--radius-pill);
+  animation: pulse-live 1.5s var(--ease-in-out) infinite;
+}
+
+/* Score tick, the heartbeat under any mono number that updates in real time */
+@keyframes score-tick {
+  0% { transform: translateY(0); opacity: 1; }
+  50% { transform: translateY(-2px); opacity: 0.85; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+.score-tick { animation: score-tick 800ms var(--ease-out); }
+
+/* Settlement sweep, the cinematic moment when a contest resolves */
+@keyframes settle-sweep {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100%); }
+}
+.settle-sweep {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 0%, var(--color-accent-cyan) 50%, transparent 100%);
+  opacity: 0.15;
+  animation: settle-sweep var(--duration-reveal) var(--ease-out) forwards;
+}
+
+/* ---------- ambient motion primitives ---------- */
+
+/* drift, the slow vertical bob that gives any element a sense of being alive */
+@keyframes drift {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+.drift { animation: drift 4s ease-in-out infinite; }
+.drift-slow { animation: drift 6s ease-in-out infinite; }
+.drift-1 { animation: drift 4s ease-in-out infinite; }
+.drift-2 { animation: drift 4s ease-in-out infinite; animation-delay: -0.8s; }
+.drift-3 { animation: drift 4s ease-in-out infinite; animation-delay: -1.6s; }
+.drift-4 { animation: drift 4s ease-in-out infinite; animation-delay: -2.4s; }
+
+/* breath, the gentle scale pulse for cards, mascots, anything that should feel
+   like it's powered on rather than printed */
+@keyframes breath {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+}
+.breath { animation: breath 3.2s ease-in-out infinite; transform-origin: center; }
+
+/* blink, the agent's left eye giving the occasional sign of life */
+@keyframes blink {
+  0%, 92%, 100% { transform: scaleY(1); }
+  94%, 97% { transform: scaleY(0.1); }
+}
+.blink { animation: blink 4.5s ease-in-out infinite; transform-origin: center; }
+
+/* sparkle, the small flashes that surround a winning agent */
+@keyframes sparkle {
+  0%, 100% { opacity: 0; transform: scale(0.5); }
+  50% { opacity: 1; transform: scale(1); }
+}
+.sparkle { animation: sparkle 1.2s ease-in-out infinite; transform-origin: center; }
+
+/* shimmer, the diagonal sweep of light across a surface, used on buttons and
+   trait reveals to mark something rare just happened */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.shimmer {
+  background: linear-gradient(
+    100deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.55) 50%,
+    transparent 70%
+  );
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: shimmer 2.4s ease-in-out infinite;
+  pointer-events: none;
+  mix-blend-mode: overlay;
+}
+
+/* scan, the vertical line that travels across a stage so it feels like a
+   broadcast surface rather than a static image */
+@keyframes scan {
+  0% { transform: translateY(-110%); opacity: 0; }
+  20%, 80% { opacity: 0.5; }
+  100% { transform: translateY(110%); opacity: 0; }
+}
+.scan {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(124, 77, 255, 0.18) 45%,
+    rgba(124, 77, 255, 0.45) 50%,
+    rgba(124, 77, 255, 0.18) 55%,
+    transparent 100%
+  );
+  animation: scan 5s linear infinite;
+}
+
+/* glow-pulse, the colored halo that intensifies and fades. used on live dots,
+   winning bars, and trait chips of higher rarity */
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 currentColor; opacity: 0.9; }
+  50% { box-shadow: 0 0 16px 2px currentColor; opacity: 1; }
+}
+.glow-pulse { animation: glow-pulse 2s ease-in-out infinite; }
+
+/* tick-up, the slot-machine roll used on score numbers as they climb */
+@keyframes tick-up {
+  0% { transform: translateY(8px); opacity: 0; }
+  60% { transform: translateY(-1px); opacity: 1; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+.tick-up { animation: tick-up 280ms var(--ease-out); }
+
+/* climb, the bar-fill animation used on the live race */
+@keyframes climb {
+  0% { transform: scaleX(0); }
+  100% { transform: scaleX(var(--climb, 1)); }
+}
+.climb { transform-origin: left center; animation: climb 5.5s linear forwards; }
+
+/* arena-grid, the faint moving lattice in the back of the stage so the surface
+   feels like a play field rather than a flat panel */
+@keyframes arena-grid {
+  0% { background-position: 0 0; }
+  100% { background-position: 80px 80px; }
+}
+.arena-grid {
+  background-image:
+    linear-gradient(to right, rgb(var(--pengu-grid) / var(--pengu-grid-strength)) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(var(--pengu-grid) / var(--pengu-grid-strength)) 1px, transparent 1px);
+  background-size: 40px 40px;
+  animation: arena-grid 20s linear infinite;
+}
+
+/* ---------- syndicate tube motion ---------- */
+
+@keyframes synBob {
+  from { transform: translate(var(--mx,0), -6px) rotate(var(--sway-from, -2deg)); }
+  to   { transform: translate(var(--mx,0), 6px)  rotate(var(--sway-to,    2deg)); }
+}
+@keyframes synHaloPulse {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1; }
+}
+@keyframes synRingBreathe {
+  0%, 100% { box-shadow: 0 0 8px var(--syn, var(--accent)); }
+  50%      { box-shadow: 0 0 18px var(--syn, var(--accent)); }
+}
+@keyframes synParticle {
+  0%   { transform: translateY(100%); opacity: 0; }
+  20%  { opacity: 1; }
+  80%  { opacity: 1; }
+  100% { transform: translateY(-10%); opacity: 0; }
+}
+
+.syn-mascot {
+  animation: synBob 3.6s cubic-bezier(.4,0,.2,1) infinite alternate;
+  transition: transform 350ms cubic-bezier(.4,0,.2,1);
+  transform-origin: center;
+}
+.syn-halo { animation: synHaloPulse 2.8s ease-in-out infinite; }
+.syn-ring { animation: synRingBreathe 2.2s ease-in-out infinite; }
+.syn-particle {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--syn, var(--accent));
+  opacity: 0;
+  animation: synParticle 6s linear infinite;
+}
+
+/* ---------- syndicate accents ---------- */
+/* Used wherever a card or section wants to declare which syndicate's color
+   leads it. Solid swatches first, then a 12% tint and a 25% halo. */
+:root {
+  --syn-crimson: #DC2626;
+  --syn-crimson-tint: rgba(220, 38, 38, 0.12);
+  --syn-crimson-halo: rgba(220, 38, 38, 0.25);
+  --syn-cyan: #0891B2;
+  --syn-cyan-tint: rgba(8, 145, 178, 0.12);
+  --syn-cyan-halo: rgba(8, 145, 178, 0.25);
+  --syn-gold: #D97706;
+  --syn-gold-tint: rgba(217, 119, 6, 0.12);
+  --syn-gold-halo: rgba(217, 119, 6, 0.25);
+  --syn-violet: #7C3AED;
+  --syn-violet-tint: rgba(124, 58, 237, 0.12);
+  --syn-violet-halo: rgba(124, 58, 237, 0.25);
+}
+
+/* Reduced motion respect */
+@media (prefers-reduced-motion: reduce) {
+  .live-dot,
+  .score-tick,
+  .drift, .drift-slow, .drift-2, .drift-3, .drift-4,
+  .breath, .blink, .sparkle, .shimmer, .scan, .glow-pulse,
+  .climb, .tick-up, .arena-grid,
+  .syn-mascot, .syn-halo, .syn-ring, .syn-particle { animation: none; }
+  .settle-sweep { animation: none; opacity: 0.08; }
+  * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+}

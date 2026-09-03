@@ -1,0 +1,12 @@
+.vercel
+.env*
+# Internal planning artifacts (never public 
+# Internal planning artifacts (never public 
+*PLAN*.md 
+BUILD_PLAN*.md 
+HACKATHON_RESEARCH*.md 
+*TODO*.md 
+*todo*.md 
+*progress*.md 
+.agents/ 
+.codex/
