@@ -1,4 +1,6 @@
 import type { BnbChain, BnbSession, AgentDetail, CatalogPage, EndpointProof, Category, CommerceReadiness } from "./types.ts";
+import type { LpInput } from "./providers/lp-core.ts";
+import type { LpRun } from "./providers/lp-runs.ts";
 async function call<T>(chainId: BnbChain, path: string, payload?: unknown, signal?: AbortSignal): Promise<T> {
   const response = await fetch(`/api/bnb/${chainId}/${path}`, { credentials: "same-origin", signal,
     ...(payload === undefined ? {} : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) }) });
@@ -12,6 +14,8 @@ export const checkAgentEndpoint = (chainId: BnbChain, id: string) => call<Endpoi
 export const checkCommerce = (chainId: BnbChain, id: string, signal?: AbortSignal) => call<CommerceReadiness>(chainId, `agents/${encodeURIComponent(id)}/commerce`, {}, signal);
 export const publishAgent = (chainId: BnbChain, agentId: string, category: Category) => call<{ status: string }>(chainId, "listings", { agentId, category });
 export const bnbMe = (chainId: BnbChain) => call<{ session: BnbSession | null }>(chainId, "auth/me");
+export const startLpAnalysis = (chainId: BnbChain, runId: string, input: LpInput, signal?: AbortSignal) => call<LpRun>(chainId, "providers/lp-guardian/runs", { runId, input }, signal);
+export const readLpAnalysis = (chainId: BnbChain, runId: string, signal?: AbortSignal) => call<LpRun>(chainId, `providers/lp-guardian/runs/${encodeURIComponent(runId)}`, undefined, signal);
 export const bnbLogout = (chainId: BnbChain) => call(chainId, "auth/logout", {});
 export async function bnbLogin(chainId: BnbChain, address: `0x${string}`, sign: (message: string) => Promise<`0x${string}`>) {
   const challenge = await call<{ nonce: string; message: string; chainId: number }>(chainId, "auth/nonce", { address });

@@ -43,6 +43,13 @@ api.arcrun.xyz {
 # during the transition; both names reach the same services without redirecting
 # signed requests or changing existing clients underneath them.
 api.agon.surf {
+	handle /api/bnb/* {
+		request_body {
+			max_size 16KB
+		}
+		reverse_proxy bnb-api:8789
+	}
+
 	handle /x402/* {
 		reverse_proxy auth:8090
 	}

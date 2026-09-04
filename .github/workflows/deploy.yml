@@ -1,97 +1,128 @@
-name: deploy backend
+name: AGON production
 
-# Frontend deploys are handled by Vercel's own GitHub integration. This
-# workflow owns the backend: it type-checks, then redeploys the VPS stack
-# over SSH. It runs only when something the backend cares about changes.
+# Vercel's Git integration owns the frontend. This pipeline tests both apps
+# and releases Arc + BNB APIs from the SAME main commit.
 on:
   push:
     branches: [main]
     paths:
       - "backend/**"
+      - "bnb-market/**"
+      - "frontend/**"
       - "contracts/deployments/**"
       - "deploy/**"
       - ".github/workflows/deploy.yml"
+  pull_request:
+    branches: [main]
   workflow_dispatch: {}
-
+permissions:
+  contents: read
 concurrency:
-  group: deploy-backend
+  group: agon-production-${{ github.ref }}
   cancel-in-progress: false
-
 jobs:
-  typecheck:
+  verify:
     runs-on: ubuntu-latest
+    env:
+      TEST_DATABASE_URL: postgres://nock:nock@127.0.0.1:15432/nock
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: nock
+          POSTGRES_PASSWORD: nock
+          POSTGRES_DB: nock
+        ports: ["15432:5432"]
+        options: --health-cmd "pg_isready -U nock" --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 20
-      - name: Install backend deps
-        working-directory: backend
-        run: npm install --no-audit --no-fund
-      - name: Type-check backend
-        working-directory: backend
-        run: npm run typecheck
-
+          node-version: '22.22.0'
+      - name: Install dependencies
+        run: |
+          npm install --prefix backend --no-audit --no-fund
+          npm ci --prefix bnb-market --ignore-scripts --no-audit --no-fund
+          npm ci --prefix frontend --no-audit --no-fund
+      - name: Check backend and BNB boundaries
+        run: |
+          npm run typecheck --prefix backend
+          npm run test:agon --prefix backend
+          npm run test --prefix bnb-market
+          npm run test:boundaries --prefix bnb-market
+          npm run test:commerce --prefix bnb-market
+          npm run test:lp-agent --prefix bnb-market
+          npm run test:transport --prefix bnb-market
+          npm run test:auth --prefix bnb-market -- --local-db
+          npm run test:lp-storage --prefix bnb-market
+          npm run test:marketplace --prefix frontend
+          python3 -m unittest discover -s deploy -p 'test_*.py'
+      - name: Build both applications
+        run: |
+          npm run build --prefix bnb-market
+          npm run build --prefix frontend
+      - name: Build immutable backend images
+        if: github.event_name != 'pull_request'
+        run: |
+          docker build -t agon-arc-api:${{ github.sha }} backend
+          docker build -f bnb-market/Dockerfile.api -t agon-bnb-api:${{ github.sha }} bnb-market
+          mkdir -p bundle/contracts
+          docker save agon-arc-api:${{ github.sha }} agon-bnb-api:${{ github.sha }} | gzip > bundle/images.tar.gz
+          cp deploy/release.compose.yml deploy/caddy/Caddyfile bundle/
+          cp -R contracts/deployments bundle/contracts/
+          cd bundle
+          find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: github.event_name != 'pull_request'
+        with:
+          name: agon-release-${{ github.sha }}
+          path: bundle/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
   deploy:
-    needs: typecheck
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: verify
     runs-on: ubuntu-latest
     steps:
-      # Skip the deploy until the VPS secrets exist, so pushes stay green
-      # before the server is provisioned. Configuring VPS_HOST (see
-      # first_deploy.md) enables this automatically with no workflow change.
-      - name: Check VPS is configured
+      - name: Check deployment configuration
         id: gate
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_FINGERPRINT: ${{ secrets.VPS_HOST_FINGERPRINT }}
         run: |
           if [ -z "$VPS_HOST" ]; then
-            echo "VPS secrets not set yet; skipping deploy."
             echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "No VPS configured; tests passed, production was NOT deployed." >> "$GITHUB_STEP_SUMMARY"
           else
+            test -n "$VPS_USER" && test -n "$VPS_KEY" && test -n "$VPS_FINGERPRINT" || { echo "Incomplete VPS configuration"; exit 1; }
             echo "ready=true" >> "$GITHUB_OUTPUT"
           fi
-      - name: Validate Agon production settings
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         if: steps.gate.outputs.ready == 'true'
-        uses: appleboy/ssh-action@v1
+        with:
+          name: agon-release-${{ github.sha }}
+          path: bundle
+      - uses: appleboy/scp-action@ff85246acaad7bdce478db94a363cd2bf7c90345 # v1
+        if: steps.gate.outputs.ready == 'true'
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_SSH_PORT || 22 }}
-          script: |
-            set -eu
-            cd /opt/arcrun
-            test "$(grep -c '^APP_URL=https://agon.surf$' deploy/.env)" = "1"
-            test "$(grep -c '^AUTH_DOMAIN=agon.surf$' deploy/.env)" = "1"
-            grep -q '^AGON_DEPLOYMENTS_FILE=../contracts/deployments/agon-arc-testnet.json$' deploy/.env
-            grep -q '^AGON_WRITES_ENABLED=true$' deploy/.env
-            grep -q '^AGON_X402_EXECUTION_ENABLED=false$' deploy/.env
-            grep -q '^AGON_ESCROW_EXECUTION_ENABLED=false$' deploy/.env
-            echo "Agon listing writes are enabled; payment and escrow execution remain fail-closed."
-      - name: Redeploy stack on the VPS
+          fingerprint: ${{ secrets.VPS_HOST_FINGERPRINT }}
+          source: bundle/*
+          target: /opt/agon-ci/incoming/${{ github.sha }}
+          strip_components: 1
+      - uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1
         if: steps.gate.outputs.ready == 'true'
-        uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_SSH_PORT || 22 }}
-          script: |
-            set -e
-            cd /opt/arcrun
-            git fetch --all --prune
-            git reset --hard origin/main
-            git submodule update --init --recursive
-            docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build --remove-orphans
-            # Caddy does not watch its config and `up -d` does not restart it
-            # when only the mounted config changed, so without this the reset
-            # above silently keeps serving the previous routing. That matters
-            # beyond arcrun, because agentsqa.xyz and api.avow.site are proxied
-            # from that same file. This only works because the compose file
-            # mounts deploy/caddy as a DIRECTORY: with a single-file mount the
-            # container would re-read a pinned, stale inode and the reload would
-            # be a no-op. Validate before reloading so a bad edit fails the
-            # deploy loudly instead of leaving Caddy on stale config.
-            docker exec arcrun-caddy caddy validate --config /etc/caddy/Caddyfile
-            docker exec arcrun-caddy caddy reload --config /etc/caddy/Caddyfile
-            docker image prune -f
+          fingerprint: ${{ secrets.VPS_HOST_FINGERPRINT }}
+          command_timeout: 15m
+          script: sudo -n /usr/local/sbin/agon-deploy ${{ github.sha }}

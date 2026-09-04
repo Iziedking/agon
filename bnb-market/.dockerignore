@@ -1,0 +1,11 @@
+*
+!package.json
+!package-lock.json
+!src
+!src/shared
+!src/shared/types.ts
+!src/shared/server
+!src/shared/server/**
+!src/shared/providers
+!src/shared/providers/**
+**/*.test.ts

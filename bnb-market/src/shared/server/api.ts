@@ -5,6 +5,8 @@ import { database } from "./store.ts";
 import { body, HttpError, json } from "./http.ts";
 import { commerceReadiness, readCommerceJob, readCommerceReceipt } from "./commerce.ts";
 import { checkedClient } from "./network.ts";
+import { lpDailyLimit, readLpRun, runLpAgent } from "../providers/lp-runs.ts";
+import { LP_AGENT_VERSION } from "../providers/lp-core.ts";
 
 export async function handleBnb(request: Request, chain: string, parts: string[]): Promise<Response> {
   try {
@@ -19,8 +21,13 @@ export async function handleBnb(request: Request, chain: string, parts: string[]
         ]);
         return json({ chainId, catalogSource: "8004scan", rpc, storage,
           login: storage === "reachable" && rpc === "reachable" ? "available" : "unavailable",
-          payments: "unavailable", taskExecution: "unavailable", settlementWrites: "unavailable" });
+          payments: "unavailable", taskExecution: "unavailable", settlementWrites: "unavailable",
+          lpAnalysis: chainId === 97 && storage === "reachable" && rpc === "reachable" && lpDailyLimit() > 0 ? "read_only_available" : "unavailable" });
       }
+      if (path === "providers/lp-guardian") return json({ name: "AGON LP Guardian", operator: "AGON", version: LP_AGENT_VERSION,
+        chainId, mode: "read_only", supported: chainId === 97, registration: "not_configured", paidHiring: false, transactions: false,
+        description: "Checks a PancakeSwap v3 position and proposes a tick-aligned range for review when its price evidence passes." });
+      if (parts[0] === "providers" && parts[1] === "lp-guardian" && parts[2] === "runs" && parts.length === 4) return json(await readLpRun(chainId, parts[3]));
       if (path === "auth/me") return json({ session: await currentSession(request, chainId) });
       if (parts[0] === "jobs" && parts.length === 2) return json(await readCommerceJob(chainId, parseAgentId(parts[1])));
       if (parts[0] === "receipts" && parts.length === 2) return json(await readCommerceReceipt(chainId, parts[1]));
@@ -39,6 +46,11 @@ export async function handleBnb(request: Request, chain: string, parts: string[]
       return json({ signedOut: true }, 200, { "set-cookie": setSessionCookie(chainId, "", origin.startsWith("https:"), 0) });
     }
     const input = await body(request);
+    if (path === "providers/lp-guardian/runs") {
+      if (Object.keys(input).some((key) => key !== "runId" && key !== "input")) throw new HttpError(400, "Unsupported analysis request field.");
+      const run = await runLpAgent(chainId, input.runId, input.input);
+      return json(run, run.status === "running" ? 202 : 200);
+    }
     if (path === "auth/nonce") return json(await challenge(chainId, input.address, origin));
     if (path === "auth/verify") {
       const result = await verify(chainId, origin, input.nonce, input.signature);

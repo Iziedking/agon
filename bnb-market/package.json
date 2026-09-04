@@ -2,6 +2,7 @@
   "name": "bnb-agent-market",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "description": "BNB market subtree for hackathon submission.",
   "packageManager": "npm@11.13.0",
   "scripts": {
@@ -10,9 +11,14 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
+    "start:api": "node --experimental-strip-types src/shared/server/serve.ts",
+    "test:transport": "node --experimental-strip-types src/shared/server/serve.test.ts",
     "test:boundaries": "node --experimental-strip-types src/shared/server/boundary.test.ts",
     "test:auth": "node --experimental-strip-types src/shared/server/auth.integration.test.ts",
     "test:commerce": "node --experimental-strip-types src/shared/server/commerce.test.ts",
+    "test:lp-agent": "node --experimental-strip-types src/shared/providers/lp-core.test.ts",
+    "test:lp-storage": "node --experimental-strip-types src/shared/providers/lp-runs.integration.test.ts --local-db",
+    "prove:lp-agent": "node --experimental-strip-types scripts/prove-lp-agent.ts",
     "prove:reads": "node --experimental-strip-types scripts/prove-live-reads.ts",
     "prove:commerce": "node --experimental-strip-types scripts/prove-commerce.ts",
     "test": "node --experimental-strip-types src/lib/bnb/compare.test.ts && node --experimental-strip-types src/lib/bnb/evidence.test.ts && node --experimental-strip-types src/lib/bnb/quote-job.test.ts"

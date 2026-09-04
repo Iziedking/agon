@@ -17,6 +17,7 @@
 # exactly as before. See deploy/backup.env.example and first_deploy.md step 11.
 
 set -euo pipefail
+umask 077
 
 REPO_DIR="${REPO_DIR:-/opt/arcrun}"
 BACKUP_DIR="${BACKUP_DIR:-$REPO_DIR/backups}"
@@ -50,12 +51,21 @@ docker exec "$PG_CONTAINER" pg_dump -U "$PG_USER" "$PG_DB" | gzip > "$db_file"
 chmod 600 "$db_file"
 echo "$(date -u) db dump -> $db_file ($(du -h "$db_file" | cut -f1))"
 
+# BNB has its own database and role, but shares the existing private Postgres.
+bnb_file=""
+if [ -f "$REPO_DIR/deploy/bnb.env" ]; then
+  bnb_file="$BACKUP_DIR/agon-bnb-db-$stamp.sql.gz"
+  docker exec "$PG_CONTAINER" pg_dump -U "$PG_USER" agon_bnb | gzip > "$bnb_file"
+  chmod 600 "$bnb_file"
+fi
+
 # 2. Non-Postgres flat files: the production secrets and the Circle wallet
 #    recovery key. Losing these means losing access to the dev-controlled
 #    wallets, so they travel with every backup. The tarball is chmod 600.
 files_file="$BACKUP_DIR/arcrun-files-$stamp.tar.gz"
 include=()
 [ -f "$REPO_DIR/deploy/.env" ] && include+=("deploy/.env")
+[ -f "$REPO_DIR/deploy/bnb.env" ] && include+=("deploy/bnb.env")
 [ -d "$REPO_DIR/backend/circle-recovery" ] && include+=("backend/circle-recovery")
 if [ "${#include[@]}" -gt 0 ]; then
   tar czf "$files_file" -C "$REPO_DIR" "${include[@]}"
@@ -75,6 +85,7 @@ rotate() {
 }
 rotate "arcrun-db-*.sql.gz"
 rotate "arcrun-files-*.tar.gz"
+rotate "agon-bnb-db-*.sql.gz"
 
 # 4. Off-box copy to Backblaze B2. The local SSD copy above protects against an
 #    app/DB mistake; this protects against losing the whole box. Stateless: we
@@ -84,7 +95,11 @@ rotate "arcrun-files-*.tar.gz"
 if [ -n "${B2_BUCKET:-}" ] && [ -n "${B2_KEY_ID:-}" ] && [ -n "${B2_APP_KEY:-}" ]; then
   if command -v rclone >/dev/null 2>&1; then
     prefix="${B2_PREFIX:-arcrun}"
-    remote=":b2,account=$B2_KEY_ID,key=$B2_APP_KEY:$B2_BUCKET/$prefix"
+    # Environment, not argv: credentials must not appear in process listings.
+    export RCLONE_CONFIG_AGONBACKUP_TYPE=b2
+    export RCLONE_CONFIG_AGONBACKUP_ACCOUNT="$B2_KEY_ID"
+    export RCLONE_CONFIG_AGONBACKUP_KEY="$B2_APP_KEY"
+    remote="AGONBACKUP:$B2_BUCKET/$prefix"
     upload() {
       local f="$1"
       [ -f "$f" ] || return 0
@@ -95,13 +110,14 @@ if [ -n "${B2_BUCKET:-}" ] && [ -n "${B2_KEY_ID:-}" ] && [ -n "${B2_APP_KEY:-}" 
       fi
     }
     upload "$db_file"
+    [ -n "$bnb_file" ] && upload "$bnb_file"
     [ -n "${files_file:-}" ] && upload "$files_file"
     # Optional remote retention: delete B2 copies older than B2_KEEP_DAYS. Off by
     # default — leave it unset and use a B2 bucket lifecycle rule instead, which
     # is the safer, provider-native way to age out old backups.
     if [ -n "${B2_KEEP_DAYS:-}" ]; then
       rclone delete "$remote/" --min-age "${B2_KEEP_DAYS}d" \
-        --include "arcrun-db-*.sql.gz" --include "arcrun-files-*.tar.gz" --b2-hard-delete 2>&1 \
+        --include "arcrun-db-*.sql.gz" --include "arcrun-files-*.tar.gz" --include "agon-bnb-db-*.sql.gz" --b2-hard-delete 2>&1 \
         && echo "$(date -u) b2 pruned copies older than ${B2_KEEP_DAYS}d" || true
     fi
   else

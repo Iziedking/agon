@@ -1,0 +1,64 @@
+# CI-built release images. Postgres, Redis and shared Caddy remain untouched.
+# Always use project 'deploy'; never down or --remove-orphans.
+x-arc: &arc
+  image: agon-arc-api:${AGON_RELEASE_SHA:?release SHA required}
+  env_file: /opt/arcrun/deploy/.env
+  environment:
+    NODE_ENV: production
+    DATABASE_URL: postgres://arcrun:${POSTGRES_PASSWORD}@postgres:5432/arcrun
+    REDIS_URL: redis://redis:6379
+  volumes:
+    - ./contracts/deployments:/app/contracts/deployments:ro
+  restart: unless-stopped
+  cpus: 0.75
+  mem_limit: 768m
+services:
+  migrate:
+    <<: *arc
+    container_name: arcrun-migrate
+    command: npm run migrate
+    restart: "no"
+  auth:
+    <<: *arc
+    container_name: arcrun-auth
+    command: npm run auth
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8082/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+  indexer:
+    <<: *arc
+    container_name: arcrun-indexer
+    command: npm run indexer
+  coordinator:
+    <<: *arc
+    container_name: arcrun-coordinator
+    command: npm run coordinator
+    mem_limit: 1536m
+    cpus: 1.0
+  bnb-api:
+    image: agon-bnb-api:${AGON_RELEASE_SHA:?release SHA required}
+    container_name: agon-bnb-api
+    env_file: /opt/arcrun/deploy/bnb.env
+    environment:
+      NODE_ENV: production
+      PORT: 8789
+      AGON_RELEASE_SHA: ${AGON_RELEASE_SHA}
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 60s
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 512m
+    cpus: 0.75
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8789/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+networks:
+  default:
+    external: true
+    name: deploy_default

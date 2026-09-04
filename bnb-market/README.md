@@ -16,6 +16,7 @@ npm run typecheck
 npm test
 npm run test:boundaries
 npm run test:commerce
+npm run test:lp-agent
 npm run dev -- --port 4000
 ```
 
@@ -33,8 +34,9 @@ reachability and task performance are distinct evidence types.
 
 The current shared implementation includes network-scoped wallet sessions,
 owner-checked publication, read-only endpoint checks, payment-contract
-readiness, and job/receipt reads. Payment approval, paid hiring, provider task
-execution and settlement writes remain disabled. No end-to-end paid result
+readiness, job/receipt reads, and AGON LP Guardian's read-only PancakeSwap
+position analysis. Payment approval, paid hiring, third-party task execution,
+automatic liquidity changes and settlement writes remain disabled. No end-to-end paid result
 is claimed. Legacy comparison helpers under `src/lib/bnb` contain offline
 fixtures and must not be used to enable live actions.
 
@@ -48,6 +50,7 @@ browser variables:
 | `BNB_DATABASE_URL` | TLS-enabled PostgreSQL for BNB sessions and owner listings |
 | `BNB_97_RPC_URL` | Optional dedicated BNB Testnet RPC |
 | `BNB_56_RPC_URL` | Optional dedicated BNB Mainnet RPC |
+| `BNB_LP_AGENT_DAILY_LIMIT` | Global public LP analysis allowance per UTC day, default 100; 0 pauses new runs |
 
 With no database, public discovery still works but sign-in and publication
 are unavailable. The database user needs permission to create the BNB tables
@@ -64,6 +67,59 @@ The health endpoint probes RPC chain identity and database connectivity.
 It does not declare catalog, hiring or execution healthy from configuration
 alone. Test wallet login separately with your own wallet. Never paste a
 private key into the app or hosting configuration.
+
+## AGON-operated LP Guardian
+
+Open `/agon/playground?network=bnb-testnet`. Enter a PancakeSwap v3 position
+NFT ID, not an ERC-8004 agent ID. This service reads the actual position,
+factory-derived pool and 10-minute oracle at one BNB Testnet block. It returns
+hold, a tick-aligned range proposal for review, or an explicit refusal.
+The range rule is deterministic; no model controls funds. It does not move
+liquidity, choose an optimal strategy, estimate returns or protect against
+every form of price manipulation.
+
+This is an AGON-operated analysis service, not a fabricated registered agent.
+Its public ERC-8004 registration and paid hiring are not configured yet.
+It is separate from the third-party registry catalog. This first capability
+alone does not satisfy the four-category marketplace or automated rebalancing
+requirements.
+
+Runs persist in PostgreSQL before chain reads. Refreshing the result URL
+restores the report. Reusing the same UUID with the same inputs does not
+execute twice; changed inputs require a new UUID. Interrupted requests are
+reported honestly, with no automatic replay. Downloaded report bytes have a
+SHA-256 hash shown beside the result. This checks artifact integrity, not an
+independent verification signature or a settlement receipt.
+
+Public task endpoint: `POST /api/bnb/97/providers/lp-guardian/runs` with
+`{ "runId": "<version-4 UUID>", "input": { "positionId": "<NFT ID>",
+"halfWidthSteps": 10, "maxDeviationTicks": 100 } }`. Browser POST requests
+must include their same-site Origin. Retrieve a saved run at that path
+followed by `/{runId}`. Capability description:
+`GET /api/bnb/97/providers/lp-guardian`. Chain 56 refuses execution.
+
+Limits are shared across instances: 100 admitted runs per UTC day by default,
+5 per minute and 2 concurrent. Each run has a 45-second response deadline;
+the host must allow 60-second functions. RPC retries are bounded. Public
+callers can exhaust this free allowance, so monitor usage before a public demo.
+No model API or wallet spend is used. Position data and reports are public;
+do not submit private information. Database retention follows the operator's
+backup policy; run IDs never expire into reusable idempotency keys.
+
+To verify the real service without a browser:
+
+```bash
+npm run test:lp-agent
+npm run prove:lp-agent -- 37235
+```
+
+Position `37235` was discovered through the official Testnet manager's NFT
+enumeration on September 4, 2026. It is a public read example, not an AGON-owned
+position, and its state may change. Supply your own current position ID.
+The proof command uses the real read adapter; it never signs or broadcasts.
+For isolated database tests, `npm run test:lp-storage` uses the local test
+Postgres at `127.0.0.1:15432`, creates a unique temporary schema, and removes
+only that schema after the test. Do not point tests at production.
 
 ## Read-only proof tools
 
@@ -88,6 +144,8 @@ evidence that a refund has happened.
 - [Authoritative deployment address file](https://github.com/bnb-chain/apex-contracts/blob/main/scripts/addresses.ts)
 - [Pinned SDK source](https://github.com/bnb-chain/bnbagent-sdk/tree/main/typescript), installed version `0.5.5`
 - [8004scan](https://8004scan.io/), discovery only; direct registry reads govern ownership
+- [PancakeSwap v3 deployments](https://developer.pancakeswap.finance/contracts/v3/addresses)
+- [PancakeSwap v3 interfaces and oracle rules](https://github.com/pancakeswap/pancake-v3-contracts)
 
 The deployment address file takes precedence over the upstream README.
 An older provider policy must not be accepted automatically when it differs

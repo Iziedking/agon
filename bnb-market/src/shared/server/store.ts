@@ -27,6 +27,15 @@ export async function database(): Promise<Pool> {
       owner_address text NOT NULL, category text NOT NULL, version_hash text NOT NULL,
       published_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY (chain_id,agent_id)
     );
+    CREATE TABLE IF NOT EXISTS bnb_lp_agent_runs (
+      id uuid PRIMARY KEY, chain_id integer NOT NULL CHECK (chain_id=97),
+      version text NOT NULL, input_json text NOT NULL,
+      status text NOT NULL CHECK (status IN ('running','completed','failed')),
+      started_at timestamptz NOT NULL DEFAULT now(), finished_at timestamptz,
+      report_json text, report_hash text, error text,
+      CHECK ((status='completed') = (report_json IS NOT NULL AND report_hash IS NOT NULL))
+    );
+    CREATE INDEX IF NOT EXISTS bnb_lp_agent_run_started ON bnb_lp_agent_runs(started_at);
   `).then(() => undefined).catch((error: unknown) => { ready = undefined; throw error; });
   await ready; return pool;
 }

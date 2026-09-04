@@ -22,9 +22,10 @@ interface Props {
   right?: ReactNode;
   /// Heading size: hero for top-of-page, section for everything else.
   size?: "hero" | "section";
+  headingAs?: "h1" | "h2";
 }
 
-export function SectionHeader({ eyebrow, heading, subDeck, right, size = "section" }: Props) {
+export function SectionHeader({ eyebrow, heading, subDeck, right, size = "section", headingAs: Heading = "h2" }: Props) {
   const fontSize =
     size === "hero" ? "clamp(56px, 8vw, 112px)" : "clamp(40px, 5vw, 72px)";
   return (
@@ -42,12 +43,12 @@ export function SectionHeader({ eyebrow, heading, subDeck, right, size = "sectio
             )}
           </div>
         ) : null}
-        <h2
+        <Heading
           className={eyebrow ? "mt-4 font-stencil uppercase text-ink" : "font-stencil uppercase text-ink"}
           style={{ fontSize, lineHeight: size === "hero" ? "0.95" : "1.0", letterSpacing: "-0.01em" }}
         >
           {heading}
-        </h2>
+        </Heading>
         {subDeck ? (
           <div className="mt-4 max-w-[56ch] font-mono text-sm leading-[1.55] text-ink-2">{subDeck}</div>
         ) : null}
