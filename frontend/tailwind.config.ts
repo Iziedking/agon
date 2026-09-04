@@ -1,7 +1,7 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
-  content: ["./src/**/*.{ts,tsx,mdx}"],
+  content: ["./src/**/*.{ts,tsx,mdx}", "../bnb-market/src/shared/**/*.{ts,tsx}"],
   // Dark mode flips by toggling `html.dark`. Tokens for the pengu palette swap
   // under that selector in tokens.css; every surface that reads pengu-* auto-flips.
   darkMode: "class",

@@ -23,7 +23,7 @@ export function AgonAccessGate({ children }: { children: ReactNode }) {
   const isLogin = pathname === "/login";
   const isLanding = pathname === "/";
   const isProtocolDocument = pathname.startsWith("/.well-known/");
-  const isPublicMarket = pathname === "/market" || (pathname.startsWith("/market/") && pathname !== "/market/new");
+  const isPublicMarket = pathname === "/market" || (pathname.startsWith("/market/") && (pathname !== "/market/new" || networkKey !== "arc-testnet"));
   const isPublicDocs = pathname === "/docs" || pathname.startsWith("/docs/");
   const isPublicPlayground = pathname === "/agon/playground";
   const isPublicOperator = pathname === "/operators" || pathname.startsWith("/operators/");

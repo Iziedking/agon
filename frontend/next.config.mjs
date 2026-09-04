@@ -1,5 +1,10 @@
+import { fileURLToPath } from "node:url";
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // BNB owns its runtime inside the exportable subtree. Trace it into AGON's
+  // production build so the same implementation serves both repositories.
+  outputFileTracingRoot: fileURLToPath(new URL("..", import.meta.url)),
+  distDir: process.env.AGON_BUILD_DIR || ".next",
   // Don't fail the production build on lint (e.g. <a> vs <Link>); types are still checked.
   eslint: { ignoreDuringBuilds: true },
   webpack: (config) => {

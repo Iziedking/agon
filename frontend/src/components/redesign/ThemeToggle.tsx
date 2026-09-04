@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { applyTheme, getSetting, setSetting } from "@/lib/profiles";
-import { isDarkTheme, nextThemePreference, normalizeThemePreference, type ThemePreference } from "@/lib/theme";
+import { DEFAULT_THEME_PREFERENCE, isDarkTheme, nextThemePreference, normalizeThemePreference, type ThemePreference } from "@/lib/theme";
 
 type ThemeToggleProps = {
   className?: string;
@@ -14,13 +14,13 @@ type ThemeToggleProps = {
  * explains the destination state to screen readers and tooltips.
  */
 export function ThemeToggle({ className = "" }: ThemeToggleProps) {
-  const [preference, setPreference] = useState<ThemePreference>("auto");
-  const [dark, setDark] = useState(false);
+  const [preference, setPreference] = useState<ThemePreference>(DEFAULT_THEME_PREFERENCE);
+  const [dark, setDark] = useState(true);
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     const sync = () => {
-      const nextPreference = normalizeThemePreference(getSetting("theme", "auto"));
+      const nextPreference = normalizeThemePreference(getSetting("theme", DEFAULT_THEME_PREFERENCE));
       setPreference(nextPreference);
       setDark(isDarkTheme(nextPreference, media.matches));
       applyTheme(nextPreference);

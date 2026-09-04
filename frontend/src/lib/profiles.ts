@@ -439,11 +439,11 @@ export function setSetting(key: SettingKey, value: string): void {
   if (key === "theme") applyTheme(value);
 }
 
-/// Apply or remove the `html.dark` class. `auto` follows the browser's
-/// day/night preference; explicit light and dark remain user overrides.
+/// Apply or remove the `html.dark` class. Dark is the default. `auto` follows
+/// the browser's day/night preference only after the user selects daylight.
 export function applyTheme(value: string | null): void {
   if (typeof document === "undefined") return;
-  const preference = value === "light" || value === "dark" ? value : "auto";
+  const preference = value === "light" || value === "dark" || value === "auto" ? value : "dark";
   const systemPrefersDark = window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
   const html = document.documentElement;
   const dark = preference === "dark" || (preference === "auto" && systemPrefersDark);

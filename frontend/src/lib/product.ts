@@ -1,6 +1,9 @@
 const deploymentVariant = process.env.NEXT_PUBLIC_PRODUCT_VARIANT?.trim().toLowerCase();
 
-export const IS_AGON_DEPLOYMENT = deploymentVariant === "agon";
+// The canonical repository and deployment are Agon. Keep the legacy product
+// available only when it is explicitly requested so an unset environment
+// variable can never make the root route render ArcRun by accident.
+export const IS_AGON_DEPLOYMENT = deploymentVariant !== "arcrun";
 export const PRODUCT_NAME = IS_AGON_DEPLOYMENT ? "Agon" : "ArcRun";
 export const PRODUCT_SITE_URL = (
   process.env.NEXT_PUBLIC_SITE_URL ?? (IS_AGON_DEPLOYMENT ? "https://agon.surf" : "https://arcrun.xyz")

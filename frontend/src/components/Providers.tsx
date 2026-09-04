@@ -27,7 +27,7 @@ export function Providers({ children }: { children: ReactNode }) {
           modalSize="compact"
           appInfo={{ appName: PRODUCT_NAME }}
         >
-          <AuthProvider>
+          <Suspense fallback={null}><AuthProvider>
             <Suspense fallback={null}>
               <AgonAccessGate>{children}</AgonAccessGate>
             </Suspense>
@@ -37,7 +37,7 @@ export function Providers({ children }: { children: ReactNode }) {
             <SessionEndedToast />
             {/* Site-wide popup when a new mission goes live. */}
             {IS_AGON_DEPLOYMENT ? null : <MissionAlert />}
-          </AuthProvider>
+          </AuthProvider></Suspense>
         </RainbowKitProvider>
       </QueryClientProvider>
     </WagmiProvider>

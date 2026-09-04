@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 
 const nextConfig = {
+  distDir: process.env.AGON_BUILD_DIR || ".next",
   outputFileTracingRoot: projectRoot,
   async redirects() {
     return process.env.NEXT_PUBLIC_PRODUCT_VARIANT === "agon"

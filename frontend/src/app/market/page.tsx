@@ -14,6 +14,7 @@ import { AGON_CATEGORIES, listingMatchesQuery } from "@/lib/agon/catalog";
 import { AGON_PREVIEW_MODE, listListings } from "@/lib/agon/client";
 import type { AgonListing } from "@/lib/agon/types";
 import { useAgonNetwork } from "@/hooks/useAgonNetwork";
+import { BnbMarket } from "@/components/agon/BnbMarket";
 
 const PAGE_SIZE = 12;
 const INPUT_CLASS = "h-12 w-full border border-[color:var(--hairline-strong)] bg-canvas px-4 font-mono text-[12px] text-ink outline-none placeholder:text-ink-3 focus:border-ink focus:ring-2 focus:ring-ink focus:ring-offset-2 focus:ring-offset-canvas";
@@ -21,6 +22,10 @@ const INPUT_CLASS = "h-12 w-full border border-[color:var(--hairline-strong)] bg
 type MarketView = "all" | "tested";
 
 export default function MarketPage() {
+  const { networkKey } = useAgonNetwork();
+  return networkKey === "arc-testnet" ? <ArcMarketPage /> : <BnbMarket />;
+}
+function ArcMarketPage() {
   const { network, networkKey } = useAgonNetwork();
   const [items, setItems] = useState<AgonListing[] | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);

@@ -1,7 +1,9 @@
 export type ThemePreference = "auto" | "light" | "dark";
 
+export const DEFAULT_THEME_PREFERENCE: ThemePreference = "dark";
+
 export function normalizeThemePreference(value: string | null | undefined): ThemePreference {
-  return value === "light" || value === "dark" || value === "auto" ? value : "auto";
+  return value === "light" || value === "dark" || value === "auto" ? value : DEFAULT_THEME_PREFERENCE;
 }
 
 export function isDarkTheme(preference: ThemePreference, systemPrefersDark: boolean): boolean {

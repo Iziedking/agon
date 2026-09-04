@@ -125,3 +125,28 @@ docs/superpowers/
 
 .vercel
 .env*
+
+# Internal planning artifacts — never publish these from any subtree.
+**/*PLAN*.md
+**/*plan*.md
+**/*DECISIONS*.md
+**/*decisions*.md
+**/*HACKATHON_RESEARCH*.md
+**/*TODO*.md
+**/*todo*.md
+**/*progress*.md
+**/*done*.md
+**/docs/superpowers/
+**/docs/internal/
+**/docs/staging/
+**/submission/
+
+# Local browser captures and review artifacts.
+.playwright-mcp/
+agon-pattern-d-light.png
+
+# Isolated production validation; never share a running dev server's chunks.
+frontend/.next-validation/
+bnb-market/.next-validation/
+frontend/.next-dev/
+bnb-market/.next-dev/

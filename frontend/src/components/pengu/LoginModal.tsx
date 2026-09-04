@@ -23,6 +23,7 @@ import { ProductMark } from "@/components/redesign/ProductMark";
 import { IS_AGON_DEPLOYMENT, PRODUCT_NAME } from "@/lib/product";
 import { isAgonRoute } from "@/lib/agon/routes";
 import { friendlyError } from "@/lib/errors";
+import { bnbLogin } from "@agon/bnb/client";
 import { logRawError, reportEvent } from "@/lib/report";
 
 /// Login popout. Bracketed surface on a warm
@@ -153,7 +154,8 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
   const pathname = usePathname() ?? "/";
   const { network, networkKey } = useAgonNetwork();
   const agonExperience = IS_AGON_DEPLOYMENT || isAgonRoute(pathname);
-  const networkAuthAvailable = !agonExperience || networkKey === "arc-testnet";
+  const emailAuthAvailable = !agonExperience || networkKey === "arc-testnet";
+  const targetChain = agonExperience ? network.chainId : arcTestnet.id;
 
   const [view, setView] = useState<"choose" | "email" | "otp">("choose");
   const [email, setEmail] = useState("");
@@ -189,15 +191,16 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
   // component keeps the MANUAL "SIGN IN WITH WALLET" button below as the retry
   // path (e.g. after a rejection).
   async function signInWeb3() {
-    if (!networkAuthAvailable) {
-      setError(`${network.name} wallet sign-in is not connected yet. Browse freely, or switch to Arc Testnet for the current protected provider flow.`);
+    if (chainId !== targetChain) {
+      setError(`Switch your wallet to ${network.name} before signing in.`);
       return;
     }
     if (!address) return;
     setBusy(true);
     setError(null);
     try {
-      await loginWithSigner(address, (m) => signMessageAsync({ message: m }));
+      if (targetChain === 56 || targetChain === 97) await bnbLogin(targetChain, address, (m) => signMessageAsync({ message: m }));
+      else await loginWithSigner(address, (m) => signMessageAsync({ message: m }));
       await refresh();
       reportEvent("login", { context: { method: "wallet" } });
     } catch (e) {
@@ -218,7 +221,7 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
   /// accounts whose old passkey was registered on a previous AGON domain.
   /// Servers without OTP enabled fall back to the passkey ceremony.
   async function handleEmailSignIn() {
-    if (!networkAuthAvailable) {
+    if (!emailAuthAvailable) {
       setError(`${network.name} protected actions are not connected yet. Browse freely, or switch to Arc Testnet for the current provider flow.`);
       return;
     }
@@ -378,13 +381,9 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
   const wallet: { label: string; onClick?: () => void; disabled: boolean } = !mounted
     ? { label: "CONNECT A WALLET", disabled: true }
     : !isConnected
-      ? networkAuthAvailable
-        ? { label: "CONNECT A WALLET", onClick: openConnectModal, disabled: !openConnectModal }
-        : { label: `${network.brand} SIGN-IN NOT READY`, disabled: true }
-      : !networkAuthAvailable
-        ? { label: `${network.brand} SIGN-IN NOT READY`, disabled: true }
-      : chainId !== arcTestnet.id
-        ? { label: "SWITCH TO ARC", onClick: () => switchChain({ chainId: arcTestnet.id }), disabled: false }
+      ? { label: "CONNECT A WALLET", onClick: openConnectModal, disabled: !openConnectModal }
+      : chainId !== targetChain
+        ? { label: `SWITCH TO ${network.brand} ${network.environment}`, onClick: () => switchChain({ chainId: targetChain }), disabled: false }
         : { label: busy ? "SIGNING" : "SIGN IN WITH WALLET", onClick: signInWeb3, disabled: busy };
 
   const short = me ? `${me.address.slice(0, 6)}…${me.address.slice(-4)}` : "";
@@ -489,14 +488,14 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
                         </div>
                       </div>
                       <div className="mt-6 flex flex-col gap-3">
-                        <PrimaryTag disabled={!networkAuthAvailable} onClick={() => setView("email")}>
+                        {emailAuthAvailable ? <><PrimaryTag onClick={() => setView("email")}>
                           <MailIcon /> CONTINUE WITH EMAIL
                         </PrimaryTag>
                         <div className="flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
                           <span className="h-px flex-1 bg-[color:var(--hairline-strong)]" />
                           OR
                           <span className="h-px flex-1 bg-[color:var(--hairline-strong)]" />
-                        </div>
+                        </div></> : null}
                         <GhostTag disabled={wallet.disabled} onClick={wallet.onClick}>
                           <WalletIcon /> {wallet.label}
                         </GhostTag>
@@ -508,7 +507,7 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
                             DISCONNECT WALLET
                           </button>
                         ) : null}
-                        {!networkAuthAvailable ? <p className="font-mono text-[10px] leading-relaxed text-[color:var(--warn)]">{network.name} is browse-only in this release. Protected actions will open after its identity and session adapter is verified.</p> : null}
+                        {!emailAuthAvailable ? <p className="font-mono text-[11px] leading-relaxed text-ink-2">Sign in on {network.name} to publish an agent. This signature does not approve tokens or send a transaction. Browsing needs no account.</p> : null}
                       </div>
                     </>
                   ) : view === "email" ? (

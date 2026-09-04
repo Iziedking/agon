@@ -1,249 +1,71 @@
 "use client";
-
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
-import { useAccount, useChainId, useReconnect, useSignMessage } from "wagmi";
-import { fetchMe, loginWithSigner, logout, purgeLegacyToken, type Me } from "@/lib/auth";
-import { arcTestnet } from "@/lib/arc";
-
-/// Tracks the current ArcRun session. The session itself lives in an httpOnly
-/// cookie set by the backend, so this hook never touches localStorage. On
-/// mount it purges any pre-cookie token left over from older app versions,
-/// then asks the auth service who we are.
-///
-/// Auth state is held in a React context so every consumer (TopNav button,
-/// LoginModal, workshop, dashboard, anywhere) reads from the same source.
-/// Before this was a context, each useAuth() call ran its own useState which
-/// meant a sign-out in the modal didn't propagate to the nav until the next
-/// page refresh; the workshop also gated on wagmi.isConnected only, which is
-/// always false for Circle passkey users since they have no injected wallet.
-/// Both bugs collapse into one fix: shared state via AuthProvider.
-///
-/// Stale-session handling for web3 (wagmi) users:
-/// On mount we ask wagmi to reconnect from its stored connector state. If
-/// wagmi settles disconnected and the cookie still says the user is signed
-/// in via wagmi, the session is stale (browser was closed, wallet popup is
-/// gone). We clear the cookie so the UI shows a clean "sign in" rather
-/// than appearing logged in while every protected action silently fails.
-/// Circle (email/passkey) users are unaffected because their writes go
-/// through /wallet/execute, not a connected wallet.
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { useAccount } from "wagmi";
+import { usePathname } from "next/navigation";
+import { fetchMe, logout, purgeLegacyToken, type Me } from "@/lib/auth";
+import { useAgonNetwork } from "@/hooks/useAgonNetwork";
+import { IS_AGON_DEPLOYMENT } from "@/lib/product";
+import { isAgonRoute } from "@/lib/agon/routes";
+import { bnbMe, bnbLogout } from "@agon/bnb/client";
+import type { BnbChain } from "@agon/bnb/types";
 
 interface AuthContextValue {
-  me: Me | null;
-  loading: boolean;
-  /// True for the brief window between mount and wagmi finishing its
-  /// reconnect attempt. UI should hold its "is the user signed in"
-  /// decision until this clears, to avoid flashing between states.
-  settling: boolean;
-  refresh: () => Promise<void>;
-  signOut: () => Promise<void>;
-  /// Set to a short message when the stale-session detector signs the
-  /// user out, so UI surfaces can show a friendly toast / banner instead
-  /// of silently returning to the logged-out state.
-  sessionEndedReason: string | null;
-  clearSessionEndedReason: () => void;
-  /// True while the automatic SIWE signature is being requested after a wallet
-  /// connects with no session yet. UI can show "signing you in…" instead of a
-  /// flash of the signed-out state.
-  siwePrompting: boolean;
+  me: Me | null; loading: boolean; settling: boolean;
+  refresh: () => Promise<void>; signOut: () => Promise<void>;
+  sessionEndedReason: string | null; clearSessionEndedReason: () => void; siwePrompting: boolean;
 }
-
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+/** A cookie never authenticates a different network. Only explicit sign-in
+ * requests a signature; public browsing never does. */
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [me, setMe] = useState<Me | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { network } = useAgonNetwork();
+  const pathname = usePathname() ?? "/";
+  const agon = IS_AGON_DEPLOYMENT || isAgonRoute(pathname);
+  const bnb = agon && (network.chainId === 56 || network.chainId === 97) ? network.chainId as BnbChain : null;
+  const scope = bnb ?? 5042002;
+  const [state, setState] = useState<{ scope: number; me: Me | null; loading: boolean }>({ scope, me: null, loading: true });
   const [sessionEndedReason, setSessionEndedReason] = useState<string | null>(null);
-  // True once wagmi's initial reconnect attempt has actually resolved (one way
-  // or the other). The stale-session detector must not run before this, or it
-  // races the reconnect and signs a returning wallet user out on every page
-  // load. `status !== reconnecting` is not enough on its own: on a fresh load
-  // wagmi sits at "disconnected" for a beat BEFORE reconnect kicks in, and with
-  // RainbowKit's multi-connector config (WalletConnect, Coinbase) that beat is
-  // long enough for `me` to arrive first.
-  const [walletSettled, setWalletSettled] = useState(false);
   const { address: wallet, status } = useAccount();
-  const chainId = useChainId();
-  const { signMessageAsync } = useSignMessage();
-  const { reconnectAsync } = useReconnect();
-  const reconnectKicked = useRef(false);
-  // The address we have already attempted an automatic SIWE for, so the auto
-  // sign-in fires at most once per connected account and a rejection does not
-  // loop. Cleared on sign-in (re-armed for a future sign-out) and on a wallet
-  // change/disconnect.
-  const autoSiweFor = useRef<string | null>(null);
-  const [siwePrompting, setSiwePrompting] = useState(false);
-
+  const generation = useRef(0);
+  const activeScope = useRef(scope);
+  activeScope.current = scope;
+  const me = state.scope === scope ? state.me : null;
+  const loading = state.scope !== scope || state.loading;
   const refresh = useCallback(async () => {
-    setLoading(true);
-    setMe(await fetchMe());
-    setLoading(false);
-  }, []);
-
+    const request = ++generation.current;
+    setState({ scope, me: null, loading: true });
+    let next: Me | null = null;
+    try {
+      if (bnb) {
+        const { session } = await bnbMe(bnb);
+        if (session) next = { address: session.address, x_handle: null, current_syndicate_id: null, walletKind: "wagmi", canEnterContests: false };
+      } else next = await fetchMe();
+    } catch { /* Never carry a previous network identity through a failure. */ }
+    if (request === generation.current && activeScope.current === scope) setState({ scope, me: next, loading: false });
+  }, [bnb, scope]);
   const signOut = useCallback(async () => {
-    await logout();
-    setMe(null);
-  }, []);
-
-  // Boot: clean any legacy token, kick wagmi's reconnect attempt against its
-  // stored connector state, then ask the auth service for the current session.
-  // We AWAIT the reconnect and flip `walletSettled` only once it resolves, so
-  // the stale-session detector below has a hard signal that the reconnect is
-  // done (not merely "not currently reconnecting"). Reconnect resolves fast
-  // when there's nothing stored, so first-time / Circle users aren't held up.
+    ++generation.current;
+    setState({ scope, me: null, loading: false });
+    if (bnb) await bnbLogout(bnb); else await logout();
+  }, [bnb, scope]);
+  useEffect(() => { purgeLegacyToken(); void refresh(); return () => { ++generation.current; }; }, [refresh]);
   useEffect(() => {
-    purgeLegacyToken();
-    void refresh();
-    if (reconnectKicked.current) return;
-    reconnectKicked.current = true;
-    let cancelled = false;
-    void (async () => {
-      try {
-        await reconnectAsync();
-      } catch {
-        // No stored connector, or the connector declined: nothing to restore.
-        // Either way the reconnect attempt is finished.
-      } finally {
-        if (!cancelled) setWalletSettled(true);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [refresh, reconnectAsync]);
-
-  // Cross-account check.
-  //
-  // We deliberately do NOT sign the user out just because the wallet is
-  // disconnected. The session cookie is the identity; the wallet connection is
-  // only needed at write time (to sign a tx), and wagmi reconnects it in the
-  // background on mount. The old "wallet missing -> signOut" rule meant every
-  // cold page load (and this app hard-reloads on many links) raced the
-  // reconnect and kicked the user out. Now a returning user stays signed in;
-  // if their wallet truly isn't connected when they try to write, the write
-  // flow prompts a reconnect.
-  //
-  // What we still guard: a DIFFERENT wallet connected than the session expects.
-  // That is a real safety issue (the backend would keep acting as the previous
-  // account), so we clear the session and ask them to sign in with the new one.
-  // Bail until wagmi settles so a mid-reconnect flicker doesn't false-trigger.
-  useEffect(() => {
-    if (!me) return;
-    if (!walletSettled) return;
-    if (status === "connecting" || status === "reconnecting") return;
-
-    if (wallet && me.address.toLowerCase() !== wallet.toLowerCase()) {
-      setSessionEndedReason("you switched wallet accounts. sign in with the new one.");
-      void signOut();
+    if (me?.walletKind === "wagmi" && wallet && status === "connected" && wallet.toLowerCase() !== me.address.toLowerCase()) {
+      setSessionEndedReason("You switched wallet accounts. Sign in with the new one.");
+      void signOut().catch(() => {});
     }
-  }, [me, wallet, status, signOut, walletSettled]);
-
-  // Automatic SIWE.
-  //
-  // The single guarantee the product wants: connecting a wallet flows straight
-  // into a complete sign-in. So whenever a wallet is connected on Arc with no
-  // session, we run the SIWE signature here — globally, not gated on any modal
-  // being open. This is what fixes "connected but not signed in" limbo, where
-  // the wallet is live (a client-signed transfer works) but there is no session
-  // (so the balance panel and every backend-authenticated action are dead until
-  // a manual sign-out + reconnect).
-  //
-  // Guards: wait for the boot reconnect to settle and the cookie check to finish
-  // so we do not race a session that is about to load; fire at most once per
-  // connected address (a rejection leaves the user connected-without-session and
-  // the LOGIN button is the retry, no loop); and because we only fire when `me`
-  // is null, a signed-in user reloading the page never sees a prompt — their
-  // cookie session loads and this effect no-ops.
-  useEffect(() => {
-    if (loading || !walletSettled) return;
-    if (me) {
-      // Signed in: re-arm so a later sign-out can trigger a fresh auto sign-in.
-      autoSiweFor.current = null;
-      return;
-    }
-    if (!wallet || status !== "connected") return;
-    if (chainId !== arcTestnet.id) return; // SIWE is chain-scoped; wait for Arc
-    const key = wallet.toLowerCase();
-    if (autoSiweFor.current === key) return;
-    autoSiweFor.current = key;
-
-    let cancelled = false;
-    setSiwePrompting(true);
-    void (async () => {
-      try {
-        await loginWithSigner(wallet, (m) => signMessageAsync({ message: m }));
-        if (!cancelled) await refresh();
-      } catch {
-        // Rejected or failed (bad nonce, wrong domain, user cancelled): stay
-        // connected-without-session. The LOGIN button re-runs this manually.
-      } finally {
-        if (!cancelled) setSiwePrompting(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [loading, walletSettled, me, wallet, status, chainId, signMessageAsync, refresh]);
-
-  // A disconnect must re-arm the auto sign-in for the next connect.
-  useEffect(() => {
-    if (!wallet) autoSiweFor.current = null;
-  }, [wallet]);
-
-  const settling =
-    !walletSettled || status === "connecting" || status === "reconnecting" || loading || siwePrompting;
-
+  }, [me, wallet, status, signOut]);
   const clearSessionEndedReason = useCallback(() => setSessionEndedReason(null), []);
-
-  return (
-    <AuthContext.Provider
-      value={{ me, loading, settling, refresh, signOut, sessionEndedReason, clearSessionEndedReason, siwePrompting }}
-    >
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={{ me, loading, settling: loading || status === "reconnecting", refresh, signOut, sessionEndedReason, clearSessionEndedReason, siwePrompting: false }}>{children}</AuthContext.Provider>;
 }
-
 export function useAuth(): AuthContextValue {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth must be used inside <AuthProvider>");
   return ctx;
 }
-
-/// Returns the operator's effective address from EITHER an injected wallet
-/// connection OR an active SIWE session. Use this in any UI that needs to
-/// know "is someone signed in, and which address" without caring whether
-/// they came in through wagmi or Circle passkey.
-///
-/// `isSignedIn` is driven by the SESSION, not the live wallet connection. The
-/// httpOnly session cookie (reflected in `me`) is the source of truth for who
-/// is signed in, for both Circle and wagmi users. We intentionally do not
-/// require `wagmi.isConnected` here: on a cold page load the wallet reconnects
-/// asynchronously, and gating "signed in" on it made a returning user flash
-/// (or get stuck in) the signed-out state on every navigation. The wallet is
-/// only needed when actually signing a tx; the write flow handles a missing
-/// connection at that point (prompting a reconnect) rather than treating the
-/// whole session as gone.
-export function useOperatorAddress(): {
-  address: `0x${string}` | undefined;
-  isSignedIn: boolean;
-  /// True while auth is still resolving (the session fetch or wagmi's initial
-  /// reconnect). Gate signed-out UI on this so a page doesn't FLASH the
-  /// "sign in" state for a returning user before their session loads.
-  settling: boolean;
-} {
+export function useOperatorAddress(): { address: `0x${string}` | undefined; isSignedIn: boolean; settling: boolean } {
   const { me, settling } = useAuth();
-  const { address: walletAddress } = useAccount();
-  const address = (walletAddress ?? me?.address) as `0x${string}` | undefined;
-  // Session cookie is the auth for both kinds. Wallet connection is a
-  // write-time concern, not a signed-in concern.
-  const isSignedIn = !!me?.address;
-  return { address, isSignedIn, settling };
+  const { address: wallet } = useAccount();
+  return { address: (me?.address ?? wallet) as `0x${string}` | undefined, isSignedIn: !!me, settling };
 }

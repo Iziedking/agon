@@ -1,4 +1,9 @@
 .vercel
+node_modules/
+.next/
+.next-dev/
+.next-validation/
+*.tsbuildinfo
 .env*
 # Internal planning artifacts (never public 
 # Internal planning artifacts (never public 

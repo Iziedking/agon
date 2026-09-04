@@ -24,11 +24,16 @@ import { canonicalManifestHash } from "@/lib/agon/canonical";
 import { buildServiceManifest, validateServiceDraft } from "@/lib/agon/draft";
 import type { AgonCapabilities, PaymentRail } from "@/lib/agon/types";
 import { useAgonNetwork } from "@/hooks/useAgonNetwork";
+import { BnbMarket } from "@/components/agon/BnbMarket";
 import { AGON_IDENTITY_REGISTRY, agonIdentityRegistryAbi, identityIdFromRegistrationReceipt, resolveIdentityActions, validateIdentityMetadataUri } from "@/lib/agon/identity";
 
 const INPUT_CLASS = "h-12 w-full border border-[color:var(--hairline-strong)] bg-canvas px-4 font-mono text-[12px] text-ink outline-none placeholder:text-ink-3 focus:border-ink focus:ring-2 focus:ring-ink focus:ring-offset-2 focus:ring-offset-canvas disabled:opacity-50";
 
 export default function NewListingPage() {
+  const { networkKey } = useAgonNetwork();
+  return networkKey === "arc-testnet" ? <ArcNewListingPage /> : <BnbMarket view="publish" />;
+}
+function ArcNewListingPage() {
   const { isSignedIn, settling } = useOperatorAddress();
   const { network, networkKey } = useAgonNetwork();
   const { writeContractAsync, signerAddress: address } = useArcWrite();

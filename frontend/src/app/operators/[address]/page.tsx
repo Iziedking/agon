@@ -286,7 +286,7 @@ function LegacyOperatorPage({ address }: { address: string }) {
                   { value: "light", label: "LIGHT" },
                   { value: "dark", label: "DARK" },
                 ]}
-                fallback="auto"
+                fallback="dark"
               />
               <SettingRow
                 k="lang"

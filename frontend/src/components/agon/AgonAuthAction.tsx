@@ -37,7 +37,7 @@ export function AgonAuthAction({ href, children, ...button }: Props) {
     waitingForAuth.current = false;
     setOpen(false);
 
-    router.replace(href);
+    router.replace(networkHref(href, networkKey));
   }, [href, me, networkKey, open, router]);
 
   function handleClick() {
