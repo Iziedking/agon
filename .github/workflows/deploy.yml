@@ -35,10 +35,11 @@ jobs:
         ports: ["15432:5432"]
         options: --health-cmd "pg_isready -U nock" --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22.22.0'
+          package-manager-cache: false
       - name: Install dependencies
         run: |
           npm install --prefix backend --no-audit --no-fund
@@ -72,7 +73,7 @@ jobs:
           cp -R contracts/deployments bundle/contracts/
           cd bundle
           find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: github.event_name != 'pull_request'
         with:
           name: agon-release-${{ github.sha }}
@@ -100,7 +101,7 @@ jobs:
             test -n "$VPS_USER" && test -n "$VPS_KEY" && test -n "$VPS_FINGERPRINT" || { echo "Incomplete VPS configuration"; exit 1; }
             echo "ready=true" >> "$GITHUB_OUTPUT"
           fi
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         if: steps.gate.outputs.ready == 'true'
         with:
           name: agon-release-${{ github.sha }}

@@ -12,6 +12,14 @@ class ReleaseBoundaryTests(unittest.TestCase):
         self.assertIn('test:lp-storage', workflow)
         self.assertIn('test:agon', workflow)
         self.assertIn('VPS_HOST_FINGERPRINT', workflow)
+        for action_sha in [
+            'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1',
+            'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020',
+            'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
+            'actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c',
+        ]:
+            self.assertIn(action_sha, workflow)
+        self.assertIn('package-manager-cache: false', workflow)
         self.assertNotIn('uses: actions/checkout@v', workflow)
         self.assertNotIn('uses: appleboy/ssh-action@v', workflow)
     def test_release_preserves_shared_state(self):

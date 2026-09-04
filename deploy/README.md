@@ -24,6 +24,10 @@ are not removed.
 Required GitHub secrets: `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY`,
 `VPS_HOST_FINGERPRINT`, and optional `VPS_SSH_PORT`. A missing host skips
 deployment explicitly; incomplete credentials on a configured host fail it.
+The Appleboy transfer clients negotiate ECDSA P-256 before Ed25519 when both
+host keys are enabled, so pin the server's ECDSA SHA-256 fingerprint. Verify it
+from an already trusted administrator connection before updating the secret;
+never disable fingerprint checking to recover a failed deployment.
 The host administrator installs `release.sh` as the root-owned
 `/usr/local/sbin/agon-deploy` and `release.compose.yml` as
 `/etc/agon/release.compose.yml`. Updating either requires an administrator,
