@@ -3,13 +3,27 @@ import { agentDetail, catalog, probeAgent } from "./catalog.ts";
 import { challenge, currentSession, endSession, requestOrigin, setSessionCookie, verify } from "./auth.ts";
 import { database } from "./store.ts";
 import { body, HttpError, json } from "./http.ts";
+import { commerceReadiness, readCommerceJob, readCommerceReceipt } from "./commerce.ts";
+import { checkedClient } from "./network.ts";
 
 export async function handleBnb(request: Request, chain: string, parts: string[]): Promise<Response> {
   try {
     const chainId = parseChain(chain); const path = parts.join("/");
     if (request.method === "GET") {
-      if (path === "health") return json({ chainId, catalog: "8004scan", identity: "rpc", login: process.env.BNB_DATABASE_URL ? "configured" : "unavailable", payments: "unavailable" });
+      if (path === "health") {
+        let storage = process.env.BNB_DATABASE_URL ? "unavailable" : "not_configured";
+        let rpc = "unavailable";
+        await Promise.all([
+          process.env.BNB_DATABASE_URL ? database().then((db) => db.query("SELECT 1")).then(() => { storage = "reachable"; }).catch(() => undefined) : Promise.resolve(),
+          checkedClient(chainId).then(() => { rpc = "reachable"; }).catch(() => undefined),
+        ]);
+        return json({ chainId, catalogSource: "8004scan", rpc, storage,
+          login: storage === "reachable" && rpc === "reachable" ? "available" : "unavailable",
+          payments: "unavailable", taskExecution: "unavailable", settlementWrites: "unavailable" });
+      }
       if (path === "auth/me") return json({ session: await currentSession(request, chainId) });
+      if (parts[0] === "jobs" && parts.length === 2) return json(await readCommerceJob(chainId, parseAgentId(parts[1])));
+      if (parts[0] === "receipts" && parts.length === 2) return json(await readCommerceReceipt(chainId, parts[1]));
       if (path === "agents") {
         const offset = Number(new URL(request.url).searchParams.get("offset") ?? 0);
         if (!Number.isSafeInteger(offset) || offset < 0 || offset > 10000) throw new HttpError(400, "Invalid catalog page.");
@@ -31,6 +45,7 @@ export async function handleBnb(request: Request, chain: string, parts: string[]
       return json({ session: result.session }, 200, { "set-cookie": setSessionCookie(chainId, result.token, origin.startsWith("https:")) });
     }
     if (parts[0] === "agents" && parts[2] === "probe" && parts.length === 3) return json(await probeAgent(chainId, parseAgentId(parts[1])));
+    if (parts[0] === "agents" && parts[2] === "commerce" && parts.length === 3) return json(await commerceReadiness(chainId, parseAgentId(parts[1])));
     if (path === "listings") {
       const session = await currentSession(request, chainId);
       if (!session) throw new HttpError(401, "Sign in with the agent owner's wallet to publish.");

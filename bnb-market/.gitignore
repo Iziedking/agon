@@ -5,6 +5,8 @@ node_modules/
 .next-validation/
 *.tsbuildinfo
 .env*
+!.env.example
+scripts/inspect-*.ts
 # Internal planning artifacts (never public 
 # Internal planning artifacts (never public 
 *PLAN*.md 

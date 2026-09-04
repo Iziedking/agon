@@ -48,3 +48,11 @@ export type AgentDetail = AgentSummary & {
 };
 export type CatalogPage = { items: AgentSummary[]; total: number; nextOffset: number | null; checkedAt: string; source: "8004scan"; warnings: string[] };
 export type EndpointProof = { chainId: BnbChain; agentId: string; versionHash: string; checkedAt: string; status: "reachable" | "unavailable"; protocol: string; endpoint: string; message: string };
+export type CommerceReadiness = {
+  chainId: BnbChain; agentId: string; versionHash: string | null; checkedAt: string; blockNumber: string;
+  status: "blocked"; paymentsEnabled: false; blockers: string[];
+  contracts: { commerce: string; router: string; policy: string };
+  providerPolicy: string | null; providerPolicyWhitelisted: boolean | null;
+  token: { address: string; decimals: number; symbol: string };
+  disputeWindowSeconds: string; advertisedPriceRaw: string | null; advertisedPriceDisplay: string | null;
+};

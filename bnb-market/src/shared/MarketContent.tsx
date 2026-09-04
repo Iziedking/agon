@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode, type FormEvent } from "react";
 import { CATEGORIES, type BnbChain, type AgentSummary, type AgentDetail, type Category, type EndpointProof } from "./types";
 import { readCatalog, readAgent, checkAgentEndpoint, publishAgent } from "./client";
+import { CommerceReadinessPanel } from "./CommerceReadinessPanel";
 
 // Shared BNB-only content. The canonical host supplies AGON's approved header,
 // footer, typography and palette. No chain-specific host imports are allowed.
@@ -81,6 +82,7 @@ export function BnbAgentContent({ chainId, id }: { chainId: BnbChain; id: string
           <p className="mt-5 font-mono text-[11px] leading-relaxed text-ink-3">Hiring is not enabled for this profile until its price, execution interface, and payment contract have been verified. No invented price or transaction.</p>
         </div>
       </div>
+      <CommerceReadinessPanel key={`${chainId}:${id}`} chainId={chainId} agentId={id} />
       <details className={PANEL}><summary className="cursor-pointer font-mono text-[12px] uppercase tracking-widest">TECHNICAL PROOF & SERVICE ENDPOINTS</summary><dl className="mt-5 space-y-3 break-all font-mono text-[12px] text-ink-2"><dt>REGISTRY</dt><dd>{agent.registry}</dd><dt>METADATA SNAPSHOT HASH</dt><dd>{agent.versionHash ?? "Unavailable"}</dd><dt>DECLARED SERVICES</dt><dd>{agent.services.length ? agent.services.map((s) => <p className="mb-2" key={`${s.name}:${s.endpoint}`}>{s.name}: {s.endpoint}</p>) : "No supported public HTTPS service endpoints."}</dd></dl></details>
     </> : null}
   </div>;

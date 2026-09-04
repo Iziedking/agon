@@ -150,3 +150,6 @@ frontend/.next-validation/
 bnb-market/.next-validation/
 frontend/.next-dev/
 bnb-market/.next-dev/
+
+# Public, secret-free BNB configuration contract.
+!bnb-market/.env.example

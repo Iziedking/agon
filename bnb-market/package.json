@@ -12,7 +12,9 @@
     "typecheck": "tsc --noEmit",
     "test:boundaries": "node --experimental-strip-types src/shared/server/boundary.test.ts",
     "test:auth": "node --experimental-strip-types src/shared/server/auth.integration.test.ts",
+    "test:commerce": "node --experimental-strip-types src/shared/server/commerce.test.ts",
     "prove:reads": "node --experimental-strip-types scripts/prove-live-reads.ts",
+    "prove:commerce": "node --experimental-strip-types scripts/prove-commerce.ts",
     "test": "node --experimental-strip-types src/lib/bnb/compare.test.ts && node --experimental-strip-types src/lib/bnb/evidence.test.ts && node --experimental-strip-types src/lib/bnb/quote-job.test.ts"
   },
   "dependencies": {
