@@ -15,7 +15,11 @@
     "test:transport": "node --experimental-strip-types src/shared/server/serve.test.ts",
     "test:boundaries": "node --experimental-strip-types src/shared/server/boundary.test.ts",
     "test:auth": "node --experimental-strip-types src/shared/server/auth.integration.test.ts",
-    "test:commerce": "node --experimental-strip-types src/shared/server/commerce.test.ts",
+    "test:commerce": "node --experimental-strip-types src/shared/server/commerce.test.ts && node --experimental-strip-types src/shared/server/commerce-intent-core.test.ts",
+    "test:commerce-storage": "node --experimental-strip-types src/shared/server/commerce-intents.integration.test.ts --local-db",
+    "test:lp-delivery": "node --experimental-strip-types src/shared/server/lp-delivery.test.ts",
+    "test:lp-delivery-storage": "node --experimental-strip-types src/shared/server/lp-delivery.integration.test.ts --local-db",
+    "worker:lp-delivery": "node --experimental-strip-types scripts/lp-delivery-worker.ts",
     "test:lp-agent": "node --experimental-strip-types src/shared/providers/lp-core.test.ts",
     "test:lp-storage": "node --experimental-strip-types src/shared/providers/lp-runs.integration.test.ts --local-db",
     "prove:lp-agent": "node --experimental-strip-types scripts/prove-lp-agent.ts",
@@ -24,6 +28,7 @@
     "test": "node --experimental-strip-types src/lib/bnb/compare.test.ts && node --experimental-strip-types src/lib/bnb/evidence.test.ts && node --experimental-strip-types src/lib/bnb/quote-job.test.ts"
   },
   "dependencies": {
+    "@altananetwork/sdk": "0.7.1",
     "@bnbagent/sdk": "0.5.5",
     "geist": "1.7.2",
     "next": "15.5.25",
@@ -42,5 +47,8 @@
     "tailwindcss": "3.4.19",
     "typescript": "5.9.3"
   },
-  "overrides": { "postcss": "8.5.26", "ws": "8.21.0" }
+  "overrides": {
+    "postcss": "8.5.26",
+    "ws": "8.21.0"
+  }
 }

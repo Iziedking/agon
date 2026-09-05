@@ -8,4 +8,6 @@
 !src/shared/server/**
 !src/shared/providers
 !src/shared/providers/**
+!scripts
+!scripts/lp-delivery-worker.ts
 **/*.test.ts

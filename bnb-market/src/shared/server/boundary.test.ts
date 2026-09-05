@@ -52,3 +52,11 @@ test("API rejects Arc and cross-origin writes; public browsing has no auth requi
   assert.deepEqual(await me.json(), { session: null });
   assert.equal((await handleBnb(new Request("https://agon.surf/api/bnb/97/agents?offset=-1"), "97", ["agents"])).status, 400);
 });
+test("public LP commerce status is honest while provider execution is unavailable", async () => {
+  const response = await handleBnb(new Request("https://agon.surf/api/bnb/97/providers/lp-guardian/commerce"), "97", ["providers", "lp-guardian", "commerce"]);
+  assert.equal(response.status, 200);
+  const data = await response.json() as { enabled: boolean; status: string; blockers: string[] };
+  assert.equal(data.enabled, false);
+  assert.notEqual(data.status, "available");
+  assert.ok(data.blockers.length > 0);
+});

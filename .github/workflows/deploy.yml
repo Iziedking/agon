@@ -52,7 +52,10 @@ jobs:
           npm run test --prefix bnb-market
           npm run test:boundaries --prefix bnb-market
           npm run test:commerce --prefix bnb-market
+          npm run test:commerce-storage --prefix bnb-market
           npm run test:lp-agent --prefix bnb-market
+          npm run test:lp-delivery --prefix bnb-market
+          npm run test:lp-delivery-storage --prefix bnb-market
           npm run test:transport --prefix bnb-market
           npm run test:auth --prefix bnb-market -- --local-db
           npm run test:lp-storage --prefix bnb-market

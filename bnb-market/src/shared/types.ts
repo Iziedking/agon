@@ -56,3 +56,70 @@ export type CommerceReadiness = {
   token: { address: string; decimals: number; symbol: string };
   disputeWindowSeconds: string; advertisedPriceRaw: string | null; advertisedPriceDisplay: string | null;
 };
+
+export type CommerceIntentState =
+  | "quoting"
+  | "quote_verified"
+  | "create_prepared"
+  | "create_confirming"
+  | "open"
+  | "register_prepared"
+  | "register_confirming"
+  | "registered"
+  | "approve_prepared"
+  | "approve_confirming"
+  | "approved"
+  | "fund_prepared"
+  | "fund_confirming"
+  | "funded"
+  | "expired"
+  | "reverted"
+  | "needs_attention";
+
+export type CommerceStep = "create" | "register" | "approve" | "fund";
+
+export type PreparedCommerceTransaction = {
+  step: CommerceStep;
+  chainId: 97;
+  to: `0x${string}`;
+  data: `0x${string}`;
+  value: "0";
+  title: string;
+  warning: string;
+};
+
+export type CommerceIntent = {
+  id: string;
+  chainId: 97;
+  buyerAddress: `0x${string}`;
+  agentId: string;
+  providerAddress: `0x${string}`;
+  serviceVersion: string;
+  registrationHash: string;
+  state: CommerceIntentState;
+  amountRaw: string;
+  amountDisplay: string;
+  token: { address: `0x${string}`; decimals: number; symbol: string };
+  quoteHash: `0x${string}`;
+  quoteExpiresAt: string;
+  jobExpiresAt: string;
+  jobId: string | null;
+  transaction: PreparedCommerceTransaction | null;
+  transactionHash: `0x${string}` | null;
+  confirmations: number;
+  message: string;
+  updatedAt: string;
+};
+
+export type LpHiringReadiness = {
+  chainId: number;
+  status: "available" | "configuration_required" | "blocked";
+  enabled: boolean;
+  blockers: string[];
+  agentId: string | null;
+  providerAddress: `0x${string}` | null;
+  token: { address: `0x${string}`; decimals: number; symbol: string } | null;
+  priceRaw: string | null;
+  priceDisplay: string | null;
+  checkedAt: string;
+};

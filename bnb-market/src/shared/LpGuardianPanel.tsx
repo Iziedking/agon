@@ -1,11 +1,49 @@
 "use client";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import type { BnbChain } from "./types";
+import type { BnbChain, LpHiringReadiness } from "./types";
 import type { LpRun } from "./providers/lp-runs";
-import { readLpAnalysis, startLpAnalysis } from "./client";
+import { checkLpHiring, readLpAnalysis, startLpAnalysis } from "./client";
 
 const BUTTON = "inline-flex min-h-11 items-center justify-center border border-[color:var(--hairline-strong)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.12em] text-ink hover:bg-canvas-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-50";
 const INPUT = "mt-2 h-12 w-full border border-[color:var(--hairline-strong)] bg-canvas px-4 font-mono text-sm text-ink focus:outline focus:outline-2 focus:outline-accent";
+const HIRING_BLOCKERS: Record<string, string> = {
+  testnet_only: "Protected hiring is being proven on BNB Testnet before Mainnet is opened.",
+  hiring_flag_disabled: "The operator has not opened paid hiring.",
+  agent_identity_unconfigured: "The AGON-operated agent identity is not configured.",
+  provider_wallet_unconfigured: "The provider wallet is not configured.",
+  exact_price_unconfigured: "The exact service price is not configured.",
+  public_provider_url_unconfigured: "The public provider endpoint is not configured.",
+  altana_session_unconfigured: "The provider's bounded signing session is not configured.",
+  registration_not_qualified: "The onchain agent registration is not active and readable.",
+  provider_wallet_mismatch: "The registered agent wallet differs from the configured provider.",
+  provider_endpoint_mismatch: "The registered payment endpoint differs from the configured provider.",
+  registration_unavailable: "The provider registration could not be verified.",
+  provider_execution_unavailable: "The delivery worker is not live, so AGON will not let a buyer lock funds yet.",
+};
+
+function HiringReadiness({ chainId }: { chainId: BnbChain }) {
+  const [readiness, setReadiness] = useState<LpHiringReadiness | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController();
+    setReadiness(null); setError(null);
+    checkLpHiring(chainId, controller.signal).then(setReadiness).catch((failure: unknown) => {
+      if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : "Hiring readiness could not be checked.");
+    });
+    return () => controller.abort();
+  }, [chainId, retry]);
+  return <aside className="mt-6 border-t border-[color:var(--hairline-strong)] pt-5" aria-label="Protected hiring readiness">
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div><p className="font-mono text-[10px] uppercase tracking-widest text-accent">PROTECTED HIRING</p>
+        <p className="mt-2 max-w-[85ch] font-mono text-[11px] leading-relaxed text-ink-2">A signed quote and exact-value ERC-8183 wallet flow are prepared only after every provider, contract and delivery check passes.</p></div>
+      <span className="border border-[color:var(--hairline-strong)] px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-ink-2">{readiness?.enabled ? "READY" : readiness ? "CLOSED" : error ? "CHECK FAILED" : "CHECKING…"}</span>
+    </div>
+    {error ? <div role="alert" className="mt-4 border-l-2 border-accent pl-4 font-mono text-[11px] leading-relaxed text-ink-2"><p>{error}</p><button type="button" className={`${BUTTON} mt-3`} onClick={() => setRetry((value) => value + 1)}>RETRY READINESS →</button></div> : null}
+    {readiness && !readiness.enabled ? <details className="mt-4 font-mono text-[11px] leading-relaxed text-ink-2"><summary className="min-h-11 cursor-pointer py-3 uppercase tracking-widest">WHY HIRING IS CLOSED</summary><ul className="list-disc space-y-2 pl-5">{readiness.blockers.map((blocker) => <li key={blocker}>{HIRING_BLOCKERS[blocker] ?? "A required commerce check did not pass."}</li>)}</ul></details> : null}
+    {readiness?.enabled ? <p role="status" className="mt-4 border-l-2 border-accent pl-4 font-mono text-[11px] leading-relaxed text-ink-2">Protected hiring is ready for this exact provider version at {readiness.priceDisplay} {readiness.token?.symbol}. Sign in before requesting a quote.</p> : null}
+  </aside>;
+}
 function rememberRun(id: string | null) {
   const url = new URL(window.location.href);
   if (id) url.searchParams.set("lpRun", id); else url.searchParams.delete("lpRun");
@@ -57,7 +95,7 @@ export function LpGuardianPanel({ chainId }: { chainId: BnbChain }) {
     <p className="font-mono text-[10px] uppercase tracking-widest text-accent">AGON OPERATED / PANCAKESWAP V3</p>
     <h2 id="lp-guardian-title" className="mt-4 font-stencil text-3xl uppercase">LP GUARDIAN</h2>
     <p className="mt-4 max-w-[85ch] font-mono text-sm leading-relaxed text-ink-2">Check whether a liquidity position is in range. The agent reads its BNB Testnet pool, checks a 10-minute price average, and proposes a range for review when the evidence allows it.</p>
-    <p className="mt-3 font-mono text-[11px] leading-relaxed text-ink-3">Read-only analysis. No wallet needed, no funds moved. Public registry listing and paid hiring are not enabled for this AGON service yet.</p>
+    <p className="mt-3 font-mono text-[11px] leading-relaxed text-ink-3">Read-only analysis. No wallet needed, no funds moved. Protected hiring stays closed until the registered provider, exact price, contracts and delivery worker all pass verification.</p>
     {chainId !== 97 ? <p role="status" className="mt-6 border-l-2 border-accent pl-4 font-mono text-sm text-ink-2">Select BNB Testnet to run LP Guardian. It does not read Testnet positions under a Mainnet label.</p> : <>
       <form onSubmit={submit} className="mt-6 space-y-5">
         <fieldset disabled={waiting} className="grid gap-4 md:grid-cols-3">
@@ -86,5 +124,6 @@ export function LpGuardianPanel({ chainId }: { chainId: BnbChain }) {
         <button className={`${BUTTON} mt-4`} onClick={download}>DOWNLOAD REPORT →</button>
       </div> : null}
     </>}
+    <HiringReadiness chainId={chainId} />
   </section>;
 }

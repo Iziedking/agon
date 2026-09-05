@@ -35,10 +35,15 @@ reachability and task performance are distinct evidence types.
 The current shared implementation includes network-scoped wallet sessions,
 owner-checked publication, read-only endpoint checks, payment-contract
 readiness, job/receipt reads, and AGON LP Guardian's read-only PancakeSwap
-position analysis. Payment approval, paid hiring, third-party task execution,
-automatic liquidity changes and settlement writes remain disabled. No end-to-end paid result
-is claimed. Legacy comparison helpers under `src/lib/bnb` contain offline
-fixtures and must not be used to enable live actions.
+position analysis. Its BNB Testnet commerce foundation durably binds a buyer,
+input, signed provider quote, exact token amount and ERC-8183 contract before
+preparing any wallet calldata. It independently verifies receipts and waits
+for two confirmations. The flow still refuses to open while the provider
+delivery worker is unavailable, so payment approval, paid hiring, third-party
+task execution, automatic liquidity changes and settlement writes remain
+disabled. No end-to-end paid result is claimed. Legacy comparison helpers
+under `src/lib/bnb` contain offline fixtures and must not be used to enable
+live actions.
 
 ## Production configuration
 
@@ -51,6 +56,16 @@ browser variables:
 | `BNB_97_RPC_URL` | Optional dedicated BNB Testnet RPC |
 | `BNB_56_RPC_URL` | Optional dedicated BNB Mainnet RPC |
 | `BNB_LP_AGENT_DAILY_LIMIT` | Global public LP analysis allowance per UTC day, default 100; 0 pauses new runs |
+| `BNB_LP_AGENT_HIRING_ENABLED` | Explicit BNB Testnet hiring gate; keep `false` until delivery is operational |
+| `BNB_LP_AGENT_ID` | AGON-operated ERC-8004 agent ID on chain 97 |
+| `BNB_LP_AGENT_ADDRESS` | Provider address; must equal the registered agent wallet and Altana session address |
+| `BNB_LP_AGENT_PRICE_RAW` | Positive exact price in the deployed payment token's atomic units |
+| `BNB_LP_AGENT_PUBLIC_URL` | Public HTTPS LP Guardian provider endpoint registered for ERC-8183 |
+| `BNB_LP_AGENT_HIRE_DAILY_LIMIT` | Maximum new paid intents per UTC day, default 25 |
+| `ALTANA_SESSION_FILE` | Server-only path to the bounded provider session payload; private material |
+| `BNB_LP_AGENT_EXECUTION_ENABLED` | Separate provider worker kill switch; keep `false` until the real testnet proof |
+| `BNB_LP_AGENT_DELIVERABLE_BASE_URL` | Public HTTPS base URL for canonical job manifests |
+| `BNB_LP_AGENT_WORKER_INTERVAL_MS` | Bounded worker polling interval, default 30000 |
 
 With no database, public discovery still works but sign-in and publication
 are unavailable. The database user needs permission to create the BNB tables
@@ -79,10 +94,35 @@ liquidity, choose an optimal strategy, estimate returns or protect against
 every form of price manipulation.
 
 This is an AGON-operated analysis service, not a fabricated registered agent.
-Its public ERC-8004 registration and paid hiring are not configured yet.
-It is separate from the third-party registry catalog. This first capability
-alone does not satisfy the four-category marketplace or automated rebalancing
-requirements.
+Paid hiring requires its real public ERC-8004 registration, exact price,
+matching provider/session wallet and public ERC-8183 endpoint. Even after
+those operator settings are present, the API refuses to prepare a buyer action
+until the delivery worker can complete a funded job. It is separate from the
+third-party registry catalog. This first capability alone does not satisfy the
+four-category marketplace or automated rebalancing requirements.
+
+The delivery worker is `npm run worker:lp-delivery`. It is intentionally
+separate from the API process: it claims one funded job at a time using a
+Postgres lock, rechecks the quote and provider assignment through the pinned
+SDK, performs the real read-only PancakeSwap analysis, uploads the canonical
+manifest to the public deliverable route, and submits the manifest hash through
+the bounded provider session. Crashed `working` claims can be recovered after
+ten minutes; submitted and attention-required jobs are never blindly replayed.
+The worker remains closed unless `BNB_LP_AGENT_EXECUTION_ENABLED=true` and all
+provider/session/public-URL gates pass.
+
+Published manifests are available at
+`GET /api/bnb/97/providers/lp-guardian/deliverables/{jobId}` only after the
+onchain job is `SUBMITTED` or `COMPLETED` and its deliverable hash matches the
+stored canonical manifest. This route is public by design so the evaluator and
+buyer can retrieve the exact artifact without a buyer session.
+
+Commerce readiness is public at
+`GET /api/bnb/97/providers/lp-guardian/commerce`. The public provider card is
+`GET /api/bnb/97/providers/lp-guardian/erc8183/status`. Authenticated intent
+and receipt routes exist for the guarded wallet flow, but return a closed
+state while provider execution is unavailable. BNB Mainnet never exposes this
+write path.
 
 Runs persist in PostgreSQL before chain reads. Refreshing the result URL
 restores the report. Reusing the same UUID with the same inputs does not
@@ -110,6 +150,7 @@ To verify the real service without a browser:
 
 ```bash
 npm run test:lp-agent
+npm run test:commerce
 npm run prove:lp-agent -- 37235
 ```
 

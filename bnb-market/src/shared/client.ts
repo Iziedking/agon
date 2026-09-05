@@ -1,4 +1,4 @@
-import type { BnbChain, BnbSession, AgentDetail, CatalogPage, EndpointProof, Category, CommerceReadiness } from "./types.ts";
+import type { BnbChain, BnbSession, AgentDetail, CatalogPage, EndpointProof, Category, CommerceIntent, CommerceReadiness, CommerceStep, LpHiringReadiness } from "./types.ts";
 import type { LpInput } from "./providers/lp-core.ts";
 import type { LpRun } from "./providers/lp-runs.ts";
 async function call<T>(chainId: BnbChain, path: string, payload?: unknown, signal?: AbortSignal): Promise<T> {
@@ -16,6 +16,10 @@ export const publishAgent = (chainId: BnbChain, agentId: string, category: Categ
 export const bnbMe = (chainId: BnbChain) => call<{ session: BnbSession | null }>(chainId, "auth/me");
 export const startLpAnalysis = (chainId: BnbChain, runId: string, input: LpInput, signal?: AbortSignal) => call<LpRun>(chainId, "providers/lp-guardian/runs", { runId, input }, signal);
 export const readLpAnalysis = (chainId: BnbChain, runId: string, signal?: AbortSignal) => call<LpRun>(chainId, `providers/lp-guardian/runs/${encodeURIComponent(runId)}`, undefined, signal);
+export const checkLpHiring = (chainId: BnbChain, signal?: AbortSignal) => call<LpHiringReadiness>(chainId, "providers/lp-guardian/commerce", undefined, signal);
+export const prepareLpHire = (chainId: BnbChain, intentId: string, input: LpInput) => call<CommerceIntent>(chainId, "providers/lp-guardian/hire-intents", { intentId, input });
+export const readLpHire = (chainId: BnbChain, intentId: string, signal?: AbortSignal) => call<CommerceIntent>(chainId, `providers/lp-guardian/hire-intents/${encodeURIComponent(intentId)}`, undefined, signal);
+export const reconcileLpHire = (chainId: BnbChain, intentId: string, step: CommerceStep, hash: `0x${string}`) => call<CommerceIntent>(chainId, `providers/lp-guardian/hire-intents/${encodeURIComponent(intentId)}/receipts`, { step, hash });
 export const bnbLogout = (chainId: BnbChain) => call(chainId, "auth/logout", {});
 export async function bnbLogin(chainId: BnbChain, address: `0x${string}`, sign: (message: string) => Promise<`0x${string}`>) {
   const challenge = await call<{ nonce: string; message: string; chainId: number }>(chainId, "auth/nonce", { address });

@@ -58,6 +58,22 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
+  bnb-lp-worker:
+    image: agon-bnb-api:${AGON_RELEASE_SHA:?release SHA required}
+    container_name: agon-bnb-lp-worker
+    env_file: /opt/arcrun/deploy/bnb.env
+    environment:
+      NODE_ENV: production
+      AGON_RELEASE_SHA: ${AGON_RELEASE_SHA}
+    command: ["node", "--experimental-strip-types", "scripts/lp-delivery-worker.ts"]
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 512m
+    cpus: 0.5
 networks:
   default:
     external: true

@@ -4,9 +4,12 @@ import { challenge, currentSession, endSession, requestOrigin, setSessionCookie,
 import { database } from "./store.ts";
 import { body, HttpError, json } from "./http.ts";
 import { commerceReadiness, readCommerceJob, readCommerceReceipt } from "./commerce.ts";
-import { checkedClient } from "./network.ts";
+import { checkedClient, networkConfig } from "./network.ts";
 import { lpDailyLimit, readLpRun, runLpAgent } from "../providers/lp-runs.ts";
 import { LP_AGENT_VERSION } from "../providers/lp-core.ts";
+import { lpHiringReadiness, prepareLpHireIntent, readLpHireIntent, reconcileLpHireTransaction } from "./commerce-intents.ts";
+import { lpCommerceConfig } from "./commerce-intent-core.ts";
+import { readPublicDeliverable } from "./lp-delivery.ts";
 
 export async function handleBnb(request: Request, chain: string, parts: string[]): Promise<Response> {
   try {
@@ -19,15 +22,43 @@ export async function handleBnb(request: Request, chain: string, parts: string[]
           process.env.BNB_DATABASE_URL ? database().then((db) => db.query("SELECT 1")).then(() => { storage = "reachable"; }).catch(() => undefined) : Promise.resolve(),
           checkedClient(chainId).then(() => { rpc = "reachable"; }).catch(() => undefined),
         ]);
+        let payments = "unavailable";
+        if (chainId === 97 && storage === "reachable" && rpc === "reachable") {
+          payments = await lpHiringReadiness(chainId).then((value) => value.status === "available" ? "wallet_flow_available" : value.status).catch(() => "unavailable");
+        }
         return json({ chainId, catalogSource: "8004scan", rpc, storage,
           login: storage === "reachable" && rpc === "reachable" ? "available" : "unavailable",
-          payments: "unavailable", taskExecution: "unavailable", settlementWrites: "unavailable",
+          payments, taskExecution: "unavailable", settlementWrites: "unavailable",
           lpAnalysis: chainId === 97 && storage === "reachable" && rpc === "reachable" && lpDailyLimit() > 0 ? "read_only_available" : "unavailable" });
       }
-      if (path === "providers/lp-guardian") return json({ name: "AGON LP Guardian", operator: "AGON", version: LP_AGENT_VERSION,
-        chainId, mode: "read_only", supported: chainId === 97, registration: "not_configured", paidHiring: false, transactions: false,
-        description: "Checks a PancakeSwap v3 position and proposes a tick-aligned range for review when its price evidence passes." });
+      if (path === "providers/lp-guardian") {
+        const readiness = await lpHiringReadiness(chainId);
+        return json({ name: "AGON LP Guardian", operator: "AGON", version: LP_AGENT_VERSION,
+          chainId, mode: "read_only", supported: chainId === 97, registration: readiness.agentId ? "configured" : "not_configured",
+          paidHiring: readiness.enabled, transactions: false, hiring: readiness,
+          description: "Checks a PancakeSwap v3 position and proposes a tick-aligned range for review when its price evidence passes." });
+      }
+      if (path === "providers/lp-guardian/commerce") return json(await lpHiringReadiness(chainId));
+      if (path === "providers/lp-guardian/erc8183/status") {
+        const readiness = await lpHiringReadiness(chainId);
+        const configured = lpCommerceConfig(process.env);
+        const contracts = networkConfig(chainId).contracts;
+        return json({ status: readiness.enabled ? "ok" : "unavailable", service: "AGON LP Guardian", version: LP_AGENT_VERSION,
+          chain_id: chainId, agent_id: readiness.agentId, agent_address: readiness.providerAddress,
+          commerce_address: contracts.commerceProxy, router_address: contracts.routerProxy, policy_address: contracts.policy,
+          payment_token: readiness.token?.address ?? contracts.paymentToken, service_price: configured.ready ? configured.config.priceRaw : null,
+          paid_hiring: readiness.enabled, blockers: readiness.blockers });
+      }
       if (parts[0] === "providers" && parts[1] === "lp-guardian" && parts[2] === "runs" && parts.length === 4) return json(await readLpRun(chainId, parts[3]));
+      if (parts[0] === "providers" && parts[1] === "lp-guardian" && parts[2] === "deliverables" && parts.length === 4) {
+        if (chainId !== 97) throw new HttpError(409, "LP Guardian deliverables are available on BNB Testnet only.");
+        return json(await readPublicDeliverable(parts[3]), 200, { "cache-control": "public, max-age=60" });
+      }
+      if (parts[0] === "providers" && parts[1] === "lp-guardian" && parts[2] === "hire-intents" && parts.length === 4) {
+        const session = await currentSession(request, chainId);
+        if (!session) throw new HttpError(401, "Sign in with the buyer wallet to inspect this hiring intent.");
+        return json(await readLpHireIntent(chainId, session.address, parts[3]));
+      }
       if (path === "auth/me") return json({ session: await currentSession(request, chainId) });
       if (parts[0] === "jobs" && parts.length === 2) return json(await readCommerceJob(chainId, parseAgentId(parts[1])));
       if (parts[0] === "receipts" && parts.length === 2) return json(await readCommerceReceipt(chainId, parts[1]));
@@ -50,6 +81,18 @@ export async function handleBnb(request: Request, chain: string, parts: string[]
       if (Object.keys(input).some((key) => key !== "runId" && key !== "input")) throw new HttpError(400, "Unsupported analysis request field.");
       const run = await runLpAgent(chainId, input.runId, input.input);
       return json(run, run.status === "running" ? 202 : 200);
+    }
+    if (path === "providers/lp-guardian/hire-intents") {
+      const session = await currentSession(request, chainId);
+      if (!session) throw new HttpError(401, "Sign in with the buyer wallet before preparing a protected job.");
+      if (Object.keys(input).some((key) => key !== "intentId" && key !== "input")) throw new HttpError(400, "Unsupported hiring request field.");
+      return json(await prepareLpHireIntent(chainId, session.address, input.intentId, input.input), 201);
+    }
+    if (parts[0] === "providers" && parts[1] === "lp-guardian" && parts[2] === "hire-intents" && parts[4] === "receipts" && parts.length === 5) {
+      const session = await currentSession(request, chainId);
+      if (!session) throw new HttpError(401, "Sign in with the buyer wallet before reconciling a wallet action.");
+      if (Object.keys(input).some((key) => key !== "step" && key !== "hash")) throw new HttpError(400, "Unsupported receipt field.");
+      return json(await reconcileLpHireTransaction(chainId, session.address, parts[3], input.step, input.hash));
     }
     if (path === "auth/nonce") return json(await challenge(chainId, input.address, origin));
     if (path === "auth/verify") {

@@ -6,6 +6,7 @@ RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 COPY src/shared/types.ts ./src/shared/types.ts
 COPY src/shared/server ./src/shared/server
 COPY src/shared/providers ./src/shared/providers
+COPY scripts ./scripts
 USER node
 EXPOSE 8789
 CMD ["node", "--experimental-strip-types", "src/shared/server/serve.ts"]
