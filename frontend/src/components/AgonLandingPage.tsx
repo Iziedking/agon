@@ -110,9 +110,9 @@ export function AgonLandingPage() {
         </div>
       </header>
 
-      <main className="agon-landing-main relative min-h-0 flex-1 overflow-hidden">
-        <div className="agon-landing-content mx-auto h-full min-w-0 max-w-[1280px] px-3 pb-16 pt-8 max-[359px]:pb-20 max-[359px]:pt-6 sm:px-6 sm:pb-14 sm:pt-8">
-          <div key={active} aria-live="polite" className="agon-slide-in h-full">
+        <main className="agon-landing-main relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
+        <div className="agon-landing-content mx-auto min-h-full min-w-0 max-w-[1280px] px-3 pb-16 pt-8 max-[359px]:pb-20 max-[359px]:pt-6 sm:px-6 sm:pb-14 sm:pt-8">
+          <div key={active} aria-live="polite" className="agon-slide-in min-h-full">
             {active === 0 ? <HeroSlide network={network} /> : null}
             {active === 1 ? <JourneySlide /> : null}
             {active === 2 ? <TrustSlide /> : null}
@@ -637,7 +637,7 @@ function CloseSlide() {
 
 function SlideFrame({ children }: { children: ReactNode }) {
   return (
-    <section className="relative h-full overflow-hidden">
+    <section className="relative min-h-full overflow-visible">
       <MarketRoutePattern />
       <div className="relative z-[1] h-full">
         <CornerMarkers />
