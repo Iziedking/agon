@@ -164,7 +164,7 @@ export function LpHiringPanel({ chainId, signedIn, onNeedSignIn, walletRequest }
 
   const currentTransaction = intent?.transaction;
   const quoteExpires = intent ? new Date(intent.quoteExpiresAt).toLocaleString() : null;
-  return <section className={PANEL} aria-labelledby="hire-agent-heading">
+  return <section id="hire-agent" className={`${PANEL} scroll-mt-24`} aria-labelledby="hire-agent-heading">
     <div className="flex flex-wrap items-start justify-between gap-4">
       <div>
         <p className="font-mono text-[10px] uppercase tracking-widest text-accent">READY TO USE</p>
