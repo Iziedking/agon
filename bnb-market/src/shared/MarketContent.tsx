@@ -29,6 +29,32 @@ export function bnbHref(chain: BnbChain, path: string) { return `${path}${path.i
 function ErrorPanel({ error, retry }: { error: string; retry?: () => void }) {
   return <div role="alert" className={PANEL}><p className="font-mono text-sm text-ink-2">{error}</p>{retry ? <button className={`${BUTTON} mt-4`} onClick={retry}>TRY AGAIN →</button> : null}</div>;
 }
+
+function MarketplaceAgentRow({ chainId, agent }: { chainId: BnbChain; agent: AgentSummary }) {
+  const [proof, setProof] = useState<EndpointProof | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const isLiveService = agent.id === "2177";
+
+  async function checkLive() {
+    setBusy(true); setError(null); setProof(null);
+    try { setProof(await checkAgentEndpoint(chainId, agent.id)); }
+    catch (failure) { setError(failure instanceof Error ? failure.message : "The service could not be reached. Try again later."); }
+    finally { setBusy(false); }
+  }
+
+  return <article className="border border-[color:var(--hairline-strong)] bg-canvas-2 p-5 md:p-6" key={agent.id}>
+    <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_180px_180px_auto] md:items-center">
+      <div><div className="flex flex-wrap gap-2">{agent.outcomeMatches.length ? agent.outcomeMatches.map((outcome, index) => <span key={`${outcome.category}:${index}`} className="border border-[color:var(--hairline-strong)] px-2 py-1 font-mono text-[9px] uppercase tracking-widest text-accent">{outcome.source === "provider" ? "CATEGORY" : "OUTCOME MATCH"} · {CATEGORIES.find((c) => c.id === outcome.category)?.label}</span>) : <span className="border border-[color:var(--hairline)] px-2 py-1 font-mono text-[9px] uppercase tracking-widest text-ink-3">UNCLASSIFIED SERVICE</span>}</div><h2 className="mt-3 break-words font-stencil text-[28px] uppercase leading-tight"><a href={bnbHref(chainId, `/market/${agent.id}`)}>{agent.name}</a></h2><p className="mt-2 line-clamp-2 font-mono text-[12px] leading-relaxed text-ink-2">{plainServiceDescription(agent.description)}</p></div>
+      <div className="border-t border-[color:var(--hairline)] pt-4 md:border-l md:border-t-0 md:pl-5 md:pt-0"><p className="font-mono text-[10px] uppercase tracking-widest text-ink-3">PRICE</p><p className="mt-2 font-stencil text-xl uppercase">{isLiveService ? "0.1 U" : "SEE DETAILS"}</p><p className="mt-1 font-mono text-[10px] uppercase text-ink-3">{isLiveService ? "PER REPORT" : "BEFORE YOU USE"}</p></div>
+      <div className="border-t border-[color:var(--hairline)] pt-4 md:border-l md:border-t-0 md:pl-5 md:pt-0"><p className="font-mono text-[10px] uppercase tracking-widest text-ink-3">LIVE CHECK</p><p className={`mt-2 font-mono text-[11px] uppercase tracking-widest ${proof?.status === "reachable" || isLiveService ? "text-accent" : "text-ink-2"}`}>{proof?.status === "reachable" ? "RESPONDED" : proof?.status === "unavailable" ? "UNAVAILABLE" : isLiveService ? "READY TO USE" : "NOT CHECKED"}</p><p className="mt-1 font-mono text-[10px] text-ink-3">{isLiveService ? "Try before paying" : "No payment sent"}</p></div>
+      <div className="flex flex-wrap gap-2"><button type="button" className={BUTTON} onClick={checkLive} disabled={busy}>{busy ? "CHECKING…" : "CHECK LIVE →"}</button><a className={`${BUTTON} ${isLiveService ? "bg-accent !text-accent-ink" : ""}`} href={bnbHref(chainId, `/market/${agent.id}`)}>{isLiveService ? "USE NOW →" : "VIEW AGENT →"}</a></div>
+    </div>
+    {error ? <p role="alert" className="mt-5 border-l-2 border-[color:var(--err)] pl-4 font-mono text-[12px] leading-relaxed text-ink-2">{error}</p> : null}
+    {proof ? <div role="status" className="mt-5 border-t border-[color:var(--hairline)] pt-4"><p className="font-mono text-[10px] uppercase tracking-widest text-accent">{proof.status === "reachable" ? "SERVICE RESPONDED" : "SERVICE NOT AVAILABLE"}</p><p className="mt-2 font-mono text-[12px] leading-relaxed text-ink-2">{proof.message}</p><p className="mt-3 font-mono text-[10px] uppercase tracking-widest text-ink-3">NO PAYMENT SENT</p></div> : null}
+  </article>;
+}
+
 export function BnbMarketContent({ chainId }: { chainId: BnbChain }) {
   const [items, setItems] = useState<AgentSummary[]>([]);
   const [next, setNext] = useState<number | null>(null);
@@ -80,15 +106,7 @@ export function BnbMarketContent({ chainId }: { chainId: BnbChain }) {
     {hasDescriptionOnlyMatches ? <p className="mb-6 font-mono text-[11px] leading-relaxed text-ink-3">Some matches are based on the service description. Open the service and try its live check before relying on it.</p> : <div className="mb-6" />}
     {error ? <ErrorPanel error={error} retry={() => setRetry((n) => n + 1)} /> : null}
     {!loading && !error && !visible.length ? <div className={PANEL}><h2 className="font-stencil text-3xl uppercase">NO MATCHING SERVICES</h2><p className="mt-3 font-mono text-sm text-ink-2">No service matches this search yet. Clear the filters or try another agent ID.</p><button className={`${BUTTON} mt-4`} onClick={() => { setQuery(""); setCategory(""); }}>CLEAR FILTERS</button></div> : null}
-    <div className="space-y-3">{visible.map((agent) => {
-      const isLiveService = agent.id === "2177";
-      return <article className="grid gap-5 border border-[color:var(--hairline-strong)] bg-canvas-2 p-5 md:grid-cols-[minmax(0,1fr)_180px_180px_auto] md:items-center md:p-6" key={agent.id}>
-        <div><div className="flex flex-wrap gap-2">{agent.outcomeMatches.length ? agent.outcomeMatches.map((outcome, index) => <span key={`${outcome.category}:${index}`} className="border border-[color:var(--hairline-strong)] px-2 py-1 font-mono text-[9px] uppercase tracking-widest text-accent">{outcome.source === "provider" ? "CATEGORY" : "OUTCOME MATCH"} · {CATEGORIES.find((c) => c.id === outcome.category)?.label}</span>) : <span className="border border-[color:var(--hairline)] px-2 py-1 font-mono text-[9px] uppercase tracking-widest text-ink-3">UNCLASSIFIED SERVICE</span>}</div><h2 className="mt-3 break-words font-stencil text-[28px] uppercase leading-tight"><a href={bnbHref(chainId, `/market/${agent.id}`)}>{agent.name}</a></h2><p className="mt-2 line-clamp-2 font-mono text-[12px] leading-relaxed text-ink-2">{plainServiceDescription(agent.description)}</p></div>
-        <div className="border-t border-[color:var(--hairline)] pt-4 md:border-l md:border-t-0 md:pl-5 md:pt-0"><p className="font-mono text-[10px] uppercase tracking-widest text-ink-3">PRICE</p><p className="mt-2 font-stencil text-xl uppercase">{isLiveService ? "0.1 U" : "SEE DETAILS"}</p><p className="mt-1 font-mono text-[10px] uppercase text-ink-3">{isLiveService ? "PER REPORT" : "BEFORE YOU USE"}</p></div>
-        <div className="border-t border-[color:var(--hairline)] pt-4 md:border-l md:border-t-0 md:pl-5 md:pt-0"><p className="font-mono text-[10px] uppercase tracking-widest text-ink-3">LIVE TEST</p><p className={`mt-2 font-mono text-[11px] uppercase tracking-widest ${isLiveService ? "text-accent" : "text-ink-2"}`}>{isLiveService ? "AVAILABLE" : "ON DETAILS PAGE"}</p><p className="mt-1 font-mono text-[10px] text-ink-3">{isLiveService ? "Try before paying" : "Check availability"}</p></div>
-        <a className={`${BUTTON} ${isLiveService ? "bg-accent !text-accent-ink" : ""}`} href={bnbHref(chainId, `/market/${agent.id}`)}>{isLiveService ? "USE NOW →" : "VIEW AGENT →"}</a>
-      </article>;
-    })}</div>
+    <div className="space-y-3">{visible.map((agent) => <MarketplaceAgentRow key={agent.id} chainId={chainId} agent={agent} />)}</div>
     {next !== null ? <div className="mt-8 border-t border-[color:var(--hairline)] pt-5"><button className={BUTTON} disabled={loading} onClick={more}>{loading ? "LOADING…" : "LOAD MORE AGENTS →"}</button></div> : null}
   </>;
 }
