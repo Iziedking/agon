@@ -156,3 +156,8 @@ bnb-market/.next-dev/
 
 # Public, secret-free BNB configuration contract.
 !bnb-market/.env.example
+
+# Generated Next.js environment declarations and local runtime data.
+bnb-market/next-env.d.ts
+frontend/next-env.d.ts
+data/

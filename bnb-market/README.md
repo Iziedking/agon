@@ -25,6 +25,9 @@ Open `/market` for the default BNB Testnet context, or
 `/market?network=bnb-mainnet` for chain 56. Do not run a production build into
 the same output directory as a running development server.
 
+For the public buyer walkthrough and recording sequence, see
+[`DEMO_RUNBOOK.md`](./DEMO_RUNBOOK.md).
+
 ## What is real
 
 Market cards are fetched from the public 8004scan API, not generated fixtures.
