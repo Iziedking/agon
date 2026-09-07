@@ -102,6 +102,11 @@ until the delivery worker can complete a funded job. It is separate from the
 third-party registry catalog. This first capability alone does not satisfy the
 four-category marketplace or automated rebalancing requirements.
 
+Provider listings are also gated by a live read-only service check. The owner
+must prove the current registered service responds before AGON saves the
+category listing. A description match remains discovery-only and is never
+promoted to a provider category by the indexer.
+
 The delivery worker is `npm run worker:lp-delivery`. It is intentionally
 separate from the API process: it claims one funded job at a time using a
 Postgres lock, rechecks the quote and provider assignment through the pinned
@@ -170,6 +175,7 @@ npm run prove:market
 npm run prove:hackathon
 npm run prove:reads
 npm run prove:commerce -- 2114
+npm run prove:partners -- evidence/partner-evidence.json
 ```
 
 These scripts make public HTTP/RPC reads. They do not negotiate, execute a
@@ -204,6 +210,15 @@ required outcome, registration, endpoint, or deployed runtime check is
 incomplete. It never loads a wallet, signs, funds, runs a provider task, or
 submits a transaction. Override `BNB_PROOF_API_ORIGIN` and
 `BNB_PROOF_MARKET_ORIGIN` to verify another deployment without changing code.
+
+`npm run prove:partners -- evidence/partner-evidence.json` validates the
+submission evidence bundle without inventing partner results. The bundle must
+contain live proof for all four buyer outcomes, one completed BNB Testnet hire
+with exact transaction and delivery links, an Altana session create/revoke
+record with an allowlist, spend cap, and expiry, three paired TermiX tasks,
+and a PancakeSwap trader or LP value observation. The validator is intentionally
+strict and read-only; the wallet owner must perform the live actions and place
+their resulting public evidence in the JSON file.
 
 ## Sources
 

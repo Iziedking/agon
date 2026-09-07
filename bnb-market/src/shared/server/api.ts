@@ -12,6 +12,7 @@ import { lpCommerceConfig } from "./commerce-intent-core.ts";
 import { lpDeliveryConfig, lpWorkerHealth, readPublicDeliverable } from "./lp-delivery.ts";
 import { categoryCoverage, categoryCoverageGaps } from "../marketplace/category-coverage.ts";
 import { marketplaceLiveStatus } from "./marketplace-live.ts";
+import type { EndpointProof } from "../types.ts";
 
 export async function handleBnb(request: Request, chain: string, parts: string[]): Promise<Response> {
   try {
@@ -157,10 +158,14 @@ export async function handleBnb(request: Request, chain: string, parts: string[]
       const detail = await agentDetail(chainId, parseAgentId(input.agentId), true);
       if (detail.owner.toLowerCase() !== session.address.toLowerCase()) throw new HttpError(403, "Only the current onchain owner can publish this agent.");
       if (!detail.versionHash || detail.registrationMatches === false || !detail.services.length) throw new HttpError(409, "Publish a readable agent registration with a public service endpoint first.");
+      let liveProof: EndpointProof;
+      try { liveProof = await probeAgent(chainId, detail.id); }
+      catch { throw new HttpError(409, "The registered service must pass a live read-only check before it can be listed."); }
+      if (liveProof.status !== "reachable") throw new HttpError(409, "The registered service did not return a valid discovery response. Fix the endpoint and try again.");
       await (await database()).query(`INSERT INTO bnb_market_listings(chain_id,agent_id,owner_address,category,version_hash)
         VALUES($1,$2,$3,$4,$5) ON CONFLICT(chain_id,agent_id) DO UPDATE SET owner_address=EXCLUDED.owner_address,
         category=EXCLUDED.category,version_hash=EXCLUDED.version_hash,published_at=now()`, [chainId, detail.id, session.address.toLowerCase(), input.category, detail.versionHash]);
-      return json({ agentId: detail.id, chainId, versionHash: detail.versionHash, status: "provider_listed" }, 201);
+      return json({ agentId: detail.id, chainId, versionHash: detail.versionHash, status: "provider_listed", liveCheck: { status: liveProof.status, protocol: liveProof.protocol, checkedAt: liveProof.checkedAt } }, 201);
     }
     throw new HttpError(404, "This BNB action does not exist.");
   } catch (error) {
