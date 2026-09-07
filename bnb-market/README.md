@@ -167,6 +167,7 @@ only that schema after the test. Do not point tests at production.
 
 ```bash
 npm run prove:market
+npm run prove:hackathon
 npm run prove:reads
 npm run prove:commerce -- 2114
 ```
@@ -187,6 +188,15 @@ the number of profiles loaded in the current page, the four required buyer
 outcomes, description-derived matches, and honest coverage gaps. It never
 turns provider text into a verified category and never reports payment or
 task completion.
+
+`npm run prove:hackathon` is the strict read-only release proof for the BNB
+marketplace. It selects one live catalog agent for each required outcome,
+checks its registration and advertised endpoint, and reads the deployed AGON
+LP Guardian health and paid-hiring status endpoints. It exits non-zero when a
+required outcome, registration, endpoint, or deployed runtime check is
+incomplete. It never loads a wallet, signs, funds, runs a provider task, or
+submits a transaction. Override `BNB_PROOF_API_ORIGIN` and
+`BNB_PROOF_MARKET_ORIGIN` to verify another deployment without changing code.
 
 ## Sources
 
