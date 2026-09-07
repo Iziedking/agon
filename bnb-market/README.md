@@ -166,6 +166,7 @@ only that schema after the test. Do not point tests at production.
 ## Read-only proof tools
 
 ```bash
+npm run prove:market
 npm run prove:reads
 npm run prove:commerce -- 2114
 ```
@@ -179,6 +180,13 @@ API reads include `/api/bnb/97/jobs/{jobId}` and
 not independent delivery validation or a guarantee of finality. An approval
 transaction alone does not establish a paid job. Refund eligibility is not
 evidence that a refund has happened.
+
+The wallet-free marketplace coverage snapshot is also available at
+`GET /api/bnb/{chainId}/marketplace/status`. It reports the catalog source,
+the number of profiles loaded in the current page, the four required buyer
+outcomes, description-derived matches, and honest coverage gaps. It never
+turns provider text into a verified category and never reports payment or
+task completion.
 
 ## Sources
 

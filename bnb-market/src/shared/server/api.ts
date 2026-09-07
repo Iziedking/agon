@@ -10,6 +10,7 @@ import { LP_AGENT_VERSION } from "../providers/lp-core.ts";
 import { lpHiringReadiness, prepareLpHireIntent, readLpHireIntent, reconcileLpHireTransaction } from "./commerce-intents.ts";
 import { lpCommerceConfig } from "./commerce-intent-core.ts";
 import { lpDeliveryConfig, lpWorkerHealth, readPublicDeliverable } from "./lp-delivery.ts";
+import { categoryCoverage, categoryCoverageGaps } from "../marketplace/category-coverage.ts";
 
 export async function handleBnb(request: Request, chain: string, parts: string[]): Promise<Response> {
   try {
@@ -90,6 +91,22 @@ export async function handleBnb(request: Request, chain: string, parts: string[]
         return json(await readLpHireIntent(chainId, session.address, parts[3]));
       }
       if (path === "auth/me") return json({ session: await currentSession(request, chainId) });
+      if (path === "marketplace/status") {
+        const page = await catalog(chainId, 0);
+        const coverage = categoryCoverage(page.items);
+        return json({
+          chainId,
+          catalogSource: page.source,
+          checkedAt: page.checkedAt,
+          indexedProfiles: page.total,
+          loadedProfiles: page.items.length,
+          nextOffset: page.nextOffset,
+          coverage,
+          gaps: categoryCoverageGaps(coverage),
+          status: page.items.length ? "available" : "empty",
+          warnings: page.warnings,
+        });
+      }
       if (parts[0] === "jobs" && parts.length === 2) return json(await readCommerceJob(chainId, parseAgentId(parts[1])));
       if (parts[0] === "receipts" && parts.length === 2) return json(await readCommerceReceipt(chainId, parts[1]));
       if (path === "agents") {
