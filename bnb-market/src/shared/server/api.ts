@@ -7,7 +7,7 @@ import { commerceReadiness, readCommerceJob, readCommerceReceipt } from "./comme
 import { checkedClient, networkConfig } from "./network.ts";
 import { lpDailyLimit, readLpRun, runLpAgent } from "../providers/lp-runs.ts";
 import { LP_AGENT_VERSION } from "../providers/lp-core.ts";
-import { lpHiringReadiness, prepareLpHireIntent, readLpHireIntent, reconcileLpHireTransaction } from "./commerce-intents.ts";
+import { listLpHireIntents, lpHiringReadiness, prepareLpHireIntent, readLpHireIntent, reconcileLpHireTransaction } from "./commerce-intents.ts";
 import { lpCommerceConfig } from "./commerce-intent-core.ts";
 import { lpDeliveryConfig, lpWorkerHealth, readPublicDeliverable } from "./lp-delivery.ts";
 import { categoryCoverage, categoryCoverageGaps } from "../marketplace/category-coverage.ts";
@@ -91,6 +91,11 @@ export async function handleBnb(request: Request, chain: string, parts: string[]
         const session = await currentSession(request, chainId);
         if (!session) throw new HttpError(401, "Sign in with the buyer wallet to inspect this hiring intent.");
         return json(await readLpHireIntent(chainId, session.address, parts[3]));
+      }
+      if (path === "providers/lp-guardian/hire-intents") {
+        const session = await currentSession(request, chainId);
+        if (!session) throw new HttpError(401, "Sign in with the buyer wallet to inspect recent requests.");
+        return json({ items: await listLpHireIntents(chainId, session.address) });
       }
       if (path === "auth/me") return json({ session: await currentSession(request, chainId) });
       if (path === "marketplace/status") {

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { BnbChain, CommerceIntent, CommerceStep, LpHiringReadiness } from "./types";
 import type { LpInput } from "./providers/lp-core";
-import { checkLpHiring, prepareLpHire, readLpHire, reconcileLpHire } from "./client";
+import { checkLpHiring, prepareLpHire, readLpHire, readLpHires, reconcileLpHire } from "./client";
 
 export type WalletRequest = (input: { method: string; params?: unknown[] }) => Promise<unknown>;
 
@@ -64,6 +64,13 @@ function terminalMessage(intent: CommerceIntent) {
   return "This request needs attention before it can continue. Start a new request or inspect the transaction details below.";
 }
 
+function historyLabel(intent: CommerceIntent) {
+  if (intent.state === "funded" && intent.delivery?.status === "submitted") return "REPORT READY";
+  if (intent.state === "funded") return "PAID · REPORT PENDING";
+  if (isTerminal(intent)) return intent.state.replaceAll("_", " ").toUpperCase();
+  return "REQUEST IN PROGRESS";
+}
+
 function stepIndex(intent: CommerceIntent | null) {
   if (!intent) return 0;
   if (intent.state === "funded") return STEPS.length;
@@ -122,6 +129,7 @@ export function LpHiringPanel({ chainId, signedIn, onNeedSignIn, walletRequest }
   const [width, setWidth] = useState("10");
   const [deviation, setDeviation] = useState("100");
   const [intent, setIntent] = useState<CommerceIntent | null>(null);
+  const [history, setHistory] = useState<CommerceIntent[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const pending = useRef<AbortController | null>(null);
@@ -159,6 +167,15 @@ export function LpHiringPanel({ chainId, signedIn, onNeedSignIn, walletRequest }
   }, [chainId]);
 
   useEffect(() => {
+    if (!signedIn || chainId !== 97) { setHistory([]); return; }
+    const controller = new AbortController();
+    readLpHires(chainId, controller.signal).then((result) => setHistory(result.items)).catch(() => {
+      if (!controller.signal.aborted) setHistory([]);
+    });
+    return () => controller.abort();
+  }, [chainId, signedIn]);
+
+  useEffect(() => {
     if (intent) window.sessionStorage.setItem(intentStorageKey(chainId), intent.id);
   }, [chainId, intent?.id]);
 
@@ -166,6 +183,10 @@ export function LpHiringPanel({ chainId, signedIn, onNeedSignIn, walletRequest }
     pending.current?.abort();
     window.sessionStorage.removeItem(intentStorageKey(chainId));
     setIntent(null); setError(null); setBusy(false);
+  }
+
+  function resumeHire(saved: CommerceIntent) {
+    setIntent(saved); setError(null); window.sessionStorage.setItem(intentStorageKey(chainId), saved.id);
   }
 
   async function prepare(event: FormEvent) {
@@ -176,7 +197,8 @@ export function LpHiringPanel({ chainId, signedIn, onNeedSignIn, walletRequest }
     const controller = new AbortController(); pending.current?.abort(); pending.current = controller;
     const input: LpInput = { positionId, halfWidthSteps: Number(width), maxDeviationTicks: Number(deviation) };
     try {
-      setIntent(await prepareLpHire(chainId, crypto.randomUUID(), input));
+      const prepared = await prepareLpHire(chainId, crypto.randomUUID(), input);
+      setIntent(prepared); setHistory((items) => [prepared, ...items.filter((item) => item.id !== prepared.id)]);
     } catch (failure) {
       if (!controller.signal.aborted) setError(errorMessage(failure, "The provider could not prepare a signed quote. No wallet action was requested."));
     } finally { if (!controller.signal.aborted) setBusy(false); }
@@ -249,6 +271,15 @@ export function LpHiringPanel({ chainId, signedIn, onNeedSignIn, walletRequest }
         <button type="submit" className={`${BUTTON} bg-accent !text-accent-ink`} disabled={busy}>{busy ? "PREPARING YOUR REQUEST…" : "CONTINUE →"}</button>
       </form>}
     </> : null}
+
+    {!intent && signedIn && history.length ? <div className="mt-6 border-t border-[color:var(--hairline)] pt-6">
+      <p className="font-mono text-[10px] uppercase tracking-widest text-accent">RECENT REQUESTS</p>
+      <p className="mt-3 max-w-[78ch] font-mono text-[12px] leading-relaxed text-ink-2">Resume a request from this wallet or open its final report.</p>
+      <div className="mt-4 space-y-3">{history.map((saved) => <div className="flex flex-wrap items-center justify-between gap-4 border border-[color:var(--hairline)] p-4" key={saved.id}>
+        <div><p className="font-mono text-[11px] uppercase tracking-widest text-ink">{historyLabel(saved)}</p><p className="mt-2 font-mono text-[11px] text-ink-2">{saved.amountDisplay} {saved.token.symbol} · {saved.jobId ? `job ${saved.jobId}` : "not funded"}</p><p className="mt-1 font-mono text-[10px] uppercase tracking-widest text-ink-3">{new Date(saved.updatedAt).toLocaleString()}</p></div>
+        <button type="button" className={BUTTON} onClick={() => resumeHire(saved)}>OPEN REQUEST →</button>
+      </div>)}</div>
+    </div> : null}
 
     {intent ? <div className="mt-6 border-t border-[color:var(--hairline)] pt-6">
       <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-mono text-[10px] uppercase tracking-widest text-accent">{isTerminal(intent) ? "REQUEST ENDED" : "REQUEST IN PROGRESS"}</p><p role="status" className="mt-2 font-stencil text-2xl uppercase">{intent.state === "funded" && intent.delivery?.status === "submitted" ? "REPORT READY" : intent.state === "funded" ? "REQUEST PAID" : isPending(intent) ? "CONFIRMING PAYMENT" : currentTransaction ? "NEXT STEP" : intent.state.replaceAll("_", " ")}</p></div><button type="button" className={BUTTON} onClick={clearHire} disabled={busy}>{isTerminal(intent) ? "START A NEW REQUEST →" : "START OVER"}</button></div>

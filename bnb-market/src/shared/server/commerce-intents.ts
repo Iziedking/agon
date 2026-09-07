@@ -171,6 +171,15 @@ export async function readLpHireIntent(chainId: number, buyer: string, id: strin
   return view(await readIntentRow(id, buyer));
 }
 
+export async function listLpHireIntents(chainId: number, buyer: string): Promise<CommerceIntent[]> {
+  assertBnbTestnet(chainId);
+  const rows = await (await database()).query<IntentRow>(
+    "SELECT * FROM bnb_commerce_intents WHERE chain_id=97 AND buyer_address=$1 ORDER BY updated_at DESC LIMIT 20",
+    [buyer.toLowerCase()],
+  );
+  return Promise.all(rows.rows.map((row) => view(row)));
+}
+
 export async function prepareLpHireIntent(chainId: number, buyer: string, rawId: unknown, rawInput: unknown): Promise<CommerceIntent> {
   assertBnbTestnet(chainId);
   const id = parseCommerceIntentId(rawId);

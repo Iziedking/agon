@@ -184,6 +184,8 @@ export type CommerceIntent = {
   updatedAt: string;
 };
 
+export type CommerceIntentSummary = Pick<CommerceIntent, "id" | "agentId" | "state" | "amountDisplay" | "token" | "jobId" | "delivery" | "updatedAt" | "message">;
+
 export type LpHiringReadiness = {
   chainId: number;
   status: "available" | "configuration_required" | "blocked";
