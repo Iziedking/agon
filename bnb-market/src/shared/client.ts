@@ -1,4 +1,4 @@
-import type { BnbChain, BnbSession, AgentDetail, CatalogPage, EndpointProof, Category, CommerceIntent, CommerceReadiness, CommerceStep, LpHiringReadiness } from "./types.ts";
+import type { BnbChain, BnbSession, AgentDetail, CatalogPage, EndpointProof, Category, CommerceIntent, CommerceReadiness, CommerceStep, LpHiringReadiness, MarketplaceStatus } from "./types.ts";
 import type { LpInput } from "./providers/lp-core.ts";
 import type { LpRun } from "./providers/lp-runs.ts";
 async function call<T>(chainId: BnbChain, path: string, payload?: unknown, signal?: AbortSignal): Promise<T> {
@@ -9,6 +9,7 @@ async function call<T>(chainId: BnbChain, path: string, payload?: unknown, signa
   return data as T;
 }
 export const readCatalog = (chainId: BnbChain, offset = 0, signal?: AbortSignal) => call<CatalogPage>(chainId, `agents?offset=${offset}`, undefined, signal);
+export const readMarketplaceStatus = (chainId: BnbChain, signal?: AbortSignal) => call<MarketplaceStatus>(chainId, "marketplace/status", undefined, signal);
 export const readAgent = (chainId: BnbChain, id: string, signal?: AbortSignal) => call<AgentDetail>(chainId, `agents/${encodeURIComponent(id)}`, undefined, signal);
 export const checkAgentEndpoint = (chainId: BnbChain, id: string) => call<EndpointProof>(chainId, `agents/${encodeURIComponent(id)}/probe`, {});
 export const checkCommerce = (chainId: BnbChain, id: string, signal?: AbortSignal) => call<CommerceReadiness>(chainId, `agents/${encodeURIComponent(id)}/commerce`, {}, signal);

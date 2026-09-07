@@ -2,8 +2,8 @@
 
 import { useEffect, useState, type ReactNode, type FormEvent } from "react";
 import { useSearchParams } from "next/navigation";
-import { CATEGORIES, type BnbChain, type AgentSummary, type AgentDetail, type Category } from "./types";
-import { checkAgentEndpoint, readCatalog, readAgent, publishAgent } from "./client";
+import { CATEGORIES, type BnbChain, type AgentSummary, type AgentDetail, type Category, type MarketplaceStatus } from "./types";
+import { checkAgentEndpoint, readCatalog, readAgent, readMarketplaceStatus, publishAgent } from "./client";
 import { CommerceReadinessPanel } from "./CommerceReadinessPanel";
 import { LpGuardianPanel } from "./LpGuardianPanel";
 import { LpHiringPanel, type WalletRequest } from "./LpHiringPanel";
@@ -36,12 +36,14 @@ export function BnbMarketContent({ chainId }: { chainId: BnbChain }) {
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState(""); const [category, setCategory] = useState("");
   const [directMatch, setDirectMatch] = useState<AgentSummary | null>(null);
+  const [marketStatus, setMarketStatus] = useState<MarketplaceStatus | null>(null);
   const [retry, setRetry] = useState(0); const [checked, setChecked] = useState<string | null>(null);
   useEffect(() => {
-    const controller = new AbortController(); setItems([]); setLoading(true); setError(null); setNext(null);
+    const controller = new AbortController(); setItems([]); setLoading(true); setError(null); setNext(null); setMarketStatus(null);
     readCatalog(chainId, 0, controller.signal).then((page) => { setItems(page.items); setNext(page.nextOffset); setChecked(page.checkedAt); })
       .catch((e: unknown) => { if (!controller.signal.aborted) setError(message(e)); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    readMarketplaceStatus(chainId, controller.signal).then(setMarketStatus).catch(() => { if (!controller.signal.aborted) setMarketStatus(null); });
     return () => controller.abort();
   }, [chainId, retry]);
   useEffect(() => {
@@ -59,7 +61,10 @@ export function BnbMarketContent({ chainId }: { chainId: BnbChain }) {
   }
   const searchable = [...new Map([...items, ...(directMatch ? [directMatch] : [])].map((agent) => [agent.id, agent])).values()];
   const visible = searchable.filter((a) => (!category || a.category === category || a.outcomeMatches.some((match) => match.category === category)) && `${a.name} ${a.description} ${a.id}`.toLowerCase().includes(query.trim().toLowerCase()));
-  const outcomeCounts = categoryCoverage(searchable);
+  const outcomeCounts = marketStatus?.coverage ?? categoryCoverage(searchable);
+  const catalogSummary = marketStatus
+    ? marketStatus.gaps.length ? `${marketStatus.indexedProfiles} services available · ${marketStatus.gaps.length} goals need more agents` : `${marketStatus.indexedProfiles} services available · all goals covered`
+    : loading ? "Checking available services" : `${searchable.length} services loaded`;
   return <>
     <div className="border-y border-[color:var(--hairline-strong)] py-5">
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
@@ -69,7 +74,8 @@ export function BnbMarketContent({ chainId }: { chainId: BnbChain }) {
       <div className="mt-5" aria-labelledby="outcomes-heading"><div className="flex flex-wrap items-end justify-between gap-3"><div><p className="font-mono text-[10px] uppercase tracking-widest text-accent">START WITH YOUR GOAL</p><h2 id="outcomes-heading" className="mt-2 font-stencil text-2xl uppercase">What do you need help with?</h2></div><button type="button" className={`${BUTTON} ${!category ? "bg-ink !text-[color:var(--canvas)]" : ""}`} aria-pressed={!category} onClick={() => setCategory("")}>ALL SERVICES</button></div><div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{outcomeCounts.map((c) => <button key={c.id} aria-pressed={category === c.id} className={`${PANEL} text-left transition-colors hover:bg-canvas-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent ${category === c.id ? "border-accent" : ""}`} onClick={() => setCategory(category === c.id ? "" : c.id)}><span className="font-mono text-[10px] uppercase tracking-widest text-accent">{c.label}</span><span className="mt-3 block font-stencil text-xl uppercase leading-tight">{c.question}</span><span className="mt-2 block font-mono text-[11px] leading-relaxed text-ink-2">{c.description}</span><span className="mt-4 block font-mono text-[10px] uppercase tracking-widest text-ink-3">{c.matches ? `${c.matches} live match${c.matches === 1 ? "" : "es"}` : "No live matches loaded"}</span></button>)}</div></div>
     </div>
     <div className="my-6 flex flex-wrap justify-between gap-3 font-mono text-[10px] uppercase tracking-widest text-ink-3"><span>{loading && !items.length ? "LOADING SERVICES…" : `${visible.length} ${visible.length === 1 ? "SERVICE" : "SERVICES"} FOUND`}</span><span>{checked ? `UPDATED ${new Date(checked).toLocaleTimeString()}` : "UPDATING"}</span></div>
-    <p className="mb-6 max-w-[85ch] font-mono text-[12px] leading-relaxed text-ink-2">Choose a goal, open a service, try it live, then use it when you are ready. Prices and availability are shown before any wallet action. Counts above reflect the live records loaded right now.</p>
+    <p className="mb-2 max-w-[85ch] font-mono text-[12px] leading-relaxed text-ink-2">Choose a goal, open a service, try it live, then use it when you are ready. Prices and availability are shown before any wallet action.</p>
+    <p role="status" className="mb-6 font-mono text-[10px] uppercase tracking-widest text-ink-3">{catalogSummary}</p>
     {error ? <ErrorPanel error={error} retry={() => setRetry((n) => n + 1)} /> : null}
     {!loading && !error && !visible.length ? <div className={PANEL}><h2 className="font-stencil text-3xl uppercase">NO MATCHING SERVICES</h2><p className="mt-3 font-mono text-sm text-ink-2">No service matches this search yet. Clear the filters or try another agent ID.</p><button className={`${BUTTON} mt-4`} onClick={() => { setQuery(""); setCategory(""); }}>CLEAR FILTERS</button></div> : null}
     <div className="space-y-3">{visible.map((agent) => {

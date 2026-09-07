@@ -87,6 +87,18 @@ export type AgentDetail = AgentSummary & {
   registrationMatches: boolean | null;
 };
 export type CatalogPage = { items: AgentSummary[]; total: number; nextOffset: number | null; checkedAt: string; source: "8004scan"; warnings: string[] };
+export type MarketplaceStatus = {
+  chainId: BnbChain;
+  catalogSource: "8004scan";
+  checkedAt: string;
+  indexedProfiles: number;
+  loadedProfiles: number;
+  nextOffset: number | null;
+  coverage: import("./marketplace/category-coverage.ts").CategoryCoverage[];
+  gaps: Category[];
+  status: "available" | "empty";
+  warnings: string[];
+};
 export type EndpointProof = { chainId: BnbChain; agentId: string; versionHash: string; checkedAt: string; status: "reachable" | "unavailable"; protocol: string; endpoint: string; message: string };
 export type CommerceReadiness = {
   chainId: BnbChain; agentId: string; versionHash: string | null; checkedAt: string; blockNumber: string;
