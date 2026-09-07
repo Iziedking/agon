@@ -6,6 +6,28 @@ export const CATEGORIES = [
   { id: "yield-optimisation", label: "Yield optimisation" },
   { id: "health-factor", label: "Health monitoring" },
 ] as const;
+export const CATEGORY_GUIDANCE = {
+  rebalancing: {
+    label: "LP rebalancing",
+    question: "Keep liquidity in range",
+    description: "Review LP ranges and decide when a position needs attention.",
+  },
+  "grid-trading": {
+    label: "Grid trading",
+    question: "Manage a trading grid",
+    description: "Use agents that place or manage a defined grid strategy.",
+  },
+  "yield-optimisation": {
+    label: "Yield optimisation",
+    question: "Find better yield",
+    description: "Compare available yield routes before moving liquidity.",
+  },
+  "health-factor": {
+    label: "Health monitoring",
+    question: "Protect a lending position",
+    description: "Watch collateral and liquidation risk before it becomes urgent.",
+  },
+} as const satisfies Record<(typeof CATEGORIES)[number]["id"], { label: string; question: string; description: string }>;
 export type Category = typeof CATEGORIES[number]["id"];
 export const MARKET_PROTOCOLS = ["A2A", "MCP", "X402", "MPP", "ERC8183"] as const;
 export type MarketProtocol = typeof MARKET_PROTOCOLS[number];
