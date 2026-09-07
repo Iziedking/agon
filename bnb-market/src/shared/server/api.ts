@@ -11,6 +11,7 @@ import { lpHiringReadiness, prepareLpHireIntent, readLpHireIntent, reconcileLpHi
 import { lpCommerceConfig } from "./commerce-intent-core.ts";
 import { lpDeliveryConfig, lpWorkerHealth, readPublicDeliverable } from "./lp-delivery.ts";
 import { categoryCoverage, categoryCoverageGaps } from "../marketplace/category-coverage.ts";
+import { marketplaceLiveStatus } from "./marketplace-live.ts";
 
 export async function handleBnb(request: Request, chain: string, parts: string[]): Promise<Response> {
   try {
@@ -107,6 +108,7 @@ export async function handleBnb(request: Request, chain: string, parts: string[]
           warnings: page.warnings,
         });
       }
+      if (path === "marketplace/live-status") return json(await marketplaceLiveStatus(chainId));
       if (parts[0] === "jobs" && parts.length === 2) return json(await readCommerceJob(chainId, parseAgentId(parts[1])));
       if (parts[0] === "receipts" && parts.length === 2) return json(await readCommerceReceipt(chainId, parts[1]));
       if (path === "agents") {

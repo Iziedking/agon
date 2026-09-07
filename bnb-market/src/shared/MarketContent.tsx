@@ -2,8 +2,8 @@
 
 import { useEffect, useState, type ReactNode, type FormEvent } from "react";
 import { useSearchParams } from "next/navigation";
-import { CATEGORIES, type BnbChain, type AgentSummary, type AgentDetail, type Category, type EndpointProof, type MarketplaceStatus } from "./types";
-import { checkAgentEndpoint, readCatalog, readAgent, readMarketplaceStatus, publishAgent } from "./client";
+import { CATEGORIES, type BnbChain, type AgentSummary, type AgentDetail, type Category, type EndpointProof, type MarketplaceStatus, type MarketplaceLiveStatus } from "./types";
+import { checkAgentEndpoint, readCatalog, readAgent, readMarketplaceStatus, readMarketplaceLiveStatus, publishAgent } from "./client";
 import { CommerceReadinessPanel } from "./CommerceReadinessPanel";
 import { LpGuardianPanel } from "./LpGuardianPanel";
 import { LpHiringPanel, type WalletRequest } from "./LpHiringPanel";
@@ -63,9 +63,12 @@ export function BnbMarketContent({ chainId }: { chainId: BnbChain }) {
   const [query, setQuery] = useState(""); const [category, setCategory] = useState("");
   const [directMatch, setDirectMatch] = useState<AgentSummary | null>(null);
   const [marketStatus, setMarketStatus] = useState<MarketplaceStatus | null>(null);
+  const [liveStatus, setLiveStatus] = useState<MarketplaceLiveStatus | null>(null);
+  const [liveBusy, setLiveBusy] = useState(false);
+  const [liveError, setLiveError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0); const [checked, setChecked] = useState<string | null>(null);
   useEffect(() => {
-    const controller = new AbortController(); setItems([]); setLoading(true); setError(null); setNext(null); setMarketStatus(null);
+    const controller = new AbortController(); setItems([]); setLoading(true); setError(null); setNext(null); setMarketStatus(null); setLiveStatus(null); setLiveError(null); setLiveBusy(false);
     readCatalog(chainId, 0, controller.signal).then((page) => { setItems(page.items); setNext(page.nextOffset); setChecked(page.checkedAt); })
       .catch((e: unknown) => { if (!controller.signal.aborted) setError(message(e)); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
@@ -84,6 +87,12 @@ export function BnbMarketContent({ chainId }: { chainId: BnbChain }) {
     if (next === null || loading) return; setLoading(true); setError(null);
     try { const page = await readCatalog(chainId, next); setItems((old) => [...new Map([...old, ...page.items].map((a) => [a.id, a])).values()]); setNext(page.nextOffset); }
     catch (e) { setError(message(e)); } finally { setLoading(false); }
+  }
+  async function checkLiveCoverage() {
+    setLiveBusy(true); setLiveError(null); setLiveStatus(null);
+    try { setLiveStatus(await readMarketplaceLiveStatus(chainId)); }
+    catch (failure) { setLiveError(message(failure)); }
+    finally { setLiveBusy(false); }
   }
   const searchable = [...new Map([...items, ...(directMatch ? [directMatch] : [])].map((agent) => [agent.id, agent])).values()];
   const visible = searchable.filter((a) => (!category || a.category === category || a.outcomeMatches.some((match) => match.category === category)) && `${a.name} ${a.description} ${a.id}`.toLowerCase().includes(query.trim().toLowerCase()));
@@ -104,6 +113,12 @@ export function BnbMarketContent({ chainId }: { chainId: BnbChain }) {
     <p className="mb-2 max-w-[85ch] font-mono text-[12px] leading-relaxed text-ink-2">Choose a goal, open a service, try it live, then use it when you are ready. Prices and availability are shown before any wallet action.</p>
     <p role="status" className="mb-2 font-mono text-[10px] uppercase tracking-widest text-ink-3">{catalogSummary}</p>
     {hasDescriptionOnlyMatches ? <p className="mb-6 font-mono text-[11px] leading-relaxed text-ink-3">Some matches are based on the service description. Open the service and try its live check before relying on it.</p> : <div className="mb-6" />}
+    <section className={`${PANEL} mb-6`} aria-labelledby="live-coverage-heading">
+      <div className="flex flex-wrap items-end justify-between gap-4"><div><p className="font-mono text-[10px] uppercase tracking-widest text-accent">LIVE SERVICE CHECK</p><h2 id="live-coverage-heading" className="mt-2 font-stencil text-2xl uppercase">Which goals have a service that responds?</h2><p className="mt-3 max-w-[78ch] font-mono text-[12px] leading-relaxed text-ink-2">Check a small sample of listed services. This is read-only, sends no payment, and does not start a job.</p></div><button type="button" className={`${BUTTON} bg-accent !text-accent-ink`} onClick={checkLiveCoverage} disabled={liveBusy}>{liveBusy ? "CHECKING SERVICES…" : "CHECK LIVE COVERAGE →"}</button></div>
+      {liveError ? <p role="alert" className="mt-5 border-l-2 border-[color:var(--err)] pl-4 font-mono text-[12px] leading-relaxed text-ink-2">{liveError}</p> : null}
+      {liveStatus ? <div className="mt-6 grid gap-3 border-t border-[color:var(--hairline)] pt-5 sm:grid-cols-2 xl:grid-cols-4">{liveStatus.liveCoverage.map((entry) => <div className="border border-[color:var(--hairline)] p-4" key={entry.id}><p className="font-mono text-[10px] uppercase tracking-widest text-ink-3">{entry.label}</p><p className={`mt-3 font-stencil text-xl uppercase ${entry.reachable ? "text-accent" : "text-ink-2"}`}>{entry.reachable ? "AVAILABLE" : entry.attempted ? "NO RESPONSE" : "NOT CHECKED"}</p><p className="mt-2 font-mono text-[10px] leading-relaxed text-ink-3">{entry.reachable ? `${entry.reachable} responding service${entry.reachable === 1 ? "" : "s"}` : entry.matches ? `${entry.matches} listed match${entry.matches === 1 ? "" : "es"}` : "No listed match yet"}</p></div>)}</div> : null}
+      {liveStatus ? <p role="status" className="mt-4 font-mono text-[10px] uppercase tracking-widest text-ink-3">Checked {liveStatus.attemptedAgents} sample service{liveStatus.attemptedAgents === 1 ? "" : "s"} · {liveStatus.gaps.length ? "some goals still need a responding service" : "every goal has a responding service"}</p> : null}
+    </section>
     {error ? <ErrorPanel error={error} retry={() => setRetry((n) => n + 1)} /> : null}
     {!loading && !error && !visible.length ? <div className={PANEL}><h2 className="font-stencil text-3xl uppercase">NO MATCHING SERVICES</h2><p className="mt-3 font-mono text-sm text-ink-2">No service matches this search yet. Clear the filters or try another agent ID.</p><button className={`${BUTTON} mt-4`} onClick={() => { setQuery(""); setCategory(""); }}>CLEAR FILTERS</button></div> : null}
     <div className="space-y-3">{visible.map((agent) => <MarketplaceAgentRow key={agent.id} chainId={chainId} agent={agent} />)}</div>

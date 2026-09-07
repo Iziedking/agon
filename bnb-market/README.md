@@ -189,6 +189,13 @@ outcomes, description-derived matches, and honest coverage gaps. It never
 turns provider text into a verified category and never reports payment or
 task completion.
 
+The marketplace also exposes an explicit read-only live coverage check at
+`GET /api/bnb/{chainId}/marketplace/live-status`. It probes a bounded sample
+of up to three indexed matches per buyer outcome, records unavailable probes as
+no response, and reports live gaps separately from indexed matches. The check
+does not connect a wallet, request payment, or start a job. The market page
+only runs it after the visitor chooses `CHECK LIVE COVERAGE`.
+
 `npm run prove:hackathon` is the strict read-only release proof for the BNB
 marketplace. It selects one live catalog agent for each required outcome,
 checks its registration and advertised endpoint, and reads the deployed AGON

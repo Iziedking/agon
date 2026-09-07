@@ -99,6 +99,20 @@ export type MarketplaceStatus = {
   status: "available" | "empty";
   warnings: string[];
 };
+export type LiveCategoryCoverage = import("./marketplace/category-coverage.ts").LiveCategoryCoverage;
+export type MarketplaceLiveStatus = {
+  chainId: BnbChain;
+  catalogSource: "8004scan";
+  checkedAt: string;
+  indexedProfiles: number;
+  loadedProfiles: number;
+  attemptedAgents: number;
+  coverage: MarketplaceStatus["coverage"];
+  liveCoverage: LiveCategoryCoverage[];
+  gaps: Category[];
+  status: "available" | "incomplete" | "empty";
+  warnings: string[];
+};
 export type EndpointProof = { chainId: BnbChain; agentId: string; versionHash: string; checkedAt: string; status: "reachable" | "unavailable"; protocol: string; endpoint: string; message: string };
 export type CommerceReadiness = {
   chainId: BnbChain; agentId: string; versionHash: string | null; checkedAt: string; blockNumber: string;
