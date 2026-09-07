@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactNode, type FormEvent } from "react";
 import { useSearchParams } from "next/navigation";
-import { CATEGORIES, type BnbChain, type AgentSummary, type AgentDetail, type Category, type MarketplaceStatus } from "./types";
+import { CATEGORIES, type BnbChain, type AgentSummary, type AgentDetail, type Category, type EndpointProof, type MarketplaceStatus } from "./types";
 import { checkAgentEndpoint, readCatalog, readAgent, readMarketplaceStatus, publishAgent } from "./client";
 import { CommerceReadinessPanel } from "./CommerceReadinessPanel";
 import { LpGuardianPanel } from "./LpGuardianPanel";
@@ -93,10 +93,18 @@ export function BnbMarketContent({ chainId }: { chainId: BnbChain }) {
 
 export function BnbAgentContent({ chainId, id, signedIn = false, onNeedSignIn = () => undefined, walletRequest = null }: { chainId: BnbChain; id: string; signedIn?: boolean; onNeedSignIn?: () => void; walletRequest?: WalletRequest | null }) {
   const [agent, setAgent] = useState<AgentDetail | null>(null); const [error, setError] = useState<string | null>(null);
+  const [liveProof, setLiveProof] = useState<EndpointProof | null>(null); const [liveBusy, setLiveBusy] = useState(false); const [liveError, setLiveError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
   useEffect(() => { const controller = new AbortController(); setAgent(null); setError(null);
     readAgent(chainId, id, controller.signal).then(setAgent).catch((e: unknown) => { if (!controller.signal.aborted) setError(message(e)); });
     return () => controller.abort(); }, [chainId, id, retry]);
+  useEffect(() => { setLiveProof(null); setLiveError(null); setLiveBusy(false); }, [chainId, id]);
+  async function checkLiveService() {
+    setLiveBusy(true); setLiveError(null); setLiveProof(null);
+    try { setLiveProof(await checkAgentEndpoint(chainId, id)); }
+    catch (failure) { setLiveError(failure instanceof Error ? failure.message : "The service could not be reached. Try again later."); }
+    finally { setLiveBusy(false); }
+  }
   const explorer = chainId === 97 ? "https://testnet.bscscan.com" : "https://bscscan.com";
   const isLpGuardian = agent?.id === "2177" && agent.services.some((service) => service.name.toLowerCase().replace(/[-_]/g, "") === "erc8183");
   return <div className="space-y-6">
@@ -108,8 +116,10 @@ export function BnbAgentContent({ chainId, id, signedIn = false, onNeedSignIn = 
         const isPaidReport = isLpGuardian && service.name.toLowerCase().replace(/[-_]/g, "") === "erc8183";
         const title = isPaidReport ? "Liquidity position report" : service.name.toLowerCase() === "a2a" ? "Agent service" : service.name;
         const description = isPaidReport ? "Get a read-only PancakeSwap position report with a suggested range for review." : "Open this service to see what it does and whether it is ready to use.";
-        return <article className={PANEL} key={`${service.name}:${service.endpoint}`}><div className="flex flex-wrap items-start justify-between gap-3"><h3 className="font-stencil text-2xl uppercase">{title}</h3><span className="font-mono text-[11px] uppercase tracking-widest text-accent">{isPaidReport ? "0.1 U / REPORT" : "SEE DETAILS"}</span></div><p className="mt-4 font-mono text-[12px] leading-relaxed text-ink-2">{description}</p><div className="mt-6 flex flex-wrap gap-2"><a className={`${BUTTON} ${isPaidReport ? "bg-accent !text-accent-ink" : ""}`} href={isPaidReport ? "#hire-agent" : "#provider-status"}>{isPaidReport ? "USE NOW →" : "CHECK AVAILABILITY →"}</a><a className={BUTTON} href={bnbHref(chainId, `/agon/playground?agent=${encodeURIComponent(agent.id)}`)}>TRY LIVE →</a></div></article>;
+        return <article className={PANEL} key={`${service.name}:${service.endpoint}`}><div className="flex flex-wrap items-start justify-between gap-3"><h3 className="font-stencil text-2xl uppercase">{title}</h3><span className="font-mono text-[11px] uppercase tracking-widest text-accent">{isPaidReport ? "0.1 U / REPORT" : "TRY BEFORE USE"}</span></div><p className="mt-4 font-mono text-[12px] leading-relaxed text-ink-2">{description}</p><div className="mt-6 flex flex-wrap gap-2">{isPaidReport ? <a className={`${BUTTON} bg-accent !text-accent-ink`} href="#hire-agent">USE NOW →</a> : <button type="button" className={BUTTON} onClick={checkLiveService} disabled={liveBusy}>{liveBusy ? "CHECKING…" : "CHECK SERVICE →"}</button>}<a className={BUTTON} href={bnbHref(chainId, `/agon/playground?agent=${encodeURIComponent(agent.id)}`)}>TRY LIVE →</a></div></article>;
       })}</div></section>
+      {liveError ? <p role="alert" className="border-l-2 border-[color:var(--err)] pl-4 font-mono text-[12px] leading-relaxed text-ink-2">{liveError}</p> : null}
+      {liveProof ? <section className={PANEL} role="status" aria-label="Live service result"><p className="font-mono text-[10px] uppercase tracking-widest text-accent">{liveProof.status === "reachable" ? "SERVICE RESPONDED" : "SERVICE NOT AVAILABLE"}</p><p className="mt-3 font-mono text-[12px] leading-relaxed text-ink-2">{liveProof.message}</p><p className="mt-4 font-mono text-[10px] uppercase tracking-widest text-ink-3">NO PAYMENT SENT</p></section> : null}
       <div id="provider-status">{isLpGuardian ? <LpHiringPanel key={`${chainId}:${id}`} chainId={chainId} signedIn={signedIn} onNeedSignIn={onNeedSignIn} walletRequest={walletRequest} /> : <CommerceReadinessPanel key={`${chainId}:${id}`} chainId={chainId} agentId={id} />}</div>
       <details className={PANEL}><summary className="cursor-pointer font-mono text-[12px] uppercase tracking-widest">MORE ABOUT THIS AGENT</summary><div className="mt-5 space-y-6 break-all font-mono text-[12px] text-ink-2"><div><p className="text-ink-3">OWNER</p><p className="mt-2"><a className="underline underline-offset-4" href={`${explorer}/address/${agent.owner}`} target="_blank" rel="noopener noreferrer">{agent.owner} ↗</a></p></div><div><p className="text-ink-3">AGENT WALLET</p><p className="mt-2">{agent.wallet}</p></div><div><p className="text-ink-3">CHECKED AT</p><p className="mt-2"><a className="underline" href={`${explorer}/block/${agent.blockNumber}`} target="_blank" rel="noopener noreferrer">BLOCK {agent.blockNumber} ↗</a> · {new Date(agent.checkedAt).toLocaleString()}</p></div><div><p className="text-ink-3">REGISTRATION</p><p className="mt-2">{agent.metadataStatus === "available" ? agent.registrationMatches === false ? "Network or identity mismatch. Do not use this registration." : "Readable provider metadata; service claims are not independently verified." : "Metadata unavailable. Identity is registered, but service details could not be read."}</p></div><div><p className="text-ink-3">REGISTRY</p><p className="mt-2">{agent.registry}</p></div><div><p className="text-ink-3">METADATA SNAPSHOT HASH</p><p className="mt-2">{agent.versionHash ?? "Unavailable"}</p></div><div><p className="text-ink-3">SERVICE CONNECTIONS</p>{agent.services.length ? agent.services.map((s) => <p className="mt-2" key={`${s.name}:${s.endpoint}`}>{s.name}: {s.endpoint}</p>) : <p className="mt-2">No supported public HTTPS service endpoints.</p>}</div><div><p className="text-ink-3">SERVICE CHECKS</p>{(agent.capabilities.length ? agent.capabilities : deriveMarketCapabilities(agent.services)).map((capability) => <p className="mt-2" key={capability.protocol}>{capability.protocol} · {capability.state} · {capability.reason} · {capability.endpoint}</p>)}</div></div></details>
     </> : null}
