@@ -76,6 +76,10 @@ function shortHash(value: string | null) {
   return value ? `${value.slice(0, 10)}…${value.slice(-8)}` : null;
 }
 
+function explorerBase(chainId: BnbChain) {
+  return chainId === 97 ? "https://testnet.bscscan.com" : "https://bscscan.com";
+}
+
 function intentStorageKey(chainId: BnbChain) {
   return `agon:bnb:lp-hire:${chainId}`;
 }
@@ -257,6 +261,16 @@ export function LpHiringPanel({ chainId, signedIn, onNeedSignIn, walletRequest }
         {intent.state === "funded" && intent.delivery?.status !== "submitted" ? <p className="mt-3 text-ink-2">The agent will deliver a report for this request. No liquidity transaction is submitted.</p> : null}
         {isPending(intent) ? <p className="mt-3 text-ink-2">You can leave this page and return to check again.</p> : null}
       </div>
+      {intent.state === "funded" ? <div className="mt-6 border-t border-[color:var(--hairline)] pt-6">
+        <p className="font-mono text-[10px] uppercase tracking-widest text-accent">PROOF OF THIS REQUEST</p>
+        <p className="mt-3 max-w-[78ch] font-mono text-[12px] leading-relaxed text-ink-2">These links let you verify the protected job, the payment receipt, and the provider delivery yourself.</p>
+        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+          {intent.jobId ? <a className={BUTTON} href={`/api/bnb/${chainId}/jobs/${intent.jobId}`} target="_blank" rel="noopener noreferrer">VIEW JOB →</a> : null}
+          {intent.transactionHash ? <a className={BUTTON} href={`${explorerBase(chainId)}/tx/${intent.transactionHash}`} target="_blank" rel="noopener noreferrer">PAYMENT RECEIPT →</a> : null}
+          {intent.delivery?.txHash ? <a className={BUTTON} href={`${explorerBase(chainId)}/tx/${intent.delivery.txHash}`} target="_blank" rel="noopener noreferrer">DELIVERY RECEIPT →</a> : null}
+        </div>
+        {intent.delivery?.status === "submitted" && intent.delivery.url ? <p className="mt-4 font-mono text-[10px] uppercase tracking-widest text-ink-3">The report is available above. The delivery receipt appears here after the provider submits it.</p> : null}
+      </div> : null}
       {currentTransaction && !isPending(intent) ? <div className="mt-6 border border-[color:var(--hairline-strong)] p-4"><p className="font-mono text-[10px] uppercase tracking-widest text-accent">NEXT STEP</p><h4 className="mt-3 font-stencil text-xl uppercase">{STEP_COPY[currentTransaction.step].title}</h4><p className="mt-3 font-mono text-[12px] leading-relaxed text-ink-2">{STEP_COPY[currentTransaction.step].warning}</p><button type="button" className={`${BUTTON} mt-5 bg-accent !text-accent-ink`} onClick={sendNextTransaction} disabled={busy}>{busy ? "CHECK YOUR WALLET…" : STEP_COPY[currentTransaction.step].button}</button></div> : null}
       {intent.quoteExpiresAt ? <p className="mt-4 font-mono text-[10px] uppercase tracking-widest text-ink-3">REQUEST EXPIRES · {quoteExpires}</p> : null}
       {intent.transactionHash ? <details className="mt-4 font-mono text-[11px] text-ink-3"><summary className="min-h-11 cursor-pointer py-3 uppercase tracking-widest">TRANSACTION DETAILS</summary><p className="break-all">{shortHash(intent.transactionHash)}</p></details> : null}
