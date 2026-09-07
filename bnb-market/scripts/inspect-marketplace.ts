@@ -1,7 +1,7 @@
 import { categoryCoverage, categoryCoverageGaps } from "../src/shared/marketplace/category-coverage.ts";
 import { catalog } from "../src/shared/server/catalog.ts";
 
-// Read-only marketplace proof. It never loads a private key, signs, funds, or runs a provider task.
+// Read-only marketplace inspection. It never loads a private key, signs, funds, or runs a provider task.
 try {
   const chainId = 97;
   const pages: Awaited<ReturnType<typeof catalog>>[] = [];
@@ -28,6 +28,6 @@ try {
   }, null, 2));
   if (!agents.length) throw new Error("No live BNB Testnet agents returned by the catalog.");
 } catch (error) {
-  console.error(error instanceof Error ? error.message : "Marketplace proof failed");
+  console.error(error instanceof Error ? error.message : "Marketplace inspection failed");
   process.exitCode = 1;
 }

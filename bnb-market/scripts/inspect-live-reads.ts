@@ -1,7 +1,7 @@
 import { catalog, agentDetail } from "../src/shared/server/catalog.ts";
 import { checkedClient, networkConfig } from "../src/shared/server/network.ts";
 
-// Read-only proof. Never loads a private key, signs or broadcasts a transaction.
+// Read-only inspection. Never loads a private key, signs or broadcasts a transaction.
 try {
   const chainId = 97; const config = networkConfig(chainId); const client = await checkedClient(chainId);
   const bytecode = await client.getCode({ address: config.registry });

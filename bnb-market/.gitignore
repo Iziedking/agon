@@ -6,7 +6,7 @@ node_modules/
 *.tsbuildinfo
 .env*
 !.env.example
-scripts/inspect-*.ts
+scripts/inspect-pancake.ts
 # Internal planning artifacts (never public 
 # Internal planning artifacts (never public 
 *PLAN*.md 
