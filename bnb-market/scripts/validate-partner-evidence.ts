@@ -5,7 +5,7 @@ import { validatePartnerEvidence } from "../src/shared/marketplace/partner-evide
 const file = process.argv[2];
 
 if (!file) {
-  console.error("Usage: npm run prove:partners -- <path-to-evidence.json>");
+  console.error("Usage: npm run validate:partner-evidence -- <path-to-evidence.json>");
   process.exit(2);
 }
 
