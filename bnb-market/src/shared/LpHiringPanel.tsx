@@ -44,6 +44,11 @@ function errorMessage(value: unknown, fallback: string) {
   return value instanceof Error ? value.message : fallback;
 }
 
+function isIntentRefreshConflict(value: unknown) {
+  const message = errorMessage(value, "");
+  return message.includes("not the next action") || message.includes("already bound to another commerce action");
+}
+
 function isPending(intent: CommerceIntent) {
   return intent.state.endsWith("_confirming");
 }
@@ -58,6 +63,10 @@ function stepIndex(intent: CommerceIntent | null) {
 
 function shortHash(value: string | null) {
   return value ? `${value.slice(0, 10)}…${value.slice(-8)}` : null;
+}
+
+function intentStorageKey(chainId: BnbChain) {
+  return `agon:bnb:lp-hire:${chainId}`;
 }
 
 function ReadinessBlock({ readiness, onRetry }: { readiness: LpHiringReadiness; onRetry: () => void }) {
@@ -122,8 +131,25 @@ export function LpHiringPanel({ chainId, signedIn, onNeedSignIn, walletRequest }
     return () => { window.clearTimeout(timer); controller.abort(); };
   }, [chainId, intent]);
 
+  useEffect(() => {
+    const savedId = window.sessionStorage.getItem(intentStorageKey(chainId));
+    if (!savedId) return;
+    const controller = new AbortController();
+    readLpHire(chainId, savedId, controller.signal)
+      .then(setIntent)
+      .catch(() => {
+        if (!controller.signal.aborted) window.sessionStorage.removeItem(intentStorageKey(chainId));
+      });
+    return () => controller.abort();
+  }, [chainId]);
+
+  useEffect(() => {
+    if (intent) window.sessionStorage.setItem(intentStorageKey(chainId), intent.id);
+  }, [chainId, intent?.id]);
+
   function clearHire() {
     pending.current?.abort();
+    window.sessionStorage.removeItem(intentStorageKey(chainId));
     setIntent(null); setError(null); setBusy(false);
   }
 
@@ -145,6 +171,7 @@ export function LpHiringPanel({ chainId, signedIn, onNeedSignIn, walletRequest }
     if (!intent?.transaction) return;
     if (!walletRequest) { onNeedSignIn(); return; }
     setBusy(true); setError(null);
+    const activeIntentId = intent.id;
     try {
       const chain = await walletRequest({ method: "eth_chainId" });
       if (Number(chain) !== 97) throw new Error("Switch your wallet to BNB Testnet before approving this action.");
@@ -158,7 +185,18 @@ export function LpHiringPanel({ chainId, signedIn, onNeedSignIn, walletRequest }
       if (typeof rawHash !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(rawHash)) throw new Error("The wallet did not return a valid transaction hash.");
       setIntent(await reconcileLpHire(chainId, intent.id, transaction.step, rawHash as `0x${string}`));
     } catch (failure) {
-      setError(errorMessage(failure, "The wallet action was not completed. Nothing else will be requested."));
+      // A previous wallet action may have advanced the durable intent while
+      // this page still displayed the older step. Refresh before showing a
+      // dead-end error, but never submit another transaction automatically.
+      try {
+        const refreshed = await readLpHire(chainId, activeIntentId);
+        setIntent(refreshed);
+        setError(isIntentRefreshConflict(failure)
+          ? "The request advanced while this page was open. The current next step is shown above."
+          : errorMessage(failure, "The request changed while this page was open. The current next step is shown above."));
+      } catch {
+        setError(errorMessage(failure, "The wallet action was not completed. Nothing else will be requested."));
+      }
     } finally { setBusy(false); }
   }
 
