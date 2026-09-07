@@ -42,9 +42,21 @@ jobs:
           package-manager-cache: false
       - name: Install dependencies
         run: |
-          npm install --prefix backend --no-audit --no-fund
-          npm ci --prefix bnb-market --ignore-scripts --no-audit --no-fund
-          npm ci --prefix frontend --no-audit --no-fund
+          npm_retry() {
+            local attempt=1
+            until npm "$@"; do
+              if [ "$attempt" -ge 3 ]; then
+                echo "npm command failed after ${attempt} attempts: npm $*" >&2
+                return 1
+              fi
+              echo "npm command failed; retrying in $((attempt * 15))s (attempt $((attempt + 1))/3): npm $*" >&2
+              sleep $((attempt * 15))
+              attempt=$((attempt + 1))
+            done
+          }
+          npm_retry install --prefix backend --no-audit --no-fund --fetch-retries=5 --fetch-retry-factor=2 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
+          npm_retry ci --prefix bnb-market --ignore-scripts --no-audit --no-fund --fetch-retries=5 --fetch-retry-factor=2 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
+          npm_retry ci --prefix frontend --no-audit --no-fund --fetch-retries=5 --fetch-retry-factor=2 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
       - name: Check backend and BNB boundaries
         run: |
           npm run typecheck --prefix backend
@@ -130,3 +142,28 @@ jobs:
           fingerprint: ${{ secrets.VPS_HOST_FINGERPRINT }}
           command_timeout: 15m
           script: sudo -n /usr/local/sbin/agon-deploy ${{ github.sha }}
+      - name: Verify public BNB Testnet health
+        if: steps.gate.outputs.ready == 'true'
+        env:
+          BNB_HEALTH_URL: https://api.agon.surf/api/bnb/97/health
+          BNB_STATUS_URL: https://agon.surf/api/bnb/97/providers/lp-guardian/erc8183/status
+        run: |
+          set -euo pipefail
+          tmp_dir="$(mktemp -d)"
+          trap 'rm -rf "$tmp_dir"' EXIT
+          curl --fail --silent --show-error --retry 12 --retry-all-errors --retry-delay 5 "$BNB_HEALTH_URL" > "$tmp_dir/health.json"
+          curl --fail --silent --show-error --retry 12 --retry-all-errors --retry-delay 5 "$BNB_STATUS_URL" > "$tmp_dir/status.json"
+          python3 - "$tmp_dir/health.json" "$tmp_dir/status.json" <<'PY'
+          import json
+          import sys
+
+          health = json.load(open(sys.argv[1], encoding="utf-8"))
+          status = json.load(open(sys.argv[2], encoding="utf-8"))
+          assert health.get("chainId") == 97, f"unexpected health chain: {health.get('chainId')}"
+          assert health.get("rpc") == "reachable", f"BNB RPC is not reachable: {health.get('rpc')}"
+          assert health.get("storage") == "reachable", f"BNB storage is not reachable: {health.get('storage')}"
+          assert status.get("chain_id") == 97, f"unexpected provider chain: {status.get('chain_id')}"
+          assert status.get("paid_hiring") is True, "paid hiring is not enabled"
+          assert status.get("blockers") == [], f"provider blockers remain: {status.get('blockers')}"
+          print("BNB Testnet public health and paid-hiring status are healthy.")
+          PY
