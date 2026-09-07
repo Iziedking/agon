@@ -3,7 +3,7 @@
 import { useEffect, useState, type ReactNode, type FormEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import { CATEGORIES, type BnbChain, type AgentSummary, type AgentDetail, type Category } from "./types";
-import { readCatalog, readAgent, publishAgent } from "./client";
+import { checkAgentEndpoint, readCatalog, readAgent, publishAgent } from "./client";
 import { CommerceReadinessPanel } from "./CommerceReadinessPanel";
 import { LpGuardianPanel } from "./LpGuardianPanel";
 import { LpHiringPanel, type WalletRequest } from "./LpHiringPanel";
@@ -58,23 +58,26 @@ export function BnbMarketContent({ chainId }: { chainId: BnbChain }) {
   }
   const searchable = [...new Map([...items, ...(directMatch ? [directMatch] : [])].map((agent) => [agent.id, agent])).values()];
   const visible = searchable.filter((a) => (!category || a.category === category || a.outcomeMatches.some((match) => match.category === category)) && `${a.name} ${a.description} ${a.id}`.toLowerCase().includes(query.trim().toLowerCase()));
+  const outcomeCounts = CATEGORIES.map((entry) => ({ ...entry, count: searchable.filter((agent) => agent.outcomeMatches.some((match) => match.category === entry.id)).length }));
   return <>
     <div className="border-y border-[color:var(--hairline-strong)] py-5">
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
         <label className="font-mono text-[10px] uppercase tracking-widest text-ink-3">SEARCH AGENTS<input className={`${INPUT} mt-2`} type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Name, skill, or exact agent ID" /></label>
         <label className="font-mono text-[10px] uppercase tracking-widest text-ink-3">CATEGORY<select className={`${INPUT} mt-2`} value={category} onChange={(e) => setCategory(e.target.value)}><option value="">All categories</option>{CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}</select></label>
       </div>
-      <div className="mt-4 flex flex-wrap gap-2" aria-label="Agent outcomes">{CATEGORIES.map((c) => <button key={c.id} aria-pressed={category === c.id} className={`${BUTTON} ${category === c.id ? "bg-ink !text-[color:var(--canvas)]" : ""}`} onClick={() => setCategory(category === c.id ? "" : c.id)}>{c.label}</button>)}</div>
+    <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4" aria-label="Agent outcomes">{outcomeCounts.map((c) => <button key={c.id} aria-pressed={category === c.id} className={`${BUTTON} flex-col items-start gap-1 text-left ${category === c.id ? "bg-ink !text-[color:var(--canvas)]" : ""}`} onClick={() => setCategory(category === c.id ? "" : c.id)}><span>{c.label}</span><span className="text-[9px] normal-case tracking-normal opacity-70">{c.count} loaded match{c.count === 1 ? "" : "es"}</span></button>)}</div>
     </div>
     <div className="my-6 flex flex-wrap justify-between gap-3 font-mono text-[10px] uppercase tracking-widest text-ink-3"><span>{loading && !items.length ? "LOADING SERVICES…" : `${visible.length} ${visible.length === 1 ? "SERVICE" : "SERVICES"} FOUND`}</span><span>{checked ? `UPDATED ${new Date(checked).toLocaleTimeString()}` : "UPDATING"}</span></div>
     <p className="mb-6 max-w-[85ch] font-mono text-[12px] leading-relaxed text-ink-2">Find a service, see what it does, try it live, and use it when you are ready. Each service shows its price and current availability before any wallet action.</p>
     {error ? <ErrorPanel error={error} retry={() => setRetry((n) => n + 1)} /> : null}
-    {!loading && !error && !visible.length ? <div className={PANEL}><h2 className="font-stencil text-3xl uppercase">NO MATCHING PROFILES</h2><p className="mt-3 font-mono text-sm text-ink-2">No matching identity was found. Try an exact ERC-8004 ID, clear filters, or load another registry page.</p><button className={`${BUTTON} mt-4`} onClick={() => { setQuery(""); setCategory(""); }}>CLEAR FILTERS</button></div> : null}
+    {!loading && !error && !visible.length ? <div className={PANEL}><h2 className="font-stencil text-3xl uppercase">NO MATCHING SERVICES</h2><p className="mt-3 font-mono text-sm text-ink-2">No service matches this search yet. Clear the filters or try another agent ID.</p><button className={`${BUTTON} mt-4`} onClick={() => { setQuery(""); setCategory(""); }}>CLEAR FILTERS</button></div> : null}
     <div className="space-y-3">{visible.map((agent) => {
       const isLiveService = agent.id === "2177";
-      const categoryLabel = agent.category ? CATEGORIES.find((c) => c.id === agent.category)?.label : "General service";
+      const match = agent.outcomeMatches[0];
+      const categoryLabel = match ? CATEGORIES.find((c) => c.id === match.category)?.label : "Unclassified service";
+      const categorySource = match?.source === "provider" ? "CATEGORY" : match ? "OUTCOME MATCH" : "UNCLASSIFIED";
       return <article className="grid gap-5 border border-[color:var(--hairline-strong)] bg-canvas-2 p-5 md:grid-cols-[minmax(0,1fr)_180px_180px_auto] md:items-center md:p-6" key={agent.id}>
-        <div><p className="font-mono text-[10px] uppercase tracking-widest text-accent">{categoryLabel}</p><h2 className="mt-3 break-words font-stencil text-[28px] uppercase leading-tight"><a href={bnbHref(chainId, `/market/${agent.id}`)}>{agent.name}</a></h2><p className="mt-2 line-clamp-2 font-mono text-[12px] leading-relaxed text-ink-2">{plainServiceDescription(agent.description)}</p></div>
+        <div><p className="font-mono text-[10px] uppercase tracking-widest text-accent">{categorySource} · {categoryLabel}</p><h2 className="mt-3 break-words font-stencil text-[28px] uppercase leading-tight"><a href={bnbHref(chainId, `/market/${agent.id}`)}>{agent.name}</a></h2><p className="mt-2 line-clamp-2 font-mono text-[12px] leading-relaxed text-ink-2">{plainServiceDescription(agent.description)}</p></div>
         <div className="border-t border-[color:var(--hairline)] pt-4 md:border-l md:border-t-0 md:pl-5 md:pt-0"><p className="font-mono text-[10px] uppercase tracking-widest text-ink-3">PRICE</p><p className="mt-2 font-stencil text-xl uppercase">{isLiveService ? "0.1 U" : "SEE DETAILS"}</p><p className="mt-1 font-mono text-[10px] uppercase text-ink-3">{isLiveService ? "PER REPORT" : "BEFORE YOU USE"}</p></div>
         <div className="border-t border-[color:var(--hairline)] pt-4 md:border-l md:border-t-0 md:pl-5 md:pt-0"><p className="font-mono text-[10px] uppercase tracking-widest text-ink-3">LIVE TEST</p><p className={`mt-2 font-mono text-[11px] uppercase tracking-widest ${isLiveService ? "text-accent" : "text-ink-2"}`}>{isLiveService ? "AVAILABLE" : "ON DETAILS PAGE"}</p><p className="mt-1 font-mono text-[10px] text-ink-3">{isLiveService ? "Try before paying" : "Check availability"}</p></div>
         <a className={`${BUTTON} ${isLiveService ? "bg-accent !text-accent-ink" : ""}`} href={bnbHref(chainId, `/market/${agent.id}`)}>{isLiveService ? "USE NOW →" : "VIEW AGENT →"}</a>
@@ -96,7 +99,7 @@ export function BnbAgentContent({ chainId, id, signedIn = false, onNeedSignIn = 
     {error ? <ErrorPanel error={error} retry={() => setRetry((n) => n + 1)} /> : null}
     {!agent && !error ? <p role="status" className="font-mono text-sm text-ink-2">LOADING SERVICE…</p> : null}
     {agent ? <>
-      <div className={PANEL}><div className="font-mono text-[10px] tracking-widest text-accent">BNB {chainId === 97 ? "TESTNET" : "MAINNET"}</div><h1 className="mt-4 font-stencil text-4xl uppercase sm:text-5xl">{agent.name}</h1><p className="mt-4 max-w-[72ch] font-mono text-sm leading-relaxed text-ink-2">{plainServiceDescription(agent.description)}</p><div className="mt-6 flex flex-wrap gap-x-8 gap-y-3 border-t border-[color:var(--hairline)] pt-4 font-mono text-[11px] uppercase tracking-widest"><span><span className="text-ink-3">SERVICES </span>{agent.services.length}</span><span><span className="text-ink-3">NETWORK </span>BNB {chainId === 97 ? "TESTNET" : "MAINNET"}</span></div></div>
+      <div className={PANEL}><div className="font-mono text-[10px] tracking-widest text-accent">BNB {chainId === 97 ? "TESTNET" : "MAINNET"}</div><h1 className="mt-4 font-stencil text-4xl uppercase sm:text-5xl">{agent.name}</h1><p className="mt-4 max-w-[72ch] font-mono text-sm leading-relaxed text-ink-2">{plainServiceDescription(agent.description)}</p><div className="mt-5 flex flex-wrap gap-2" aria-label="What this service does">{agent.outcomeMatches.length ? agent.outcomeMatches.map((match) => <span key={match.category} className="border border-[color:var(--hairline-strong)] px-3 py-2 font-mono text-[10px] uppercase tracking-widest">{match.source === "provider" ? "CATEGORY" : "OUTCOME MATCH"} · {CATEGORIES.find((entry) => entry.id === match.category)?.label}</span>) : <span className="border border-[color:var(--hairline-strong)] px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-ink-3">UNCLASSIFIED SERVICE</span>}</div><div className="mt-6 flex flex-wrap gap-x-8 gap-y-3 border-t border-[color:var(--hairline)] pt-4 font-mono text-[11px] uppercase tracking-widest"><span><span className="text-ink-3">SERVICES </span>{agent.services.length}</span><span><span className="text-ink-3">NETWORK </span>BNB {chainId === 97 ? "TESTNET" : "MAINNET"}</span></div></div>
       <section aria-labelledby="services-heading"><div className="mb-4 flex items-end justify-between gap-4"><h2 id="services-heading" className="font-stencil text-3xl uppercase">SERVICES</h2><span className="font-mono text-[10px] uppercase tracking-widest text-ink-3">{agent.services.length} AVAILABLE</span></div><div className="grid gap-4 md:grid-cols-2">{agent.services.map((service) => {
         const isPaidReport = isLpGuardian && service.name.toLowerCase().replace(/[-_]/g, "") === "erc8183";
         const title = isPaidReport ? "Liquidity position report" : service.name.toLowerCase() === "a2a" ? "Agent service" : service.name;
@@ -118,6 +121,29 @@ export function BnbPublishContent({ chainId, signedIn, signIn }: { chainId: BnbC
     </div>{error ? <ErrorPanel error={error} /> : null}{done ? <div role="status" className={PANEL}><p className="font-mono text-sm">Your provider listing was saved on this network.</p><a className={`${BUTTON} mt-4`} href={bnbHref(chainId, `/market/${encodeURIComponent(id)}`)}>VIEW AGENT →</a></div> : null}</div>;
 }
 
+function GenericLiveCheck({ chainId, agent }: { chainId: BnbChain; agent: AgentDetail }) {
+  const [proof, setProof] = useState<{ status: "reachable" | "unavailable"; protocol: string; message: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function check() {
+    setBusy(true); setError(null); setProof(null);
+    try {
+      const result = await checkAgentEndpoint(chainId, agent.id);
+      setProof(result);
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "The service could not be reached. Try again later.");
+    } finally { setBusy(false); }
+  }
+  return <section className={PANEL} aria-labelledby="live-service-heading">
+    <p className="font-mono text-[10px] uppercase tracking-widest text-accent">LIVE SERVICE CHECK</p>
+    <h2 id="live-service-heading" className="mt-4 font-stencil text-3xl uppercase">{agent.name}</h2>
+    <p className="mt-4 max-w-[85ch] font-mono text-sm leading-relaxed text-ink-2">Check that this service responds before you decide whether to use it. This does not start paid work or move funds.</p>
+    <button type="button" className={`${BUTTON} mt-6 bg-accent !text-accent-ink`} disabled={busy} onClick={check}>{busy ? "CHECKING SERVICE…" : "CHECK SERVICE →"}</button>
+    {error ? <p role="alert" className="mt-5 border-l-2 border-[color:var(--err)] pl-4 font-mono text-[12px] leading-relaxed text-ink-2">{error}</p> : null}
+    {proof ? <div role="status" className="mt-6 border-t border-[color:var(--hairline)] pt-5"><p className="font-mono text-[11px] uppercase tracking-widest text-accent">{proof.status === "reachable" ? "SERVICE RESPONDED" : "SERVICE NOT AVAILABLE"}</p><p className="mt-3 font-mono text-[12px] leading-relaxed text-ink-2">{proof.message}</p><p className="mt-4 font-mono text-[10px] uppercase tracking-widest text-ink-3">{proof.protocol} · NO PAYMENT SENT</p></div> : null}
+  </section>;
+}
+
 export function BnbPlaygroundContent({ chainId }: { chainId: BnbChain }) {
   const searchParams = useSearchParams();
   const requestedId = searchParams.get("agent")?.trim() ?? "";
@@ -134,6 +160,7 @@ export function BnbPlaygroundContent({ chainId }: { chainId: BnbChain }) {
     return () => controller.abort();
   }, [chainId, requestedId]);
   return <div className="space-y-6">
-    <div className={PANEL}><p className="font-mono text-[10px] uppercase tracking-widest text-accent">BNB {chainId === 97 ? "TESTNET" : "MAINNET"} · LIVE TEST</p><h1 className="mt-4 font-stencil text-4xl uppercase sm:text-5xl">{focusAgent?.name ?? (requestedId ? "LOADING SERVICE…" : "TRY AN AGENT")}</h1><p className="mt-4 max-w-[72ch] font-mono text-sm leading-relaxed text-ink-2">{focusAgent ? plainServiceDescription(focusAgent.description) : requestedId ? "Loading this service…" : "Try a service before connecting your wallet."}</p><a className="mt-5 inline-flex font-mono text-[11px] uppercase tracking-widest text-ink-2 underline underline-offset-4" href={requestedId ? bnbHref(chainId, `/market/${encodeURIComponent(requestedId)}`) : bnbHref(chainId, "/market")}>{requestedId ? "← BACK TO AGENT" : "← BACK TO MARKET"}</a>{focusError ? <p role="alert" className="mt-4 font-mono text-[12px] text-[color:var(--err)]">{focusError}</p> : null}</div>
-    <LpGuardianPanel key={chainId} chainId={chainId}/><div className={PANEL}><h2 className="font-stencil text-3xl uppercase">INSPECT ANOTHER PROVIDER</h2><p className="mt-4 max-w-[85ch] font-mono text-sm leading-relaxed text-ink-2">Start with a registered BNB agent ID. Inspect its onchain identity, then check the public discovery endpoint. Third-party task execution and paid runs are not enabled yet; endpoint availability does not earn a tested badge.</p><form className="mt-6 flex flex-wrap gap-3" onSubmit={(e) => { e.preventDefault(); setId(input); }}><label className="flex-1 font-mono text-[11px] uppercase">AGENT ID<input required pattern="[0-9]+" inputMode="numeric" className={`${INPUT} mt-2`} value={input} onChange={(e) => setInput(e.target.value)} placeholder="Registered ERC-8004 ID"/></label><button className={`${BUTTON} self-end`}>INSPECT AGENT →</button></form></div>{id ? <BnbAgentContent key={`${chainId}:${id}`} chainId={chainId} id={id}/> : <a className={BUTTON} href={bnbHref(chainId, "/market")}>FIND AN AGENT IN THE MARKET →</a>}</div>;
+    <div className={PANEL}><p className="font-mono text-[10px] uppercase tracking-widest text-accent">BNB {chainId === 97 ? "TESTNET" : "MAINNET"} · LIVE TEST</p><h1 className="mt-4 font-stencil text-4xl uppercase sm:text-5xl">{focusAgent?.name ?? (requestedId ? "LOADING SERVICE…" : "LIVE SERVICE CHECK")}</h1><p className="mt-4 max-w-[72ch] font-mono text-sm leading-relaxed text-ink-2">{focusAgent ? plainServiceDescription(focusAgent.description) : requestedId ? "Loading this service…" : "Choose a service from the market to test it live."}</p><a className="mt-5 inline-flex font-mono text-[11px] uppercase tracking-widest text-ink-2 underline underline-offset-4" href={requestedId ? bnbHref(chainId, `/market/${encodeURIComponent(requestedId)}`) : bnbHref(chainId, "/market")}>{requestedId ? "← BACK TO SERVICE" : "← BACK TO MARKET"}</a>{focusError ? <p role="alert" className="mt-4 font-mono text-[12px] text-[color:var(--err)]">{focusError}</p> : null}</div>
+    {focusAgent ? (focusAgent.id === "2177" ? <LpGuardianPanel key={`${chainId}:${focusAgent.id}`} chainId={chainId}/> : <GenericLiveCheck key={`${chainId}:${focusAgent.id}`} chainId={chainId} agent={focusAgent}/>) : null}
+    <div className={PANEL}><h2 className="font-stencil text-3xl uppercase">INSPECT ANOTHER SERVICE</h2><p className="mt-4 max-w-[85ch] font-mono text-sm leading-relaxed text-ink-2">Enter a registered service ID to inspect what it does and try its public check.</p><form className="mt-6 flex flex-wrap gap-3" onSubmit={(e) => { e.preventDefault(); setId(input); }}><label className="flex-1 font-mono text-[11px] uppercase">SERVICE ID<input required pattern="[0-9]+" inputMode="numeric" className={`${INPUT} mt-2`} value={input} onChange={(e) => setInput(e.target.value)} placeholder="Registered service ID"/></label><button className={`${BUTTON} self-end`}>INSPECT SERVICE →</button></form></div>{id ? <BnbAgentContent key={`${chainId}:${id}`} chainId={chainId} id={id} /> : <a className={BUTTON} href={bnbHref(chainId, "/market")}>FIND A SERVICE IN THE MARKET →</a>}</div>;
 }
