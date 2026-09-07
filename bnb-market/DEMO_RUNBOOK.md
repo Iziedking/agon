@@ -17,6 +17,14 @@ curl -sS https://agon.surf/api/bnb/97/providers/lp-guardian/erc8183/status
 
 The expected live state is BNB Testnet, worker healthy, `paid_hiring: true`, and no blockers. These checks do not send a transaction.
 
+If the marketplace list reports that the catalog is temporarily unavailable,
+open the registered LP Guardian directly and continue with the same real flow:
+
+`https://agon.surf/market/2177?network=bnb-testnet`
+
+This fallback bypasses the catalog indexer for the demo. Do not describe it as
+full category coverage until the catalog is responding again.
+
 ## The three-minute buyer story
 
 1. Start on **Market**. Keep **BNB Testnet** selected.

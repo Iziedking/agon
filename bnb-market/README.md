@@ -42,10 +42,11 @@ readiness, job/receipt reads, and AGON LP Guardian's read-only PancakeSwap
 position analysis. Its BNB Testnet commerce foundation durably binds a buyer,
 input, signed provider quote, exact token amount and ERC-8183 contract before
 preparing any wallet calldata. It independently verifies receipts and waits
-for two confirmations. The flow still refuses to open while the provider
-delivery worker is unavailable, so payment approval, paid hiring, third-party
-task execution, automatic liquidity changes and settlement writes remain
-disabled. No end-to-end paid result is claimed. Legacy comparison helpers
+for two confirmations. The flow only opens while the provider delivery worker
+is available, so payment approval, paid hiring, third-party task execution,
+automatic liquidity changes and settlement writes remain separately gated. No
+end-to-end paid result is claimed until a public delivery and receipt bundle
+has been captured. Legacy comparison helpers
 under `src/lib/bnb` contain offline fixtures and must not be used to enable
 live actions.
 
@@ -100,8 +101,8 @@ every form of price manipulation.
 This is an AGON-operated analysis service, not a fabricated registered agent.
 Paid hiring requires its real public ERC-8004 registration, exact price,
 matching provider/session wallet and public ERC-8183 endpoint. Even after
-those operator settings are present, the API refuses to prepare a buyer action
-until the delivery worker can complete a funded job. It is separate from the
+those operator settings are present, the API only prepares a buyer action while
+the delivery worker can complete a funded job. It is separate from the
 third-party registry catalog. This first capability alone does not satisfy the
 four-category marketplace or automated rebalancing requirements.
 
@@ -211,8 +212,8 @@ checks its registration and advertised endpoint, and reads the deployed AGON
 LP Guardian health and paid-hiring status endpoints. It exits non-zero when a
 required outcome, registration, endpoint, or deployed runtime check is
 incomplete. It never loads a wallet, signs, funds, runs a provider task, or
-submits a transaction. Override `BNB_PROOF_API_ORIGIN` and
-`BNB_PROOF_MARKET_ORIGIN` to verify another deployment without changing code.
+submits a transaction. Override `BNB_MARKET_API_ORIGIN` and
+`BNB_MARKET_ORIGIN` to verify another deployment without changing code.
 If 8004scan or the catalog transport times out, the command still emits the
 health, worker, and LP Guardian checks with a `catalogError` and exits non-zero;
 it does not collapse the entire report into an uninformative timeout.
