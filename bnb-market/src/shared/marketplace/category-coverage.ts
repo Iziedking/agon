@@ -10,6 +10,12 @@ export type CategoryCoverage = {
   descriptionMatches: number;
 };
 
+export type CategoryAvailability = {
+  state: "responding" | "listed" | "matched" | "unavailable";
+  label: "READY TO TRY" | "LISTED" | "MATCH FOUND" | "NOT AVAILABLE";
+  detail: string;
+};
+
 export type LiveCategoryCoverage = CategoryCoverage & {
   attempted: number;
   reachable: number;
@@ -33,6 +39,17 @@ export function categoryCoverage(agents: readonly Pick<AgentSummary, "category" 
 
 export function categoryCoverageGaps(coverage: readonly CategoryCoverage[]): Category[] {
   return coverage.filter((entry) => entry.matches === 0).map((entry) => entry.id);
+}
+
+export function categoryAvailability(
+  entry: CategoryCoverage,
+  live?: Pick<LiveCategoryCoverage, "attempted" | "reachable">,
+): CategoryAvailability {
+  if (live?.reachable) return { state: "responding", label: "READY TO TRY", detail: "A service responded just now." };
+  if (live?.attempted) return { state: "listed", label: "LISTED", detail: "A listed service needs another check." };
+  if (entry.providerCategories) return { state: "listed", label: "LISTED", detail: "A provider has listed this goal." };
+  if (entry.descriptionMatches) return { state: "matched", label: "MATCH FOUND", detail: "This goal appears in a service description." };
+  return { state: "unavailable", label: "NOT AVAILABLE", detail: "No matching service is listed yet." };
 }
 
 export function liveCategoryCoverage(

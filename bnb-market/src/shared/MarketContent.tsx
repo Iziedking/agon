@@ -8,7 +8,7 @@ import { CommerceReadinessPanel } from "./CommerceReadinessPanel";
 import { LpGuardianPanel } from "./LpGuardianPanel";
 import { LpHiringPanel, type WalletRequest } from "./LpHiringPanel";
 import { deriveMarketCapabilities } from "./marketplace/capabilities";
-import { categoryCoverage } from "./marketplace/category-coverage";
+import { categoryAvailability, categoryCoverage, type CategoryCoverage } from "./marketplace/category-coverage";
 
 // Shared BNB-only content. The canonical host supplies AGON's approved header,
 // footer, typography and palette. No chain-specific host imports are allowed.
@@ -28,6 +28,11 @@ const plainServiceDescription = (description?: string) => {
 export function bnbHref(chain: BnbChain, path: string) { return `${path}${path.includes("?") ? "&" : "?"}network=${chain === 97 ? "bnb-testnet" : "bnb-mainnet"}`; }
 function ErrorPanel({ error, retry }: { error: string; retry?: () => void }) {
   return <div role="alert" className={PANEL}><p className="font-mono text-sm text-ink-2">{error}</p>{retry ? <button className={`${BUTTON} mt-4`} onClick={retry}>TRY AGAIN →</button> : null}</div>;
+}
+
+function CoverageLabel({ entry, live }: { entry: CategoryCoverage; live?: MarketplaceLiveStatus["liveCoverage"][number] }) {
+  const availability = categoryAvailability(entry, live);
+  return <span className="mt-4 block"><span className={`font-mono text-[10px] uppercase tracking-widest ${availability.state === "responding" ? "text-accent" : "text-ink-3"}`}>{availability.label}</span><span className="mt-1 block font-mono text-[10px] leading-relaxed text-ink-3">{availability.detail}</span></span>;
 }
 
 function MarketplaceAgentRow({ chainId, agent }: { chainId: BnbChain; agent: AgentSummary }) {
@@ -97,6 +102,7 @@ export function BnbMarketContent({ chainId }: { chainId: BnbChain }) {
   const searchable = [...new Map([...items, ...(directMatch ? [directMatch] : [])].map((agent) => [agent.id, agent])).values()];
   const visible = searchable.filter((a) => (!category || a.category === category || a.outcomeMatches.some((match) => match.category === category)) && `${a.name} ${a.description} ${a.id}`.toLowerCase().includes(query.trim().toLowerCase()));
   const outcomeCounts = marketStatus?.coverage ?? categoryCoverage(searchable);
+  const liveByCategory = new Map(liveStatus?.liveCoverage.map((entry) => [entry.id, entry]) ?? []);
   const hasDescriptionOnlyMatches = outcomeCounts.some((entry) => entry.matches > 0 && entry.providerCategories === 0);
   const catalogSummary = marketStatus
     ? marketStatus.gaps.length ? `${marketStatus.indexedProfiles} services indexed · ${marketStatus.gaps.length} goals need more services` : `${marketStatus.indexedProfiles} services indexed · all goals have matches`
@@ -107,7 +113,7 @@ export function BnbMarketContent({ chainId }: { chainId: BnbChain }) {
         <label className="font-mono text-[10px] uppercase tracking-widest text-ink-3">SEARCH SERVICES<input className={`${INPUT} mt-2`} type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="What do you need, or enter an agent ID" /></label>
         <label className="font-mono text-[10px] uppercase tracking-widest text-ink-3">CATEGORY<select className={`${INPUT} mt-2`} value={category} onChange={(e) => setCategory(e.target.value)}><option value="">All categories</option>{CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}</select></label>
       </div>
-      <div className="mt-5" aria-labelledby="outcomes-heading"><div className="flex flex-wrap items-end justify-between gap-3"><div><p className="font-mono text-[10px] uppercase tracking-widest text-accent">START WITH YOUR GOAL</p><h2 id="outcomes-heading" className="mt-2 font-stencil text-2xl uppercase">What do you need help with?</h2></div><button type="button" className={`${BUTTON} ${!category ? "bg-ink !text-[color:var(--canvas)]" : ""}`} aria-pressed={!category} onClick={() => setCategory("")}>ALL SERVICES</button></div><div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{outcomeCounts.map((c) => <button key={c.id} aria-pressed={category === c.id} className={`${PANEL} text-left transition-colors hover:bg-canvas-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent ${category === c.id ? "border-accent" : ""}`} onClick={() => setCategory(category === c.id ? "" : c.id)}><span className="font-mono text-[10px] uppercase tracking-widest text-accent">{c.label}</span><span className="mt-3 block font-stencil text-xl uppercase leading-tight">{c.question}</span><span className="mt-2 block font-mono text-[11px] leading-relaxed text-ink-2">{c.description}</span><span className="mt-4 block font-mono text-[10px] uppercase tracking-widest text-ink-3">{c.matches ? `${c.matches} match${c.matches === 1 ? "" : "es"} found` : "No matches found"}</span></button>)}</div></div>
+    <div className="mt-5" aria-labelledby="outcomes-heading"><div className="flex flex-wrap items-end justify-between gap-3"><div><p className="font-mono text-[10px] uppercase tracking-widest text-accent">START WITH YOUR GOAL</p><h2 id="outcomes-heading" className="mt-2 font-stencil text-2xl uppercase">What do you need help with?</h2></div><button type="button" className={`${BUTTON} ${!category ? "bg-ink !text-[color:var(--canvas)]" : ""}`} aria-pressed={!category} onClick={() => setCategory("")}>ALL SERVICES</button></div><div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{outcomeCounts.map((c) => <button key={c.id} aria-pressed={category === c.id} className={`${PANEL} text-left transition-colors hover:bg-canvas-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent ${category === c.id ? "border-accent" : ""}`} onClick={() => setCategory(category === c.id ? "" : c.id)}><span className="font-mono text-[10px] uppercase tracking-widest text-accent">{c.label}</span><span className="mt-3 block font-stencil text-xl uppercase leading-tight">{c.question}</span><span className="mt-2 block font-mono text-[11px] leading-relaxed text-ink-2">{c.description}</span><CoverageLabel entry={c} live={liveByCategory.get(c.id)} /></button>)}</div></div>
     </div>
     <div className="my-6 flex flex-wrap justify-between gap-3 font-mono text-[10px] uppercase tracking-widest text-ink-3"><span>{loading && !items.length ? "LOADING SERVICES…" : `${visible.length} ${visible.length === 1 ? "SERVICE" : "SERVICES"} FOUND`}</span><span>{checked ? `UPDATED ${new Date(checked).toLocaleTimeString()}` : "UPDATING"}</span></div>
     <p className="mb-2 max-w-[85ch] font-mono text-[12px] leading-relaxed text-ink-2">Choose a goal, open a service, try it live, then use it when you are ready. Prices and availability are shown before any wallet action.</p>

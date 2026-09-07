@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { categoryCoverage, categoryCoverageGaps, liveCategoryCoverage, liveCategoryCoverageGaps } from "./category-coverage.ts";
+import { categoryAvailability, categoryCoverage, categoryCoverageGaps, liveCategoryCoverage, liveCategoryCoverageGaps } from "./category-coverage.ts";
 
 test("reports all four buyer outcomes without treating descriptions as provider categories", () => {
   const coverage = categoryCoverage([
@@ -33,4 +33,16 @@ test("separates responding services from indexed category matches", () => {
   assert.deepEqual(coverage.map((entry) => entry.reachable), [1, 0, 0, 0]);
   assert.equal(coverage[1].attempted, 1);
   assert.deepEqual(liveCategoryCoverageGaps(coverage), ["grid-trading", "yield-optimisation", "health-factor"]);
+});
+
+test("maps evidence into plain buyer-facing availability states", () => {
+  const [listed, matched, unavailable] = categoryCoverage([
+    { category: "rebalancing", outcomeMatches: [{ category: "rebalancing", source: "provider", reason: "declared" }] },
+    { category: null, outcomeMatches: [{ category: "grid-trading", source: "description", reason: "matched" }] },
+  ]);
+  assert.deepEqual(categoryAvailability(listed), { state: "listed", label: "LISTED", detail: "A provider has listed this goal." });
+  assert.deepEqual(categoryAvailability(matched), { state: "matched", label: "MATCH FOUND", detail: "This goal appears in a service description." });
+  assert.deepEqual(categoryAvailability(unavailable), { state: "unavailable", label: "NOT AVAILABLE", detail: "No matching service is listed yet." });
+  assert.deepEqual(categoryAvailability(listed, { attempted: 1, reachable: 1 }), { state: "responding", label: "READY TO TRY", detail: "A service responded just now." });
+  assert.deepEqual(categoryAvailability(listed, { attempted: 1, reachable: 0 }), { state: "listed", label: "LISTED", detail: "A listed service needs another check." });
 });
