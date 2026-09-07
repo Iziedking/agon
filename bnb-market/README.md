@@ -157,7 +157,7 @@ To verify the real service without a browser:
 ```bash
 npm run test:lp-agent
 npm run test:commerce
-npm run prove:lp-agent -- 37235
+npm run inspect:lp-agent -- 37235
 ```
 
 Position `37235` was discovered through the official Testnet manager's NFT
@@ -171,11 +171,11 @@ only that schema after the test. Do not point tests at production.
 ## Read-only proof tools
 
 ```bash
-npm run prove:market
-npm run prove:hackathon
-npm run prove:reads
-npm run prove:commerce -- 2114
-npm run prove:partners -- evidence/partner-evidence.json
+npm run inspect:marketplace
+npm run check:marketplace-readiness
+npm run inspect:live-reads
+npm run inspect:commerce -- 2114
+npm run validate:partner-evidence -- evidence/partner-evidence.json
 ```
 
 These scripts make public HTTP/RPC reads. They do not negotiate, execute a
@@ -202,16 +202,19 @@ no response, and reports live gaps separately from indexed matches. The check
 does not connect a wallet, request payment, or start a job. The market page
 only runs it after the visitor chooses `CHECK LIVE COVERAGE`.
 
-`npm run prove:hackathon` is the strict read-only release proof for the BNB
-marketplace. It selects one live catalog agent for each required outcome,
+`npm run check:marketplace-readiness` is the strict read-only readiness check
+for the BNB marketplace product. It selects one live catalog agent for each required outcome,
 checks its registration and advertised endpoint, and reads the deployed AGON
 LP Guardian health and paid-hiring status endpoints. It exits non-zero when a
 required outcome, registration, endpoint, or deployed runtime check is
 incomplete. It never loads a wallet, signs, funds, runs a provider task, or
 submits a transaction. Override `BNB_PROOF_API_ORIGIN` and
 `BNB_PROOF_MARKET_ORIGIN` to verify another deployment without changing code.
+If 8004scan or the catalog transport times out, the command still emits the
+health, worker, and LP Guardian checks with a `catalogError` and exits non-zero;
+it does not collapse the entire report into an uninformative timeout.
 
-`npm run prove:partners -- evidence/partner-evidence.json` validates the
+`npm run validate:partner-evidence -- evidence/partner-evidence.json` validates the
 submission evidence bundle without inventing partner results. The bundle must
 contain live proof for all four buyer outcomes, one completed BNB Testnet hire
 with exact transaction and delivery links, an Altana session create/revoke
