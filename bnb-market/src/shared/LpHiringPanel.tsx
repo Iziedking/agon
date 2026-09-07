@@ -54,6 +54,16 @@ function isPending(intent: CommerceIntent) {
   return intent.state.endsWith("_confirming");
 }
 
+function isTerminal(intent: CommerceIntent) {
+  return intent.state === "expired" || intent.state === "reverted" || intent.state === "needs_attention";
+}
+
+function terminalMessage(intent: CommerceIntent) {
+  if (intent.state === "expired") return "This request expired before payment. No funds were moved. Start a new request to receive a fresh quote.";
+  if (intent.state === "reverted") return "This request was reverted. No further wallet action will be requested. Start a new request if you still want the report.";
+  return "This request needs attention before it can continue. Start a new request or inspect the transaction details below.";
+}
+
 function stepIndex(intent: CommerceIntent | null) {
   if (!intent) return 0;
   if (intent.state === "funded") return STEPS.length;
@@ -237,10 +247,10 @@ export function LpHiringPanel({ chainId, signedIn, onNeedSignIn, walletRequest }
     </> : null}
 
     {intent ? <div className="mt-6 border-t border-[color:var(--hairline)] pt-6">
-      <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-mono text-[10px] uppercase tracking-widest text-accent">REQUEST IN PROGRESS</p><p role="status" className="mt-2 font-stencil text-2xl uppercase">{intent.state === "funded" && intent.delivery?.status === "submitted" ? "REPORT READY" : intent.state === "funded" ? "REQUEST PAID" : isPending(intent) ? "CONFIRMING PAYMENT" : currentTransaction ? "NEXT STEP" : intent.state.replaceAll("_", " ")}</p></div><button type="button" className={BUTTON} onClick={clearHire} disabled={busy}>START OVER</button></div>
+      <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-mono text-[10px] uppercase tracking-widest text-accent">{isTerminal(intent) ? "REQUEST ENDED" : "REQUEST IN PROGRESS"}</p><p role="status" className="mt-2 font-stencil text-2xl uppercase">{intent.state === "funded" && intent.delivery?.status === "submitted" ? "REPORT READY" : intent.state === "funded" ? "REQUEST PAID" : isPending(intent) ? "CONFIRMING PAYMENT" : currentTransaction ? "NEXT STEP" : intent.state.replaceAll("_", " ")}</p></div><button type="button" className={BUTTON} onClick={clearHire} disabled={busy}>{isTerminal(intent) ? "START A NEW REQUEST →" : "START OVER"}</button></div>
       <StepProgress intent={intent} />
       <div className="mt-6 border-l-2 border-accent pl-4 font-mono text-[12px] leading-relaxed" role="status">
-        <p className="text-ink">{intent.state === "funded" && intent.delivery?.status === "submitted" ? "Your report is ready." : intent.state === "funded" ? "Your request is paid and the report is being prepared." : isPending(intent) ? "Your wallet action was sent. We are waiting for confirmation." : "Review the next step below."}</p>
+        <p className="text-ink">{isTerminal(intent) ? terminalMessage(intent) : intent.state === "funded" && intent.delivery?.status === "submitted" ? "Your report is ready." : intent.state === "funded" ? "Your request is paid and the report is being prepared." : isPending(intent) ? "Your wallet action was sent. We are waiting for confirmation." : "Review the next step below."}</p>
         {intent.state === "funded" && intent.delivery?.status === "submitted" && intent.delivery.url ? <a className={`${BUTTON} mt-5 bg-accent !text-accent-ink`} href={intent.delivery.url} target="_blank" rel="noopener noreferrer">OPEN REPORT →</a> : null}
         {intent.state === "funded" && intent.delivery?.status === "needs_attention" ? <p className="mt-3 text-[color:var(--err)]">The provider could not verify the published result. Funds remain under the policy review path.</p> : null}
         {intent.state === "funded" && intent.delivery?.status === "failed" ? <p className="mt-3 text-[color:var(--err)]">The provider will retry this report. {intent.delivery.error ?? "No additional detail is available."}</p> : null}

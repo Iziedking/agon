@@ -50,7 +50,7 @@ const AGON_ROUTES = [
   { href: "/docs", label: "DOCS", exact: false },
 ];
 
-export function TopNav() {
+export function TopNav({ hideSignOut = false }: { hideSignOut?: boolean } = {}) {
   const pathname = usePathname() ?? "/";
   const isLogin = pathname === "/login";
   const isLegacyRoute = isLegacyArcRunRoute(pathname);
@@ -107,7 +107,7 @@ export function TopNav() {
               <WalletBalanceChip networkKey={isAgon ? networkKey : undefined} />
               {!isAgon ? <ArcChainChip /> : null}
               <NotificationBell />
-              <button
+              {!hideSignOut ? <button
                 type="button"
                 onClick={async () => {
                   await signOut();
@@ -116,7 +116,7 @@ export function TopNav() {
                 className="hidden min-h-11 items-center border border-[color:var(--hairline-strong)] bg-canvas px-3 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-2 transition-colors hover:bg-canvas-3 hover:text-ink sm:inline-flex"
               >
                 SIGN OUT
-              </button>
+              </button> : null}
             </>
           ) : null}
           {isAgon ? <AgonNetworkSelector /> : null}
@@ -165,7 +165,7 @@ export function TopNav() {
                 <ProfileLink />
               </div>
             ) : null}
-            {isSignedIn ? (
+            {isSignedIn && !hideSignOut ? (
               <button
                 type="button"
                 onClick={async () => {
