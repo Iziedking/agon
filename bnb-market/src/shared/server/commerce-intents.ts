@@ -199,6 +199,7 @@ export async function prepareLpHireIntent(chainId: number, buyer: string, rawId:
       const recoverable = await connection.query<IntentRow>(`SELECT * FROM bnb_commerce_intents
         WHERE chain_id=97 AND buyer_address=$1 AND input_json=$2 AND request_hash=$3
           AND state IN ('quoting','quote_verified','open','registered','approved','funded')
+          AND NOT EXISTS (SELECT 1 FROM bnb_commerce_deliveries d WHERE d.intent_id=bnb_commerce_intents.id AND d.status='submitted')
         ORDER BY updated_at DESC LIMIT 1`, [buyer.toLowerCase(), parsed.json, requestHash]);
       if (recoverable.rows[0]) {
         await connection.query("COMMIT");
@@ -209,11 +210,23 @@ export async function prepareLpHireIntent(chainId: number, buyer: string, rawId:
       // before the intent state could be reconciled to `open`.
       const count = await connection.query<{ total: string }>(`SELECT count(*) AS total FROM bnb_commerce_intents i
         WHERE i.created_at >= (date_trunc('day',now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')
+          AND NOT EXISTS (SELECT 1 FROM bnb_commerce_deliveries d WHERE d.intent_id=i.id AND d.status='submitted')
           AND (i.state IN ('open','registered','approved','funded') OR EXISTS (
             SELECT 1 FROM bnb_commerce_transactions t
             WHERE t.intent_id=i.id AND t.step='create' AND t.status IN ('submitted','confirming','confirmed')
           ))`);
-      if (Number(count.rows[0].total) >= config.dailyIntentLimit) throw new HttpError(429, "Today's LP Guardian hiring allowance is used. An active BNB Testnet job is already in progress; try again after 00:00 UTC.");
+      if (Number(count.rows[0].total) >= config.dailyIntentLimit) {
+        const active = await connection.query<IntentRow>(`SELECT * FROM bnb_commerce_intents i
+          WHERE i.chain_id=97 AND i.buyer_address=$1
+            AND i.state IN ('quoting','quote_verified','open','registered','approved','funded')
+            AND NOT EXISTS (SELECT 1 FROM bnb_commerce_deliveries d WHERE d.intent_id=i.id AND d.status='submitted')
+          ORDER BY i.updated_at DESC LIMIT 1`, [buyer.toLowerCase()]);
+        if (active.rows[0]) {
+          await connection.query("COMMIT");
+          return view(active.rows[0]);
+        }
+        throw new HttpError(429, "Your daily hiring allowance is used by an active request. Open that request to continue, or try again after 00:00 UTC.");
+      }
       await connection.query(`INSERT INTO bnb_commerce_intents(id,chain_id,buyer_address,agent_id,provider_address,service_version,registration_hash,input_json,request_hash,amount_raw,token_address,state)
         VALUES($1,97,$2,$3,$4,$5,$6,$7,$8,$9,$10,'quoting')`, [id, buyer.toLowerCase(), config.agentId, config.providerAddress.toLowerCase(), LP_AGENT_VERSION, available.versionHash, parsed.json, requestHash, config.priceRaw, available.snapshot.token.address.toLowerCase()]);
       await connection.query("COMMIT");
