@@ -1,3 +1,6 @@
+// @bnbagent/sdk 0.5.5 erc8183/storage/wallets APIs, installed 2026-09-04.
+// The Altana peer is pinned to 0.7.1 in package.json. These calls are the
+// provider-side execution seam; no admin key or session material is logged.
 import { DeliverableManifest, ERC8183JobOps, type OpResult } from "@bnbagent/sdk/erc8183";
 import { StorageProvider } from "@bnbagent/sdk/storage";
 import { AltanaWalletProvider } from "@bnbagent/sdk/wallets";
@@ -16,6 +19,8 @@ type DeliveryConfigResult = { ready: true; config: DeliveryConfig } | { ready: f
 type DeliveryRow = { job_id: string; intent_id: string; status: "working" | "submitted" | "failed" | "needs_attention";
   attempt_count: number; manifest_json: string | null; manifest_hash: string | null; deliverable_url: string | null; tx_hash: string | null; error: string | null; updated_at: Date };
 type ClaimedDelivery = DeliveryRow & { input: LpInput; provider_address: string; agent_id: string };
+export type LpWorkerResult = { status: "disabled" | "idle" | "submitted" | "failed" | "needs_attention"; blockers?: string[]; jobId?: string; error?: string };
+export type LpWorkerHealth = { healthy: boolean; status: string; jobId: string | null; error: string | null; lastSeenAt: string | null };
 
 const TRUE = "true";
 function safePublicUrl(value: string): string | null {
@@ -125,6 +130,27 @@ async function markDelivery(jobId: string, status: DeliveryRow["status"], fields
   await (await database()).query("UPDATE bnb_commerce_deliveries SET status=$2,error=$3,tx_hash=COALESCE($4,tx_hash),submitted_at=CASE WHEN $2='submitted' THEN now() ELSE submitted_at END,updated_at=now() WHERE job_id=$1", [jobId, status, fields.error ?? null, fields.txHash ?? null]);
 }
 
+export async function recordLpWorkerHeartbeat(result: LpWorkerResult): Promise<void> {
+  const safe = typeof result.error === "string" ? result.error.replace(/\S+:\/\/\S+/g, "<redacted>").slice(0, 500) : null;
+  await (await database()).query(`INSERT INTO bnb_commerce_worker_heartbeats(worker,status,job_id,error,last_seen_at)
+    VALUES('lp-delivery',$1,$2,$3,now()) ON CONFLICT(worker) DO UPDATE SET status=EXCLUDED.status,job_id=EXCLUDED.job_id,error=EXCLUDED.error,last_seen_at=now()`,
+    [result.status, result.jobId ?? null, safe]);
+}
+
+export async function lpWorkerHealth(maxAgeMs = 120_000): Promise<LpWorkerHealth> {
+  try {
+    const result = await (await database()).query<{ status: string; job_id: string | null; error: string | null; last_seen_at: Date }>(
+      "SELECT status,job_id,error,last_seen_at FROM bnb_commerce_worker_heartbeats WHERE worker='lp-delivery'");
+    const row = result.rows[0];
+    if (!row) return { healthy: false, status: "missing", jobId: null, error: null, lastSeenAt: null };
+    const lastSeenAt = row.last_seen_at.toISOString();
+    const healthy = Date.now() - row.last_seen_at.getTime() <= maxAgeMs && row.status !== "disabled" && row.status !== "failed" && row.status !== "needs_attention";
+    return { healthy, status: row.status, jobId: row.job_id, error: row.error, lastSeenAt };
+  } catch {
+    return { healthy: false, status: "unavailable", jobId: null, error: null, lastSeenAt: null };
+  }
+}
+
 function safeError(error: unknown): string { return error instanceof Error ? error.message.replace(/\S+:\/\/\S+/g, "<redacted>").slice(0, 500) : "Provider delivery failed."; }
 
 async function processDelivery(ops: ERC8183JobOps, claimed: ClaimedDelivery): Promise<"submitted" | "failed" | "needs_attention"> {
@@ -154,7 +180,7 @@ async function processDelivery(ops: ERC8183JobOps, claimed: ClaimedDelivery): Pr
   return status;
 }
 
-export async function runLpDeliveryOnce(): Promise<{ status: "disabled" | "idle" | "submitted" | "failed" | "needs_attention"; blockers?: string[]; jobId?: string }> {
+export async function runLpDeliveryOnce(): Promise<LpWorkerResult> {
   const configured = lpDeliveryConfig();
   if (!configured.ready) return { status: "disabled", blockers: configured.blockers };
   const wallet = await AltanaWalletProvider.sessionFromEnv({ network: "bnb-testnet" });

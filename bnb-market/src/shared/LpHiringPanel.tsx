@@ -24,6 +24,7 @@ const BLOCKERS: Record<string, string> = {
   provider_endpoint_mismatch: "The registered payment endpoint does not match the live provider endpoint.",
   registration_unavailable: "The provider registration could not be checked right now.",
   provider_execution_unavailable: "The delivery worker is not ready, so funds cannot be locked yet.",
+  provider_worker_unhealthy: "The delivery worker is not reporting healthy. Funds stay protected until it is online.",
 };
 
 const STEPS: Array<{ key: CommerceStep; label: string }> = [
@@ -121,13 +122,13 @@ export function LpHiringPanel({ chainId, signedIn, onNeedSignIn, walletRequest }
   }, [chainId, readinessRetry]);
 
   useEffect(() => {
-    if (!intent || !isPending(intent)) return;
+    if (!intent || (!isPending(intent) && !(intent.state === "funded" && intent.delivery?.status !== "submitted"))) return;
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
       readLpHire(chainId, intent.id, controller.signal).then(setIntent).catch((failure: unknown) => {
         if (!controller.signal.aborted) setError(errorMessage(failure, "The confirmation status could not be refreshed."));
       });
-    }, 3000);
+    }, intent.state === "funded" ? 5000 : 3000);
     return () => { window.clearTimeout(timer); controller.abort(); };
   }, [chainId, intent]);
 
@@ -236,11 +237,14 @@ export function LpHiringPanel({ chainId, signedIn, onNeedSignIn, walletRequest }
     </> : null}
 
     {intent ? <div className="mt-6 border-t border-[color:var(--hairline)] pt-6">
-      <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-mono text-[10px] uppercase tracking-widest text-accent">REQUEST IN PROGRESS</p><p role="status" className="mt-2 font-stencil text-2xl uppercase">{intent.state === "funded" ? "REQUEST PAID" : isPending(intent) ? "CONFIRMING PAYMENT" : currentTransaction ? "NEXT STEP" : intent.state.replaceAll("_", " ")}</p></div><button type="button" className={BUTTON} onClick={clearHire} disabled={busy}>START OVER</button></div>
+      <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-mono text-[10px] uppercase tracking-widest text-accent">REQUEST IN PROGRESS</p><p role="status" className="mt-2 font-stencil text-2xl uppercase">{intent.state === "funded" && intent.delivery?.status === "submitted" ? "REPORT READY" : intent.state === "funded" ? "REQUEST PAID" : isPending(intent) ? "CONFIRMING PAYMENT" : currentTransaction ? "NEXT STEP" : intent.state.replaceAll("_", " ")}</p></div><button type="button" className={BUTTON} onClick={clearHire} disabled={busy}>START OVER</button></div>
       <StepProgress intent={intent} />
       <div className="mt-6 border-l-2 border-accent pl-4 font-mono text-[12px] leading-relaxed" role="status">
-        <p className="text-ink">{intent.state === "funded" ? "Your request is paid and the report is being prepared." : isPending(intent) ? "Your wallet action was sent. We are waiting for confirmation." : "Review the next step below."}</p>
-        {intent.state === "funded" ? <p className="mt-3 text-ink-2">The agent will deliver a report for this request. No liquidity transaction is submitted.</p> : null}
+        <p className="text-ink">{intent.state === "funded" && intent.delivery?.status === "submitted" ? "Your report is ready." : intent.state === "funded" ? "Your request is paid and the report is being prepared." : isPending(intent) ? "Your wallet action was sent. We are waiting for confirmation." : "Review the next step below."}</p>
+        {intent.state === "funded" && intent.delivery?.status === "submitted" && intent.delivery.url ? <a className={`${BUTTON} mt-5 bg-accent !text-accent-ink`} href={intent.delivery.url} target="_blank" rel="noopener noreferrer">OPEN REPORT →</a> : null}
+        {intent.state === "funded" && intent.delivery?.status === "needs_attention" ? <p className="mt-3 text-[color:var(--err)]">The provider could not verify the published result. Funds remain under the policy review path.</p> : null}
+        {intent.state === "funded" && intent.delivery?.status === "failed" ? <p className="mt-3 text-[color:var(--err)]">The provider will retry this report. {intent.delivery.error ?? "No additional detail is available."}</p> : null}
+        {intent.state === "funded" && intent.delivery?.status !== "submitted" ? <p className="mt-3 text-ink-2">The agent will deliver a report for this request. No liquidity transaction is submitted.</p> : null}
         {isPending(intent) ? <p className="mt-3 text-ink-2">You can leave this page and return to check again.</p> : null}
       </div>
       {currentTransaction && !isPending(intent) ? <div className="mt-6 border border-[color:var(--hairline-strong)] p-4"><p className="font-mono text-[10px] uppercase tracking-widest text-accent">NEXT STEP</p><h4 className="mt-3 font-stencil text-xl uppercase">{STEP_COPY[currentTransaction.step].title}</h4><p className="mt-3 font-mono text-[12px] leading-relaxed text-ink-2">{STEP_COPY[currentTransaction.step].warning}</p><button type="button" className={`${BUTTON} mt-5 bg-accent !text-accent-ink`} onClick={sendNextTransaction} disabled={busy}>{busy ? "CHECK YOUR WALLET…" : STEP_COPY[currentTransaction.step].button}</button></div> : null}

@@ -67,6 +67,10 @@ export async function database(): Promise<Pool> {
     );
     CREATE UNIQUE INDEX IF NOT EXISTS bnb_commerce_delivery_intent ON bnb_commerce_deliveries(intent_id);
     CREATE INDEX IF NOT EXISTS bnb_commerce_delivery_queue ON bnb_commerce_deliveries(status,updated_at);
+    CREATE TABLE IF NOT EXISTS bnb_commerce_worker_heartbeats (
+      worker text PRIMARY KEY, status text NOT NULL, job_id text, error text,
+      last_seen_at timestamptz NOT NULL DEFAULT now()
+    );
   `).then(() => undefined).catch((error: unknown) => { ready = undefined; throw error; });
   await ready; return pool;
 }

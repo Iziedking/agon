@@ -125,6 +125,13 @@ export type CommerceIntent = {
   transaction: PreparedCommerceTransaction | null;
   transactionHash: `0x${string}` | null;
   confirmations: number;
+  delivery: {
+    status: "waiting" | "working" | "submitted" | "failed" | "needs_attention";
+    url: string | null;
+    txHash: `0x${string}` | null;
+    error: string | null;
+    updatedAt: string;
+  } | null;
   message: string;
   updatedAt: string;
 };

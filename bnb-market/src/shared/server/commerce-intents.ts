@@ -9,7 +9,7 @@ import { database } from "./store.ts";
 import { HttpError } from "./http.ts";
 import { LP_AGENT_VERSION, parseLpInput, type LpInput } from "../providers/lp-core.ts";
 import { normalizeMarketProtocol } from "../marketplace/capabilities.ts";
-import { lpDeliveryConfig } from "./lp-delivery.ts";
+import { lpDeliveryConfig, lpWorkerHealth } from "./lp-delivery.ts";
 import { jobExpiry, lpCommerceConfig, lpNegotiationRequest, parseCommerceIntentId,
   preparedTransaction, signedQuoteFields, LP_QUOTE_TTL_SECONDS } from "./commerce-intent-core.ts";
 import type { CommerceIntent, CommerceIntentState, CommerceStep, LpHiringReadiness, PreparedCommerceTransaction } from "../types.ts";
@@ -74,6 +74,7 @@ async function providerReadiness(chainId: number): Promise<{ readiness: LpHiring
   // itself uses are not ready; do not leave a permanent placeholder blocker.
   const delivery = lpDeliveryConfig();
   if (!delivery.ready) blockers.push("provider_execution_unavailable");
+  else if (!(await lpWorkerHealth()).healthy) blockers.push("provider_worker_unhealthy");
   return { readiness: { chainId, status: blockers.length ? "blocked" : "available", enabled: blockers.length === 0,
     blockers: [...new Set(blockers)], agentId: configured.config.agentId, providerAddress: configured.config.providerAddress,
     token: snapshot.token, priceRaw: configured.config.priceRaw,
@@ -128,9 +129,21 @@ async function latestTransaction(intentId: string): Promise<TransactionRow | nul
   return result.rows[0] ?? null;
 }
 
+type DeliveryView = { status: "waiting" | "working" | "submitted" | "failed" | "needs_attention"; url: string | null; txHash: Hex | null; error: string | null; updatedAt: string };
+
+async function latestDelivery(intentId: string, funded: boolean): Promise<DeliveryView | null> {
+  if (!funded) return null;
+  const result = await (await database()).query<{ status: DeliveryView["status"]; deliverable_url: string | null; tx_hash: Hex | null; error: string | null; updated_at: Date }>(
+    "SELECT status,deliverable_url,tx_hash,error,updated_at FROM bnb_commerce_deliveries WHERE intent_id=$1", [intentId]);
+  const row = result.rows[0];
+  return row ? { status: row.status, url: row.deliverable_url, txHash: row.tx_hash, error: row.error, updatedAt: row.updated_at.toISOString() }
+    : { status: "waiting", url: null, txHash: null, error: null, updatedAt: new Date(0).toISOString() };
+}
+
 async function view(row: IntentRow): Promise<CommerceIntent> {
   const next = await transactionFor(row);
   const tx = await latestTransaction(row.id);
+  const delivery = await latestDelivery(row.id, row.state === "funded");
   const effectiveState = tx?.status === "confirming" || tx?.status === "submitted" ? `${tx.step}_confirming` as CommerceIntentState : next.state;
   const token = address(row.token_address);
   const snapshot = await commerceSnapshot(97);
@@ -142,7 +155,8 @@ async function view(row: IntentRow): Promise<CommerceIntent> {
     quoteExpiresAt: row.quote_expires_at?.toISOString() ?? new Date(0).toISOString(),
     jobExpiresAt: row.job_expires_at ? new Date(Number(BigInt(row.job_expires_at)) * 1000).toISOString() : new Date(0).toISOString(),
     jobId: row.job_id, transaction: tx?.status === "confirming" || tx?.status === "submitted" ? null : next.transaction,
-    transactionHash: tx?.tx_hash ?? null, confirmations: tx?.confirmations ?? 0, message: tx?.status === "confirming" || tx?.status === "submitted" ? "The wallet transaction is submitted. AGON is waiting for two confirmations." : next.message,
+    transactionHash: tx?.tx_hash ?? null, confirmations: tx?.confirmations ?? 0, delivery,
+    message: tx?.status === "confirming" || tx?.status === "submitted" ? "The wallet transaction is submitted. AGON is waiting for two confirmations." : next.message,
     updatedAt: row.updated_at.toISOString() };
 }
 

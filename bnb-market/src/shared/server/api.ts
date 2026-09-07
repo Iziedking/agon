@@ -9,7 +9,7 @@ import { lpDailyLimit, readLpRun, runLpAgent } from "../providers/lp-runs.ts";
 import { LP_AGENT_VERSION } from "../providers/lp-core.ts";
 import { lpHiringReadiness, prepareLpHireIntent, readLpHireIntent, reconcileLpHireTransaction } from "./commerce-intents.ts";
 import { lpCommerceConfig } from "./commerce-intent-core.ts";
-import { lpDeliveryConfig, readPublicDeliverable } from "./lp-delivery.ts";
+import { lpDeliveryConfig, lpWorkerHealth, readPublicDeliverable } from "./lp-delivery.ts";
 
 export async function handleBnb(request: Request, chain: string, parts: string[]): Promise<Response> {
   try {
@@ -28,12 +28,19 @@ export async function handleBnb(request: Request, chain: string, parts: string[]
         if (chainId === 97 && storage === "reachable" && rpc === "reachable") {
           payments = await lpHiringReadiness(chainId).then((value) => value.status === "available" ? "wallet_flow_available" : value.status).catch(() => "unavailable");
           const delivery = lpDeliveryConfig();
-          taskExecution = delivery.ready ? "available" : delivery.blockers.length ? "configuration_required" : "unavailable";
-          settlementWrites = delivery.ready ? "available" : "unavailable";
+          const worker = delivery.ready ? await lpWorkerHealth() : null;
+          taskExecution = delivery.ready && worker?.healthy ? "available" : !delivery.ready ? "configuration_required" : "unavailable";
+          settlementWrites = delivery.ready && worker?.healthy ? "available" : "unavailable";
+          return json({ chainId, catalogSource: "8004scan", rpc, storage,
+            login: storage === "reachable" && rpc === "reachable" ? "available" : "unavailable",
+            payments, taskExecution, settlementWrites,
+            worker: worker ?? { healthy: false, status: "configuration_required", jobId: null, error: null, lastSeenAt: null },
+            lpAnalysis: chainId === 97 && storage === "reachable" && rpc === "reachable" && lpDailyLimit() > 0 ? "read_only_available" : "unavailable" });
         }
         return json({ chainId, catalogSource: "8004scan", rpc, storage,
           login: storage === "reachable" && rpc === "reachable" ? "available" : "unavailable",
           payments, taskExecution, settlementWrites,
+          worker: { healthy: false, status: "not_applicable", jobId: null, error: null, lastSeenAt: null },
           lpAnalysis: chainId === 97 && storage === "reachable" && rpc === "reachable" && lpDailyLimit() > 0 ? "read_only_available" : "unavailable" });
       }
       if (path === "providers/lp-guardian") {
