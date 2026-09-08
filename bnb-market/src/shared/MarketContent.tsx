@@ -2,8 +2,8 @@
 
 import { useEffect, useState, type ReactNode, type FormEvent } from "react";
 import { useSearchParams } from "next/navigation";
-import { CATEGORIES, type BnbChain, type AgentSummary, type AgentDetail, type Category, type EndpointProof, type MarketplaceStatus, type MarketplaceLiveStatus } from "./types";
-import { checkAgentEndpoint, readCatalog, readAgent, readMarketplaceStatus, readMarketplaceLiveStatus, publishAgent } from "./client";
+import { CATEGORIES, type BnbChain, type AgentSummary, type AgentDetail, type Category, type CommerceIntent, type EndpointProof, type MarketplaceStatus, type MarketplaceLiveStatus } from "./types";
+import { checkAgentEndpoint, readCatalog, readAgent, readLpHires, readMarketplaceStatus, readMarketplaceLiveStatus, publishAgent } from "./client";
 import { CommerceReadinessPanel } from "./CommerceReadinessPanel";
 import { LpGuardianPanel } from "./LpGuardianPanel";
 import { LpHiringPanel, type WalletRequest } from "./LpHiringPanel";
@@ -212,6 +212,38 @@ export function BnbPublishContent({ chainId, signedIn, signIn }: { chainId: BnbC
   return <div className="max-w-[760px] space-y-6"><div className={PANEL}><h2 className="font-stencil text-3xl uppercase">LIST YOUR REGISTERED AGENT</h2><p className="mt-4 font-mono text-sm leading-relaxed text-ink-2">Bring a service you own on BNB {chainId === 97 ? "Testnet" : "Mainnet"}. First check that it responds, then choose the goal it helps with and publish it for buyers.</p>
     {!signedIn ? <div className="mt-6">{signIn}</div> : <form onSubmit={publish} className="mt-6 space-y-5"><label className="block font-mono text-[11px] uppercase text-ink-2">REGISTERED AGENT ID<input className={`${INPUT} mt-2`} inputMode="numeric" pattern="[0-9]+" required value={id} onChange={(e) => changeId(e.target.value)} placeholder="Enter the ID for the service you own" /></label><div className="border border-[color:var(--hairline)] p-4"><p className="font-mono text-[10px] uppercase tracking-widest text-accent">STEP 1 · CHECK YOUR SERVICE</p><p className="mt-2 font-mono text-[12px] leading-relaxed text-ink-2">This is a free read-only check. It does not publish, charge, or start a job.</p><button type="button" className={`${BUTTON} mt-4`} onClick={checkService} disabled={preflightBusy}>{preflightBusy ? "CHECKING SERVICE…" : "CHECK SERVICE →"}</button>{preflight ? <div role="status" className="mt-4 border-t border-[color:var(--hairline)] pt-4"><p className={`font-mono text-[11px] uppercase tracking-widest ${preflight.status === "reachable" ? "text-accent" : "text-ink-2"}`}>{preflight.status === "reachable" ? "SERVICE RESPONDED" : "SERVICE NOT AVAILABLE"}</p><p className="mt-2 font-mono text-[12px] leading-relaxed text-ink-2">{preflight.message}</p><p className="mt-2 font-mono text-[10px] uppercase tracking-widest text-ink-3">NO PAYMENT SENT</p></div> : null}</div><label className="block font-mono text-[11px] uppercase text-ink-2">WHAT DOES IT HELP WITH?<select className={`${INPUT} mt-2`} value={category} onChange={(e) => setCategory(e.target.value as Category)}>{CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}</select></label><button className={`${BUTTON} bg-accent !text-accent-ink`} disabled={busy || preflight?.status !== "reachable"}>{busy ? "VERIFYING OWNER & PUBLISHING…" : "PUBLISH SERVICE →"}</button></form>}
     </div>{error ? <ErrorPanel error={error} /> : null}{done ? <div role="status" className={PANEL}><p className="font-mono text-sm">Your service is now listed on this network.</p><a className={`${BUTTON} mt-4`} href={bnbHref(chainId, `/market/${encodeURIComponent(id)}`)}>VIEW SERVICE →</a></div> : null}</div>;
+}
+
+function activityLabel(intent: CommerceIntent) {
+  if (intent.state === "funded" && intent.delivery?.status === "submitted") return "REPORT READY";
+  if (intent.state === "funded") return "REPORT IN PROGRESS";
+  if (intent.state === "expired" || intent.state === "reverted" || intent.state === "needs_attention") return intent.state.replaceAll("_", " ").toUpperCase();
+  return "REQUEST IN PROGRESS";
+}
+
+export function BnbActivityContent({ chainId, signedIn, signIn }: { chainId: BnbChain; signedIn: boolean; signIn: ReactNode }) {
+  const [items, setItems] = useState<CommerceIntent[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
+  useEffect(() => {
+    if (!signedIn || chainId !== 97) { setItems([]); setLoading(false); return; }
+    const controller = new AbortController();
+    setLoading(true); setError(null);
+    readLpHires(chainId, controller.signal).then((result) => setItems(result.items)).catch((failure: unknown) => {
+      if (!controller.signal.aborted) setError(message(failure));
+    }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [chainId, signedIn, retry]);
+
+  return <div className="max-w-[980px] space-y-6">
+    <section className={PANEL} aria-labelledby="activity-heading">
+      <p className="font-mono text-[10px] uppercase tracking-widest text-accent">YOUR REQUESTS</p>
+      <h2 id="activity-heading" className="mt-3 font-stencil text-3xl uppercase sm:text-4xl">Activity</h2>
+      <p className="mt-4 max-w-[78ch] font-mono text-sm leading-relaxed text-ink-2">See requests you started, what needs your attention, and reports that are ready to open.</p>
+      {chainId !== 97 ? <p role="status" className="mt-6 border-l-2 border-accent pl-4 font-mono text-[12px] leading-relaxed text-ink-2">Activity is currently available for BNB Testnet requests. Switch networks to continue.</p> : !signedIn ? <div className="mt-6">{signIn}</div> : loading ? <p role="status" className="mt-6 font-mono text-[12px] text-ink-2">LOADING YOUR REQUESTS…</p> : error ? <ErrorPanel error={error} retry={() => setRetry((value) => value + 1)} /> : !items.length ? <div className="mt-6 border-t border-[color:var(--hairline)] pt-6"><p className="font-mono text-[12px] text-ink-2">You have not started a request yet.</p><a className={`${BUTTON} mt-5 bg-accent !text-accent-ink`} href={bnbHref(chainId, "/market")}>FIND A SERVICE →</a></div> : <div className="mt-6 space-y-3 border-t border-[color:var(--hairline)] pt-6">{items.map((item) => <article className="flex flex-wrap items-center justify-between gap-4 border border-[color:var(--hairline)] p-4" key={item.id}><div><p className="font-mono text-[10px] uppercase tracking-widest text-accent">{activityLabel(item)}</p><p className="mt-2 font-stencil text-xl uppercase">LP Guardian report</p><p className="mt-2 font-mono text-[11px] text-ink-2">{item.amountDisplay} {item.token.symbol} · updated {new Date(item.updatedAt).toLocaleString()}</p></div><div className="flex flex-wrap gap-2">{item.delivery?.status === "submitted" && item.delivery.url ? <a className={`${BUTTON} bg-accent !text-accent-ink`} href={item.delivery.url} target="_blank" rel="noopener noreferrer">OPEN REPORT →</a> : <a className={BUTTON} href={bnbHref(chainId, "/market/2177#hire-agent")}>OPEN REQUEST →</a>}</div></article>)}</div>}
+    </section>
+  </div>;
 }
 
 function GenericLiveCheck({ chainId, agent }: { chainId: BnbChain; agent: AgentDetail }) {
