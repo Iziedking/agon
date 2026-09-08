@@ -30,6 +30,18 @@ function ErrorPanel({ error, retry }: { error: string; retry?: () => void }) {
   return <div role="alert" className={PANEL}><p className="font-mono text-sm text-ink-2">{error}</p>{retry ? <button className={`${BUTTON} mt-4`} onClick={retry}>TRY AGAIN →</button> : null}</div>;
 }
 
+function CatalogUnavailablePanel({ chainId, retry }: { chainId: BnbChain; retry: () => void }) {
+  return <div role="status" className={`${PANEL} mb-6`}>
+    <p className="font-mono text-[10px] uppercase tracking-widest text-accent">DIRECT ACCESS AVAILABLE</p>
+    <h2 className="mt-2 font-stencil text-2xl uppercase">The directory is taking a moment</h2>
+    <p className="mt-3 max-w-[78ch] font-mono text-[12px] leading-relaxed text-ink-2">The public service directory is temporarily unavailable. No wallet action or payment was started. You can retry the directory, or open a registered service directly if you already know its agent ID.</p>
+    <div className="mt-5 flex flex-wrap gap-2">
+      <button type="button" className={`${BUTTON} bg-accent !text-accent-ink`} onClick={retry}>TRY DIRECTORY AGAIN →</button>
+      {chainId === 97 ? <a className={BUTTON} href={bnbHref(chainId, "/market/2177")}>OPEN LP GUARDIAN →</a> : null}
+    </div>
+  </div>;
+}
+
 function CoverageLabel({ entry, live }: { entry: CategoryCoverage; live?: MarketplaceLiveStatus["liveCoverage"][number] }) {
   const availability = categoryAvailability(entry, live);
   return <span className="mt-4 block"><span className={`font-mono text-[10px] uppercase tracking-widest ${availability.state === "responding" ? "text-accent" : "text-ink-3"}`}>{availability.label}</span><span className="mt-1 block font-mono text-[10px] leading-relaxed text-ink-3">{availability.detail}</span></span>;
@@ -67,15 +79,23 @@ export function BnbMarketContent({ chainId }: { chainId: BnbChain }) {
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState(""); const [category, setCategory] = useState("");
   const [directMatch, setDirectMatch] = useState<AgentSummary | null>(null);
+  const [fallbackAgent, setFallbackAgent] = useState<AgentSummary | null>(null);
+  const [catalogUnavailable, setCatalogUnavailable] = useState(false);
   const [marketStatus, setMarketStatus] = useState<MarketplaceStatus | null>(null);
   const [liveStatus, setLiveStatus] = useState<MarketplaceLiveStatus | null>(null);
   const [liveBusy, setLiveBusy] = useState(false);
   const [liveError, setLiveError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0); const [checked, setChecked] = useState<string | null>(null);
   useEffect(() => {
-    const controller = new AbortController(); setItems([]); setLoading(true); setError(null); setNext(null); setMarketStatus(null); setLiveStatus(null); setLiveError(null); setLiveBusy(false);
+    const controller = new AbortController(); setItems([]); setLoading(true); setError(null); setNext(null); setMarketStatus(null); setLiveStatus(null); setLiveError(null); setLiveBusy(false); setFallbackAgent(null); setCatalogUnavailable(false);
     readCatalog(chainId, 0, controller.signal).then((page) => { setItems(page.items); setNext(page.nextOffset); setChecked(page.checkedAt); })
-      .catch((e: unknown) => { if (!controller.signal.aborted) setError(message(e)); })
+      .catch(async (e: unknown) => {
+        if (controller.signal.aborted) return;
+        setError(message(e)); setCatalogUnavailable(true);
+        if (chainId === 97) {
+          try { setFallbackAgent(await readAgent(chainId, "2177", controller.signal)); } catch { /* The direct link remains useful even when the provider is also unavailable. */ }
+        }
+      })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     readMarketplaceStatus(chainId, controller.signal).then(setMarketStatus).catch(() => { if (!controller.signal.aborted) setMarketStatus(null); });
     return () => controller.abort();
@@ -99,12 +119,14 @@ export function BnbMarketContent({ chainId }: { chainId: BnbChain }) {
     catch (failure) { setLiveError(message(failure)); }
     finally { setLiveBusy(false); }
   }
-  const searchable = [...new Map([...items, ...(directMatch ? [directMatch] : [])].map((agent) => [agent.id, agent])).values()];
+  const searchable = [...new Map([...items, ...(fallbackAgent ? [fallbackAgent] : []), ...(directMatch ? [directMatch] : [])].map((agent) => [agent.id, agent])).values()];
   const visible = searchable.filter((a) => (!category || a.category === category || a.outcomeMatches.some((match) => match.category === category)) && `${a.name} ${a.description} ${a.id}`.toLowerCase().includes(query.trim().toLowerCase()));
   const outcomeCounts = marketStatus?.coverage ?? categoryCoverage(searchable);
   const liveByCategory = new Map(liveStatus?.liveCoverage.map((entry) => [entry.id, entry]) ?? []);
   const hasDescriptionOnlyMatches = outcomeCounts.some((entry) => entry.matches > 0 && entry.providerCategories === 0);
-  const catalogSummary = marketStatus
+  const catalogSummary = marketStatus?.status === "unavailable"
+    ? "Directory temporarily unavailable · direct service access remains open"
+    : marketStatus
     ? marketStatus.gaps.length ? `${marketStatus.indexedProfiles} services indexed · ${marketStatus.gaps.length} goals need more services` : `${marketStatus.indexedProfiles} services indexed · all goals have matches`
     : loading ? "Checking available services" : `${searchable.length} services loaded`;
   return <>
@@ -125,7 +147,7 @@ export function BnbMarketContent({ chainId }: { chainId: BnbChain }) {
       {liveStatus ? <div className="mt-6 grid gap-3 border-t border-[color:var(--hairline)] pt-5 sm:grid-cols-2 xl:grid-cols-4">{liveStatus.liveCoverage.map((entry) => { const serviceIds = (entry.reachableAgentIds.length ? entry.reachableAgentIds : entry.attemptedAgentIds).slice(0, 3); return <div className="border border-[color:var(--hairline)] p-4" key={entry.id}><p className="font-mono text-[10px] uppercase tracking-widest text-ink-3">{entry.label}</p><p className={`mt-3 font-stencil text-xl uppercase ${entry.reachable ? "text-accent" : "text-ink-2"}`}>{entry.reachable ? "AVAILABLE" : entry.attempted ? "NO RESPONSE" : "NOT CHECKED"}</p><p className="mt-2 font-mono text-[10px] leading-relaxed text-ink-3">{entry.reachable ? `${entry.reachable} responding service${entry.reachable === 1 ? "" : "s"}` : entry.matches ? `${entry.matches} listed match${entry.matches === 1 ? "" : "es"}` : "No listed match yet"}</p>{serviceIds.length ? <div className="mt-4 space-y-2 border-t border-[color:var(--hairline)] pt-3">{serviceIds.map((agentId) => <a className="block font-mono text-[10px] uppercase tracking-widest text-accent underline underline-offset-4" href={bnbHref(chainId, `/market/${agentId}`)} key={agentId}>OPEN SERVICE {agentId} →</a>)}</div> : null}</div>; })}</div> : null}
       {liveStatus ? <p role="status" className="mt-4 font-mono text-[10px] uppercase tracking-widest text-ink-3">Checked {liveStatus.attemptedAgents} sample service{liveStatus.attemptedAgents === 1 ? "" : "s"} · {liveStatus.gaps.length ? "some goals still need a responding service" : "every goal has a responding service"}</p> : null}
     </section>
-    {error ? <ErrorPanel error={error} retry={() => setRetry((n) => n + 1)} /> : null}
+    {catalogUnavailable ? <CatalogUnavailablePanel chainId={chainId} retry={() => setRetry((n) => n + 1)} /> : error ? <ErrorPanel error={error} retry={() => setRetry((n) => n + 1)} /> : null}
     {!loading && !error && !visible.length ? <div className={PANEL}><h2 className="font-stencil text-3xl uppercase">NO MATCHING SERVICES</h2><p className="mt-3 font-mono text-sm text-ink-2">No service matches this search yet. Clear the filters or try another agent ID.</p><button className={`${BUTTON} mt-4`} onClick={() => { setQuery(""); setCategory(""); }}>CLEAR FILTERS</button></div> : null}
     <div className="space-y-3">{visible.map((agent) => <MarketplaceAgentRow key={agent.id} chainId={chainId} agent={agent} />)}</div>
     {next !== null ? <div className="mt-8 border-t border-[color:var(--hairline)] pt-5"><button className={BUTTON} disabled={loading} onClick={more}>{loading ? "LOADING…" : "LOAD MORE AGENTS →"}</button></div> : null}

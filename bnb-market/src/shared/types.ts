@@ -96,7 +96,8 @@ export type MarketplaceStatus = {
   nextOffset: number | null;
   coverage: import("./marketplace/category-coverage.ts").CategoryCoverage[];
   gaps: Category[];
-  status: "available" | "empty";
+  status: "available" | "empty" | "unavailable";
+  catalogError?: string;
   warnings: string[];
 };
 export type LiveCategoryCoverage = import("./marketplace/category-coverage.ts").LiveCategoryCoverage;

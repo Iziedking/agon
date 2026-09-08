@@ -68,7 +68,7 @@ export function MarketShell({ chainId, onChainChange, children }: MarketShellPro
               {currentNetwork.explorer.replace("https://", "")}
             </a>
           </p>
-          <p>{currentNetwork.isMainnet ? "Default: mainnet" : "Rehearsal mode"}</p>
+          <p>{currentNetwork.isMainnet ? "Browse BNB Mainnet services" : "BNB Testnet services"}</p>
         </div>
       </header>
 

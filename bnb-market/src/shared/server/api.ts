@@ -99,20 +99,39 @@ export async function handleBnb(request: Request, chain: string, parts: string[]
       }
       if (path === "auth/me") return json({ session: await currentSession(request, chainId) });
       if (path === "marketplace/status") {
-        const page = await catalog(chainId, 0);
-        const coverage = categoryCoverage(page.items);
-        return json({
-          chainId,
-          catalogSource: page.source,
-          checkedAt: page.checkedAt,
-          indexedProfiles: page.total,
-          loadedProfiles: page.items.length,
-          nextOffset: page.nextOffset,
-          coverage,
-          gaps: categoryCoverageGaps(coverage),
-          status: page.items.length ? "available" : "empty",
-          warnings: page.warnings,
-        });
+        try {
+          const page = await catalog(chainId, 0);
+          const coverage = categoryCoverage(page.items);
+          return json({
+            chainId,
+            catalogSource: page.source,
+            checkedAt: page.checkedAt,
+            indexedProfiles: page.total,
+            loadedProfiles: page.items.length,
+            nextOffset: page.nextOffset,
+            coverage,
+            gaps: categoryCoverageGaps(coverage),
+            status: page.items.length ? "available" : "empty",
+            warnings: page.warnings,
+          });
+        } catch {
+          // Discovery is an enrichment layer. Keep the status route useful when
+          // the upstream indexer is slow so the UI can offer direct service access.
+          const coverage = categoryCoverage([]);
+          return json({
+            chainId,
+            catalogSource: "8004scan",
+            checkedAt: new Date().toISOString(),
+            indexedProfiles: 0,
+            loadedProfiles: 0,
+            nextOffset: null,
+            coverage,
+            gaps: categoryCoverageGaps(coverage),
+            status: "unavailable",
+            catalogError: "The service directory is temporarily unavailable.",
+            warnings: ["The upstream directory could not be reached. Direct registered services may still be available."],
+          });
+        }
       }
       if (path === "marketplace/live-status") return json(await marketplaceLiveStatus(chainId));
       if (parts[0] === "jobs" && parts.length === 2) return json(await readCommerceJob(chainId, parseAgentId(parts[1])));
