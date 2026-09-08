@@ -47,7 +47,7 @@ function CoverageLabel({ entry, live }: { entry: CategoryCoverage; live?: Market
   return <span className="mt-4 block"><span className={`font-mono text-[10px] uppercase tracking-widest ${availability.state === "responding" ? "text-accent" : "text-ink-3"}`}>{availability.label}</span><span className="mt-1 block font-mono text-[10px] leading-relaxed text-ink-3">{availability.detail}</span></span>;
 }
 
-function MarketplaceAgentRow({ chainId, agent }: { chainId: BnbChain; agent: AgentSummary }) {
+function MarketplaceAgentRow({ chainId, agent, selected, onToggleCompare }: { chainId: BnbChain; agent: AgentSummary; selected: boolean; onToggleCompare: () => void }) {
   const [proof, setProof] = useState<EndpointProof | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -65,7 +65,7 @@ function MarketplaceAgentRow({ chainId, agent }: { chainId: BnbChain; agent: Age
       <div><div className="flex flex-wrap gap-2">{agent.outcomeMatches.length ? agent.outcomeMatches.map((outcome, index) => <span key={`${outcome.category}:${index}`} className="border border-[color:var(--hairline-strong)] px-2 py-1 font-mono text-[9px] uppercase tracking-widest text-accent">{outcome.source === "provider" ? "CATEGORY" : "OUTCOME MATCH"} · {CATEGORIES.find((c) => c.id === outcome.category)?.label}</span>) : <span className="border border-[color:var(--hairline)] px-2 py-1 font-mono text-[9px] uppercase tracking-widest text-ink-3">UNCLASSIFIED SERVICE</span>}</div><h2 className="mt-3 break-words font-stencil text-[28px] uppercase leading-tight"><a href={bnbHref(chainId, `/market/${agent.id}`)}>{agent.name}</a></h2><p className="mt-2 line-clamp-2 font-mono text-[12px] leading-relaxed text-ink-2">{plainServiceDescription(agent.description)}</p></div>
       <div className="border-t border-[color:var(--hairline)] pt-4 md:border-l md:border-t-0 md:pl-5 md:pt-0"><p className="font-mono text-[10px] uppercase tracking-widest text-ink-3">PRICE</p><p className="mt-2 font-stencil text-xl uppercase">{isLiveService ? "0.1 U" : "SEE DETAILS"}</p><p className="mt-1 font-mono text-[10px] uppercase text-ink-3">{isLiveService ? "PER REPORT" : "BEFORE YOU USE"}</p></div>
       <div className="border-t border-[color:var(--hairline)] pt-4 md:border-l md:border-t-0 md:pl-5 md:pt-0"><p className="font-mono text-[10px] uppercase tracking-widest text-ink-3">LIVE CHECK</p><p className={`mt-2 font-mono text-[11px] uppercase tracking-widest ${proof?.status === "reachable" || isLiveService ? "text-accent" : "text-ink-2"}`}>{proof?.status === "reachable" ? "RESPONDED" : proof?.status === "unavailable" ? "UNAVAILABLE" : isLiveService ? "READY TO USE" : "NOT CHECKED"}</p><p className="mt-1 font-mono text-[10px] text-ink-3">{isLiveService ? "Try before paying" : "No payment sent"}</p></div>
-      <div className="flex flex-wrap gap-2"><button type="button" className={BUTTON} onClick={checkLive} disabled={busy}>{busy ? "CHECKING…" : "CHECK LIVE →"}</button><a className={`${BUTTON} ${isLiveService ? "bg-accent !text-accent-ink" : ""}`} href={bnbHref(chainId, `/market/${agent.id}`)}>{isLiveService ? "USE NOW →" : "VIEW AGENT →"}</a></div>
+      <div className="flex flex-wrap gap-2"><button type="button" className={BUTTON} onClick={checkLive} disabled={busy}>{busy ? "CHECKING…" : "CHECK LIVE →"}</button><button type="button" className={`${BUTTON} ${selected ? "border-accent bg-accent !text-accent-ink" : ""}`} aria-pressed={selected} onClick={onToggleCompare}>{selected ? "ADDED TO COMPARE" : "COMPARE"}</button><a className={`${BUTTON} ${isLiveService ? "bg-accent !text-accent-ink" : ""}`} href={bnbHref(chainId, `/market/${agent.id}`)}>{isLiveService ? "USE NOW →" : "VIEW AGENT →"}</a></div>
     </div>
     {error ? <p role="alert" className="mt-5 border-l-2 border-[color:var(--err)] pl-4 font-mono text-[12px] leading-relaxed text-ink-2">{error}</p> : null}
     {proof ? <div role="status" className="mt-5 border-t border-[color:var(--hairline)] pt-4"><p className="font-mono text-[10px] uppercase tracking-widest text-accent">{proof.status === "reachable" ? "SERVICE RESPONDED" : "SERVICE NOT AVAILABLE"}</p><p className="mt-2 font-mono text-[12px] leading-relaxed text-ink-2">{proof.message}</p><p className="mt-3 font-mono text-[10px] uppercase tracking-widest text-ink-3">NO PAYMENT SENT</p></div> : null}
@@ -86,6 +86,7 @@ export function BnbMarketContent({ chainId }: { chainId: BnbChain }) {
   const [liveBusy, setLiveBusy] = useState(false);
   const [liveError, setLiveError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0); const [checked, setChecked] = useState<string | null>(null);
+  const [compareIds, setCompareIds] = useState<string[]>([]);
   useEffect(() => {
     const controller = new AbortController(); setItems([]); setLoading(true); setError(null); setNext(null); setMarketStatus(null); setLiveStatus(null); setLiveError(null); setLiveBusy(false); setFallbackAgent(null); setCatalogUnavailable(false);
     readCatalog(chainId, 0, controller.signal).then((page) => { setItems(page.items); setNext(page.nextOffset); setChecked(page.checkedAt); })
@@ -129,6 +130,9 @@ export function BnbMarketContent({ chainId }: { chainId: BnbChain }) {
     : marketStatus
     ? marketStatus.gaps.length ? `${marketStatus.indexedProfiles} services indexed · ${marketStatus.gaps.length} goals need more services` : `${marketStatus.indexedProfiles} services indexed · all goals have matches`
     : loading ? "Checking available services" : `${searchable.length} services loaded`;
+  function toggleCompare(agentId: string) {
+    setCompareIds((current) => current.includes(agentId) ? current.filter((id) => id !== agentId) : current.length >= 3 ? current : [...current, agentId]);
+  }
   return <>
     <div className="border-y border-[color:var(--hairline-strong)] py-5">
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
@@ -138,6 +142,7 @@ export function BnbMarketContent({ chainId }: { chainId: BnbChain }) {
     <div className="mt-5" aria-labelledby="outcomes-heading"><div className="flex flex-wrap items-end justify-between gap-3"><div><p className="font-mono text-[10px] uppercase tracking-widest text-accent">START WITH YOUR GOAL</p><h2 id="outcomes-heading" className="mt-2 font-stencil text-2xl uppercase">What do you need help with?</h2></div><button type="button" className={`${BUTTON} ${!category ? "bg-ink !text-[color:var(--canvas)]" : ""}`} aria-pressed={!category} onClick={() => setCategory("")}>ALL SERVICES</button></div><div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{outcomeCounts.map((c) => <button key={c.id} aria-pressed={category === c.id} className={`${PANEL} text-left transition-colors hover:bg-canvas-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent ${category === c.id ? "border-accent" : ""}`} onClick={() => setCategory(category === c.id ? "" : c.id)}><span className="font-mono text-[10px] uppercase tracking-widest text-accent">{c.label}</span><span className="mt-3 block font-stencil text-xl uppercase leading-tight">{c.question}</span><span className="mt-2 block font-mono text-[11px] leading-relaxed text-ink-2">{c.description}</span><CoverageLabel entry={c} live={liveByCategory.get(c.id)} /></button>)}</div></div>
     </div>
     <div className="my-6 flex flex-wrap justify-between gap-3 font-mono text-[10px] uppercase tracking-widest text-ink-3"><span>{loading && !items.length ? "LOADING SERVICES…" : `${visible.length} ${visible.length === 1 ? "SERVICE" : "SERVICES"} FOUND`}</span><span>{checked ? `UPDATED ${new Date(checked).toLocaleTimeString()}` : "UPDATING"}</span></div>
+    {compareIds.length ? <div className={`${PANEL} mb-6 flex flex-wrap items-center justify-between gap-4`} role="status"><div><p className="font-mono text-[10px] uppercase tracking-widest text-accent">COMPARE SERVICES</p><p className="mt-2 font-mono text-[12px] text-ink-2">{compareIds.length} of 3 selected. Compare only services loaded from this BNB network.</p></div><div className="flex flex-wrap gap-2"><button type="button" className={BUTTON} onClick={() => setCompareIds([])}>CLEAR</button>{compareIds.length >= 2 ? <a className={`${BUTTON} bg-accent !text-accent-ink`} href={bnbHref(chainId, `/market/compare?ids=${encodeURIComponent(compareIds.join(","))}`)}>COMPARE NOW →</a> : <span className="self-center font-mono text-[10px] uppercase tracking-widest text-ink-3">SELECT ONE MORE</span>}</div></div> : null}
     <p className="mb-2 max-w-[85ch] font-mono text-[12px] leading-relaxed text-ink-2">Choose a goal, open a service, try it live, then use it when you are ready. Prices and availability are shown before any wallet action.</p>
     <p role="status" className="mb-2 font-mono text-[10px] uppercase tracking-widest text-ink-3">{catalogSummary}</p>
     {hasDescriptionOnlyMatches ? <p className="mb-6 font-mono text-[11px] leading-relaxed text-ink-3">Some matches are based on the service description. Open the service and try its live check before relying on it.</p> : <div className="mb-6" />}
@@ -149,9 +154,45 @@ export function BnbMarketContent({ chainId }: { chainId: BnbChain }) {
     </section>
     {catalogUnavailable ? <CatalogUnavailablePanel chainId={chainId} retry={() => setRetry((n) => n + 1)} /> : error ? <ErrorPanel error={error} retry={() => setRetry((n) => n + 1)} /> : null}
     {!loading && !error && !visible.length ? <div className={PANEL}><h2 className="font-stencil text-3xl uppercase">NO MATCHING SERVICES</h2><p className="mt-3 font-mono text-sm text-ink-2">No service matches this search yet. Clear the filters or try another agent ID.</p><button className={`${BUTTON} mt-4`} onClick={() => { setQuery(""); setCategory(""); }}>CLEAR FILTERS</button></div> : null}
-    <div className="space-y-3">{visible.map((agent) => <MarketplaceAgentRow key={agent.id} chainId={chainId} agent={agent} />)}</div>
+    <div className="space-y-3">{visible.map((agent) => <MarketplaceAgentRow key={agent.id} chainId={chainId} agent={agent} selected={compareIds.includes(agent.id)} onToggleCompare={() => toggleCompare(agent.id)} />)}</div>
     {next !== null ? <div className="mt-8 border-t border-[color:var(--hairline)] pt-5"><button className={BUTTON} disabled={loading} onClick={more}>{loading ? "LOADING…" : "LOAD MORE AGENTS →"}</button></div> : null}
   </>;
+}
+
+function compareValue(agent: AgentDetail, field: "goal" | "services" | "network" | "owner" | "registration") {
+  if (field === "goal") return plainServiceDescription(agent.description);
+  if (field === "services") return agent.services.length ? agent.services.map((service) => service.name).join(", ") : "No public services listed";
+  if (field === "network") return agent.chainId === 97 ? "BNB Testnet" : "BNB Mainnet";
+  if (field === "owner") return agent.owner;
+  return agent.metadataStatus === "available" && agent.registrationMatches !== false ? "Readable" : "Needs review";
+}
+
+export function BnbCompareContent({ chainId }: { chainId: BnbChain }) {
+  const searchParams = useSearchParams();
+  const ids = [...new Set((searchParams.get("ids") ?? "").split(",").map((value) => value.trim()).filter((value) => /^[0-9]+$/.test(value)))].slice(0, 3);
+  const [agents, setAgents] = useState<AgentDetail[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true); setError(null); setAgents([]);
+    Promise.all(ids.map((id) => readAgent(chainId, id, controller.signal)))
+      .then((results) => setAgents(results))
+      .catch((failure: unknown) => { if (!controller.signal.aborted) setError(message(failure)); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [chainId, searchParams]);
+  const rows: Array<{ label: string; field: "goal" | "services" | "network" | "owner" | "registration" }> = [
+    { label: "What it does", field: "goal" },
+    { label: "Services", field: "services" },
+    { label: "Network", field: "network" },
+    { label: "Owner", field: "owner" },
+    { label: "Registration", field: "registration" },
+  ];
+  return <div className="max-w-[1200px] space-y-6">
+    <section className={PANEL} aria-labelledby="compare-heading"><p className="font-mono text-[10px] uppercase tracking-widest text-accent">BNB {chainId === 97 ? "TESTNET" : "MAINNET"}</p><h2 id="compare-heading" className="mt-3 font-stencil text-4xl uppercase">Compare services</h2><p className="mt-4 max-w-[78ch] font-mono text-sm leading-relaxed text-ink-2">Review the live directory records side by side before opening a service. Comparison is informational; any use still starts on the service page.</p></section>
+    {error ? <ErrorPanel error={error} /> : loading ? <p role="status" className="font-mono text-sm text-ink-2">LOADING SERVICES…</p> : agents.length < 2 ? <div className={PANEL}><p className="font-mono text-sm text-ink-2">Select at least two services from the market to compare them.</p><a className={`${BUTTON} mt-5 bg-accent !text-accent-ink`} href={bnbHref(chainId, "/market")}>BACK TO MARKET →</a></div> : <div className="overflow-x-auto"><table className="w-full min-w-[760px] border-collapse border border-[color:var(--hairline-strong)] text-left"><thead><tr className="bg-canvas-2"><th className="w-36 border-b border-r border-[color:var(--hairline)] p-4 font-mono text-[10px] uppercase tracking-widest text-ink-3">Review</th>{agents.map((agent) => <th key={agent.id} className="border-b border-[color:var(--hairline)] p-4 align-top"><p className="font-stencil text-xl uppercase">{agent.name}</p><p className="mt-2 font-mono text-[10px] uppercase tracking-widest text-ink-3">AGENT {agent.id}</p><a className={`${BUTTON} mt-4`} href={bnbHref(chainId, `/market/${agent.id}`)}>OPEN SERVICE →</a></th>)}</tr></thead><tbody>{rows.map((row) => <tr key={row.field}><th scope="row" className="border-b border-r border-[color:var(--hairline)] bg-canvas-2 p-4 align-top font-mono text-[10px] uppercase tracking-widest text-ink-3">{row.label}</th>{agents.map((agent) => <td key={`${agent.id}:${row.field}`} className="border-b border-[color:var(--hairline)] p-4 align-top font-mono text-[12px] leading-relaxed text-ink-2">{compareValue(agent, row.field)}</td>)}</tr>)}</tbody></table></div>}
+  </div>;
 }
 
 export function BnbAgentContent({ chainId, id, signedIn = false, onNeedSignIn = () => undefined, walletRequest = null }: { chainId: BnbChain; id: string; signedIn?: boolean; onNeedSignIn?: () => void; walletRequest?: WalletRequest | null }) {
