@@ -24,6 +24,7 @@ const reasons: Record<string, string> = {
   policy_quorum_unavailable: "The service review process is not ready yet.",
   mainnet_payments_disabled: "Paid use is available on Testnet first.",
   signed_quote_and_execution_not_enabled: "This service can be inspected, but its use action is not connected yet.",
+  provider_hiring_unavailable: "The provider is online, but is not accepting paid requests right now.",
 };
 export function CommerceReadinessPanel({ chainId, agentId }: { chainId: BnbChain; agentId: string }) {
   const [result, setResult] = useState<CommerceReadiness | null>(null);
@@ -51,8 +52,8 @@ export function CommerceReadinessPanel({ chainId, agentId }: { chainId: BnbChain
     <button type="button" disabled={busy} onClick={check} className="mt-5 inline-flex min-h-11 items-center border border-[color:var(--hairline-strong)] px-4 py-3 font-mono text-[11px] uppercase tracking-widest text-ink hover:bg-canvas-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-50">{busy ? "CHECKING…" : "CHECK AVAILABILITY →"}</button>
     {error ? <p role="alert" className="mt-4 font-mono text-sm text-accent">{error}</p> : null}
     {result ? <div role="status" className="mt-5 space-y-4 font-mono text-[12px] leading-relaxed text-ink-2">
-      <p className="uppercase tracking-widest text-accent">{result.blockers.length === 1 && result.blockers[0] === "signed_quote_and_execution_not_enabled" ? "AVAILABLE TO INSPECT / USE ACTION COMING SOON" : "NOT AVAILABLE YET"}</p>
-      <ul className="list-disc space-y-2 pl-5">{result.blockers.map((reason) => <li key={reason}>{reasons[reason] ?? "A required payment check did not pass."}</li>)}</ul>
+      <p className="uppercase tracking-widest text-accent">{result.paymentsEnabled ? "PROVIDER IS ACCEPTING REQUESTS" : "NOT AVAILABLE YET"}</p>
+      {result.paymentsEnabled ? <p>The provider reports that its price, payment setup, and service are available on this network.</p> : <ul className="list-disc space-y-2 pl-5">{result.blockers.map((reason) => <li key={reason}>{reasons[reason] ?? "A required payment check did not pass."}</li>)}</ul>}
       <details className="border-t border-[color:var(--hairline)] pt-4"><summary className="cursor-pointer uppercase tracking-widest">TECHNICAL DETAILS</summary>
         <dl className="mt-4 space-y-2 break-all"><dt>SUPPORTED POLICY</dt><dd>{result.contracts.policy}</dd><dt>PROVIDER POLICY</dt><dd>{result.providerPolicy ?? "Not available"}</dd><dt>PROVIDER POLICY APPROVED BY ROUTER</dt><dd>{result.providerPolicyWhitelisted === null ? "Not checked" : result.providerPolicyWhitelisted ? "Yes" : "No"}</dd><dt>ESCROW TOKEN</dt><dd>{result.token.symbol} · {result.token.address} · {result.token.decimals} decimals</dd><dt>SUPPORTED POLICY DISPUTE WINDOW</dt><dd>{result.disputeWindowSeconds} seconds</dd><dt>CHECKED AT BLOCK</dt><dd>{result.blockNumber} · {new Date(result.checkedAt).toLocaleString()}</dd></dl>
         <p className="mt-4">A dispute is not automatically a refund. Settlement depends on the policy's voter rules. Endpoint availability does not prove delivery.</p>

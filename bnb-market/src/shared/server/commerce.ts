@@ -3,6 +3,7 @@ import { agentDetail } from "./catalog.ts";
 import { checkedClient, networkConfig } from "./network.ts";
 import { HttpError, object, publicJson } from "./http.ts";
 import { contractBlockers, exactTokenAmount, jobState, providerBlockers, receiptJobId, sameAddress } from "./commerce-core.ts";
+import { normalizeMarketProtocol } from "../marketplace/capabilities.ts";
 import { parseAgentId, type BnbChain, type CommerceReadiness } from "../types.ts";
 
 // @bnbagent/sdk 0.5.5 dist/chunk-5XYQEBM2.js ABIs and
@@ -78,12 +79,13 @@ export async function commerceSnapshot(chainId: BnbChain) {
 export async function commerceReadiness(chainId: BnbChain, agentId: string): Promise<CommerceReadiness> {
   const agent = await agentDetail(chainId, parseAgentId(agentId), true);
   const snapshot = await commerceSnapshot(chainId);
-  const endpoint = agent.services.find((s) => s.name.toLowerCase() === "erc-8183" && new URL(s.endpoint).pathname.endsWith("/status"));
+  const endpoint = agent.services.find((service) => normalizeMarketProtocol(service.name) === "ERC8183" && new URL(service.endpoint).pathname.endsWith("/status"));
   const reasons = [...snapshot.blockers];
   if (agent.registrationMatches !== true || !agent.versionHash || agent.active === false) reasons.push("registration_not_qualified");
   let providerPolicy: string | null = null;
   let providerPolicyWhitelisted: boolean | null = null;
   let advertisedPrice: string | null = null;
+  let providerAdvertisesHiring = false;
   if (!endpoint) reasons.push("commerce_endpoint_missing");
   else {
     try {
@@ -97,16 +99,17 @@ export async function commerceReadiness(chainId: BnbChain, agentId: string): Pro
         policy: snapshot.contracts.policy, token: snapshot.token.address, wallet: agent.wallet }, providerPolicyWhitelisted === true));
       advertisedPrice = exactTokenAmount(card.service_price);
       if (advertisedPrice === null) reasons.push("exact_price_required");
+      providerAdvertisesHiring = card.paid_hiring === true;
+      if (!providerAdvertisesHiring) reasons.push("provider_hiring_unavailable");
     } catch { reasons.push("provider_status_unavailable"); }
   }
   if (chainId === 56) reasons.push("mainnet_payments_disabled");
-  // A healthy status document is never a signed quote, authorization or task proof.
-  reasons.push("signed_quote_and_execution_not_enabled");
+  const enabled = reasons.length === 0 && providerAdvertisesHiring;
   return { chainId, agentId, versionHash: agent.versionHash, checkedAt: new Date().toISOString(), blockNumber: snapshot.blockNumber.toString(),
-    status: "blocked", blockers: [...new Set(reasons)], contracts: { commerce: snapshot.contracts.commerceProxy, router: snapshot.contracts.routerProxy, policy: snapshot.contracts.policy },
+    status: enabled ? "available" : "blocked", blockers: [...new Set(reasons)], contracts: { commerce: snapshot.contracts.commerceProxy, router: snapshot.contracts.routerProxy, policy: snapshot.contracts.policy },
     providerPolicy, providerPolicyWhitelisted, token: snapshot.token, disputeWindowSeconds: snapshot.disputeWindow,
     advertisedPriceRaw: advertisedPrice, advertisedPriceDisplay: advertisedPrice === null ? null : formatUnits(BigInt(advertisedPrice), snapshot.token.decimals),
-    paymentsEnabled: false };
+    paymentsEnabled: enabled };
 }
 
 export async function readCommerceJob(chainId: BnbChain, jobId: string, blockNumber?: bigint) {

@@ -238,6 +238,7 @@ export function LpHiringPanel({ chainId, signedIn, onNeedSignIn, walletRequest }
   }
 
   const currentTransaction = intent?.transaction;
+  const paymentTransaction = intent?.transactions.find((transaction) => transaction.step === "fund" && transaction.status === "confirmed") ?? null;
   const quoteExpires = intent ? new Date(intent.quoteExpiresAt).toLocaleString() : null;
   return <section id="hire-agent" className={`${PANEL} scroll-mt-24`} aria-labelledby="hire-agent-heading">
     <div className="flex flex-wrap items-start justify-between gap-4">
@@ -293,18 +294,18 @@ export function LpHiringPanel({ chainId, signedIn, onNeedSignIn, walletRequest }
         {isPending(intent) ? <p className="mt-3 text-ink-2">You can leave this page and return to check again.</p> : null}
       </div>
       {intent.state === "funded" ? <div className="mt-6 border-t border-[color:var(--hairline)] pt-6">
-        <p className="font-mono text-[10px] uppercase tracking-widest text-accent">PROOF OF THIS REQUEST</p>
-        <p className="mt-3 max-w-[78ch] font-mono text-[12px] leading-relaxed text-ink-2">These links let you verify the protected job, the payment receipt, and the provider delivery yourself.</p>
+        <p className="font-mono text-[10px] uppercase tracking-widest text-accent">REQUEST RECORD</p>
+        <p className="mt-3 max-w-[78ch] font-mono text-[12px] leading-relaxed text-ink-2">Open the protected job, confirmed payment, report, and provider delivery directly.</p>
         <div className="mt-5 grid gap-3 sm:grid-cols-3">
           {intent.jobId ? <a className={BUTTON} href={`/api/bnb/${chainId}/jobs/${intent.jobId}`} target="_blank" rel="noopener noreferrer">VIEW JOB →</a> : null}
-          {intent.transactionHash ? <a className={BUTTON} href={`${explorerBase(chainId)}/tx/${intent.transactionHash}`} target="_blank" rel="noopener noreferrer">PAYMENT RECEIPT →</a> : null}
+          {paymentTransaction ? <a className={BUTTON} href={`${explorerBase(chainId)}/tx/${paymentTransaction.hash}`} target="_blank" rel="noopener noreferrer">PAYMENT RECEIPT →</a> : null}
           {intent.delivery?.txHash ? <a className={BUTTON} href={`${explorerBase(chainId)}/tx/${intent.delivery.txHash}`} target="_blank" rel="noopener noreferrer">DELIVERY RECEIPT →</a> : null}
         </div>
-        {intent.delivery?.status === "submitted" && intent.delivery.url ? <p className="mt-4 font-mono text-[10px] uppercase tracking-widest text-ink-3">The report is available above. The delivery receipt appears here after the provider submits it.</p> : null}
+        {intent.delivery?.status === "submitted" && intent.delivery.url ? <p className="mt-4 break-all font-mono text-[10px] uppercase tracking-widest text-ink-3">REPORT HASH · {intent.delivery.manifestHash}</p> : null}
       </div> : null}
       {currentTransaction && !isPending(intent) ? <div className="mt-6 border border-[color:var(--hairline-strong)] p-4"><p className="font-mono text-[10px] uppercase tracking-widest text-accent">NEXT STEP</p><h4 className="mt-3 font-stencil text-xl uppercase">{STEP_COPY[currentTransaction.step].title}</h4><p className="mt-3 font-mono text-[12px] leading-relaxed text-ink-2">{STEP_COPY[currentTransaction.step].warning}</p><button type="button" className={`${BUTTON} mt-5 bg-accent !text-accent-ink`} onClick={sendNextTransaction} disabled={busy}>{busy ? "CHECK YOUR WALLET…" : STEP_COPY[currentTransaction.step].button}</button></div> : null}
       {intent.quoteExpiresAt ? <p className="mt-4 font-mono text-[10px] uppercase tracking-widest text-ink-3">REQUEST EXPIRES · {quoteExpires}</p> : null}
-      {intent.transactionHash ? <details className="mt-4 font-mono text-[11px] text-ink-3"><summary className="min-h-11 cursor-pointer py-3 uppercase tracking-widest">TRANSACTION DETAILS</summary><p className="break-all">{shortHash(intent.transactionHash)}</p></details> : null}
+      {intent.transactions.length ? <details className="mt-4 font-mono text-[11px] text-ink-3"><summary className="min-h-11 cursor-pointer py-3 uppercase tracking-widest">TRANSACTION DETAILS</summary><ul className="space-y-2">{intent.transactions.map((transaction) => <li className="flex flex-wrap justify-between gap-2 border-t border-[color:var(--hairline)] py-2" key={transaction.step}><span>{transaction.step.replaceAll("_", " ").toUpperCase()} · {transaction.status.toUpperCase()}</span><a className="break-all underline underline-offset-4" href={`${explorerBase(chainId)}/tx/${transaction.hash}`} target="_blank" rel="noopener noreferrer">{shortHash(transaction.hash)} ↗</a></li>)}</ul></details> : null}
     </div> : null}
     {error ? <p role="alert" className="mt-5 border-l-2 border-[color:var(--err)] pl-4 font-mono text-[12px] leading-relaxed text-ink-2">{error}</p> : null}
     <details className="mt-6 border-t border-[color:var(--hairline)] pt-4"><summary className="min-h-11 cursor-pointer py-3 font-mono text-[11px] uppercase tracking-widest">HOW IT WORKS</summary><ol className="mt-3 list-decimal space-y-2 pl-5 font-mono text-[12px] leading-relaxed text-ink-2"><li>Tell the agent which position to check.</li><li>Review the report price and request details.</li><li>Approve the exact amount in your wallet.</li><li>Receive a report for this request; no liquidity transaction is submitted.</li></ol></details>

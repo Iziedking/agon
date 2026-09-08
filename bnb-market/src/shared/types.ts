@@ -128,7 +128,7 @@ export type EndpointProof = {
 };
 export type CommerceReadiness = {
   chainId: BnbChain; agentId: string; versionHash: string | null; checkedAt: string; blockNumber: string;
-  status: "blocked"; paymentsEnabled: false; blockers: string[];
+  status: "available" | "blocked"; paymentsEnabled: boolean; blockers: string[];
   contracts: { commerce: string; router: string; policy: string };
   providerPolicy: string | null; providerPolicyWhitelisted: boolean | null;
   token: { address: string; decimals: number; symbol: string };
@@ -185,10 +185,19 @@ export type CommerceIntent = {
   transaction: PreparedCommerceTransaction | null;
   transactionHash: `0x${string}` | null;
   confirmations: number;
+  transactions: Array<{
+    step: CommerceStep;
+    hash: `0x${string}`;
+    status: "submitted" | "confirming" | "confirmed" | "reverted";
+    blockNumber: string | null;
+    confirmations: number;
+    checkedAt: string;
+  }>;
   delivery: {
     status: "waiting" | "working" | "submitted" | "failed" | "needs_attention";
     url: string | null;
     txHash: `0x${string}` | null;
+    manifestHash: `0x${string}` | null;
     error: string | null;
     updatedAt: string;
   } | null;

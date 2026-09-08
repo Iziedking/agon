@@ -11,7 +11,7 @@ import { LP_AGENT_VERSION, parseLpInput, type LpInput } from "../providers/lp-co
 import { normalizeMarketProtocol } from "../marketplace/capabilities.ts";
 import { lpDeliveryConfig, lpWorkerHealth } from "./lp-delivery.ts";
 import { jobExpiry, lpCommerceConfig, lpNegotiationRequest, parseCommerceIntentId,
-  preparedTransaction, signedQuoteFields, LP_QUOTE_TTL_SECONDS } from "./commerce-intent-core.ts";
+  preparedTransaction, quoteAllowsNextAction, signedQuoteFields, LP_QUOTE_TTL_SECONDS } from "./commerce-intent-core.ts";
 import type { CommerceIntent, CommerceIntentState, CommerceStep, LpHiringReadiness, PreparedCommerceTransaction } from "../types.ts";
 
 type IntentRow = {
@@ -24,7 +24,7 @@ type IntentRow = {
 };
 
 type TransactionRow = { tx_hash: Hex; step: CommerceStep; status: "submitted" | "confirming" | "confirmed" | "reverted";
-  block_number: string | null; confirmations: number; created_at: Date };
+  block_number: string | null; confirmations: number; created_at: Date; checked_at: Date };
 
 const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
 const quoteHash = (value: string): Hex => `0x${sha256(value)}`;
@@ -86,15 +86,23 @@ export async function lpHiringReadiness(chainId: number): Promise<LpHiringReadin
   return (await providerReadiness(chainId)).readiness;
 }
 
-async function transactionFor(row: IntentRow): Promise<{ transaction: PreparedCommerceTransaction | null; state: CommerceIntentState; message: string }> {
+async function transactionFor(row: IntentRow, reconciliationStep?: CommerceStep): Promise<{ transaction: PreparedCommerceTransaction | null; state: CommerceIntentState; message: string }> {
   if (!row.quote_expires_at || !row.quote_json || !row.quote_hash || !row.description || !row.job_expires_at) return { transaction: null, state: "quoting", message: "The provider quote is being prepared." };
   if (row.state === "funded") return { transaction: null, state: "funded", message: "The quoted amount is held by the ERC-8183 commerce contract." };
-  if (row.quote_expires_at.getTime() <= Date.now()) return { transaction: null, state: "expired", message: "This quote expired before funding. Start a new hire so price and authority can be checked again." };
+  if (row.state === "expired") return { transaction: null, state: "expired", message: row.last_error === "job_expired"
+    ? "This open job expired before payment. Start a new request; no payment was taken by this job."
+    : "This request expired before payment. Start a new request to receive current terms." };
+  if (row.state === "needs_attention") return { transaction: null, state: "needs_attention",
+    message: "This request stopped because its verified terms no longer match the live job. Start a new request; do not pay this one." };
+  if (!quoteAllowsNextAction({ quoteExpiresAtMs: row.quote_expires_at.getTime(), jobId: row.job_id, reconciliationStep })) {
+    return { transaction: null, state: "expired", message: "This quote expired before a job was created. Start a new request to receive current terms." };
+  }
   const snapshot = await commerceSnapshot(97);
   try {
     if (quoteHash(row.quote_json).toLowerCase() !== row.quote_hash.toLowerCase()) throw new Error("quote_record_hash_mismatch");
     const envelope = JSON.parse(row.quote_json) as Record<string, unknown>;
-    signedQuoteFields(envelope, { priceRaw: row.amount_raw, token: address(row.token_address), commerce: snapshot.contracts.commerceProxy });
+    signedQuoteFields(envelope, { priceRaw: row.amount_raw, token: address(row.token_address), commerce: snapshot.contracts.commerceProxy },
+      { allowExpired: row.job_id !== null || reconciliationStep === "create" });
     if (buildJobDescription(envelope) !== row.description) throw new Error("job_description_mismatch");
     const registered = await agentDetail(97, row.agent_id, true);
     if (registered.versionHash !== row.registration_hash || !sameAddress(registered.wallet, row.provider_address)) throw new Error("provider_version_changed");
@@ -118,31 +126,36 @@ async function transactionFor(row: IntentRow): Promise<{ transaction: PreparedCo
     return { transaction: null, state: "needs_attention", message: "The onchain job no longer matches the signed AGON intent. Do not fund it." };
   }
   if (job.status === 1 && job.budget === BigInt(row.amount_raw)) return { transaction: null, state: "funded", message: "The quoted amount is held by the ERC-8183 commerce contract." };
+  if (snapshot.timestamp >= job.expiredAt) return { transaction: null, state: "expired", message: "This open job expired before payment. Start a new request; no payment was taken by this job." };
   if (job.status !== 0) return { transaction: null, state: "needs_attention", message: "This job is no longer open and its current state cannot be funded from this intent." };
   if (!sameAddress(policy, snapshot.contracts.policy)) return { transaction: preparedTransaction("register", { ...base, jobId }), state: "register_prepared", message: "Bind the supported settlement policy before granting token access." };
   if (allowance < BigInt(row.amount_raw)) return { transaction: preparedTransaction("approve", { ...base, jobId }), state: "approve_prepared", message: "Approve only the exact quoted amount for this commerce contract." };
   return { transaction: preparedTransaction("fund", { ...base, jobId }), state: "fund_prepared", message: "The next approval moves the quoted token amount into the protected job." };
 }
 
-async function latestTransaction(intentId: string): Promise<TransactionRow | null> {
-  const result = await (await database()).query<TransactionRow>("SELECT tx_hash,step,status,block_number,confirmations,created_at FROM bnb_commerce_transactions WHERE intent_id=$1 ORDER BY created_at DESC LIMIT 1", [intentId]);
-  return result.rows[0] ?? null;
+async function transactionHistory(intentId: string): Promise<TransactionRow[]> {
+  const result = await (await database()).query<TransactionRow>(`SELECT tx_hash,step,status,block_number,confirmations,created_at,checked_at
+    FROM bnb_commerce_transactions WHERE intent_id=$1
+    ORDER BY CASE step WHEN 'create' THEN 1 WHEN 'register' THEN 2 WHEN 'approve' THEN 3 ELSE 4 END`, [intentId]);
+  return result.rows;
 }
 
-type DeliveryView = { status: "waiting" | "working" | "submitted" | "failed" | "needs_attention"; url: string | null; txHash: Hex | null; error: string | null; updatedAt: string };
+type DeliveryView = { status: "waiting" | "working" | "submitted" | "failed" | "needs_attention"; url: string | null; txHash: Hex | null;
+  manifestHash: Hex | null; error: string | null; updatedAt: string };
 
 async function latestDelivery(intentId: string, funded: boolean): Promise<DeliveryView | null> {
   if (!funded) return null;
-  const result = await (await database()).query<{ status: DeliveryView["status"]; deliverable_url: string | null; tx_hash: Hex | null; error: string | null; updated_at: Date }>(
-    "SELECT status,deliverable_url,tx_hash,error,updated_at FROM bnb_commerce_deliveries WHERE intent_id=$1", [intentId]);
+  const result = await (await database()).query<{ status: DeliveryView["status"]; deliverable_url: string | null; tx_hash: Hex | null; manifest_hash: Hex | null; error: string | null; updated_at: Date }>(
+    "SELECT status,deliverable_url,tx_hash,manifest_hash,error,updated_at FROM bnb_commerce_deliveries WHERE intent_id=$1", [intentId]);
   const row = result.rows[0];
-  return row ? { status: row.status, url: row.deliverable_url, txHash: row.tx_hash, error: row.error, updatedAt: row.updated_at.toISOString() }
-    : { status: "waiting", url: null, txHash: null, error: null, updatedAt: new Date(0).toISOString() };
+  return row ? { status: row.status, url: row.deliverable_url, txHash: row.tx_hash, manifestHash: row.manifest_hash, error: row.error, updatedAt: row.updated_at.toISOString() }
+    : { status: "waiting", url: null, txHash: null, manifestHash: null, error: null, updatedAt: new Date(0).toISOString() };
 }
 
 async function view(row: IntentRow): Promise<CommerceIntent> {
   const next = await transactionFor(row);
-  const tx = await latestTransaction(row.id);
+  const transactions = await transactionHistory(row.id);
+  const tx = transactions.at(-1) ?? null;
   const delivery = await latestDelivery(row.id, row.state === "funded");
   const effectiveState = tx?.status === "confirming" || tx?.status === "submitted" ? `${tx.step}_confirming` as CommerceIntentState : next.state;
   const token = address(row.token_address);
@@ -155,7 +168,9 @@ async function view(row: IntentRow): Promise<CommerceIntent> {
     quoteExpiresAt: row.quote_expires_at?.toISOString() ?? new Date(0).toISOString(),
     jobExpiresAt: row.job_expires_at ? new Date(Number(BigInt(row.job_expires_at)) * 1000).toISOString() : new Date(0).toISOString(),
     jobId: row.job_id, transaction: tx?.status === "confirming" || tx?.status === "submitted" ? null : next.transaction,
-    transactionHash: tx?.tx_hash ?? null, confirmations: tx?.confirmations ?? 0, delivery,
+    transactionHash: tx?.tx_hash ?? null, confirmations: tx?.confirmations ?? 0,
+    transactions: transactions.map((transaction) => ({ step: transaction.step, hash: transaction.tx_hash, status: transaction.status,
+      blockNumber: transaction.block_number, confirmations: transaction.confirmations, checkedAt: transaction.checked_at.toISOString() })), delivery,
     message: tx?.status === "confirming" || tx?.status === "submitted" ? "The wallet transaction is submitted. AGON is waiting for two confirmations." : next.message,
     updatedAt: row.updated_at.toISOString() };
 }
@@ -166,13 +181,35 @@ async function readIntentRow(id: string, buyer: string): Promise<IntentRow> {
   return result.rows[0];
 }
 
+export async function recoverExpiredCommerceIntents(buyer?: string): Promise<void> {
+  const values: string[] = [];
+  const buyerFilter = buyer ? " AND buyer_address=$1" : "";
+  if (buyer) values.push(buyer.toLowerCase());
+  await (await database()).query(`UPDATE bnb_commerce_intents SET state='expired',last_error='request_expired',updated_at=now()
+    WHERE chain_id=97${buyerFilter} AND state IN ('quoting','quote_verified') AND job_id IS NULL
+      AND ((quote_expires_at IS NOT NULL AND quote_expires_at<=now()) OR (quote_expires_at IS NULL AND updated_at<now()-interval '10 minutes'))`, values);
+  await (await database()).query(`UPDATE bnb_commerce_intents SET state='expired',last_error='job_expired',updated_at=now()
+    WHERE chain_id=97${buyerFilter} AND state IN ('open','registered','approved') AND job_id IS NOT NULL
+      AND job_expires_at IS NOT NULL AND job_expires_at<=extract(epoch FROM now())`, values);
+}
+
+async function pendingTransaction(intentId: string): Promise<TransactionRow | null> {
+  const result = await (await database()).query<TransactionRow>(`SELECT tx_hash,step,status,block_number,confirmations,created_at,checked_at
+    FROM bnb_commerce_transactions WHERE intent_id=$1 AND status IN ('submitted','confirming') ORDER BY created_at DESC LIMIT 1`, [intentId]);
+  return result.rows[0] ?? null;
+}
+
 export async function readLpHireIntent(chainId: number, buyer: string, id: string): Promise<CommerceIntent> {
   assertBnbTestnet(chainId);
-  return view(await readIntentRow(id, buyer));
+  await recoverExpiredCommerceIntents(buyer);
+  const row = await readIntentRow(id, buyer);
+  const pending = await pendingTransaction(row.id);
+  return pending ? reconcileLpHireTransaction(chainId, buyer, row.id, pending.step, pending.tx_hash) : view(row);
 }
 
 export async function listLpHireIntents(chainId: number, buyer: string): Promise<CommerceIntent[]> {
   assertBnbTestnet(chainId);
+  await recoverExpiredCommerceIntents(buyer);
   const rows = await (await database()).query<IntentRow>(
     "SELECT * FROM bnb_commerce_intents WHERE chain_id=97 AND buyer_address=$1 ORDER BY updated_at DESC LIMIT 20",
     [buyer.toLowerCase()],
@@ -193,6 +230,7 @@ export async function prepareLpHireIntent(chainId: number, buyer: string, rawId:
   const requestJson = JSON.stringify(requestData);
   const requestHash = sha256(requestJson);
   const db = await database();
+  await recoverExpiredCommerceIntents(buyer);
   const connection = await db.connect();
   try {
     await connection.query("BEGIN");
@@ -281,11 +319,20 @@ export async function reconcileLpHireTransaction(chainId: number, buyer: string,
   if (typeof rawHash !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(rawHash)) throw new HttpError(400, "Enter a valid BNB Testnet transaction hash.");
   const hash = rawHash.toLowerCase() as Hex;
   const row = await readIntentRow(id, buyer);
-  const expected = await transactionFor(row);
+  const expected = await transactionFor(row, step as CommerceStep);
   if (!expected.transaction || expected.transaction.step !== step) throw new HttpError(409, "This transaction is not the next action for the current hiring intent.");
   const db = await database();
-  await db.query(`INSERT INTO bnb_commerce_transactions(tx_hash,intent_id,step,status)
-    VALUES($1,$2,$3,'submitted') ON CONFLICT DO NOTHING`, [hash, row.id, step]);
+  try {
+    await db.query(`INSERT INTO bnb_commerce_transactions(tx_hash,intent_id,step,status)
+      VALUES($1,$2,$3,'submitted') ON CONFLICT(intent_id,step) DO UPDATE
+      SET tx_hash=EXCLUDED.tx_hash,status='submitted',block_number=NULL,block_hash=NULL,confirmations=0,checked_at=now()
+      WHERE bnb_commerce_transactions.status='reverted'`, [hash, row.id, step]);
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "23505") {
+      throw new HttpError(409, "This transaction hash is already assigned to another wallet action.");
+    }
+    throw error;
+  }
   const claims = await db.query<{ tx_hash: Hex; intent_id: string; step: CommerceStep }>(
     "SELECT tx_hash,intent_id,step FROM bnb_commerce_transactions WHERE tx_hash=$1 OR (intent_id=$2 AND step=$3)", [hash, row.id, step]);
   const claimed = claims.rows.find((claim) => claim.tx_hash.toLowerCase() === hash && claim.intent_id === row.id && claim.step === step);
@@ -316,34 +363,48 @@ export async function reconcileLpHireTransaction(chainId: number, buyer: string,
     await db.query("UPDATE bnb_commerce_transactions SET status='confirming',block_number=$2,block_hash=$3,confirmations=$4,checked_at=now() WHERE tx_hash=$1", [hash, receipt.blockNumber.toString(), receipt.blockHash, confirmations]);
     return view(await readIntentRow(id, buyer));
   }
+  const stopConfirmedIntent = async (state: "expired" | "needs_attention", error: string): Promise<CommerceIntent> => {
+    await db.query("UPDATE bnb_commerce_transactions SET status='confirmed',block_number=$2,block_hash=$3,confirmations=$4,checked_at=now() WHERE tx_hash=$1",
+      [hash, receipt.blockNumber.toString(), receipt.blockHash, confirmations]);
+    await db.query("UPDATE bnb_commerce_intents SET state=$2,last_error=$3,updated_at=now() WHERE id=$1", [row.id, state, error]);
+    return view(await readIntentRow(id, buyer));
+  };
+  if (step === "create") {
+    const included = await snapshot.client.getBlock({ blockNumber: receipt.blockNumber });
+    if (!row.quote_expires_at || included.timestamp >= BigInt(Math.floor(row.quote_expires_at.getTime() / 1000))) {
+      return stopConfirmedIntent("expired", "quote_expired_before_job_creation");
+    }
+  }
   let jobId = row.job_id;
   if (step === "create") {
     const created = decodeCommerceEvents(receipt.logs, snapshot.contracts.commerceProxy).filter((event) => event.event === "JobCreated");
     const ids = new Set(created.map((event) => event.jobId.toString()));
-    if (ids.size !== 1) throw new HttpError(409, "The confirmed transaction did not create exactly one supported commerce job.");
+    if (ids.size !== 1) return stopConfirmedIntent("needs_attention", "job_creation_event_mismatch");
     jobId = [...ids][0];
   }
-  if (!jobId) throw new HttpError(409, "A confirmed job ID is required before continuing.");
+  if (!jobId) return stopConfirmedIntent("needs_attention", "confirmed_job_id_missing");
   const job = await snapshot.client.readContract({ address: snapshot.contracts.commerceProxy, abi: COMMERCE_READ_ABI, functionName: "getJob", args: [BigInt(jobId)] });
   const policy = await snapshot.client.readContract({ address: snapshot.contracts.routerProxy, abi: COMMERCE_READ_ABI, functionName: "jobPolicy", args: [BigInt(jobId)] });
   if (!sameAddress(job.client, buyer) || !sameAddress(job.provider, row.provider_address) ||
       !sameAddress(job.evaluator, snapshot.contracts.routerProxy) || !sameAddress(job.hook, snapshot.contracts.routerProxy) ||
       job.description !== row.description || job.expiredAt.toString() !== row.job_expires_at) {
-    throw new HttpError(409, "The confirmed job differs from the signed hiring intent.");
+    return stopConfirmedIntent("needs_attention", "confirmed_job_mismatch");
   }
   let state: IntentRow["state"] = "open";
   if (step === "register") {
-    if (!sameAddress(policy, snapshot.contracts.policy)) throw new HttpError(409, "The confirmed job is not bound to the supported settlement policy.");
+    if (!sameAddress(policy, snapshot.contracts.policy)) return stopConfirmedIntent("needs_attention", "confirmed_policy_mismatch");
     state = "registered";
   } else if (step === "approve") {
     const allowance = await snapshot.client.readContract({ address: snapshot.token.address,
       abi: [{ type: "function", name: "allowance", stateMutability: "view", inputs: [{name:"owner",type:"address"},{name:"spender",type:"address"}], outputs: [{name:"",type:"uint256"}] }] as const,
       functionName: "allowance", args: [address(buyer), snapshot.contracts.commerceProxy] });
-    if (allowance < BigInt(row.amount_raw)) throw new HttpError(409, "The confirmed approval is below the exact quoted amount.");
+    if (allowance < BigInt(row.amount_raw)) return stopConfirmedIntent("needs_attention", "confirmed_allowance_too_low");
     state = "approved";
   } else if (step === "fund") {
     const funded = decodeCommerceEvents(receipt.logs, snapshot.contracts.commerceProxy).find((event) => event.event === "JobFunded" && event.jobId.toString() === jobId);
-    if (!funded || funded.amountRaw !== row.amount_raw || job.status !== 1 || job.budget.toString() !== row.amount_raw) throw new HttpError(409, "Funding could not be reconciled to the exact quoted job amount.");
+    if (!funded || funded.amountRaw !== row.amount_raw || job.status !== 1 || job.budget.toString() !== row.amount_raw) {
+      return stopConfirmedIntent("needs_attention", "confirmed_funding_mismatch");
+    }
     state = "funded";
   }
   await db.query("UPDATE bnb_commerce_transactions SET status='confirmed',block_number=$2,block_hash=$3,confirmations=$4,checked_at=now() WHERE tx_hash=$1", [hash, receipt.blockNumber.toString(), receipt.blockHash, confirmations]);
