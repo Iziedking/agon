@@ -12,9 +12,10 @@ export const readCatalog = (chainId: BnbChain, offset = 0, signal?: AbortSignal)
 export const readMarketplaceStatus = (chainId: BnbChain, signal?: AbortSignal) => call<MarketplaceStatus>(chainId, "marketplace/status", undefined, signal);
 export const readMarketplaceLiveStatus = (chainId: BnbChain, signal?: AbortSignal) => call<MarketplaceLiveStatus>(chainId, "marketplace/live-status", undefined, signal);
 export const readAgent = (chainId: BnbChain, id: string, signal?: AbortSignal) => call<AgentDetail>(chainId, `agents/${encodeURIComponent(id)}`, undefined, signal);
-export const checkAgentEndpoint = (chainId: BnbChain, id: string) => call<EndpointProof>(chainId, `agents/${encodeURIComponent(id)}/probe`, {});
+export const checkAgentEndpoint = (chainId: BnbChain, id: string, signal?: AbortSignal) => call<EndpointProof>(chainId, `agents/${encodeURIComponent(id)}/probe`, {}, signal);
 export const checkCommerce = (chainId: BnbChain, id: string, signal?: AbortSignal) => call<CommerceReadiness>(chainId, `agents/${encodeURIComponent(id)}/commerce`, {}, signal);
-export const publishAgent = (chainId: BnbChain, agentId: string, category: Category) => call<{ status: string }>(chainId, "listings", { agentId, category });
+export type PublishedListing = { agentId: string; chainId: BnbChain; versionHash: string; status: "provider_listed"; liveCheck: { status: "reachable"; protocol: string; checkedAt: string } };
+export const publishAgent = (chainId: BnbChain, agentId: string, category: Category) => call<PublishedListing>(chainId, "listings", { agentId, category });
 export const bnbMe = (chainId: BnbChain) => call<{ session: BnbSession | null }>(chainId, "auth/me");
 export const startLpAnalysis = (chainId: BnbChain, runId: string, input: LpInput, signal?: AbortSignal) => call<LpRun>(chainId, "providers/lp-guardian/runs", { runId, input }, signal);
 export const readLpAnalysis = (chainId: BnbChain, runId: string, signal?: AbortSignal) => call<LpRun>(chainId, `providers/lp-guardian/runs/${encodeURIComponent(runId)}`, undefined, signal);

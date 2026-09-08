@@ -3,7 +3,7 @@
 import { useEffect, useState, type ReactNode, type FormEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import { CATEGORIES, type BnbChain, type AgentSummary, type AgentDetail, type Category, type CommerceIntent, type EndpointProof, type MarketplaceStatus, type MarketplaceLiveStatus } from "./types";
-import { checkAgentEndpoint, readCatalog, readAgent, readLpHires, readMarketplaceStatus, readMarketplaceLiveStatus, publishAgent } from "./client";
+import { checkAgentEndpoint, readCatalog, readAgent, readLpHires, readMarketplaceStatus, readMarketplaceLiveStatus, publishAgent, type PublishedListing } from "./client";
 import { CommerceReadinessPanel } from "./CommerceReadinessPanel";
 import { LpGuardianPanel } from "./LpGuardianPanel";
 import { LpHiringPanel, type WalletRequest } from "./LpHiringPanel";
@@ -234,11 +234,16 @@ export function BnbPublishContent({ chainId, signedIn, signIn }: { chainId: BnbC
   const [id, setId] = useState(""); const [category, setCategory] = useState<Category>(CATEGORIES[0].id);
   const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null); const [done, setDone] = useState(false);
   const [preflight, setPreflight] = useState<EndpointProof | null>(null); const [preflightBusy, setPreflightBusy] = useState(false);
-  function changeId(value: string) { setId(value); setPreflight(null); setError(null); setDone(false); }
+  const [previewAgent, setPreviewAgent] = useState<AgentDetail | null>(null);
+  const [published, setPublished] = useState<PublishedListing | null>(null);
+  function changeId(value: string) { setId(value); setPreflight(null); setPreviewAgent(null); setPublished(null); setError(null); setDone(false); }
   async function checkService() {
     if (!/^[0-9]+$/.test(id)) { setError("Enter your registered agent ID first."); return; }
     setPreflightBusy(true); setError(null); setPreflight(null); setDone(false);
-    try { setPreflight(await checkAgentEndpoint(chainId, id)); }
+    try {
+      const [detail, proof] = await Promise.all([readAgent(chainId, id), checkAgentEndpoint(chainId, id)]);
+      setPreviewAgent(detail); setPreflight(proof);
+    }
     catch (failure) { setError(message(failure)); }
     finally { setPreflightBusy(false); }
   }
@@ -246,13 +251,13 @@ export function BnbPublishContent({ chainId, signedIn, signIn }: { chainId: BnbC
     e.preventDefault();
     if (preflight?.status !== "reachable") { setError("Check the service first. Your public endpoint must respond before it can be listed."); return; }
     setBusy(true); setError(null); setDone(false);
-    try { await publishAgent(chainId, id, category); setDone(true); }
+    try { setPublished(await publishAgent(chainId, id, category)); setDone(true); }
     catch (failure) { setError(message(failure)); }
     finally { setBusy(false); }
   }
-  return <div className="max-w-[760px] space-y-6"><div className={PANEL}><h2 className="font-stencil text-3xl uppercase">LIST YOUR REGISTERED AGENT</h2><p className="mt-4 font-mono text-sm leading-relaxed text-ink-2">Bring a service you own on BNB {chainId === 97 ? "Testnet" : "Mainnet"}. First check that it responds, then choose the goal it helps with and publish it for buyers.</p>
-    {!signedIn ? <div className="mt-6">{signIn}</div> : <form onSubmit={publish} className="mt-6 space-y-5"><label className="block font-mono text-[11px] uppercase text-ink-2">REGISTERED AGENT ID<input className={`${INPUT} mt-2`} inputMode="numeric" pattern="[0-9]+" required value={id} onChange={(e) => changeId(e.target.value)} placeholder="Enter the ID for the service you own" /></label><div className="border border-[color:var(--hairline)] p-4"><p className="font-mono text-[10px] uppercase tracking-widest text-accent">STEP 1 · CHECK YOUR SERVICE</p><p className="mt-2 font-mono text-[12px] leading-relaxed text-ink-2">This is a free read-only check. It does not publish, charge, or start a job.</p><button type="button" className={`${BUTTON} mt-4`} onClick={checkService} disabled={preflightBusy}>{preflightBusy ? "CHECKING SERVICE…" : "CHECK SERVICE →"}</button>{preflight ? <div role="status" className="mt-4 border-t border-[color:var(--hairline)] pt-4"><p className={`font-mono text-[11px] uppercase tracking-widest ${preflight.status === "reachable" ? "text-accent" : "text-ink-2"}`}>{preflight.status === "reachable" ? "SERVICE RESPONDED" : "SERVICE NOT AVAILABLE"}</p><p className="mt-2 font-mono text-[12px] leading-relaxed text-ink-2">{preflight.message}</p><p className="mt-2 font-mono text-[10px] uppercase tracking-widest text-ink-3">NO PAYMENT SENT</p></div> : null}</div><label className="block font-mono text-[11px] uppercase text-ink-2">WHAT DOES IT HELP WITH?<select className={`${INPUT} mt-2`} value={category} onChange={(e) => setCategory(e.target.value as Category)}>{CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}</select></label><button className={`${BUTTON} bg-accent !text-accent-ink`} disabled={busy || preflight?.status !== "reachable"}>{busy ? "VERIFYING OWNER & PUBLISHING…" : "PUBLISH SERVICE →"}</button></form>}
-    </div>{error ? <ErrorPanel error={error} /> : null}{done ? <div role="status" className={PANEL}><p className="font-mono text-sm">Your service is now listed on this network.</p><a className={`${BUTTON} mt-4`} href={bnbHref(chainId, `/market/${encodeURIComponent(id)}`)}>VIEW SERVICE →</a></div> : null}</div>;
+  return <div className="max-w-[760px] space-y-6"><div className={PANEL}><h2 className="font-stencil text-3xl uppercase">LIST YOUR REGISTERED AGENT</h2><p className="mt-4 font-mono text-sm leading-relaxed text-ink-2">Bring a service you own on BNB {chainId === 97 ? "Testnet" : "Mainnet"}. First check that it responds, review what buyers will see, then publish it.</p>
+    {!signedIn ? <div className="mt-6">{signIn}</div> : <form onSubmit={publish} className="mt-6 space-y-5"><label className="block font-mono text-[11px] uppercase text-ink-2">REGISTERED AGENT ID<input className={`${INPUT} mt-2`} inputMode="numeric" pattern="[0-9]+" required value={id} onChange={(e) => changeId(e.target.value)} placeholder="Enter the ID for the service you own" /></label><div className="border border-[color:var(--hairline)] p-4"><p className="font-mono text-[10px] uppercase tracking-widest text-accent">STEP 1 · CHECK YOUR SERVICE</p><p className="mt-2 font-mono text-[12px] leading-relaxed text-ink-2">This is a free read-only check. It does not publish, charge, or start a job.</p><button type="button" className={`${BUTTON} mt-4`} onClick={checkService} disabled={preflightBusy}>{preflightBusy ? "CHECKING SERVICE…" : "CHECK SERVICE →"}</button>{preflight ? <div role="status" className="mt-4 border-t border-[color:var(--hairline)] pt-4"><p className={`font-mono text-[11px] uppercase tracking-widest ${preflight.status === "reachable" ? "text-accent" : "text-ink-2"}`}>{preflight.status === "reachable" ? "SERVICE RESPONDED" : "SERVICE NOT AVAILABLE"}</p><p className="mt-2 font-mono text-[12px] leading-relaxed text-ink-2">{preflight.message}</p><p className="mt-2 font-mono text-[10px] uppercase tracking-widest text-ink-3">NO PAYMENT SENT</p></div> : null}</div>{previewAgent && preflight?.status === "reachable" ? <div className="border border-[color:var(--hairline)] bg-canvas-3 p-4"><p className="font-mono text-[10px] uppercase tracking-widest text-accent">READY TO LIST</p><h3 className="mt-2 font-stencil text-2xl uppercase">{previewAgent.name}</h3><p className="mt-2 font-mono text-[12px] leading-relaxed text-ink-2">{plainServiceDescription(previewAgent.description)}</p><p className="mt-3 font-mono text-[10px] uppercase tracking-widest text-ink-3">{previewAgent.services.length} PUBLIC SERVICE{previewAgent.services.length === 1 ? "" : "S"} · {CATEGORIES.find((entry) => entry.id === category)?.label}</p></div> : null}<label className="block font-mono text-[11px] uppercase text-ink-2">WHAT DOES IT HELP WITH?<select className={`${INPUT} mt-2`} value={category} onChange={(e) => setCategory(e.target.value as Category)}>{CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}</select></label><button className={`${BUTTON} bg-accent !text-accent-ink`} disabled={busy || preflight?.status !== "reachable"}>{busy ? "PUBLISHING SERVICE…" : "PUBLISH SERVICE →"}</button></form>}
+    </div>{error ? <ErrorPanel error={error} /> : null}{done && published ? <div role="status" className={PANEL}><p className="font-mono text-[10px] uppercase tracking-widest text-accent">SERVICE LISTED</p><h3 className="mt-2 font-stencil text-2xl uppercase">{previewAgent?.name ?? `Agent ${published.agentId}`}</h3><p className="mt-3 font-mono text-sm text-ink-2">Buyers can now discover this service on BNB {chainId === 97 ? "Testnet" : "Mainnet"}.</p><div className="mt-5 flex flex-wrap gap-2"><a className={`${BUTTON} bg-accent !text-accent-ink`} href={bnbHref(chainId, `/market/${encodeURIComponent(published.agentId)}`)}>VIEW SERVICE →</a><a className={BUTTON} href={bnbHref(chainId, "/market")}>OPEN MARKET →</a></div></div> : null}</div>;
 }
 
 function activityLabel(intent: CommerceIntent) {
