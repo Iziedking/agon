@@ -52,7 +52,7 @@ test("maps evidence into plain buyer-facing availability states", () => {
   ]);
   assert.deepEqual(categoryAvailability(listed), { state: "listed", label: "LISTED", detail: "A provider has listed this goal." });
   assert.deepEqual(categoryAvailability(matched), { state: "matched", label: "MATCH FOUND", detail: "This goal appears in a service description." });
-  assert.deepEqual(categoryAvailability(unavailable), { state: "unavailable", label: "NOT AVAILABLE", detail: "No matching service is listed yet." });
+  assert.deepEqual(categoryAvailability(unavailable), { state: "unavailable", label: "CHECK LIVE", detail: "Run the free check to look for a responding service." });
   assert.deepEqual(categoryAvailability(listed, { attempted: 1, reachable: 1 }), { state: "responding", label: "SERVICE RESPONDS", detail: "A matching service returned its current service details." });
   assert.deepEqual(categoryAvailability(listed, { attempted: 1, reachable: 0 }), { state: "listed", label: "LISTED", detail: "A listed service needs another check." });
 });

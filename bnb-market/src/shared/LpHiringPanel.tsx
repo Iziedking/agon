@@ -266,12 +266,12 @@ export function LpHiringPanel({ chainId, signedIn, onNeedSignIn, walletRequest }
   return <section id="hire-agent" className={`${PANEL} scroll-mt-24`} aria-labelledby="hire-agent-heading">
     <div className="flex flex-wrap items-start justify-between gap-4">
       <div>
-        <p className="font-mono text-[10px] uppercase tracking-widest text-accent">READY TO USE</p>
-        <h3 id="hire-agent-heading" className="mt-3 font-stencil text-3xl uppercase">USE THIS AGENT</h3>
+        <p className="font-mono text-[10px] uppercase tracking-widest text-accent">STEP 2 · REQUEST A REPORT</p>
+        <h3 id="hire-agent-heading" className="mt-3 font-stencil text-3xl uppercase">HIRE LP GUARDIAN</h3>
       </div>
       <span className="border border-[color:var(--hairline-strong)] px-3 py-2 font-mono text-[10px] uppercase tracking-widest">BNB {chainId === 97 ? "TESTNET" : "MAINNET"}</span>
     </div>
-    <p className="mt-4 max-w-[85ch] font-mono text-sm leading-relaxed text-ink-2">Get a read-only liquidity report for one PancakeSwap position. Nothing in your position is changed.</p>
+    <p className="mt-4 max-w-[85ch] font-mono text-sm leading-relaxed text-ink-2">Enter your PancakeSwap position ID. You can review a free check first, then approve the exact U amount for a read-only report. Your position is not changed.</p>
 
     {chainId !== 97 ? <div className="mt-6 border-l-2 border-accent pl-4" role="status"><p className="font-mono text-[11px] uppercase tracking-widest text-accent">TESTNET ONLY</p><p className="mt-3 font-mono text-[12px] leading-relaxed text-ink-2">Switch to BNB Testnet to use this service. Mainnet is browse-only for now.</p></div> : null}
     {chainId === 97 && !readiness && !readinessError ? <p role="status" className="mt-6 font-mono text-[12px] text-ink-2">CHECKING IF THIS SERVICE IS READY…</p> : null}
@@ -287,7 +287,7 @@ export function LpHiringPanel({ chainId, signedIn, onNeedSignIn, walletRequest }
       <p className="mt-5 font-mono text-[11px] leading-relaxed text-ink-3">No payment is requested until you choose to continue. Your wallet shows every step before it is approved.</p>
       {!signedIn ? <button type="button" className={`${BUTTON} mt-5 bg-accent !text-accent-ink`} onClick={onNeedSignIn}>USE NOW →</button> : <form onSubmit={prepare} className="mt-6 space-y-5">
         <fieldset disabled={busy} className="grid gap-4 md:grid-cols-3"><legend className="sr-only">LP Guardian hire settings</legend>
-          <label className="font-mono text-[11px] uppercase text-ink-2">POSITION ID<input className={INPUT} required inputMode="numeric" pattern="[0-9]+" value={positionId} onChange={(event) => setPositionId(event.target.value)} placeholder="PancakeSwap position ID" /></label>
+          <label className="font-mono text-[11px] uppercase text-ink-2">POSITION ID<input className={INPUT} required inputMode="numeric" pattern="[0-9]+" value={positionId} onChange={(event) => setPositionId(event.target.value)} placeholder="Example: 37235" /><span className="mt-2 block font-mono text-[10px] normal-case leading-relaxed text-ink-3">Find this number in your PancakeSwap position.</span></label>
           <label className="font-mono text-[11px] uppercase text-ink-2">RANGE SIZE<input className={INPUT} required type="number" min="1" max="1000" step="1" value={width} onChange={(event) => setWidth(event.target.value)} /></label>
           <label className="font-mono text-[11px] uppercase text-ink-2">PRICE DEVIATION<input className={INPUT} required type="number" min="0" max="10000" step="1" value={deviation} onChange={(event) => setDeviation(event.target.value)} /></label>
         </fieldset>

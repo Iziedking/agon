@@ -12,7 +12,7 @@ export type CategoryCoverage = {
 
 export type CategoryAvailability = {
   state: "responding" | "listed" | "matched" | "unavailable";
-  label: "SERVICE RESPONDS" | "LISTED" | "MATCH FOUND" | "NOT AVAILABLE";
+  label: "SERVICE RESPONDS" | "LISTED" | "MATCH FOUND" | "CHECK LIVE";
   detail: string;
 };
 
@@ -49,7 +49,7 @@ export function categoryAvailability(
   if (live?.attempted) return { state: "listed", label: "LISTED", detail: "A listed service needs another check." };
   if (entry.providerCategories) return { state: "listed", label: "LISTED", detail: "A provider has listed this goal." };
   if (entry.descriptionMatches) return { state: "matched", label: "MATCH FOUND", detail: "This goal appears in a service description." };
-  return { state: "unavailable", label: "NOT AVAILABLE", detail: "No matching service is listed yet." };
+  return { state: "unavailable", label: "CHECK LIVE", detail: "Run the free check to look for a responding service." };
 }
 
 export function liveCategoryCoverage(
