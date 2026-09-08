@@ -107,7 +107,7 @@ export type SignedQuoteFields = {
 
 export function signedQuoteFields(envelope: Record<string, unknown>, expected: {
   priceRaw: string; token: Address; commerce: Address;
-}): SignedQuoteFields {
+}, options: { allowExpired?: boolean; nowSeconds?: number } = {}): SignedQuoteFields {
   const response = envelope.response;
   if (!response || typeof response !== "object" || Array.isArray(response)) throw new Error("The provider did not return an accepted quote.");
   const quote = response as Record<string, unknown>;
@@ -121,8 +121,8 @@ export function signedQuoteFields(envelope: Record<string, unknown>, expected: {
   const verifyingContract = envelope.verifying_contract;
   if (typeof negotiationHash !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(negotiationHash)) throw new Error("The provider quote has no valid negotiation hash.");
   if (typeof providerSignature !== "string" || !/^0x(?:[0-9a-fA-F]{2})+$/.test(providerSignature)) throw new Error("The provider quote is unsigned.");
-  const now = Math.floor(Date.now() / 1000);
-  if (!Number.isSafeInteger(quoteExpiresAt) || Number(quoteExpiresAt) <= now) throw new Error("The provider quote has expired.");
+  const now = options.nowSeconds ?? Math.floor(Date.now() / 1000);
+  if (!Number.isSafeInteger(quoteExpiresAt) || (Number(quoteExpiresAt) <= now && !options.allowExpired)) throw new Error("The provider quote has expired.");
   if (Number(quoteExpiresAt) > now + LP_QUOTE_TTL_SECONDS + 30) throw new Error("The provider quote exceeds the supported lifetime.");
   if (chainId !== 97) throw new Error("The provider quote is not bound to BNB Testnet.");
   if (typeof verifyingContract !== "string" || !sameAddress(verifyingContract, expected.commerce)) throw new Error("The provider quote is bound to a different commerce contract.");
@@ -131,6 +131,19 @@ export function signedQuoteFields(envelope: Record<string, unknown>, expected: {
   return { negotiationHash: negotiationHash as `0x${string}`, providerSignature: providerSignature as `0x${string}`,
     quoteExpiresAt: Number(quoteExpiresAt), priceRaw: expected.priceRaw, currency: expected.token,
     chainId: 97, verifyingContract: expected.commerce };
+}
+
+export function quoteAllowsNextAction(input: {
+  quoteExpiresAtMs: number;
+  jobId: string | null;
+  reconciliationStep?: CommerceStep;
+  nowMs?: number;
+}): boolean {
+  const now = input.nowMs ?? Date.now();
+  if (!Number.isFinite(input.quoteExpiresAtMs)) return false;
+  if (input.quoteExpiresAtMs > now) return true;
+  if (input.jobId !== null) return true;
+  return input.reconciliationStep === "create";
 }
 
 export function jobExpiry(now: bigint, disputeWindow: string): bigint {

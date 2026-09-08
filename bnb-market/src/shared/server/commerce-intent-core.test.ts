@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { decodeFunctionData, erc20Abi } from "viem";
 import { COMMERCE_WRITE_ABI, LP_EXECUTION_BUFFER_SECONDS, jobExpiry, lpCommerceConfig,
-  lpNegotiationRequest, parseCommerceIntentId, preparedTransaction, signedQuoteFields } from "./commerce-intent-core.ts";
+  lpNegotiationRequest, parseCommerceIntentId, preparedTransaction, quoteAllowsNextAction, signedQuoteFields } from "./commerce-intent-core.ts";
 
 const commerce = "0x1111111111111111111111111111111111111111" as const;
 const router = "0x2222222222222222222222222222222222222222" as const;
@@ -45,6 +45,14 @@ test("signed quotes must bind exact price, token, chain and commerce contract", 
   assert.throws(() => signedQuoteFields(envelope, { priceRaw: "18", token, commerce }));
   assert.throws(() => signedQuoteFields({ ...envelope, provider_sig: "" }, { priceRaw: "17", token, commerce }));
   assert.throws(() => signedQuoteFields({ ...envelope, response: { ...envelope.response, quote_expires_at: Math.floor(Date.now() / 1000) + 700 } }, { priceRaw: "17", token, commerce }));
+});
+
+test("quote expiry blocks new jobs but not recovery or an already-created job", () => {
+  const now = 2_000;
+  assert.equal(quoteAllowsNextAction({ quoteExpiresAtMs: 1_999, jobId: null, nowMs: now }), false);
+  assert.equal(quoteAllowsNextAction({ quoteExpiresAtMs: 1_999, jobId: null, reconciliationStep: "create", nowMs: now }), true);
+  assert.equal(quoteAllowsNextAction({ quoteExpiresAtMs: 1_999, jobId: "17", nowMs: now }), true);
+  assert.equal(quoteAllowsNextAction({ quoteExpiresAtMs: 2_001, jobId: null, nowMs: now }), true);
 });
 
 test("job expiry preserves the full dispute window plus execution buffer", () => {
