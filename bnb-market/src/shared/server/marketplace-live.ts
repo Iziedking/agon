@@ -1,13 +1,15 @@
-import type { BnbChain, AgentSummary, EndpointProof, MarketplaceLiveStatus } from "../types.ts";
+import type { BnbChain, AgentSummary, CatalogSource, EndpointProof, MarketplaceLiveStatus } from "../types.ts";
 import { categoryCoverage, liveCategoryCoverage, liveCategoryCoverageGaps } from "../marketplace/category-coverage.ts";
 import { catalog, probeAgent } from "./catalog.ts";
 
 const MAX_AGENTS_PER_GOAL = 3;
 const MAX_PROBES = 12;
+const MAX_CATALOG_PAGES = 10;
+const REQUIRED_CATEGORIES = ["rebalancing", "grid-trading", "yield-optimisation", "health-factor"] as const;
 
 function probeCandidates(agents: readonly AgentSummary[]): AgentSummary[] {
   const selected = new Map<string, AgentSummary>();
-  for (const category of ["rebalancing", "grid-trading", "yield-optimisation", "health-factor"] as const) {
+  for (const category of REQUIRED_CATEGORIES) {
     const matches = agents
       .filter((agent) => agent.outcomeMatches.some((match) => match.category === category))
       .sort((left, right) => Number(right.category === category) - Number(left.category === category) || left.id.localeCompare(right.id));
@@ -16,8 +18,29 @@ function probeCandidates(agents: readonly AgentSummary[]): AgentSummary[] {
   return [...selected.values()].slice(0, MAX_PROBES);
 }
 
+async function liveCatalog(chainId: BnbChain) {
+  const items = new Map<string, AgentSummary>();
+  const warnings: string[] = [];
+  let offset = 0;
+  let source: CatalogSource = "8004scan";
+  let total = 0;
+  for (let pageNumber = 0; pageNumber < MAX_CATALOG_PAGES; pageNumber += 1) {
+    const page = await catalog(chainId, offset);
+    source = page.source;
+    total = page.total;
+    warnings.push(...page.warnings);
+    for (const item of page.items) items.set(item.id, item);
+    const agents = [...items.values()];
+    const enoughCandidates = REQUIRED_CATEGORIES.every((category) =>
+      agents.some((agent) => agent.outcomeMatches.some((match) => match.category === category)));
+    if (page.nextOffset === null || enoughCandidates) break;
+    offset = page.nextOffset;
+  }
+  return { items: [...items.values()], warnings, source, total };
+}
+
 export async function marketplaceLiveStatus(chainId: BnbChain): Promise<MarketplaceLiveStatus> {
-  const page = await catalog(chainId, 0);
+  const page = await liveCatalog(chainId);
   const candidates = probeCandidates(page.items);
   const proofs: Array<Pick<EndpointProof, "agentId" | "status" | "supportedCategories">> = [];
   const warnings = [...page.warnings];

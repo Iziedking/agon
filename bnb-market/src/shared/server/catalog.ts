@@ -35,16 +35,53 @@ function cached<T>(key: string, read: () => Promise<T>): Promise<T> {
   cache.set(key, { expires: Date.now() + 60_000, value }); return value;
 }
 
+// Public index outages must not make registered services disappear. These are
+// discovery seeds only: every entry is resolved again from the BNB Testnet
+// registry and its current metadata before it is shown.
+const BNB_TESTNET_DISCOVERY_SEEDS = ["2177", "2230", "2231", "2232", "2233", "2237", "2238"] as const;
+async function directRegistryCatalog(chainId: BnbChain, offset: number, liveError: unknown): Promise<CatalogPage> {
+  if (chainId !== 97 || offset !== 0) throw liveError;
+  const settled = await Promise.allSettled(BNB_TESTNET_DISCOVERY_SEEDS.map((id) => agentDetail(chainId, id, true)));
+  const items = settled.flatMap((entry) => entry.status === "fulfilled" && entry.value.metadataStatus === "available"
+    && entry.value.active !== false && entry.value.services.length ? [entry.value] : []);
+  if (!items.length) throw liveError;
+  return {
+    items, total: items.length, nextOffset: null, checkedAt: new Date().toISOString(), source: "direct_registry",
+    warnings: ["The public agent index is temporarily unavailable. Showing registered services resolved directly from BNB Testnet."],
+  };
+}
+
 export async function catalog(chainId: BnbChain, offset = 0): Promise<CatalogPage> {
   const page = await cached<CatalogPage>(`catalog:${chainId}:${offset}`, async () => {
-    const data = object(await publicJson(`${SCAN}/agents?chain_id=${chainId}&limit=20&offset=${offset}`));
-    if (!Array.isArray(data.items) || data.items.length > 20 || !Number.isSafeInteger(data.total) || Number(data.total) < 0) {
-      throw new HttpError(502, "The agent index returned an invalid catalog.");
+    try {
+      const data = object(await publicJson(`${SCAN}/agents?chain_id=${chainId}&limit=20&offset=${offset}`));
+      if (!Array.isArray(data.items) || data.items.length > 20 || !Number.isSafeInteger(data.total) || Number(data.total) < 0) {
+        throw new HttpError(502, "The agent index returned an invalid catalog.");
+      }
+      const items: AgentSummary[] = []; const warnings: string[] = [];
+      for (const row of data.items) { try { items.push(parseIndexedAgent(row, chainId)); } catch { warnings.push("An invalid or cross-network index record was excluded."); } }
+      const livePage: CatalogPage = { items, total: Number(data.total), nextOffset: offset + data.items.length < Number(data.total) ? offset + data.items.length : null,
+        checkedAt: new Date().toISOString(), source: "8004scan", warnings };
+      if (process.env.BNB_DATABASE_URL) {
+        try {
+          await (await database()).query(`INSERT INTO bnb_catalog_snapshots(chain_id,page_offset,page_json,checked_at)
+            VALUES($1,$2,$3,now()) ON CONFLICT(chain_id,page_offset) DO UPDATE SET page_json=EXCLUDED.page_json,checked_at=now()`,
+          [chainId, offset, JSON.stringify(livePage)]);
+        } catch { warnings.push("The live catalog loaded, but its recovery snapshot could not be refreshed."); }
+      }
+      return livePage;
+    } catch (liveError) {
+      if (!process.env.BNB_DATABASE_URL) return directRegistryCatalog(chainId, offset, liveError);
+      try {
+        const saved = await (await database()).query<{ page_json: string; checked_at: Date }>(`SELECT page_json,checked_at
+          FROM bnb_catalog_snapshots WHERE chain_id=$1 AND page_offset=$2 AND checked_at>now()-interval '72 hours'`, [chainId, offset]);
+        if (!saved.rows[0]) throw liveError;
+        const snapshot = JSON.parse(saved.rows[0].page_json) as CatalogPage;
+        if (!Array.isArray(snapshot.items) || snapshot.source !== "8004scan") throw liveError;
+        return { ...snapshot, warnings: [...snapshot.warnings,
+          `The live agent index is unavailable. Showing the last successful catalog snapshot from ${saved.rows[0].checked_at.toISOString()}.`] };
+      } catch { return directRegistryCatalog(chainId, offset, liveError); }
     }
-    const items: AgentSummary[] = []; const warnings: string[] = [];
-    for (const row of data.items) { try { items.push(parseIndexedAgent(row, chainId)); } catch { warnings.push("An invalid or cross-network index record was excluded."); } }
-    return { items, total: Number(data.total), nextOffset: offset + data.items.length < Number(data.total) ? offset + data.items.length : null,
-      checkedAt: new Date().toISOString(), source: "8004scan", warnings };
   });
   if (!process.env.BNB_DATABASE_URL) return page;
   const warnings = [...page.warnings]; const items = [...page.items];

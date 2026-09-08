@@ -179,7 +179,7 @@ npm run inspect:marketplace
 npm run check:marketplace-readiness
 npm run inspect:live-reads
 npm run inspect:commerce -- 2114
-npm run validate:partner-evidence -- evidence/partner-evidence.json
+npm run validate:market-evidence -- evidence/market-evidence.json
 ```
 
 These scripts make public HTTP/RPC reads. They do not negotiate, execute a
@@ -218,14 +218,17 @@ If 8004scan or the catalog transport times out, the command still emits the
 health, worker, and LP Guardian checks with a `catalogError` and exits non-zero;
 it does not collapse the entire report into an uninformative timeout.
 
-`npm run validate:partner-evidence -- evidence/partner-evidence.json` validates the
-submission evidence bundle without inventing partner results. The bundle must
-contain live proof for all four buyer outcomes, one completed BNB Testnet hire
-with exact transaction and delivery links, an Altana session create/revoke
-record with an allowlist, spend cap, and expiry, three paired TermiX tasks,
-and a PancakeSwap trader or LP value observation. The validator is intentionally
-strict and read-only; the wallet owner must perform the live actions and place
-their resulting public evidence in the JSON file.
+`npm run validate:market-evidence -- evidence/market-evidence.json` validates the
+public operating record without inventing results. The record requires a
+completed, version-bound task for all four buyer outcomes; one completed BNB
+Testnet hire with exact transaction and delivery links; an Altana session
+create, scoped execution, and revoke record with an allowlist, spend cap, and
+expiry; three two-sided service comparisons; and a measured PancakeSwap trader
+or liquidity-provider result. `npm run report:service-comparison -- <file>`
+turns a valid record into a concise Markdown comparison. Both commands are
+strict and read-only. The wallet owner performs the live actions and supplies
+only public evidence; private keys and session files never belong in the
+record.
 
 ## Sources
 

@@ -16,8 +16,10 @@ const INPUT = "h-12 w-full border border-[color:var(--hairline-strong)] bg-canva
 const BUTTON = "inline-flex min-h-11 items-center justify-center border border-[color:var(--hairline-strong)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.12em] text-ink hover:bg-canvas-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-50";
 const PANEL = "border border-[color:var(--hairline-strong)] bg-canvas-2 p-5 sm:p-6";
 const message = (error: unknown) => error instanceof Error ? error.message : "The request could not complete. Please try again.";
+const plainAgentName = (name: string) => /^[a-z0-9]+(?:-[a-z0-9]+)+$/.test(name) ? name.replaceAll("-", " ") : name;
 const plainServiceDescription = (description?: string) => {
   const cleaned = (description ?? "")
+    .replace(/^\s*\[category:[^\]]+\]\s*/i, "")
     .replace(/\bERC[- ]?8004\b|\bERC[- ]?8183\b|\bX402\b|\bMPP\b|\bA2A\b|\bMCP\b/gi, "")
     .replace(/\bthrough\s+and\s+scoped execution\b/gi, "")
     .replace(/\s{2,}/g, " ")
@@ -62,7 +64,7 @@ function MarketplaceAgentRow({ chainId, agent, selected, onToggleCompare }: { ch
 
   return <article className="border border-[color:var(--hairline-strong)] bg-canvas-2 p-5 md:p-6" key={agent.id}>
     <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_180px_180px_auto] md:items-center">
-      <div><div className="flex flex-wrap gap-2">{agent.outcomeMatches.length ? agent.outcomeMatches.map((outcome, index) => <span key={`${outcome.category}:${index}`} className="border border-[color:var(--hairline-strong)] px-2 py-1 font-mono text-[9px] uppercase tracking-widest text-accent">{outcome.source === "provider" ? "CATEGORY" : "OUTCOME MATCH"} · {CATEGORIES.find((c) => c.id === outcome.category)?.label}</span>) : <span className="border border-[color:var(--hairline)] px-2 py-1 font-mono text-[9px] uppercase tracking-widest text-ink-3">UNCLASSIFIED SERVICE</span>}</div><h2 className="mt-3 break-words font-stencil text-[28px] uppercase leading-tight"><a href={bnbHref(chainId, `/market/${agent.id}`)}>{agent.name}</a></h2><p className="mt-2 line-clamp-2 font-mono text-[12px] leading-relaxed text-ink-2">{plainServiceDescription(agent.description)}</p></div>
+      <div><div className="flex flex-wrap gap-2">{agent.outcomeMatches.length ? agent.outcomeMatches.map((outcome, index) => <span key={`${outcome.category}:${index}`} className="border border-[color:var(--hairline-strong)] px-2 py-1 font-mono text-[9px] uppercase tracking-widest text-accent">{outcome.source === "provider" ? "CATEGORY" : "OUTCOME MATCH"} · {CATEGORIES.find((c) => c.id === outcome.category)?.label}</span>) : <span className="border border-[color:var(--hairline)] px-2 py-1 font-mono text-[9px] uppercase tracking-widest text-ink-3">UNCLASSIFIED SERVICE</span>}</div><h2 className="mt-3 break-words font-stencil text-[28px] uppercase leading-tight"><a href={bnbHref(chainId, `/market/${agent.id}`)}>{plainAgentName(agent.name)}</a></h2><p className="mt-2 line-clamp-2 font-mono text-[12px] leading-relaxed text-ink-2">{plainServiceDescription(agent.description)}</p></div>
       <div className="border-t border-[color:var(--hairline)] pt-4 md:border-l md:border-t-0 md:pl-5 md:pt-0"><p className="font-mono text-[10px] uppercase tracking-widest text-ink-3">PRICE</p><p className="mt-2 font-stencil text-xl uppercase">{isLiveService ? "0.1 U" : "SEE DETAILS"}</p><p className="mt-1 font-mono text-[10px] uppercase text-ink-3">{isLiveService ? "PER REPORT" : "BEFORE YOU USE"}</p></div>
       <div className="border-t border-[color:var(--hairline)] pt-4 md:border-l md:border-t-0 md:pl-5 md:pt-0"><p className="font-mono text-[10px] uppercase tracking-widest text-ink-3">LIVE CHECK</p><p className={`mt-2 font-mono text-[11px] uppercase tracking-widest ${proof?.status === "reachable" || isLiveService ? "text-accent" : "text-ink-2"}`}>{proof?.status === "reachable" ? "RESPONDED" : proof?.status === "unavailable" ? "UNAVAILABLE" : isLiveService ? "READY TO USE" : "NOT CHECKED"}</p><p className="mt-1 font-mono text-[10px] text-ink-3">{isLiveService ? "Try before paying" : "No payment sent"}</p></div>
       <div className="flex flex-wrap gap-2"><button type="button" className={BUTTON} onClick={checkLive} disabled={busy}>{busy ? "CHECKING…" : "CHECK LIVE →"}</button><button type="button" className={`${BUTTON} ${selected ? "border-accent bg-accent !text-accent-ink" : ""}`} aria-pressed={selected} onClick={onToggleCompare}>{selected ? "ADDED TO COMPARE" : "COMPARE"}</button><a className={`${BUTTON} ${isLiveService ? "bg-accent !text-accent-ink" : ""}`} href={bnbHref(chainId, `/market/${agent.id}`)}>{isLiveService ? "USE NOW →" : "VIEW AGENT →"}</a></div>
@@ -199,9 +201,14 @@ export function BnbAgentContent({ chainId, id, signedIn = false, onNeedSignIn = 
   const [agent, setAgent] = useState<AgentDetail | null>(null); const [error, setError] = useState<string | null>(null);
   const [liveProof, setLiveProof] = useState<EndpointProof | null>(null); const [liveBusy, setLiveBusy] = useState(false); const [liveError, setLiveError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
-  useEffect(() => { const controller = new AbortController(); setAgent(null); setError(null);
-    readAgent(chainId, id, controller.signal).then(setAgent).catch((e: unknown) => { if (!controller.signal.aborted) setError(message(e)); });
-    return () => controller.abort(); }, [chainId, id, retry]);
+  useEffect(() => {
+    let current = true;
+    setAgent(null); setError(null);
+    readAgent(chainId, id)
+      .then((result) => { if (current) setAgent(result); })
+      .catch((e: unknown) => { if (current) setError(message(e)); });
+    return () => { current = false; };
+  }, [chainId, id, retry]);
   useEffect(() => { setLiveProof(null); setLiveError(null); setLiveBusy(false); }, [chainId, id]);
   async function checkLiveService() {
     setLiveBusy(true); setLiveError(null); setLiveProof(null);
@@ -215,7 +222,7 @@ export function BnbAgentContent({ chainId, id, signedIn = false, onNeedSignIn = 
     {error ? <ErrorPanel error={error} retry={() => setRetry((n) => n + 1)} /> : null}
     {!agent && !error ? <p role="status" className="font-mono text-sm text-ink-2">LOADING SERVICE…</p> : null}
     {agent ? <>
-      <div className={PANEL}><div className="font-mono text-[10px] tracking-widest text-accent">BNB {chainId === 97 ? "TESTNET" : "MAINNET"}</div><h1 className="mt-4 font-stencil text-4xl uppercase sm:text-5xl">{agent.name}</h1><p className="mt-4 max-w-[72ch] font-mono text-sm leading-relaxed text-ink-2">{plainServiceDescription(agent.description)}</p><div className="mt-5 flex flex-wrap gap-2" aria-label="What this service does">{agent.outcomeMatches.length ? agent.outcomeMatches.map((match) => <span key={match.category} className="border border-[color:var(--hairline-strong)] px-3 py-2 font-mono text-[10px] uppercase tracking-widest">{match.source === "provider" ? "CATEGORY" : "OUTCOME MATCH"} · {CATEGORIES.find((entry) => entry.id === match.category)?.label}</span>) : <span className="border border-[color:var(--hairline-strong)] px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-ink-3">UNCLASSIFIED SERVICE</span>}</div><div className="mt-6 flex flex-wrap gap-x-8 gap-y-3 border-t border-[color:var(--hairline)] pt-4 font-mono text-[11px] uppercase tracking-widest"><span><span className="text-ink-3">SERVICES </span>{agent.services.length}</span><span><span className="text-ink-3">NETWORK </span>BNB {chainId === 97 ? "TESTNET" : "MAINNET"}</span></div></div>
+      <div className={PANEL}><div className="font-mono text-[10px] tracking-widest text-accent">BNB {chainId === 97 ? "TESTNET" : "MAINNET"}</div><h1 className="mt-4 font-stencil text-4xl uppercase sm:text-5xl">{plainAgentName(agent.name)}</h1><p className="mt-4 max-w-[72ch] font-mono text-sm leading-relaxed text-ink-2">{plainServiceDescription(agent.description)}</p><div className="mt-5 flex flex-wrap gap-2" aria-label="What this service does">{agent.outcomeMatches.length ? agent.outcomeMatches.map((match) => <span key={match.category} className="border border-[color:var(--hairline-strong)] px-3 py-2 font-mono text-[10px] uppercase tracking-widest">{match.source === "provider" ? "CATEGORY" : "OUTCOME MATCH"} · {CATEGORIES.find((entry) => entry.id === match.category)?.label}</span>) : <span className="border border-[color:var(--hairline-strong)] px-3 py-2 font-mono text-[10px] uppercase tracking-widest text-ink-3">UNCLASSIFIED SERVICE</span>}</div><div className="mt-6 flex flex-wrap gap-x-8 gap-y-3 border-t border-[color:var(--hairline)] pt-4 font-mono text-[11px] uppercase tracking-widest"><span><span className="text-ink-3">SERVICES </span>{agent.services.length}</span><span><span className="text-ink-3">NETWORK </span>BNB {chainId === 97 ? "TESTNET" : "MAINNET"}</span></div></div>
       <section aria-labelledby="services-heading"><div className="mb-4 flex items-end justify-between gap-4"><h2 id="services-heading" className="font-stencil text-3xl uppercase">SERVICES</h2><span className="font-mono text-[10px] uppercase tracking-widest text-ink-3">{agent.services.length} AVAILABLE</span></div><div className="grid gap-4 md:grid-cols-2">{agent.services.map((service) => {
         const isPaidReport = isLpGuardian && service.name.toLowerCase().replace(/[-_]/g, "") === "erc8183";
         const title = isPaidReport ? "Liquidity position report" : service.name.toLowerCase() === "a2a" ? "Agent service" : service.name;
@@ -307,7 +314,7 @@ function GenericLiveCheck({ chainId, agent }: { chainId: BnbChain; agent: AgentD
   }
   return <section className={PANEL} aria-labelledby="live-service-heading">
     <p className="font-mono text-[10px] uppercase tracking-widest text-accent">LIVE SERVICE CHECK</p>
-    <h2 id="live-service-heading" className="mt-4 font-stencil text-3xl uppercase">{agent.name}</h2>
+    <h2 id="live-service-heading" className="mt-4 font-stencil text-3xl uppercase">{plainAgentName(agent.name)}</h2>
     <p className="mt-4 max-w-[85ch] font-mono text-sm leading-relaxed text-ink-2">Check that this service responds before you decide whether to use it. This does not start paid work or move funds.</p>
     <button type="button" className={`${BUTTON} mt-6 bg-accent !text-accent-ink`} disabled={busy} onClick={check}>{busy ? "CHECKING SERVICE…" : "CHECK SERVICE →"}</button>
     {error ? <p role="alert" className="mt-5 border-l-2 border-[color:var(--err)] pl-4 font-mono text-[12px] leading-relaxed text-ink-2">{error}</p> : null}

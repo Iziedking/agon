@@ -7,11 +7,10 @@ node_modules/
 .env*
 !.env.example
 scripts/inspect-pancake.ts
-# Internal planning artifacts (never public 
-# Internal planning artifacts (never public 
+# Internal planning artifacts (never public)
 *PLAN*.md 
 BUILD_PLAN*.md 
-HACKATHON_RESEARCH*.md 
+*RESEARCH*.md
 *TODO*.md 
 *todo*.md 
 *progress*.md 

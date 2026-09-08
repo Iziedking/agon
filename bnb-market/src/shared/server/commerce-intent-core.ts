@@ -51,7 +51,7 @@ export function lpCommerceConfig(env: Readonly<Record<string, string | undefined
     if (parsed.protocol !== "https:" || parsed.username || parsed.password || parsed.hash || parsed.search || parsed.port) throw new Error("invalid");
     publicUrl = parsed.href.replace(/\/$/, "");
   } catch { blockers.push("public_provider_url_unconfigured"); }
-  if (!env.ALTANA_SESSION?.trim() && !env.ALTANA_SESSION_FILE?.trim()) blockers.push("altana_session_unconfigured");
+  if (!env.ALTANA_SESSION_FILE?.trim()) blockers.push("altana_session_unconfigured");
   const dailyIntentLimit = positiveBoundedInteger(env.BNB_LP_AGENT_HIRE_DAILY_LIMIT, 25, 250);
   if (dailyIntentLimit === null) blockers.push("invalid_hire_daily_limit");
   if (blockers.length || !agentId || !providerAddress || !priceRaw || !publicUrl || dailyIntentLimit === null) {

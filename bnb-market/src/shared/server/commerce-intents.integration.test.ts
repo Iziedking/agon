@@ -18,6 +18,16 @@ test("commerce intent storage preserves version binding and one hash per wallet 
   process.env.BNB_DATABASE_URL = url.href;
   try {
     const db = await database();
+    const snapshot = {
+      items: [], total: 0, nextOffset: null,
+      checkedAt: new Date().toISOString(), source: "8004scan", warnings: [],
+    };
+    await db.query(`INSERT INTO bnb_catalog_snapshots(chain_id,page_offset,page_json)
+      VALUES(97,0,$1)`, [JSON.stringify(snapshot)]);
+    const savedSnapshot = await db.query<{ page_json: string }>(
+      "SELECT page_json FROM bnb_catalog_snapshots WHERE chain_id=97 AND page_offset=0");
+    assert.deepEqual(JSON.parse(savedSnapshot.rows[0].page_json), snapshot);
+
     const id = randomUUID();
     const values = [id, "0x1111111111111111111111111111111111111111", "42",
       "0x2222222222222222222222222222222222222222", "agon-lp-guardian/1.0.0",

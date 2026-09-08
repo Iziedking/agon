@@ -2,67 +2,60 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { validatePartnerEvidence } from "./partner-evidence.ts";
 
+const hash = (digit: string) => `0x${digit.repeat(64)}`;
+const digest = (digit: string) => digit.repeat(64);
+const artifact = (name: string, digit: string) => ({ url: `https://evidence.example/${name}.json`, sha256: digest(digit) });
+
 function validEvidence(): Record<string, unknown> {
-  const future = new Date(Date.now() + 86_400_000).toISOString();
+  const observedAt = "2026-09-08T12:00:00.000Z";
+  const categories = Object.fromEntries([
+    ["rebalancing", "2177"], ["grid-trading", "2231"], ["yield-optimisation", "2237"], ["health-factor", "2238"],
+  ].map(([category, agentId], index) => [category, { agentId, versionHash: `sha256:${digest(String(index + 1))}`,
+    endpoint: `https://agents.example/${category}`, status: "completed", checkedAt: observedAt, durationMs: 1200,
+    result: artifact(category, String(index + 1)) }]));
+  const run = (name: string, digit: string, durationMs: number) => ({ durationMs, costRaw: "100000000000000000", qualityScore: 90, output: artifact(name, digit) });
   return {
-    version: 1,
-    chainId: 97,
-    categories: {
-      rebalancing: { agentId: "2177", endpoint: "https://example.com/rebalancing", status: "reachable", checkedAt: future },
-      "grid-trading": { agentId: "2202", endpoint: "https://example.com/grid", status: "reachable", checkedAt: future },
-      "yield-optimisation": { agentId: "2175", endpoint: "https://example.com/yield", status: "reachable", checkedAt: future },
-      "health-factor": { agentId: "2203", endpoint: "https://example.com/health", status: "reachable", checkedAt: future },
-    },
-    paidHire: {
-      chainId: 97,
-      agentId: "2177",
-      intentId: "intent-1",
-      createTxHash: `0x${"1".repeat(64)}`,
-      registerTxHash: `0x${"2".repeat(64)}`,
-      approveTxHash: `0x${"3".repeat(64)}`,
-      fundTxHash: `0x${"4".repeat(64)}`,
-      deliverableUrl: "https://example.com/deliverable.json",
-      receiptUrl: "https://example.com/receipt.json",
-      deliveryStatus: "completed",
-    },
-    altana: {
-      chainId: 97,
-      sessionCreateTx: `0x${"5".repeat(64)}`,
-      revokeTx: `0x${"6".repeat(64)}`,
-      allowlist: ["0x0000000000000000000000000000000000000001"],
-      spendCapRaw: "100000000000000000",
-      expiresAt: future,
-    },
-    termix: {
-      pairedTasks: [
-        { id: "task-1", track: "trading", outputA: "a", outputB: "b", durationMs: 1000, costRaw: "1", qualityScore: 0.9 },
-        { id: "task-2", track: "equity", outputA: "a", outputB: "b", durationMs: 1200, costRaw: "2", qualityScore: 0.8 },
-        { id: "task-3", track: "security", outputA: "a", outputB: "b", durationMs: 900, costRaw: "0", qualityScore: 0.95 },
-      ],
-    },
-    pancakeSwap: {
-      chainId: 97,
-      positionId: "37235",
-      metric: "in-range duration",
-      reportUrl: "https://example.com/pancake-report.json",
-      before: 0.42,
-      after: 0.77,
-      observedAt: future,
-    },
+    version: 2, chainId: 97, categories,
+    paidHire: { chainId: 97, agentId: "2177", intentId: "intent-1", createTxHash: hash("1"), registerTxHash: hash("2"),
+      approveTxHash: hash("3"), fundTxHash: hash("4"), deliverable: artifact("paid-deliverable", "5"),
+      receiptUrl: "https://testnet.bscscan.com/tx/0x1", deliveryTxHash: hash("8"), deliveryStatus: "submitted", deliveredAt: observedAt },
+    altana: { chainId: 97, walletAddress: `0x${"1".repeat(40)}`, sessionPublicKey: `0x04${"2".repeat(128)}`,
+      sessionCreateTx: hash("5"), sessionExecutionTx: hash("6"), revokeTx: hash("7"),
+      explorerUrls: { create: "https://explorer.altana.example/create", execution: "https://explorer.altana.example/execution", revoke: "https://explorer.altana.example/revoke" },
+      allowlist: [`0x${"2".repeat(40)}`], spendCapRaw: "100000000000000000", expiresAt: "2026-09-09T12:00:00.000Z",
+      revokedAt: "2026-09-08T13:00:00.000Z", status: "revoked" },
+    termix: { pairedTasks: [
+      { id: "task-1", track: "trading", prompt: "Compare a live grid trading decision.", agent: run("agent-1", "8", 900), baseline: run("baseline-1", "9", 1800) },
+      { id: "task-2", track: "other", prompt: "Compare a live yield routing decision.", agent: run("agent-2", "a", 800), baseline: run("baseline-2", "b", 1700) },
+      { id: "task-3", track: "security", prompt: "Compare a live health factor assessment.", agent: run("agent-3", "c", 700), baseline: run("baseline-3", "d", 1600) },
+    ] },
+    pancakeSwap: { chainId: 97, agentId: "2177", positionId: "37235", service: "liquidity", metric: "decision time", unit: "seconds",
+      before: 120, after: 20, improvementDirection: "decrease", report: artifact("pancake-report", "e"), observedAt },
   };
 }
 
-test("accepts a complete evidence bundle", () => {
+test("accepts complete, independently inspectable market evidence", () => {
   assert.deepEqual(validatePartnerEvidence(validEvidence()), { ok: true, issues: [] });
 });
 
-test("rejects missing category proof and non-testnet chain claims", () => {
+test("rejects discovery-only categories and incomplete paired comparisons", () => {
   const evidence = validEvidence();
-  const categories = evidence.categories as Record<string, unknown>;
-  delete categories["grid-trading"];
-  evidence.chainId = 56;
+  const categories = evidence.categories as Record<string, Record<string, unknown>>;
+  categories["grid-trading"].status = "reachable";
+  const termix = evidence.termix as { pairedTasks: Array<Record<string, unknown>> };
+  delete termix.pairedTasks[0].baseline;
   const result = validatePartnerEvidence(evidence);
   assert.equal(result.ok, false);
-  assert.ok(result.issues.includes("chainId must be BNB Testnet 97"));
-  assert.ok(result.issues.includes("categories.grid-trading is missing"));
+  assert.ok(result.issues.includes("categories.grid-trading.status must be completed"));
+  assert.ok(result.issues.includes("termix.pairedTasks.0.baseline is required"));
+});
+
+test("rejects an Altana revoke after expiry and an unimproved PancakeSwap result", () => {
+  const evidence = validEvidence();
+  (evidence.altana as Record<string, unknown>).revokedAt = "2026-09-10T12:00:00.000Z";
+  (evidence.pancakeSwap as Record<string, unknown>).after = 130;
+  const result = validatePartnerEvidence(evidence);
+  assert.equal(result.ok, false);
+  assert.ok(result.issues.includes("altana.revokedAt must be before session expiry"));
+  assert.ok(result.issues.includes("pancakeSwap.after must improve on before"));
 });

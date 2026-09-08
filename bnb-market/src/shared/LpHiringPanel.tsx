@@ -12,7 +12,7 @@ const INPUT = "mt-2 h-12 w-full border border-[color:var(--hairline-strong)] bg-
 const PANEL = "border border-[color:var(--hairline-strong)] bg-canvas-2 p-5 sm:p-6";
 
 const BLOCKERS: Record<string, string> = {
-  testnet_only: "Paid hiring is open on BNB Testnet only while this flow is being proven.",
+  testnet_only: "Paid hiring is currently available on BNB Testnet only.",
   hiring_flag_disabled: "The operator has not opened paid hiring.",
   agent_identity_unconfigured: "The provider identity is not configured.",
   provider_wallet_unconfigured: "The provider wallet is not configured.",
@@ -89,6 +89,29 @@ function explorerBase(chainId: BnbChain) {
 
 function intentStorageKey(chainId: BnbChain) {
   return `agon:bnb:lp-hire:${chainId}`;
+}
+
+function downloadRequestRecord(intent: CommerceIntent) {
+  const payment = intent.transactions.find((transaction) => transaction.step === "fund" && transaction.status === "confirmed");
+  const record = {
+    schema: "agon.market.request-record.v1",
+    exportedAt: new Date().toISOString(),
+    chainId: intent.chainId,
+    agentId: intent.agentId,
+    intentId: intent.id,
+    jobId: intent.jobId,
+    amountRaw: intent.amountRaw,
+    token: intent.token,
+    transactions: intent.transactions,
+    paymentReceiptUrl: payment ? `${window.location.origin}/api/bnb/${intent.chainId}/receipts/${payment.hash}` : null,
+    delivery: intent.delivery,
+  };
+  const url = URL.createObjectURL(new Blob([JSON.stringify(record, null, 2)], { type: "application/json" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `agon-request-${intent.id}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 function ReadinessBlock({ readiness, onRetry }: { readiness: LpHiringReadiness; onRetry: () => void }) {
@@ -300,11 +323,12 @@ export function LpHiringPanel({ chainId, signedIn, onNeedSignIn, walletRequest }
           {intent.jobId ? <a className={BUTTON} href={`/api/bnb/${chainId}/jobs/${intent.jobId}`} target="_blank" rel="noopener noreferrer">VIEW JOB →</a> : null}
           {paymentTransaction ? <a className={BUTTON} href={`${explorerBase(chainId)}/tx/${paymentTransaction.hash}`} target="_blank" rel="noopener noreferrer">PAYMENT RECEIPT →</a> : null}
           {intent.delivery?.txHash ? <a className={BUTTON} href={`${explorerBase(chainId)}/tx/${intent.delivery.txHash}`} target="_blank" rel="noopener noreferrer">DELIVERY RECEIPT →</a> : null}
+          {intent.delivery?.status === "submitted" ? <button type="button" className={BUTTON} onClick={() => downloadRequestRecord(intent)}>DOWNLOAD RECORD →</button> : null}
         </div>
         {intent.delivery?.status === "submitted" && intent.delivery.url ? <p className="mt-4 break-all font-mono text-[10px] uppercase tracking-widest text-ink-3">REPORT HASH · {intent.delivery.manifestHash}</p> : null}
       </div> : null}
       {currentTransaction && !isPending(intent) ? <div className="mt-6 border border-[color:var(--hairline-strong)] p-4"><p className="font-mono text-[10px] uppercase tracking-widest text-accent">NEXT STEP</p><h4 className="mt-3 font-stencil text-xl uppercase">{STEP_COPY[currentTransaction.step].title}</h4><p className="mt-3 font-mono text-[12px] leading-relaxed text-ink-2">{STEP_COPY[currentTransaction.step].warning}</p><button type="button" className={`${BUTTON} mt-5 bg-accent !text-accent-ink`} onClick={sendNextTransaction} disabled={busy}>{busy ? "CHECK YOUR WALLET…" : STEP_COPY[currentTransaction.step].button}</button></div> : null}
-      {intent.quoteExpiresAt ? <p className="mt-4 font-mono text-[10px] uppercase tracking-widest text-ink-3">REQUEST EXPIRES · {quoteExpires}</p> : null}
+      {intent.quoteExpiresAt ? <p className="mt-4 font-mono text-[10px] uppercase tracking-widest text-ink-3">{intent.jobId ? `JOB EXPIRES · ${new Date(intent.jobExpiresAt).toLocaleString()}` : `REQUEST EXPIRES · ${quoteExpires}`}</p> : null}
       {intent.transactions.length ? <details className="mt-4 font-mono text-[11px] text-ink-3"><summary className="min-h-11 cursor-pointer py-3 uppercase tracking-widest">TRANSACTION DETAILS</summary><ul className="space-y-2">{intent.transactions.map((transaction) => <li className="flex flex-wrap justify-between gap-2 border-t border-[color:var(--hairline)] py-2" key={transaction.step}><span>{transaction.step.replaceAll("_", " ").toUpperCase()} · {transaction.status.toUpperCase()}</span><a className="break-all underline underline-offset-4" href={`${explorerBase(chainId)}/tx/${transaction.hash}`} target="_blank" rel="noopener noreferrer">{shortHash(transaction.hash)} ↗</a></li>)}</ul></details> : null}
     </div> : null}
     {error ? <p role="alert" className="mt-5 border-l-2 border-[color:var(--err)] pl-4 font-mono text-[12px] leading-relaxed text-ink-2">{error}</p> : null}

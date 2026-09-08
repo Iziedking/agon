@@ -27,7 +27,11 @@
     "inspect:commerce": "node --experimental-strip-types scripts/inspect-commerce.ts",
     "inspect:marketplace": "node --experimental-strip-types scripts/inspect-marketplace.ts",
     "check:marketplace-readiness": "node --experimental-strip-types scripts/check-marketplace-readiness.ts",
+    "validate:market-evidence": "node --experimental-strip-types scripts/validate-partner-evidence.ts",
     "validate:partner-evidence": "node --experimental-strip-types scripts/validate-partner-evidence.ts",
+    "report:service-comparison": "node --experimental-strip-types scripts/build-service-comparison-report.ts",
+    "test:unit": "npm test && npm run test:boundaries && npm run test:transport && npm run test:commerce && npm run test:lp-delivery && npm run test:lp-agent",
+    "audit:product": "npm run typecheck && npm run test:unit && npm run build",
     "test": "node --experimental-strip-types src/lib/bnb/chains.test.ts && node --experimental-strip-types src/lib/bnb/compare.test.ts && node --experimental-strip-types src/lib/bnb/evidence.test.ts && node --experimental-strip-types src/lib/bnb/quote-job.test.ts && node --experimental-strip-types src/shared/marketplace/capabilities.test.ts && node --experimental-strip-types src/shared/marketplace/category-coverage.test.ts && node --experimental-strip-types src/shared/marketplace/partner-evidence.test.ts"
   },
   "dependencies": {

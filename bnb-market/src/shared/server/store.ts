@@ -27,6 +27,12 @@ export async function database(): Promise<Pool> {
       owner_address text NOT NULL, category text NOT NULL, version_hash text NOT NULL,
       published_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY (chain_id,agent_id)
     );
+    CREATE TABLE IF NOT EXISTS bnb_catalog_snapshots (
+      chain_id integer NOT NULL CHECK (chain_id IN (56,97)), page_offset integer NOT NULL CHECK (page_offset >= 0),
+      page_json text NOT NULL, checked_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (chain_id,page_offset)
+    );
+    CREATE INDEX IF NOT EXISTS bnb_catalog_snapshot_checked ON bnb_catalog_snapshots(checked_at);
     CREATE TABLE IF NOT EXISTS bnb_lp_agent_runs (
       id uuid PRIMARY KEY, chain_id integer NOT NULL CHECK (chain_id=97),
       version text NOT NULL, input_json text NOT NULL,

@@ -86,10 +86,11 @@ export type AgentDetail = AgentSummary & {
   capabilities: MarketCapability[];
   registrationMatches: boolean | null;
 };
-export type CatalogPage = { items: AgentSummary[]; total: number; nextOffset: number | null; checkedAt: string; source: "8004scan"; warnings: string[] };
+export type CatalogSource = "8004scan" | "direct_registry";
+export type CatalogPage = { items: AgentSummary[]; total: number; nextOffset: number | null; checkedAt: string; source: CatalogSource; warnings: string[] };
 export type MarketplaceStatus = {
   chainId: BnbChain;
-  catalogSource: "8004scan";
+  catalogSource: CatalogSource;
   checkedAt: string;
   indexedProfiles: number;
   loadedProfiles: number;
@@ -103,7 +104,7 @@ export type MarketplaceStatus = {
 export type LiveCategoryCoverage = import("./marketplace/category-coverage.ts").LiveCategoryCoverage;
 export type MarketplaceLiveStatus = {
   chainId: BnbChain;
-  catalogSource: "8004scan";
+  catalogSource: CatalogSource;
   checkedAt: string;
   indexedProfiles: number;
   loadedProfiles: number;

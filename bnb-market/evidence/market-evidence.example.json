@@ -1,0 +1,112 @@
+{
+  "version": 2,
+  "chainId": 97,
+  "categories": {
+    "rebalancing": {
+      "agentId": "REPLACE_WITH_AGENT_ID",
+      "versionHash": "REPLACE_WITH_VERSION_SHA256",
+      "endpoint": "https://REPLACE_WITH_PROVIDER_ENDPOINT",
+      "status": "completed",
+      "checkedAt": "REPLACE_WITH_ISO_TIMESTAMP",
+      "durationMs": 0,
+      "result": { "url": "https://REPLACE_WITH_RESULT_URL", "sha256": "REPLACE_WITH_RESULT_SHA256" }
+    },
+    "grid-trading": {
+      "agentId": "REPLACE_WITH_AGENT_ID",
+      "versionHash": "REPLACE_WITH_VERSION_SHA256",
+      "endpoint": "https://REPLACE_WITH_PROVIDER_ENDPOINT",
+      "status": "completed",
+      "checkedAt": "REPLACE_WITH_ISO_TIMESTAMP",
+      "durationMs": 0,
+      "result": { "url": "https://REPLACE_WITH_RESULT_URL", "sha256": "REPLACE_WITH_RESULT_SHA256" }
+    },
+    "yield-optimisation": {
+      "agentId": "REPLACE_WITH_AGENT_ID",
+      "versionHash": "REPLACE_WITH_VERSION_SHA256",
+      "endpoint": "https://REPLACE_WITH_PROVIDER_ENDPOINT",
+      "status": "completed",
+      "checkedAt": "REPLACE_WITH_ISO_TIMESTAMP",
+      "durationMs": 0,
+      "result": { "url": "https://REPLACE_WITH_RESULT_URL", "sha256": "REPLACE_WITH_RESULT_SHA256" }
+    },
+    "health-factor": {
+      "agentId": "REPLACE_WITH_AGENT_ID",
+      "versionHash": "REPLACE_WITH_VERSION_SHA256",
+      "endpoint": "https://REPLACE_WITH_PROVIDER_ENDPOINT",
+      "status": "completed",
+      "checkedAt": "REPLACE_WITH_ISO_TIMESTAMP",
+      "durationMs": 0,
+      "result": { "url": "https://REPLACE_WITH_RESULT_URL", "sha256": "REPLACE_WITH_RESULT_SHA256" }
+    }
+  },
+  "paidHire": {
+    "chainId": 97,
+    "agentId": "2177",
+    "intentId": "REPLACE_WITH_INTENT_ID",
+    "createTxHash": "REPLACE_WITH_TRANSACTION_HASH",
+    "registerTxHash": "REPLACE_WITH_TRANSACTION_HASH",
+    "approveTxHash": "REPLACE_WITH_TRANSACTION_HASH",
+    "fundTxHash": "REPLACE_WITH_TRANSACTION_HASH",
+    "deliverable": { "url": "https://REPLACE_WITH_DELIVERABLE_URL", "sha256": "REPLACE_WITH_DELIVERABLE_SHA256" },
+    "receiptUrl": "https://REPLACE_WITH_RECEIPT_URL",
+    "deliveryTxHash": "REPLACE_WITH_TRANSACTION_HASH",
+    "deliveryStatus": "submitted",
+    "deliveredAt": "REPLACE_WITH_ISO_TIMESTAMP"
+  },
+  "altana": {
+    "chainId": 97,
+    "walletAddress": "REPLACE_WITH_WALLET_ADDRESS",
+    "sessionPublicKey": "REPLACE_WITH_PUBLIC_SESSION_KEY",
+    "sessionCreateTx": "REPLACE_WITH_TRANSACTION_HASH",
+    "sessionExecutionTx": "REPLACE_WITH_TRANSACTION_HASH",
+    "revokeTx": "REPLACE_WITH_TRANSACTION_HASH",
+    "explorerUrls": {
+      "create": "https://REPLACE_WITH_CREATE_EXPLORER_URL",
+      "execution": "https://REPLACE_WITH_EXECUTION_EXPLORER_URL",
+      "revoke": "https://REPLACE_WITH_REVOKE_EXPLORER_URL"
+    },
+    "allowlist": ["REPLACE_WITH_ALLOWED_CONTRACT_ADDRESS"],
+    "spendCapRaw": "REPLACE_WITH_ATOMIC_SPEND_CAP",
+    "expiresAt": "REPLACE_WITH_ISO_TIMESTAMP",
+    "revokedAt": "REPLACE_WITH_ISO_TIMESTAMP",
+    "status": "revoked"
+  },
+  "termix": {
+    "pairedTasks": [
+      {
+        "id": "comparison-1",
+        "track": "trading",
+        "prompt": "REPLACE_WITH_THE_EXACT_SHARED_TASK",
+        "agent": { "durationMs": 0, "costRaw": "0", "qualityScore": 0, "output": { "url": "https://REPLACE_WITH_AGENT_OUTPUT", "sha256": "REPLACE_WITH_SHA256" } },
+        "baseline": { "durationMs": 0, "costRaw": "0", "qualityScore": 0, "output": { "url": "https://REPLACE_WITH_BASELINE_OUTPUT", "sha256": "REPLACE_WITH_SHA256" } }
+      },
+      {
+        "id": "comparison-2",
+        "track": "other",
+        "prompt": "REPLACE_WITH_THE_EXACT_SHARED_TASK",
+        "agent": { "durationMs": 0, "costRaw": "0", "qualityScore": 0, "output": { "url": "https://REPLACE_WITH_AGENT_OUTPUT", "sha256": "REPLACE_WITH_SHA256" } },
+        "baseline": { "durationMs": 0, "costRaw": "0", "qualityScore": 0, "output": { "url": "https://REPLACE_WITH_BASELINE_OUTPUT", "sha256": "REPLACE_WITH_SHA256" } }
+      },
+      {
+        "id": "comparison-3",
+        "track": "security",
+        "prompt": "REPLACE_WITH_THE_EXACT_SHARED_TASK",
+        "agent": { "durationMs": 0, "costRaw": "0", "qualityScore": 0, "output": { "url": "https://REPLACE_WITH_AGENT_OUTPUT", "sha256": "REPLACE_WITH_SHA256" } },
+        "baseline": { "durationMs": 0, "costRaw": "0", "qualityScore": 0, "output": { "url": "https://REPLACE_WITH_BASELINE_OUTPUT", "sha256": "REPLACE_WITH_SHA256" } }
+      }
+    ]
+  },
+  "pancakeSwap": {
+    "chainId": 97,
+    "agentId": "2177",
+    "positionId": "REPLACE_WITH_POSITION_ID",
+    "service": "liquidity",
+    "metric": "REPLACE_WITH_MEASURED_METRIC",
+    "unit": "REPLACE_WITH_UNIT",
+    "before": 0,
+    "after": 0,
+    "improvementDirection": "increase",
+    "report": { "url": "https://REPLACE_WITH_REPORT_URL", "sha256": "REPLACE_WITH_REPORT_SHA256" },
+    "observedAt": "REPLACE_WITH_ISO_TIMESTAMP"
+  }
+}
