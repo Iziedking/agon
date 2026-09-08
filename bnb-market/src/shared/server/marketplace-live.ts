@@ -19,14 +19,14 @@ function probeCandidates(agents: readonly AgentSummary[]): AgentSummary[] {
 export async function marketplaceLiveStatus(chainId: BnbChain): Promise<MarketplaceLiveStatus> {
   const page = await catalog(chainId, 0);
   const candidates = probeCandidates(page.items);
-  const proofs: Array<Pick<EndpointProof, "agentId" | "status">> = [];
+  const proofs: Array<Pick<EndpointProof, "agentId" | "status" | "supportedCategories">> = [];
   const warnings = [...page.warnings];
 
   for (const agent of candidates) {
     try {
       proofs.push(await probeAgent(chainId, agent.id));
     } catch (error) {
-      proofs.push({ agentId: agent.id, status: "unavailable" });
+      proofs.push({ agentId: agent.id, status: "unavailable", supportedCategories: [] });
       warnings.push(`${agent.id}: live check could not be completed.`);
       if (error instanceof Error) console.warn(JSON.stringify({ event: "bnb_marketplace_probe_failed", chainId, agentId: agent.id, reason: error.message }));
     }

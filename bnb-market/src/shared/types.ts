@@ -114,7 +114,18 @@ export type MarketplaceLiveStatus = {
   status: "available" | "incomplete" | "empty";
   warnings: string[];
 };
-export type EndpointProof = { chainId: BnbChain; agentId: string; versionHash: string; checkedAt: string; status: "reachable" | "unavailable"; protocol: string; endpoint: string; message: string };
+export type EndpointProof = {
+  chainId: BnbChain;
+  agentId: string;
+  versionHash: string;
+  checkedAt: string;
+  status: "reachable" | "unavailable";
+  protocol: string;
+  endpoint: string;
+  supportedCategories: Category[];
+  checkLevel: "discovery";
+  message: string;
+};
 export type CommerceReadiness = {
   chainId: BnbChain; agentId: string; versionHash: string | null; checkedAt: string; blockNumber: string;
   status: "blocked"; paymentsEnabled: false; blockers: string[];

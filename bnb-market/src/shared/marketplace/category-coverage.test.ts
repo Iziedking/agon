@@ -27,12 +27,22 @@ test("separates responding services from indexed category matches", () => {
     { id: "2175", category: null, outcomeMatches: [{ category: "yield-optimisation" as const, source: "description" as const, reason: "matched" }] },
   ];
   const coverage = liveCategoryCoverage(agents, [
-    { agentId: "2177", status: "reachable" },
-    { agentId: "2202", status: "unavailable" },
+    { agentId: "2177", status: "reachable", supportedCategories: ["rebalancing"] },
+    { agentId: "2202", status: "unavailable", supportedCategories: [] },
   ]);
   assert.deepEqual(coverage.map((entry) => entry.reachable), [1, 0, 0, 0]);
   assert.equal(coverage[1].attempted, 1);
   assert.deepEqual(liveCategoryCoverageGaps(coverage), ["grid-trading", "yield-optimisation", "health-factor"]);
+});
+
+test("a reachable card does not cover a category it does not advertise", () => {
+  const agents = [
+    { id: "2202", category: null, outcomeMatches: [{ category: "grid-trading" as const, source: "description" as const, reason: "matched" }] },
+  ];
+  const coverage = liveCategoryCoverage(agents, [
+    { agentId: "2202", status: "reachable", supportedCategories: ["yield-optimisation"] },
+  ]);
+  assert.equal(coverage.find((entry) => entry.id === "grid-trading")?.reachable, 0);
 });
 
 test("maps evidence into plain buyer-facing availability states", () => {
@@ -43,6 +53,6 @@ test("maps evidence into plain buyer-facing availability states", () => {
   assert.deepEqual(categoryAvailability(listed), { state: "listed", label: "LISTED", detail: "A provider has listed this goal." });
   assert.deepEqual(categoryAvailability(matched), { state: "matched", label: "MATCH FOUND", detail: "This goal appears in a service description." });
   assert.deepEqual(categoryAvailability(unavailable), { state: "unavailable", label: "NOT AVAILABLE", detail: "No matching service is listed yet." });
-  assert.deepEqual(categoryAvailability(listed, { attempted: 1, reachable: 1 }), { state: "responding", label: "READY TO TRY", detail: "A service responded just now." });
+  assert.deepEqual(categoryAvailability(listed, { attempted: 1, reachable: 1 }), { state: "responding", label: "SERVICE RESPONDS", detail: "A matching service returned its current service details." });
   assert.deepEqual(categoryAvailability(listed, { attempted: 1, reachable: 0 }), { state: "listed", label: "LISTED", detail: "A listed service needs another check." });
 });

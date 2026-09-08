@@ -60,7 +60,7 @@ const REQUIRED_CATEGORIES = [
   "rebalancing",
   "grid-trading",
   "yield-optimisation",
-  "health-factor-monitoring",
+  "health-factor",
 ] as const;
 
 const HASH_PATTERN = /^0x[0-9a-fA-F]{64}$/;

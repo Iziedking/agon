@@ -12,7 +12,7 @@ export type CategoryCoverage = {
 
 export type CategoryAvailability = {
   state: "responding" | "listed" | "matched" | "unavailable";
-  label: "READY TO TRY" | "LISTED" | "MATCH FOUND" | "NOT AVAILABLE";
+  label: "SERVICE RESPONDS" | "LISTED" | "MATCH FOUND" | "NOT AVAILABLE";
   detail: string;
 };
 
@@ -45,7 +45,7 @@ export function categoryAvailability(
   entry: CategoryCoverage,
   live?: Pick<LiveCategoryCoverage, "attempted" | "reachable">,
 ): CategoryAvailability {
-  if (live?.reachable) return { state: "responding", label: "READY TO TRY", detail: "A service responded just now." };
+  if (live?.reachable) return { state: "responding", label: "SERVICE RESPONDS", detail: "A matching service returned its current service details." };
   if (live?.attempted) return { state: "listed", label: "LISTED", detail: "A listed service needs another check." };
   if (entry.providerCategories) return { state: "listed", label: "LISTED", detail: "A provider has listed this goal." };
   if (entry.descriptionMatches) return { state: "matched", label: "MATCH FOUND", detail: "This goal appears in a service description." };
@@ -54,13 +54,16 @@ export function categoryAvailability(
 
 export function liveCategoryCoverage(
   agents: readonly Pick<AgentSummary, "id" | "category" | "outcomeMatches">[],
-  proofs: readonly Pick<EndpointProof, "agentId" | "status">[],
+  proofs: readonly Pick<EndpointProof, "agentId" | "status" | "supportedCategories">[],
 ): LiveCategoryCoverage[] {
   const proofByAgent = new Map(proofs.map((proof) => [proof.agentId, proof]));
   return categoryCoverage(agents).map((entry) => {
     const matchingAgents = agents.filter((agent) => agent.outcomeMatches.some((match) => match.category === entry.id));
     const attemptedAgents = matchingAgents.filter((agent) => proofByAgent.has(agent.id));
-    const reachableAgents = attemptedAgents.filter((agent) => proofByAgent.get(agent.id)?.status === "reachable");
+    const reachableAgents = attemptedAgents.filter((agent) => {
+      const proof = proofByAgent.get(agent.id);
+      return proof?.status === "reachable" && proof.supportedCategories.includes(entry.id);
+    });
     return {
       ...entry,
       attempted: attemptedAgents.length,

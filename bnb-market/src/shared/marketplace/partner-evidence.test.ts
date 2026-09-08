@@ -11,7 +11,7 @@ function validEvidence(): Record<string, unknown> {
       rebalancing: { agentId: "2177", endpoint: "https://example.com/rebalancing", status: "reachable", checkedAt: future },
       "grid-trading": { agentId: "2202", endpoint: "https://example.com/grid", status: "reachable", checkedAt: future },
       "yield-optimisation": { agentId: "2175", endpoint: "https://example.com/yield", status: "reachable", checkedAt: future },
-      "health-factor-monitoring": { agentId: "2203", endpoint: "https://example.com/health", status: "reachable", checkedAt: future },
+      "health-factor": { agentId: "2203", endpoint: "https://example.com/health", status: "reachable", checkedAt: future },
     },
     paidHire: {
       chainId: 97,

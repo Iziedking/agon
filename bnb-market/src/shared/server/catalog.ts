@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { isAddress } from "viem";
 import { parseAgentId, isCategory, type BnbChain, type AgentSummary, type AgentDetail, type CatalogPage, type EndpointProof } from "../types.ts";
-import { deriveMarketCapabilities, inferOutcomeMatches, protocolsFromValues, providerOutcomeMatch } from "../marketplace/capabilities.ts";
+import { deriveMarketCapabilities, inferOutcomeMatches, normalizeMarketProtocol, protocolsFromValues, providerOutcomeMatch } from "../marketplace/capabilities.ts";
 import { BNB_REGISTRIES, checkedClient, IDENTITY_ABI, networkConfig } from "./network.ts";
 import { HttpError, object, publicJson, text, httpsUrl } from "./http.ts";
 import { database } from "./store.ts";
@@ -126,21 +126,36 @@ export async function probeAgent(chainId: BnbChain, id: string): Promise<Endpoin
   return cached(`probe:${chainId}:${id}`, async () => {
     const agent = await agentDetail(chainId, id);
     if (!agent.versionHash || agent.registrationMatches === false) throw new HttpError(409, "Agent registration must be readable and match this network before testing.");
-    const service = agent.services.find((s) => s.name.toLowerCase() === "a2a") ?? agent.services.find((s) => s.name.toLowerCase() === "erc-8183" && new URL(s.endpoint).pathname.endsWith("/status"));
+    const service = agent.services.find((s) => normalizeMarketProtocol(s.name) === "A2A") ??
+      agent.services.find((s) => normalizeMarketProtocol(s.name) === "ERC8183" && new URL(s.endpoint).pathname.endsWith("/status"));
     if (!service) throw new HttpError(409, "This agent does not advertise a supported read-only discovery endpoint.");
-    const base = { chainId, agentId: id, versionHash: agent.versionHash, checkedAt: new Date().toISOString(), protocol: service.name, endpoint: service.endpoint };
+    const base = { chainId, agentId: id, versionHash: agent.versionHash, checkedAt: new Date().toISOString(), protocol: service.name,
+      endpoint: service.endpoint, checkLevel: "discovery" as const };
     try {
       const card = object(await publicJson(service.endpoint));
-      if (service.name.toLowerCase() === "a2a") {
+      if (normalizeMarketProtocol(service.name) === "A2A") {
         if (!text(card.name) || !Array.isArray(card.skills)) throw new Error("Invalid A2A card");
-        return { ...base, status: "reachable", message: "The agent returned an A2A discovery card. No task ran and no payment was sent." };
+        const skillText = card.skills.slice(0, 30).map((skill) => {
+          if (!skill || typeof skill !== "object" || Array.isArray(skill)) return "";
+          const row = skill as Record<string, unknown>;
+          return [row.id, row.name, row.description, ...(Array.isArray(row.tags) ? row.tags : [])]
+            .map((value) => text(value)).join(" ");
+        }).join(" ");
+        const advertised = inferOutcomeMatches(text(card.name), `${text(card.description)} ${skillText}`)
+          .map((match) => match.category);
+        const supportedCategories = [...new Set(advertised.filter((category) =>
+          agent.outcomeMatches.some((match) => match.category === category)))];
+        return { ...base, status: "reachable", supportedCategories,
+          message: "The service returned current discovery details for this category. No task ran and no payment was sent." };
       }
       // Exact response inspected from registered BNB agent 2114 on 2026-09-04.
       // A status payload is provider evidence only, never authorization to pay.
       const config = networkConfig(chainId).contracts;
       if (card.status !== "ok" || ![agent.wallet, agent.owner].some((a) => a.toLowerCase() === text(card.agent_address).toLowerCase())) throw new Error("Status identity mismatch");
       const matches = text(card.commerce_address).toLowerCase() === config.commerceProxy.toLowerCase() && text(card.router_address).toLowerCase() === config.routerProxy.toLowerCase() && text(card.policy_address).toLowerCase() === config.policy.toLowerCase();
-      return { ...base, status: "reachable", message: matches ? "The ERC-8183 status endpoint responded with matching identity and SDK contract addresses. No task ran and no payment was sent." : "The provider is reachable, but its payment contract configuration differs from the installed SDK. Hiring remains unavailable. No task ran and no payment was sent." };
-    } catch { return { ...base, status: "unavailable", message: "The agent did not return a valid discovery response for this identity. Try again later or choose another agent." }; }
+      const supportedCategories = matches ? agent.outcomeMatches.map((match) => match.category) : [];
+      return { ...base, status: "reachable", supportedCategories,
+        message: matches ? "The payment service returned current details that match this agent and network. No task ran and no payment was sent." : "The provider is reachable, but its payment setup differs from the supported network. Hiring remains unavailable. No task ran and no payment was sent." };
+    } catch { return { ...base, status: "unavailable", supportedCategories: [], message: "The agent did not return a valid discovery response for this identity. Try again later or choose another agent." }; }
   });
 }
