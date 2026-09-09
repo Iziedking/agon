@@ -43,7 +43,7 @@ export const BNB_CHAINS: readonly BnbNetwork[] = [
   },
 ] as const;
 
-export const DEFAULT_BNB_CHAIN = BNB_TESTNET_ID;
+export const DEFAULT_BNB_CHAIN = BNB_MAINNET_ID;
 
 export function resolveBnbChain(value: unknown): BnbChainId {
   if (value === BNB_MAINNET_ID || value === "56" || value === "bnb-mainnet") return BNB_MAINNET_ID;

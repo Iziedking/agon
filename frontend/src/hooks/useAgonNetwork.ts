@@ -19,13 +19,14 @@ export function useAgonNetwork() {
   const pathname = usePathname() ?? "/";
   const router = useRouter();
   const searchParams = useSearchParams();
-  const search = searchParams.toString();
   const networkKey = getAgonNetworkKey(searchParams.get("network"));
   const network = useMemo(() => getAgonNetwork(networkKey), [networkKey]);
 
   const selectNetwork = useCallback((next: AgonNetworkKey) => {
-    router.push(networkHref(pathname, next, search));
-  }, [pathname, router, search]);
+    // Agent IDs and prepared requests are network-specific. Return to discovery
+    // instead of carrying a request or comparison into a different chain.
+    router.push(networkHref(pathname.startsWith("/market") || pathname.startsWith("/agon/playground") ? "/market" : pathname, next));
+  }, [pathname, router]);
 
   return { network, networkKey, selectNetwork, defaultNetworkKey: AGON_DEFAULT_NETWORK_KEY };
 }

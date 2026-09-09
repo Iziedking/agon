@@ -1,14 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { BnbChain, CommerceIntent, CommerceStep, LpHiringReadiness } from "./types";
+import { useSearchParams } from "next/navigation";
+import { ReportConfiguration } from "./ReportConfiguration";
+import { bnbHref, canSignRequest, recoveryCopy } from "./marketplace/journey";
 import type { LpInput } from "./providers/lp-core";
 import { checkLpHiring, prepareLpHire, readLpHire, readLpHires, reconcileLpHire } from "./client";
 
 export type WalletRequest = (input: { method: string; params?: unknown[] }) => Promise<unknown>;
 
 const BUTTON = "inline-flex min-h-11 items-center justify-center border border-[color:var(--hairline-strong)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.12em] text-ink hover:bg-canvas-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-50";
-const INPUT = "mt-2 h-12 w-full border border-[color:var(--hairline-strong)] bg-canvas px-4 font-mono text-sm text-ink focus:outline focus:outline-2 focus:outline-accent";
 const PANEL = "border border-[color:var(--hairline-strong)] bg-canvas-2 p-5 sm:p-6";
 
 const BLOCKERS: Record<string, string> = {
@@ -58,11 +60,7 @@ function isTerminal(intent: CommerceIntent) {
   return intent.state === "expired" || intent.state === "reverted" || intent.state === "needs_attention";
 }
 
-function terminalMessage(intent: CommerceIntent) {
-  if (intent.state === "expired") return "This request expired before payment. No funds were moved. Start a new request to receive a fresh quote.";
-  if (intent.state === "reverted") return "This request was reverted. No further wallet action will be requested. Start a new request if you still want the report.";
-  return "This request needs attention before it can continue. Start a new request or inspect the transaction details below.";
-}
+function terminalMessage(intent: CommerceIntent) { return recoveryCopy(intent); }
 
 function historyLabel(intent: CommerceIntent) {
   if (intent.state === "funded" && intent.delivery?.status === "submitted") return "REPORT READY";
@@ -139,7 +137,8 @@ function StepProgress({ intent }: { intent: CommerceIntent | null }) {
   </ol>;
 }
 
-export function LpHiringPanel({ chainId, signedIn, onNeedSignIn, walletRequest }: {
+export function LpHiringPanel({ chainId, signedIn, onNeedSignIn, walletRequest, version = "unavailable" }: {
+  version?: string;
   chainId: BnbChain;
   signedIn: boolean;
   onNeedSignIn: () => void;
@@ -148,14 +147,14 @@ export function LpHiringPanel({ chainId, signedIn, onNeedSignIn, walletRequest }
   const [readiness, setReadiness] = useState<LpHiringReadiness | null>(null);
   const [readinessError, setReadinessError] = useState<string | null>(null);
   const [readinessRetry, setReadinessRetry] = useState(0);
-  const [positionId, setPositionId] = useState("");
-  const [width, setWidth] = useState("10");
-  const [deviation, setDeviation] = useState("100");
+  const searchParams = useSearchParams();
+  const requestedIntent = searchParams.get("intent");
   const [intent, setIntent] = useState<CommerceIntent | null>(null);
   const [history, setHistory] = useState<CommerceIntent[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const pending = useRef<AbortController | null>(null);
+  useEffect(() => () => { pending.current?.abort(); }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -178,16 +177,17 @@ export function LpHiringPanel({ chainId, signedIn, onNeedSignIn, walletRequest }
   }, [chainId, intent]);
 
   useEffect(() => {
-    const savedId = window.sessionStorage.getItem(intentStorageKey(chainId));
+    if (!signedIn || chainId !== 97) { setIntent(null); return; }
+    const savedId = requestedIntent || window.sessionStorage.getItem(intentStorageKey(chainId));
     if (!savedId) return;
     const controller = new AbortController();
     readLpHire(chainId, savedId, controller.signal)
       .then(setIntent)
       .catch(() => {
-        if (!controller.signal.aborted) window.sessionStorage.removeItem(intentStorageKey(chainId));
+        if (!controller.signal.aborted) setError("Could not restore this request. Open Activity to refresh its status before starting another request.");
       });
     return () => controller.abort();
-  }, [chainId]);
+  }, [chainId, signedIn, requestedIntent]);
 
   useEffect(() => {
     if (!signedIn || chainId !== 97) { setHistory([]); return; }
@@ -200,7 +200,7 @@ export function LpHiringPanel({ chainId, signedIn, onNeedSignIn, walletRequest }
 
   useEffect(() => {
     if (intent) window.sessionStorage.setItem(intentStorageKey(chainId), intent.id);
-  }, [chainId, intent?.id]);
+  }, [chainId, intent]);
 
   function clearHire() {
     pending.current?.abort();
@@ -208,19 +208,19 @@ export function LpHiringPanel({ chainId, signedIn, onNeedSignIn, walletRequest }
     setIntent(null); setError(null); setBusy(false);
   }
 
-  function resumeHire(saved: CommerceIntent) {
-    setIntent(saved); setError(null); window.sessionStorage.setItem(intentStorageKey(chainId), saved.id);
+  async function resumeHire(saved: CommerceIntent) {
+    setBusy(true); setError(null);
+    try { setIntent(await readLpHire(chainId, saved.id)); } catch (failure) { setError(errorMessage(failure, "Could not refresh this request.")); } finally { setBusy(false); }
   }
 
-  async function prepare(event: FormEvent) {
-    event.preventDefault();
+  async function prepare(input: LpInput) {
     if (!signedIn) { onNeedSignIn(); return; }
     if (chainId !== 97 || !readiness?.enabled) return;
     setBusy(true); setError(null);
     const controller = new AbortController(); pending.current?.abort(); pending.current = controller;
-    const input: LpInput = { positionId, halfWidthSteps: Number(width), maxDeviationTicks: Number(deviation) };
     try {
       const prepared = await prepareLpHire(chainId, crypto.randomUUID(), input);
+      if (controller.signal.aborted) return;
       setIntent(prepared); setHistory((items) => [prepared, ...items.filter((item) => item.id !== prepared.id)]);
     } catch (failure) {
       if (!controller.signal.aborted) setError(errorMessage(failure, "The provider could not prepare a signed quote. No wallet action was requested."));
@@ -228,13 +228,16 @@ export function LpHiringPanel({ chainId, signedIn, onNeedSignIn, walletRequest }
   }
 
   async function sendNextTransaction() {
-    if (!intent?.transaction) return;
+    if (!intent?.transaction || !signedIn || busy) return;
+    if (!canSignRequest(intent, chainId)) { setError("This request is no longer ready to sign. Refresh its status in Activity."); return; }
     if (!walletRequest) { onNeedSignIn(); return; }
     setBusy(true); setError(null);
     const activeIntentId = intent.id;
     try {
       const chain = await walletRequest({ method: "eth_chainId" });
       if (Number(chain) !== 97) throw new Error("Switch your wallet to BNB Testnet before approving this action.");
+      const accounts = await walletRequest({ method: "eth_accounts" });
+      if (!Array.isArray(accounts) || typeof accounts[0] !== "string" || accounts[0].toLowerCase() !== intent.buyerAddress.toLowerCase()) throw new Error("Select the wallet that started this request before confirming.");
       const transaction = intent.transaction;
       const rawHash = await walletRequest({ method: "eth_sendTransaction", params: [{
         from: intent.buyerAddress,
@@ -266,8 +269,8 @@ export function LpHiringPanel({ chainId, signedIn, onNeedSignIn, walletRequest }
   return <section id="hire-agent" className={`${PANEL} scroll-mt-24`} aria-labelledby="hire-agent-heading">
     <div className="flex flex-wrap items-start justify-between gap-4">
       <div>
-        <p className="font-mono text-[10px] uppercase tracking-widest text-accent">STEP 2 · REQUEST A REPORT</p>
-        <h3 id="hire-agent-heading" className="mt-3 font-stencil text-3xl uppercase">HIRE LP GUARDIAN</h3>
+        <p className="font-mono text-[10px] uppercase tracking-widest text-accent">ONE-TIME REPORT</p>
+        <h3 id="hire-agent-heading" className="mt-3 font-stencil text-3xl uppercase">Configure your report</h3>
       </div>
       <span className="border border-[color:var(--hairline-strong)] px-3 py-2 font-mono text-[10px] uppercase tracking-widest">BNB {chainId === 97 ? "TESTNET" : "MAINNET"}</span>
     </div>
@@ -285,15 +288,7 @@ export function LpHiringPanel({ chainId, signedIn, onNeedSignIn, walletRequest }
         <div><p className="text-ink-3">BEFORE YOU START</p><p className="mt-2 text-ink">Review each wallet step</p></div>
       </div>
       <p className="mt-5 font-mono text-[11px] leading-relaxed text-ink-3">No payment is requested until you choose to continue. Your wallet shows every step before it is approved.</p>
-      {!signedIn ? <button type="button" className={`${BUTTON} mt-5 bg-accent !text-accent-ink`} onClick={onNeedSignIn}>USE NOW →</button> : <form onSubmit={prepare} className="mt-6 space-y-5">
-        <fieldset disabled={busy} className="grid gap-4 md:grid-cols-3"><legend className="sr-only">LP Guardian hire settings</legend>
-          <label className="font-mono text-[11px] uppercase text-ink-2">POSITION ID<input className={INPUT} required inputMode="numeric" pattern="[0-9]+" value={positionId} onChange={(event) => setPositionId(event.target.value)} placeholder="Example: 37235" /><span className="mt-2 block font-mono text-[10px] normal-case leading-relaxed text-ink-3">Find this number in your PancakeSwap position.</span></label>
-          <label className="font-mono text-[11px] uppercase text-ink-2">RANGE SIZE<input className={INPUT} required type="number" min="1" max="1000" step="1" value={width} onChange={(event) => setWidth(event.target.value)} /></label>
-          <label className="font-mono text-[11px] uppercase text-ink-2">PRICE DEVIATION<input className={INPUT} required type="number" min="0" max="10000" step="1" value={deviation} onChange={(event) => setDeviation(event.target.value)} /></label>
-        </fieldset>
-        <p className="font-mono text-[11px] leading-relaxed text-ink-3">The report uses one live market snapshot and explains when it cannot make a safe recommendation.</p>
-        <button type="submit" className={`${BUTTON} bg-accent !text-accent-ink`} disabled={busy}>{busy ? "PREPARING YOUR REQUEST…" : "CONTINUE →"}</button>
-      </form>}
+      <ReportConfiguration readiness={readiness} version={version} busy={busy} signedIn={signedIn} signIn={onNeedSignIn} submit={prepare} />
     </> : null}
 
     {!intent && signedIn && history.length ? <div className="mt-6 border-t border-[color:var(--hairline)] pt-6">
@@ -306,13 +301,16 @@ export function LpHiringPanel({ chainId, signedIn, onNeedSignIn, walletRequest }
     </div> : null}
 
     {intent ? <div className="mt-6 border-t border-[color:var(--hairline)] pt-6">
-      <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-mono text-[10px] uppercase tracking-widest text-accent">{isTerminal(intent) ? "REQUEST ENDED" : "REQUEST IN PROGRESS"}</p><p role="status" className="mt-2 font-stencil text-2xl uppercase">{intent.state === "funded" && intent.delivery?.status === "submitted" ? "REPORT READY" : intent.state === "funded" ? "REQUEST PAID" : isPending(intent) ? "CONFIRMING PAYMENT" : currentTransaction ? "NEXT STEP" : intent.state.replaceAll("_", " ")}</p></div><button type="button" className={BUTTON} onClick={clearHire} disabled={busy}>{isTerminal(intent) ? "START A NEW REQUEST →" : "START OVER"}</button></div>
+      <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-mono text-[10px] uppercase tracking-widest text-accent">{isTerminal(intent) ? "REQUEST ENDED" : "REQUEST IN PROGRESS"}</p><p role="status" className="mt-2 font-stencil text-2xl uppercase">{intent.state === "funded" && intent.delivery?.status === "submitted" ? "REPORT READY" : intent.state === "funded" ? "REQUEST PAID" : isPending(intent) ? "CONFIRMING TRANSACTION" : currentTransaction ? "NEXT STEP" : intent.state.replaceAll("_", " ")}</p></div><button type="button" className={BUTTON} onClick={clearHire} disabled={busy}>{isTerminal(intent) ? "START A NEW REQUEST →" : "CLOSE REQUEST VIEW"}</button></div>
+      <dl className="mt-5 grid gap-4 border-y border-[color:var(--hairline)] py-5 text-sm sm:grid-cols-2"><div><dt className="text-ink-2">Exact payment</dt><dd className="mt-2">{intent.amountDisplay} {intent.token.symbol}</dd></div><div><dt className="text-ink-2">Network and fees</dt><dd className="mt-2">BNB Testnet · tBNB fees shown by your wallet</dd></div><div><dt className="text-ink-2">Provider</dt><dd className="mt-2 break-all font-mono text-xs">{intent.providerAddress}</dd></div><div><dt className="text-ink-2">Token</dt><dd className="mt-2 break-all font-mono text-xs">{intent.token.address}</dd></div><div className="sm:col-span-2"><dt className="text-ink-2">Service version</dt><dd className="mt-2 break-all font-mono text-xs">{intent.serviceVersion}</dd></div></dl>
+      <a className={BUTTON} href={bnbHref(chainId, `/market/activity?intent=${encodeURIComponent(intent.id)}`)}>View in Activity →</a>
       <StepProgress intent={intent} />
+      <p className="mt-3 font-sans text-sm text-ink-2">Closing this view does not cancel a job, refund a payment or revoke a token approval. Your request remains in Activity.</p>
       <div className="mt-6 border-l-2 border-accent pl-4 font-mono text-[12px] leading-relaxed" role="status">
         <p className="text-ink">{isTerminal(intent) ? terminalMessage(intent) : intent.state === "funded" && intent.delivery?.status === "submitted" ? "Your report is ready." : intent.state === "funded" ? "Your request is paid and the report is being prepared." : isPending(intent) ? "Your wallet action was sent. We are waiting for confirmation." : "Review the next step below."}</p>
         {intent.state === "funded" && intent.delivery?.status === "submitted" && intent.delivery.url ? <a className={`${BUTTON} mt-5 bg-accent !text-accent-ink`} href={intent.delivery.url} target="_blank" rel="noopener noreferrer">OPEN REPORT →</a> : null}
         {intent.state === "funded" && intent.delivery?.status === "needs_attention" ? <p className="mt-3 text-[color:var(--err)]">The provider could not verify the published result. Funds remain under the policy review path.</p> : null}
-        {intent.state === "funded" && intent.delivery?.status === "failed" ? <p className="mt-3 text-[color:var(--err)]">The provider will retry this report. {intent.delivery.error ?? "No additional detail is available."}</p> : null}
+        {intent.state === "funded" && intent.delivery?.status === "failed" ? <p className="mt-3 text-[color:var(--err)]">The report could not be delivered. Refresh the request to check for an update. {intent.delivery.error ?? "No additional detail is available."}</p> : null}
         {intent.state === "funded" && intent.delivery?.status !== "submitted" ? <p className="mt-3 text-ink-2">The agent will deliver a report for this request. No liquidity transaction is submitted.</p> : null}
         {isPending(intent) ? <p className="mt-3 text-ink-2">You can leave this page and return to check again.</p> : null}
       </div>
@@ -327,7 +325,7 @@ export function LpHiringPanel({ chainId, signedIn, onNeedSignIn, walletRequest }
         </div>
         {intent.delivery?.status === "submitted" && intent.delivery.url ? <p className="mt-4 break-all font-mono text-[10px] uppercase tracking-widest text-ink-3">REPORT HASH · {intent.delivery.manifestHash}</p> : null}
       </div> : null}
-      {currentTransaction && !isPending(intent) ? <div className="mt-6 border border-[color:var(--hairline-strong)] p-4"><p className="font-mono text-[10px] uppercase tracking-widest text-accent">NEXT STEP</p><h4 className="mt-3 font-stencil text-xl uppercase">{STEP_COPY[currentTransaction.step].title}</h4><p className="mt-3 font-mono text-[12px] leading-relaxed text-ink-2">{STEP_COPY[currentTransaction.step].warning}</p><button type="button" className={`${BUTTON} mt-5 bg-accent !text-accent-ink`} onClick={sendNextTransaction} disabled={busy}>{busy ? "CHECK YOUR WALLET…" : STEP_COPY[currentTransaction.step].button}</button></div> : null}
+      {currentTransaction && !isPending(intent) && !isTerminal(intent) ? <div className="mt-6 border border-[color:var(--hairline-strong)] p-4"><p className="font-mono text-[10px] uppercase tracking-widest text-accent">NEXT STEP</p><h4 className="mt-3 font-stencil text-xl uppercase">{STEP_COPY[currentTransaction.step].title}</h4><p className="mt-3 font-mono text-[12px] leading-relaxed text-ink-2">{STEP_COPY[currentTransaction.step].warning}</p><p className="mt-4 font-mono text-xs text-ink-2">Wallet transaction recipient</p><p className="mt-1 break-all font-mono text-xs text-ink">{currentTransaction.to}</p><p className="mt-3 font-sans text-sm text-ink-2">Check this address and the amount in your wallet. A network fee may apply to this step.</p><button type="button" className={`${BUTTON} mt-5 bg-accent !text-accent-ink`} onClick={sendNextTransaction} disabled={busy || !canSignRequest(intent, chainId)}>{busy ? "CHECK YOUR WALLET…" : STEP_COPY[currentTransaction.step].button}</button></div> : null}
       {intent.quoteExpiresAt ? <p className="mt-4 font-mono text-[10px] uppercase tracking-widest text-ink-3">{intent.jobId ? `JOB EXPIRES · ${new Date(intent.jobExpiresAt).toLocaleString()}` : `REQUEST EXPIRES · ${quoteExpires}`}</p> : null}
       {intent.transactions.length ? <details className="mt-4 font-mono text-[11px] text-ink-3"><summary className="min-h-11 cursor-pointer py-3 uppercase tracking-widest">TRANSACTION DETAILS</summary><ul className="space-y-2">{intent.transactions.map((transaction) => <li className="flex flex-wrap justify-between gap-2 border-t border-[color:var(--hairline)] py-2" key={transaction.step}><span>{transaction.step.replaceAll("_", " ").toUpperCase()} · {transaction.status.toUpperCase()}</span><a className="break-all underline underline-offset-4" href={`${explorerBase(chainId)}/tx/${transaction.hash}`} target="_blank" rel="noopener noreferrer">{shortHash(transaction.hash)} ↗</a></li>)}</ul></details> : null}
     </div> : null}

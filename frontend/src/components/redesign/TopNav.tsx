@@ -19,6 +19,7 @@ import { IS_AGON_DEPLOYMENT } from "@/lib/product";
 import { useDisconnect } from "wagmi";
 import { isAgonRoute, isLegacyArcRunRoute } from "@/lib/agon/routes";
 import { useAgonNetwork } from "@/hooks/useAgonNetwork";
+import { networkHref } from "@/lib/agon/network";
 
 /// The product nav. Left: â–  ARCRUN mono wordmark with the pink square mark.
 /// Center: mono caps route links separated by 32px on desktop. Right: the
@@ -45,6 +46,7 @@ const LEGACY_ROUTES = [
 
 const AGON_ROUTES = [
   { href: "/market", label: "MARKET", exact: true },
+  { href: "/market/activity", label: "ACTIVITY", exact: true },
   { href: "/market/new", label: "LIST AN AGENT", exact: true },
   { href: "/agon/playground", label: "PLAYGROUND", exact: true },
   { href: "/docs", label: "DOCS", exact: false },
@@ -75,20 +77,20 @@ export function TopNav({ hideSignOut = false }: { hideSignOut?: boolean } = {}) 
   }, [pathname]);
 
   return (
-    <header className="sticky top-0 z-20 border-b border-[color:var(--hairline)] bg-canvas">
+    <header className="sticky top-0 z-20 border-b border-[color:var(--hairline)] bg-canvas" onKeyDown={(event) => { if (event.key === "Escape" && open) { setOpen(false); event.currentTarget.querySelector<HTMLButtonElement>('[aria-controls="agon-mobile-menu"]')?.focus(); } }}>
       <div className="mx-auto flex h-16 max-w-[1600px] items-center justify-between gap-2 px-3 sm:gap-3 sm:px-6">
         <Link href="/" className="inline-flex min-w-0 shrink-0 items-center text-ink" aria-label="Agon home">
           {isAgon ? <AgonMark /> : <ArcRunMark />}
         </Link>
 
         {showRoutes ? (
-        <nav className="hidden items-center gap-8 md:flex">
+        <nav className="hidden items-center gap-5 xl:flex">
           {routes.map((r) => {
             const active = pathname === r.href || (!("exact" in r) || !r.exact) && pathname.startsWith(`${r.href}/`);
             return (
               <Link
                 key={r.href}
-                href={r.href}
+                href={isAgon ? networkHref(r.href, networkKey) : r.href}
                 className={`font-mono text-[11px] uppercase tracking-[0.16em] transition-colors duration-120 ${
                   active ? "text-ink" : "text-ink-3 hover:text-ink"
                 }`}
@@ -97,17 +99,17 @@ export function TopNav({ hideSignOut = false }: { hideSignOut?: boolean } = {}) 
               </Link>
             );
           })}
-          {isSignedIn ? <ProfileLink /> : null}
+          {isSignedIn && !isAgon ? <ProfileLink /> : null}
         </nav>
         ) : null}
 
         <div className="flex shrink-0 items-center gap-2 max-[359px]:gap-1">
           {isSignedIn ? (
             <>
-              <WalletBalanceChip networkKey={isAgon ? networkKey : undefined} />
+              {!isAgon ? <WalletBalanceChip /> : null}
               {!isAgon ? <ArcChainChip /> : null}
-              <NotificationBell />
-              {!hideSignOut ? <button
+              <div className={isAgon ? "hidden xl:block" : ""}><NotificationBell /></div>
+              {!hideSignOut && !isAgon ? <button
                 type="button"
                 onClick={async () => {
                   await signOut();
@@ -120,38 +122,38 @@ export function TopNav({ hideSignOut = false }: { hideSignOut?: boolean } = {}) 
             </>
           ) : null}
           {isAgon ? <AgonNetworkSelector /> : null}
-          {!isLogin && (settling ? null : <LoginButton />)}
-          <ThemeToggle />
+          {isAgon && isSignedIn ? <details className="relative hidden xl:block" onKeyDown={(event) => { if (event.key === "Escape") event.currentTarget.open = false; }}><summary className="flex min-h-11 cursor-pointer items-center border border-[color:var(--hairline-strong)] px-3 font-mono text-[10px] uppercase">Account</summary><nav aria-label="Account" className="absolute right-0 top-full z-50 mt-2 grid w-56 border border-[color:var(--hairline-strong)] bg-canvas p-2"><Link className="min-h-11 p-3 text-sm" href={networkHref("/market/activity", networkKey)}>My activity</Link><Link className="min-h-11 p-3 text-sm" href={networkHref("/market/provider", networkKey)}>Provider dashboard</Link><button className="min-h-11 p-3 text-left text-sm" onClick={async () => { await signOut(); disconnect(); }}>Sign out</button></nav></details> : null}
+          <div className={isAgon ? "hidden xl:block" : ""}>{!isLogin && (!isAgon || !isSignedIn) && (settling ? null : <LoginButton />)}</div>
+          <div className={isAgon ? "hidden xl:block" : ""}><ThemeToggle /></div>
           {!isLogin && (isAgon || isSignedIn) ? (
             <button
               type="button"
               onClick={() => setOpen((v) => !v)}
               aria-label={open ? "close menu" : "open menu"}
               aria-expanded={open}
-              className="flex h-11 w-11 min-h-11 min-w-11 items-center justify-center border border-[color:var(--hairline-strong)] bg-canvas font-mono text-[14px] text-ink transition-colors hover:bg-canvas-3 md:hidden"
+              aria-controls="agon-mobile-menu"
+              className="flex h-11 min-h-11 min-w-11 items-center justify-center px-2 border border-[color:var(--hairline-strong)] bg-canvas font-mono text-[14px] text-ink transition-colors hover:bg-canvas-3 xl:hidden"
             >
-              <span aria-hidden className="relative block h-3.5 w-4">
-                <span className={`absolute left-0 top-0 block h-px w-4 bg-current transition-transform ${open ? "translate-y-[6px] rotate-45" : ""}`} />
-                <span className={`absolute left-0 top-[6px] block h-px w-4 bg-current transition-opacity ${open ? "opacity-0" : ""}`} />
-                <span className={`absolute left-0 top-3 block h-px w-4 bg-current transition-transform ${open ? "-translate-y-[6px] -rotate-45" : ""}`} />
-              </span>
+              <span className="font-mono text-[10px] uppercase">{open ? "Close" : "Menu"}</span>
             </button>
           ) : null}
         </div>
       </div>
 
       {open && showRoutes ? (
-        <div className="border-t border-[color:var(--hairline)] bg-canvas md:hidden">
+        <div id="agon-mobile-menu" className="border-t border-[color:var(--hairline)] bg-canvas xl:hidden">
           <nav className="mx-auto flex max-w-[1600px] flex-col px-3 py-2 sm:px-6">
             {/* The nav chip is hidden on phones, so this is where mobile users
                 see the selected network's payment-token state. */}
-            {isSignedIn ? <WalletBalanceChip variant="row" networkKey={isAgon ? networkKey : undefined} /> : null}
+            {isSignedIn && !isAgon ? <WalletBalanceChip variant="row" /> : null}
+            {isAgon ? <div className="flex flex-wrap items-center gap-3 border-b border-[color:var(--hairline)] py-3">{!isSignedIn ? <LoginButton /> : <NotificationBell />}<ThemeToggle /></div> : null}
+            {isAgon && isSignedIn ? <Link className="inline-flex min-h-11 items-center py-3 text-sm" href={networkHref("/market/provider", networkKey)}>Provider dashboard</Link> : null}
             {routes.map((r) => {
               const active = pathname === r.href || (!("exact" in r) || !r.exact) && pathname.startsWith(`${r.href}/`);
               return (
                 <Link
                   key={r.href}
-                  href={r.href}
+                  href={isAgon ? networkHref(r.href, networkKey) : r.href}
                   className={`inline-flex min-h-11 items-center border-b border-[color:var(--hairline)] py-3 font-mono text-[12px] uppercase tracking-[0.16em] transition-colors last:border-0 ${
                     active ? "text-ink" : "text-ink-3"
                   }`}
@@ -165,7 +167,7 @@ export function TopNav({ hideSignOut = false }: { hideSignOut?: boolean } = {}) 
                 <ProfileLink />
               </div>
             ) : null}
-            {isSignedIn && !hideSignOut ? (
+            {isSignedIn ? (
               <button
                 type="button"
                 onClick={async () => {

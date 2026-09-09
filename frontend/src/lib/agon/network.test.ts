@@ -9,9 +9,9 @@ import {
   networkHref,
 } from "./network.ts";
 
-test("BNB Testnet is the Agon default context", () => {
-  assert.equal(AGON_DEFAULT_NETWORK_KEY, "bnb-testnet");
-  assert.equal(AGON_NETWORKS[AGON_DEFAULT_NETWORK_KEY].chainId, 97);
+test("BNB Mainnet is the Agon default context", () => {
+  assert.equal(AGON_DEFAULT_NETWORK_KEY, "bnb-mainnet");
+  assert.equal(AGON_NETWORKS[AGON_DEFAULT_NETWORK_KEY].chainId, 56);
   assert.equal(AGON_NETWORKS[AGON_DEFAULT_NETWORK_KEY].brand, "BNB");
 });
 
@@ -43,5 +43,5 @@ test("network links preserve the route and replace only the network context", ()
     networkHref("/market", "bnb-testnet", "?category=trading&network=arc-testnet"),
     "/market?category=trading&network=bnb-testnet",
   );
-  assert.equal(getAgonNetworkKey("not-a-network"), "bnb-testnet");
+  assert.equal(getAgonNetworkKey("not-a-network"), "bnb-mainnet");
 });

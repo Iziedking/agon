@@ -144,9 +144,23 @@ docs/superpowers/
 **/docs/staging/
 **/submission/
 
+# Private demo and submission guides. Keep reproducible public examples and
+# evidence schemas tracked, but do not publish operator runbooks or packets.
+**/DEMO_RUNBOOK.md
+docs/demo/
+**/*submission*.md
+**/*SUBMISSION*.md
+
 # Local browser captures and review artifacts.
 .playwright-mcp/
 agon-pattern-d-light.png
+agon-market-mobile-audit.png
+.codex/
+
+# Private BNB build notes and completed evidence payload. Keep the public
+# schema and validator documentation in bnb-market/evidence/ tracked.
+bnb-market/docs/
+bnb-market/evidence/market-evidence.json
 
 # Isolated production validation; never share a running dev server's chunks.
 frontend/.next-validation/

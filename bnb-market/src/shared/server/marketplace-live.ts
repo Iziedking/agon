@@ -2,8 +2,8 @@ import type { BnbChain, AgentSummary, CatalogSource, EndpointProof, MarketplaceL
 import { categoryCoverage, liveCategoryCoverage, liveCategoryCoverageGaps } from "../marketplace/category-coverage.ts";
 import { catalog, probeAgent } from "./catalog.ts";
 
-const MAX_AGENTS_PER_GOAL = 3;
-const MAX_PROBES = 12;
+const MAX_AGENTS_PER_GOAL = 5;
+const MAX_PROBES = 20;
 const MAX_CATALOG_PAGES = 10;
 const REQUIRED_CATEGORIES = ["rebalancing", "grid-trading", "yield-optimisation", "health-factor"] as const;
 
@@ -45,15 +45,16 @@ export async function marketplaceLiveStatus(chainId: BnbChain): Promise<Marketpl
   const proofs: Array<Pick<EndpointProof, "agentId" | "status" | "supportedCategories">> = [];
   const warnings = [...page.warnings];
 
-  for (const agent of candidates) {
+  const checked = await Promise.all(candidates.map(async (agent) => {
     try {
-      proofs.push(await probeAgent(chainId, agent.id));
+      return await probeAgent(chainId, agent.id);
     } catch (error) {
-      proofs.push({ agentId: agent.id, status: "unavailable", supportedCategories: [] });
       warnings.push(`${agent.id}: live check could not be completed.`);
       if (error instanceof Error) console.warn(JSON.stringify({ event: "bnb_marketplace_probe_failed", chainId, agentId: agent.id, reason: error.message }));
+      return { agentId: agent.id, status: "unavailable" as const, supportedCategories: [] };
     }
-  }
+  }));
+  proofs.push(...checked);
 
   const liveCoverage = liveCategoryCoverage(page.items, proofs);
   return {

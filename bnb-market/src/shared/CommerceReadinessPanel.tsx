@@ -56,7 +56,7 @@ export function CommerceReadinessPanel({ chainId, agentId }: { chainId: BnbChain
       {result.paymentsEnabled ? <p>The provider reports that its price, payment setup, and service are available on this network.</p> : <ul className="list-disc space-y-2 pl-5">{result.blockers.map((reason) => <li key={reason}>{reasons[reason] ?? "A required payment check did not pass."}</li>)}</ul>}
       <details className="border-t border-[color:var(--hairline)] pt-4"><summary className="cursor-pointer uppercase tracking-widest">TECHNICAL DETAILS</summary>
         <dl className="mt-4 space-y-2 break-all"><dt>SUPPORTED POLICY</dt><dd>{result.contracts.policy}</dd><dt>PROVIDER POLICY</dt><dd>{result.providerPolicy ?? "Not available"}</dd><dt>PROVIDER POLICY APPROVED BY ROUTER</dt><dd>{result.providerPolicyWhitelisted === null ? "Not checked" : result.providerPolicyWhitelisted ? "Yes" : "No"}</dd><dt>ESCROW TOKEN</dt><dd>{result.token.symbol} · {result.token.address} · {result.token.decimals} decimals</dd><dt>SUPPORTED POLICY DISPUTE WINDOW</dt><dd>{result.disputeWindowSeconds} seconds</dd><dt>CHECKED AT BLOCK</dt><dd>{result.blockNumber} · {new Date(result.checkedAt).toLocaleString()}</dd></dl>
-        <p className="mt-4">A dispute is not automatically a refund. Settlement depends on the policy's voter rules. Endpoint availability does not prove delivery.</p>
+        <p className="mt-4">A dispute is not automatically a refund. Settlement depends on the policy&apos;s voter rules. Endpoint availability does not prove delivery.</p>
       </details>
     </div> : null}
   </section>;

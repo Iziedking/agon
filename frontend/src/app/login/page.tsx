@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { LoginModal } from "@/components/pengu/LoginModal";
@@ -15,13 +15,17 @@ import { useAgonNetwork } from "@/hooks/useAgonNetwork";
 /// request never drift into two different authentication experiences.
 export default function LoginPage() {
   const router = useRouter();
+  const search = useSearchParams();
+  const requestedReturn = search.get("returnTo");
   const { me } = useAuth();
   const { network } = useAgonNetwork();
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    if (me) router.replace(`/market?network=${network.key}`);
-  }, [me, network.key, router]);
+    // Only local marketplace routes can be login return destinations.
+    const safeReturn = requestedReturn && /^\/market(?:[/?#]|$)/.test(requestedReturn) && !requestedReturn.includes("\\") ? requestedReturn : `/market?network=${network.key}`;
+    if (me) router.replace(safeReturn);
+  }, [me, network.key, router, requestedReturn]);
 
   return (
     <div className="min-h-screen bg-canvas text-ink">
