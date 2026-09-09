@@ -162,6 +162,9 @@ agon-market-mobile-audit.png
 bnb-market/docs/
 bnb-market/evidence/market-evidence.json
 
+# Local skill bundle installed for this workspace; not product source.
+.agents/skills/game-developer/
+
 # Isolated production validation; never share a running dev server's chunks.
 frontend/.next-validation/
 bnb-market/.next-validation/
