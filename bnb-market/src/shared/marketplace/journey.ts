@@ -47,3 +47,60 @@ export function validateReportInput(positionId: string, width: string, deviation
   if (!deviation.trim() || !Number.isInteger(Number(deviation)) || Number(deviation) < 0 || Number(deviation) > 10000) return "Price deviation must be a whole number from 0 to 10,000.";
   return null;
 }
+
+/**
+ * The chain a buyer is looking at, in the vocabulary the network itself uses.
+ * Discovery is public on both chains. Activation is chain 97 only, so the
+ * banner has to say which one is in front of the buyer before they hunt for a
+ * missing button. Never describe chain 56 as activatable.
+ */
+export type NetworkTruth = {
+  chainId: BnbChain;
+  chainLabel: string;
+  activation: "available" | "discovery_only";
+  headline: string;
+  detail: string;
+  switchTo: BnbChain | null;
+};
+
+export function networkTruth(chainId: BnbChain): NetworkTruth {
+  if (chainId === 97) {
+    return {
+      chainId,
+      chainLabel: "BSC Testnet",
+      activation: "available",
+      headline: "Live on BSC Testnet · chain 97",
+      detail: "Every agent below is a registered ERC-8004 identity on chain 97 that answered a live connection check. Paid activation settles on chain 97 with test funds.",
+      switchTo: null,
+    };
+  }
+  return {
+    chainId,
+    chainLabel: "BSC Mainnet",
+    activation: "discovery_only",
+    headline: "Discovery only on BSC Mainnet · chain 56",
+    detail: "AGON reads registered identities on chain 56, but no service is activatable here yet. Live checks, payment and delivery run on BSC Testnet.",
+    switchTo: 97,
+  };
+}
+
+/**
+ * An empty category is a real answer, not a failure. On chain 56 it is the
+ * expected answer, so it must not read like a broken page, and it must never
+ * offer Testnet data under a Mainnet label.
+ */
+export function emptyCategoryCopy(chainId: BnbChain, categoryLabel: string) {
+  const label = categoryLabel.toLowerCase();
+  if (chainId === 97) {
+    return {
+      heading: "No responding agent found",
+      detail: `No ${label} agent answered the latest connection check on BSC Testnet. No payment or task was started.`,
+      switchTo: null as BnbChain | null,
+    };
+  }
+  return {
+    heading: "No responding agent on BSC Mainnet",
+    detail: `No chain 56 identity advertises a ${label} endpoint that answered the latest check. AGON does not show Testnet agents under a Mainnet label.`,
+    switchTo: 97 as BnbChain | null,
+  };
+}

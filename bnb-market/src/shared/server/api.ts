@@ -4,6 +4,7 @@ import { challenge, currentSession, endSession, requestOrigin, setSessionCookie,
 import { database } from "./store.ts";
 import { body, HttpError, json } from "./http.ts";
 import { commerceReadiness, readCommerceJob, readCommerceReceipt } from "./commerce.ts";
+import { readA2ACapability, runA2ATask } from "./a2a.ts";
 import { checkedClient, networkConfig } from "./network.ts";
 import { lpDailyLimit, readLpRun, runLpAgent } from "../providers/lp-runs.ts";
 import { LP_AGENT_VERSION } from "../providers/lp-core.ts";
@@ -11,7 +12,7 @@ import { listLpHireIntents, lpHiringReadiness, prepareLpHireIntent, readLpHireIn
 import { lpCommerceConfig } from "./commerce-intent-core.ts";
 import { lpDeliveryConfig, lpWorkerHealth, readPublicDeliverable } from "./lp-delivery.ts";
 import { categoryCoverage, categoryCoverageGaps } from "../marketplace/category-coverage.ts";
-import { marketplaceLiveStatus } from "./marketplace-live.ts";
+import { marketplaceCatalogStatus, marketplaceLiveStatus } from "./marketplace-live.ts";
 import type { EndpointProof } from "../types.ts";
 
 export async function handleBnb(request: Request, chain: string, parts: string[]): Promise<Response> {
@@ -100,20 +101,7 @@ export async function handleBnb(request: Request, chain: string, parts: string[]
       if (path === "auth/me") return json({ session: await currentSession(request, chainId) });
       if (path === "marketplace/status") {
         try {
-          const page = await catalog(chainId, 0);
-          const coverage = categoryCoverage(page.items);
-          return json({
-            chainId,
-            catalogSource: page.source,
-            checkedAt: page.checkedAt,
-            indexedProfiles: page.total,
-            loadedProfiles: page.items.length,
-            nextOffset: page.nextOffset,
-            coverage,
-            gaps: categoryCoverageGaps(coverage),
-            status: page.items.length ? "available" : "empty",
-            warnings: page.warnings,
-          });
+          return json(await marketplaceCatalogStatus(chainId));
         } catch {
           // Discovery is an enrichment layer. Keep the status route useful when
           // the upstream indexer is slow so the UI can offer direct service access.
@@ -142,6 +130,7 @@ export async function handleBnb(request: Request, chain: string, parts: string[]
         return json(await catalog(chainId, offset));
       }
       if (parts[0] === "agents" && parts.length === 2) return json(await agentDetail(chainId, parseAgentId(parts[1])));
+      if (parts[0] === "agents" && parts[2] === "a2a" && parts.length === 3) return json(await readA2ACapability(chainId, parseAgentId(parts[1])));
       throw new HttpError(404, "This BNB route does not exist.");
     }
     if (request.method !== "POST") throw new HttpError(405, "Method not allowed.");
@@ -167,6 +156,14 @@ export async function handleBnb(request: Request, chain: string, parts: string[]
       if (!session) throw new HttpError(401, "Sign in with the buyer wallet before reconciling a wallet action.");
       if (Object.keys(input).some((key) => key !== "step" && key !== "hash")) throw new HttpError(400, "Unsupported receipt field.");
       return json(await reconcileLpHireTransaction(chainId, session.address, parts[3], input.step, input.hash));
+    }
+    // A free, read-only A2A task run against the agent's own registered
+    // endpoint. No wallet, no session, no payment and no authority, so it is
+    // public on both chains. The endpoint is taken from the onchain
+    // registration, never from this request body.
+    if (parts[0] === "agents" && parts[2] === "a2a" && parts[3] === "runs" && parts.length === 4) {
+      if (Object.keys(input).some((key) => key !== "text")) throw new HttpError(400, "Unsupported agent run field.");
+      return json(await runA2ATask(chainId, parseAgentId(parts[1]), input.text));
     }
     if (path === "auth/nonce") return json(await challenge(chainId, input.address, origin));
     if (path === "auth/verify") {

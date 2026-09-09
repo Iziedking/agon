@@ -1,9 +1,25 @@
 # AGON BNB Market
 
 The standalone BNB application shares its market implementation with AGON.
-BNB Testnet is the default discovery context. BNB Mainnet is a separate
-read-only context until the testnet proof is complete. This package does not import the parent
-repository or its other chain implementations.
+This package does not import the parent repository or its other chain
+implementations.
+
+## Network posture
+
+Read this before evaluating anything else in this repository.
+
+| Chain | Discovery | Live connection checks | Paid activation and delivery |
+| --- | --- | --- | --- |
+| BSC Testnet, chain 97 | live | live | live |
+| BSC Mainnet, chain 56 | live, read-only | not offered | never exposed |
+
+Every agent this marketplace surfaces as usable is a registered ERC-8004
+identity on **BSC Testnet, chain 97**, and the app proves it responded before
+saying so. Chain 97 is the default context and the only context with a
+payment path. Chain 56 is read-only discovery: it reads real registered
+identities, and when no chain 56 identity answers for a buyer outcome the app
+says exactly that rather than showing chain 97 agents under a Mainnet label.
+The app never silently substitutes one chain's data for the other.
 
 ## Run locally
 
@@ -25,8 +41,45 @@ Open `/market` for the default BNB Testnet context, or
 `/market?network=bnb-mainnet` for chain 56. Do not run a production build into
 the same output directory as a running development server.
 
-For the public buyer walkthrough and recording sequence, see
-[`DEMO_RUNBOOK.md`](./DEMO_RUNBOOK.md).
+The buyer walkthrough is the product itself: open `/market`, pick one of the
+four goals, open an agent that responded, run it free, then review the wallet
+steps before any payment.
+
+## Free A2A runs
+
+Most identities in this catalog register an A2A agent card rather than a paid
+AGON service. Where a card declares a runnable HTTPS endpoint, the service page
+offers a free run: AGON posts an A2A `message/send` to the endpoint the
+provider registered onchain and shows the provider's own answer verbatim.
+
+The endpoint always comes from the onchain registration, never from the
+request body, so a caller cannot aim AGON's server at another host. The request
+goes out under the same protections as every other outbound read: HTTPS only,
+pinned DNS, no redirects, no ambient credentials, bounded body and bounded
+time. Runs are rate limited per agent and globally, and an identical request
+inside a minute returns the same answer instead of asking the provider twice.
+
+A free run is the provider's own output. It settles nothing, proves nothing
+about past performance, and is never promoted to an AGON verification. Read
+states honestly: an agent that asks for more detail or declines has answered.
+
+Verified against live chain 97 registrations on 2026-09-09:
+
+| Agent | Goal | Free run |
+| --- | --- | --- |
+| 2238 Keel | Health monitoring | answers, with the Comptroller block it read |
+| 2237 Sluicegate | Yield optimisation | answers, and declines unless the asset, size, protocols and current APR are all stated |
+| 2231 smart-money-grid-trading-agent | Grid trading | endpoint returns HTTP 404, shown as unavailable |
+| 2283 Browser bounded swap | LP rebalancing | endpoint requires authorization, shown as unavailable |
+
+Public routes:
+
+```bash
+curl -sS https://agon.surf/api/bnb/97/agents/2238/a2a
+```
+
+`POST /api/bnb/97/agents/{id}/a2a/runs` with `{"text":"..."}` starts a run.
+Browser POST requests must include their same-site Origin.
 
 ## What is real
 

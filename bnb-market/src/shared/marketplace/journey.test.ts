@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { bnbHref, canSignRequest, recoveryCopy, requestStatus, validateReportInput, isFinancialAgent, isReportService } from "./journey.ts";
+import { bnbHref, canSignRequest, emptyCategoryCopy, networkTruth, recoveryCopy, requestStatus, validateReportInput, isFinancialAgent, isReportService } from "./journey.ts";
 import type { AgentDetail, CommerceIntent, LpHiringReadiness } from "../types.ts";
 
 const intent: CommerceIntent = {
@@ -22,3 +22,7 @@ test("failed delivery is not reported as healthy progress",()=>{assert.equal(req
 test("all report inputs are validated before advancing",()=>{assert.equal(validateReportInput("37235","10","100"),null);for(const input of [["","10","100"],["0","10","100"],["123","1.5","100"],["123","10",""],["123","10","-1"]])assert.ok(validateReportInput(...input as [string,string,string]));});
 test("unclassified identities are not financial service recommendations",()=>{assert.equal(isFinancialAgent({category:null,outcomeMatches:[]} as never),false);assert.equal(isFinancialAgent({category:"health-factor",outcomeMatches:[]} as never),true);});
 test("paid report UI is bound to the matching network and registration",()=>{const agent={chainId:97,id:"2177",metadataStatus:"available",registrationMatches:true,services:[{name:"ERC-8183"}]} as AgentDetail;const readiness={chainId:97,agentId:"2177"} as LpHiringReadiness;assert.equal(isReportService(agent,readiness),true);assert.equal(isReportService({...agent,chainId:56},readiness),false);assert.equal(isReportService({...agent,registrationMatches:false},readiness),false);assert.equal(isReportService(agent,{...readiness,agentId:"99"}),false);assert.equal(isReportService(agent,null),false);});
+test("only chain 97 is described as activatable",()=>{const testnet=networkTruth(97);const mainnet=networkTruth(56);assert.equal(testnet.activation,"available");assert.equal(testnet.chainLabel,"BSC Testnet");assert.equal(testnet.switchTo,null);assert.equal(mainnet.activation,"discovery_only");assert.equal(mainnet.chainLabel,"BSC Mainnet");assert.equal(mainnet.switchTo,97);assert.match(testnet.headline,/chain 97/);assert.match(mainnet.headline,/chain 56/);});
+test("mainnet truth never claims payment or delivery on chain 56",()=>{const mainnet=networkTruth(56);assert.doesNotMatch(mainnet.detail,/paid activation settles/i);assert.match(mainnet.detail,/run on BSC Testnet/);});
+test("an empty mainnet category explains itself and offers no mainnet activation",()=>{const mainnet=emptyCategoryCopy(56,"Grid trading");assert.match(mainnet.heading,/BSC Mainnet/);assert.match(mainnet.detail,/chain 56/);assert.match(mainnet.detail,/does not show Testnet agents under a Mainnet label/);assert.equal(mainnet.switchTo,97);});
+test("an empty testnet category stays a plain no-result answer",()=>{const testnet=emptyCategoryCopy(97,"Grid trading");assert.equal(testnet.switchTo,null);assert.match(testnet.detail,/No payment or task was started/);assert.match(testnet.detail,/grid trading/);});

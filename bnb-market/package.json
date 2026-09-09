@@ -34,8 +34,9 @@
     "audit:product": "npm run typecheck && npm run test:unit && npm run build",
     "test:journey": "node --experimental-strip-types --test src/shared/marketplace/journey.test.ts",
     "test:market-ui": "node --experimental-strip-types src/shared/marketplace/discovery-ui.test.ts",
+    "test:a2a": "node --experimental-strip-types --test src/shared/providers/a2a-core.test.ts",
     "check:ui-routes": "node --experimental-strip-types scripts/check-ui-routes.ts",
-    "test": "npm run test:journey && npm run test:market-ui && node --experimental-strip-types src/lib/bnb/chains.test.ts && node --experimental-strip-types src/lib/bnb/compare.test.ts && node --experimental-strip-types src/lib/bnb/evidence.test.ts && node --experimental-strip-types src/lib/bnb/quote-job.test.ts && node --experimental-strip-types src/shared/marketplace/capabilities.test.ts && node --experimental-strip-types src/shared/marketplace/category-coverage.test.ts && node --experimental-strip-types src/shared/marketplace/partner-evidence.test.ts"
+    "test": "npm run test:journey && npm run test:market-ui && npm run test:a2a && node --experimental-strip-types src/lib/bnb/chains.test.ts && node --experimental-strip-types src/lib/bnb/compare.test.ts && node --experimental-strip-types src/lib/bnb/evidence.test.ts && node --experimental-strip-types src/lib/bnb/quote-job.test.ts && node --experimental-strip-types src/shared/marketplace/capabilities.test.ts && node --experimental-strip-types src/shared/marketplace/category-coverage.test.ts && node --experimental-strip-types src/shared/marketplace/partner-evidence.test.ts"
   },
   "dependencies": {
     "@altananetwork/sdk": "0.7.1",

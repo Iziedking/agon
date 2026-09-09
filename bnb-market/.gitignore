@@ -16,3 +16,11 @@ BUILD_PLAN*.md
 *progress*.md 
 .agents/ 
 .codex/
+
+# Private demo, review, and submission artifacts. Keep the public evidence
+# schema and README tracked, but never publish operator records or packets.
+DEMO_RUNBOOK.md
+docs/
+evidence/market-evidence.json
+*submission*.md
+*SUBMISSION*.md

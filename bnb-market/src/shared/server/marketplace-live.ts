@@ -1,11 +1,41 @@
-import type { BnbChain, AgentSummary, CatalogSource, EndpointProof, MarketplaceLiveStatus } from "../types.ts";
-import { categoryCoverage, liveCategoryCoverage, liveCategoryCoverageGaps } from "../marketplace/category-coverage.ts";
+import type { BnbChain, AgentSummary, CatalogPage, CatalogSource, EndpointProof, MarketplaceLiveStatus, MarketplaceStatus } from "../types.ts";
+import { categoryCoverage, categoryCoverageGaps, liveCategoryCoverage, liveCategoryCoverageGaps } from "../marketplace/category-coverage.ts";
 import { catalog, probeAgent } from "./catalog.ts";
 
 const MAX_AGENTS_PER_GOAL = 5;
 const MAX_PROBES = 20;
 const MAX_CATALOG_PAGES = 10;
 const REQUIRED_CATEGORIES = ["rebalancing", "grid-trading", "yield-optimisation", "health-factor"] as const;
+
+const mergedCatalogItems = (pages: readonly CatalogPage[]): AgentSummary[] =>
+  [...new Map(pages.flatMap((page) => page.items).map((item) => [item.id, item])).values()];
+
+export async function marketplaceCatalogStatus(chainId: BnbChain): Promise<MarketplaceStatus> {
+  const pages: CatalogPage[] = [];
+  let offset = 0;
+  for (let pageNumber = 0; pageNumber < MAX_CATALOG_PAGES; pageNumber += 1) {
+    const page = await catalog(chainId, offset);
+    pages.push(page);
+    if (page.nextOffset === null) break;
+    offset = page.nextOffset;
+  }
+  const items = mergedCatalogItems(pages);
+  const lastPage = pages.at(-1);
+  if (!lastPage) throw new Error("The catalog returned no pages.");
+  const coverage = categoryCoverage(items);
+  return {
+    chainId,
+    catalogSource: lastPage.source,
+    checkedAt: lastPage.checkedAt,
+    indexedProfiles: lastPage.total,
+    loadedProfiles: items.length,
+    nextOffset: lastPage.nextOffset,
+    coverage,
+    gaps: categoryCoverageGaps(coverage),
+    status: items.length ? "available" : "empty",
+    warnings: pages.flatMap((page) => page.warnings),
+  };
+}
 
 function probeCandidates(agents: readonly AgentSummary[]): AgentSummary[] {
   const selected = new Map<string, AgentSummary>();

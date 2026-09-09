@@ -1,5 +1,6 @@
 import type { BnbChain, BnbSession, AgentDetail, CatalogPage, EndpointProof, Category, CommerceIntent, CommerceReadiness, CommerceStep, LpHiringReadiness, MarketplaceStatus, MarketplaceLiveStatus } from "./types.ts";
 import type { LpInput } from "./providers/lp-core.ts";
+import type { A2ACapability, A2ARun } from "./providers/a2a-core.ts";
 import type { LpRun } from "./providers/lp-runs.ts";
 async function call<T>(chainId: BnbChain, path: string, payload?: unknown, signal?: AbortSignal): Promise<T> {
   const response = await fetch(`/api/bnb/${chainId}/${path}`, { credentials: "same-origin", signal,
@@ -12,6 +13,8 @@ export const readCatalog = (chainId: BnbChain, offset = 0, signal?: AbortSignal)
 export const readMarketplaceStatus = (chainId: BnbChain, signal?: AbortSignal) => call<MarketplaceStatus>(chainId, "marketplace/status", undefined, signal);
 export const readMarketplaceLiveStatus = (chainId: BnbChain, signal?: AbortSignal) => call<MarketplaceLiveStatus>(chainId, "marketplace/live-status", undefined, signal);
 export const readAgent = (chainId: BnbChain, id: string, signal?: AbortSignal) => call<AgentDetail>(chainId, `agents/${encodeURIComponent(id)}`, undefined, signal);
+export const readAgentA2A = (chainId: BnbChain, id: string, signal?: AbortSignal) => call<A2ACapability>(chainId, `agents/${encodeURIComponent(id)}/a2a`, undefined, signal);
+export const runAgentA2A = (chainId: BnbChain, id: string, text: string, signal?: AbortSignal) => call<A2ARun>(chainId, `agents/${encodeURIComponent(id)}/a2a/runs`, { text }, signal);
 export const checkAgentEndpoint = (chainId: BnbChain, id: string, signal?: AbortSignal) => call<EndpointProof>(chainId, `agents/${encodeURIComponent(id)}/probe`, {}, signal);
 export const checkCommerce = (chainId: BnbChain, id: string, signal?: AbortSignal) => call<CommerceReadiness>(chainId, `agents/${encodeURIComponent(id)}/commerce`, {}, signal);
 export type PublishedListing = { agentId: string; chainId: BnbChain; versionHash: string; status: "provider_listed"; liveCheck: { status: "reachable"; protocol: string; checkedAt: string } };

@@ -71,3 +71,41 @@ export async function body(request: Request): Promise<Record<string, unknown>> {
   try { return object(JSON.parse(Buffer.concat(chunks).toString("utf8"))); }
   catch { throw new HttpError(400, "Send a valid JSON object."); }
 }
+
+/** Resolve a public HTTPS host once and pin it, so a POST cannot be rebound to
+ * a private address between validation and connection. Shared with publicJson. */
+async function pinnedHost(url: URL) {
+  const host = url.hostname.replace(/^\[|\]$/g, "");
+  const records = isIP(host) ? [{ address: host, family: isIP(host) }] :
+    await Promise.race([lookup(host, { all: true }), new Promise<never>((_, reject) => {
+      const timer = setTimeout(() => reject(new HttpError(504, "Agent DNS lookup timed out.")), 5000); timer.unref();
+    })]);
+  if (!records.length || records.some((record) => !publicAddress(record.address))) throw new HttpError(400, "Private network endpoints are not permitted.");
+  return records[0];
+}
+
+/** POST a JSON body to a third-party agent endpoint under the same protections
+ * as publicJson: HTTPS only, pinned DNS, no redirects, no ambient credentials,
+ * bounded body and bounded time. Used for read-only A2A task requests. The
+ * caller supplies the endpoint from the onchain registry, never from a request
+ * body, so a buyer cannot aim this at an arbitrary host. */
+export async function publicJsonPost(value: string, payload: unknown, timeoutMs = 20_000): Promise<unknown> {
+  const url = httpsUrl(value);
+  const resolved = await pinnedHost(url);
+  const encoded = Buffer.from(JSON.stringify(payload), "utf8");
+  if (encoded.length > 16_384) throw new HttpError(400, "The agent request is too large.");
+  return new Promise((resolve, reject) => {
+    const req = request(url, { method: "POST", family: resolved.family,
+      headers: { accept: "application/json", "content-type": "application/json", "content-length": String(encoded.length), "user-agent": "AGON/1.0" },
+      lookup: (_hostname, _options, callback) => callback(null, resolved.address, resolved.family),
+    }, (res) => {
+      if (res.statusCode !== 200) { res.resume(); reject(new HttpError(502, `Agent endpoint returned HTTP ${res.statusCode}.`)); return; }
+      let size = 0; const chunks: Buffer[] = [];
+      res.on("data", (chunk: Buffer) => { size += chunk.length; if (size > 524_288) req.destroy(new HttpError(502, "Agent response is too large.")); else chunks.push(chunk); });
+      res.on("error", reject);
+      res.on("end", () => { try { resolve(JSON.parse(Buffer.concat(chunks).toString("utf8"))); } catch { reject(new HttpError(502, "Agent endpoint did not return JSON.")); } });
+    });
+    const deadline = setTimeout(() => req.destroy(new HttpError(504, "Agent endpoint timed out.")), timeoutMs);
+    req.on("close", () => clearTimeout(deadline)); req.on("error", reject); req.end(encoded);
+  });
+}
