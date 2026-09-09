@@ -1,0 +1,24 @@
+{
+  "task": "Is there a better USDC supply yield than 4.2% at 10000 USD, clearing a 50 bps threshold?",
+  "method": "manual viem reads against Venus vUSDC, annualized by hand, no marketplace agent",
+  "chainId": 56,
+  "market": "0xecA88125a5ADbe82614ffC12D0DB554E2e2867C8",
+  "symbol": "vUSDC",
+  "supplyRatePerBlock": "307431038",
+  "assumedSecondsPerBlock": 0.75,
+  "blocksPerYear": 42048000,
+  "venueAprPercent": 1.2927,
+  "currentAprPercent": 4.2,
+  "improvementBps": -291,
+  "marketCashRaw": "19617257482894791195916534",
+  "clearsThreshold": false,
+  "caveats": [
+    "This is a gross supply APR for one venue. It is not net of gas, slippage or the cost of exiting the current position.",
+    "It does not account for the size actually deployed, so it is not a net APR at size.",
+    "The annualization depends on an assumed block time, which is a manual research step and a source of error."
+  ],
+  "conclusion": "Venus vUSDC does not clear the 50 bps threshold on a gross basis.",
+  "blockNumber": "120924816",
+  "contractCalls": 3,
+  "durationMs": 1880
+}

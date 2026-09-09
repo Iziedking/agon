@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildTaskRequest, parseA2ACard, parseA2AOutcome } from "./a2a-core.ts";
+import { blockProvenance, buildTaskRequest, parseA2ACard, parseA2AOutcome } from "./a2a-core.ts";
 
 const KEEL_URL = "https://marque.trade/agents/keel/.well-known/agent-card.json";
 // Captured verbatim from the live Keel card on 2026-09-09.
@@ -82,4 +82,33 @@ test("a malformed envelope or invented block height is refused", () => {
   assert.equal(noBlock.blockNumber, null);
   const empty = parseA2AOutcome({ result: { status: { state: "completed" }, artifacts: [] } });
   assert.match(empty.message, /without any readable output/);
+});
+
+test("a stated block consistent with the selected chain is reported as such", () => {
+  // LP Guardian read chain 97 at 130068251 while the head was 130068795.
+  const provenance = blockProvenance("130068251", 97, "130068795", "120923975");
+  assert.equal(provenance.verdict, "matches_selected");
+  assert.match(provenance.message, /consistent with BSC Testnet/);
+});
+
+test("an agent reading the other chain is named, not silently displayed", () => {
+  // Keel is registered on chain 97 but answered with BSC Mainnet heights.
+  const provenance = blockProvenance("120923909", 97, "130068795", "120923975");
+  assert.equal(provenance.verdict, "matches_other_chain");
+  assert.match(provenance.message, /matches BSC Mainnet, not the BSC Testnet listing/);
+  assert.match(provenance.message, /different chain from its registration/);
+});
+
+test("an unanchored or impossible block height is never presented as chain data", () => {
+  assert.equal(blockProvenance(null, 97, "130068795", "120923975").verdict, "not_stated");
+  assert.equal(blockProvenance("1", 97, "130068795", "120923975").verdict, "outside_both");
+  // A block far beyond both heads cannot have been read.
+  assert.equal(blockProvenance("999999999999", 97, "130068795", "120923975").verdict, "outside_both");
+  // With no head available, nothing is confirmed.
+  assert.equal(blockProvenance("130068251", 97, null, null).verdict, "outside_both");
+});
+
+test("a stale read inside the window still counts, a very stale one does not", () => {
+  assert.equal(blockProvenance("130000000", 97, "130068795", null).verdict, "matches_selected");
+  assert.equal(blockProvenance("129000000", 97, "130068795", null).verdict, "outside_both");
 });

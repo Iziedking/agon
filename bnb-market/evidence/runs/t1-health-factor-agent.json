@@ -1,0 +1,25 @@
+{
+  "state": "completed",
+  "artifacts": [
+    "{\"healthFactor\":null,\"note\":\"this account carries no debt, so it has no health factor\",\"blockNumber\":\"120924401\"}"
+  ],
+  "blockNumber": "120924401",
+  "message": "The agent completed this task and returned the result below.",
+  "chainId": 97,
+  "agentId": "2238",
+  "agentName": "Keel",
+  "endpoint": "https://marque.trade/agents/keel/a2a",
+  "protocolVersion": "0.3.0",
+  "request": "Read the Venus health factor for account 0xDca58132779548E03940cfBf992762476c2A84bb and restore it to 2.5",
+  "requestedAt": "2026-09-09T18:14:33.093Z",
+  "durationMs": 1964,
+  "paid": false,
+  "agonVerified": false,
+  "provenance": {
+    "statedBlock": "120924401",
+    "selectedChainHead": "130069228",
+    "otherChainHead": "120924403",
+    "verdict": "matches_other_chain",
+    "message": "The agent stated block 120924401, which matches BSC Mainnet, not the BSC Testnet listing you are viewing. Its data source is a different chain from its registration."
+  }
+}

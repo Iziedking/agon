@@ -2,12 +2,24 @@ import type { BnbChain } from "../types.ts";
 import { normalizeMarketProtocol } from "../marketplace/capabilities.ts";
 import { agentDetail } from "./catalog.ts";
 import { HttpError, publicJson, publicJsonPost } from "./http.ts";
-import { buildTaskRequest, parseA2ACard, parseA2AOutcome, type A2ACapability, type A2ACard, type A2AOutcome, type A2ARun } from "../providers/a2a-core.ts";
+import { blockProvenance, buildTaskRequest, parseA2ACard, parseA2AOutcome, type A2ACapability, type A2ACard, type A2AOutcome, type A2ARun } from "../providers/a2a-core.ts";
+import { checkedClient } from "./network.ts";
 
 const MAX_PER_MINUTE_GLOBAL = 12;
 const MAX_PER_MINUTE_AGENT = 4;
 const MAX_ACTIVE = 3;
 const DEDUPE_MS = 60_000;
+
+const heads = new Map<number, { expires: number; value: Promise<string | null> }>();
+/** Chain heights only qualify a stated block, so a head that cannot be read
+ * degrades to "unconfirmed" rather than failing the run. */
+function chainHead(chainId: 56 | 97): Promise<string | null> {
+  const current = heads.get(chainId);
+  if (current && current.expires > Date.now()) return current.value;
+  const value = checkedClient(chainId).then((client) => client.getBlockNumber()).then((height) => height.toString()).catch(() => null);
+  heads.set(chainId, { expires: Date.now() + 60_000, value });
+  return value;
+}
 
 const recent: number[] = [];
 const recentByAgent = new Map<string, number[]>();
@@ -82,9 +94,12 @@ export async function runA2ATask(chainId: BnbChain, id: string, rawText: unknown
       if (error instanceof HttpError) throw error;
       throw new HttpError(502, error instanceof Error ? error.message : "The agent did not return a usable response.");
     }
+    const other: 56 | 97 = chainId === 97 ? 56 : 97;
+    const [selectedHead, otherHead] = await Promise.all([chainHead(chainId), chainHead(other)]);
     return { ...outcome, chainId, agentId: id, agentName: capability.agentName, endpoint: capability.endpoint,
       protocolVersion: capability.protocolVersion, request, requestedAt: new Date(startedAt).toISOString(),
-      durationMs: Date.now() - startedAt, paid: false, agonVerified: false };
+      durationMs: Date.now() - startedAt, paid: false, agonVerified: false,
+      provenance: blockProvenance(outcome.blockNumber, chainId, selectedHead, otherHead) };
   })();
 
   inFlight.set(dedupeKey, task);

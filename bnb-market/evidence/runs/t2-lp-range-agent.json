@@ -1,0 +1,69 @@
+{
+  "id": "61f88e30-6ae1-47ec-914e-9a8fc87498aa",
+  "chainId": 97,
+  "version": "agon-lp-guardian/1.0.0",
+  "status": "completed",
+  "startedAt": "2026-09-09T18:07:16.982Z",
+  "finishedAt": "2026-09-09T18:07:17.971Z",
+  "report": {
+    "version": "agon-lp-guardian/1.0.0",
+    "operator": "AGON",
+    "chainId": 97,
+    "mode": "read_only",
+    "input": {
+      "positionId": "37235",
+      "halfWidthSteps": 10,
+      "maxDeviationTicks": 100
+    },
+    "decision": {
+      "positionState": "in_range",
+      "deviationTicks": 0,
+      "executed": false,
+      "proposedRange": null,
+      "action": "hold",
+      "reason": "The position is inside its current range. No range change is proposed by this rule."
+    },
+    "state": {
+      "tick": 29958,
+      "tickLower": -887250,
+      "tickUpper": 887250,
+      "tickSpacing": 50,
+      "liquidity": "223606797700000000054271809",
+      "poolLiquidity": "223606797700000000054271809",
+      "twapTick": 29958
+    },
+    "evidence": {
+      "blockNumber": "130068251",
+      "blockHash": "0xaf82e1044ef2649b51d8f280bac98ca1dc044aaea335f82d02d744f71b03ef59",
+      "blockTimestamp": "2026-09-09T18:07:16.000Z",
+      "manager": "0x427bF5b37357632377eCbEC9de3626C71A5396c1",
+      "factory": "0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865",
+      "pool": "0x3828E01d3ebD6923B6123E574FdC3924D73eb633",
+      "owner": "0xDca58132779548E03940cfBf992762476c2A84bb",
+      "token0": "0x470cb6C965F8D65B098F6a08C2b108Cd4458A8CB",
+      "token1": "0xaa9D29f539628cc656E72F5347D3E53F24259894",
+      "fee": 2500,
+      "sqrtPriceX96": "354319114149396582012081738576",
+      "oracleWindowSeconds": 600,
+      "tickCumulatives": [
+        "14065430790",
+        "14083405590"
+      ],
+      "lastAccountedTokensOwed": {
+        "token0": "0",
+        "token1": "0"
+      },
+      "blockUrl": "https://testnet.bscscan.com/block/130068251",
+      "positionUrl": "https://testnet.bscscan.com/token/0x427bF5b37357632377eCbEC9de3626C71A5396c1?a=37235"
+    },
+    "limitations": [
+      "Analysis only; no liquidity moved, wallet authority granted, or payment made.",
+      "The rule does not estimate profitability, fees, slippage or optimal yield. Spot and TWAP can both be manipulated.",
+      "Tokens owed are last-accounted raw amounts, not total current fees or dollar values.",
+      "This is a block snapshot, not continuous monitoring or a finalized settlement receipt."
+    ]
+  },
+  "reportJson": "{\"version\":\"agon-lp-guardian/1.0.0\",\"operator\":\"AGON\",\"chainId\":97,\"mode\":\"read_only\",\"input\":{\"positionId\":\"37235\",\"halfWidthSteps\":10,\"maxDeviationTicks\":100},\"decision\":{\"positionState\":\"in_range\",\"deviationTicks\":0,\"executed\":false,\"proposedRange\":null,\"action\":\"hold\",\"reason\":\"The position is inside its current range. No range change is proposed by this rule.\"},\"state\":{\"tick\":29958,\"tickLower\":-887250,\"tickUpper\":887250,\"tickSpacing\":50,\"liquidity\":\"223606797700000000054271809\",\"poolLiquidity\":\"223606797700000000054271809\",\"twapTick\":29958},\"evidence\":{\"blockNumber\":\"130068251\",\"blockHash\":\"0xaf82e1044ef2649b51d8f280bac98ca1dc044aaea335f82d02d744f71b03ef59\",\"blockTimestamp\":\"2026-09-09T18:07:16.000Z\",\"manager\":\"0x427bF5b37357632377eCbEC9de3626C71A5396c1\",\"factory\":\"0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865\",\"pool\":\"0x3828E01d3ebD6923B6123E574FdC3924D73eb633\",\"owner\":\"0xDca58132779548E03940cfBf992762476c2A84bb\",\"token0\":\"0x470cb6C965F8D65B098F6a08C2b108Cd4458A8CB\",\"token1\":\"0xaa9D29f539628cc656E72F5347D3E53F24259894\",\"fee\":2500,\"sqrtPriceX96\":\"354319114149396582012081738576\",\"oracleWindowSeconds\":600,\"tickCumulatives\":[\"14065430790\",\"14083405590\"],\"lastAccountedTokensOwed\":{\"token0\":\"0\",\"token1\":\"0\"},\"blockUrl\":\"https://testnet.bscscan.com/block/130068251\",\"positionUrl\":\"https://testnet.bscscan.com/token/0x427bF5b37357632377eCbEC9de3626C71A5396c1?a=37235\"},\"limitations\":[\"Analysis only; no liquidity moved, wallet authority granted, or payment made.\",\"The rule does not estimate profitability, fees, slippage or optimal yield. Spot and TWAP can both be manipulated.\",\"Tokens owed are last-accounted raw amounts, not total current fees or dollar values.\",\"This is a block snapshot, not continuous monitoring or a finalized settlement receipt.\"]}",
+  "reportHash": "sha256:70130ee2b79676dadc9e2ef0107f66fb07a9394ac69b5a3381242472448ba253",
+  "error": null
+}

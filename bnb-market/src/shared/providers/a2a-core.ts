@@ -131,5 +131,54 @@ export type A2ACapability = {
 export type A2ARun = A2AOutcome & {
   chainId: 56 | 97; agentId: string; agentName: string; endpoint: string;
   protocolVersion: string | null; request: string; requestedAt: string; durationMs: number;
-  paid: false; agonVerified: false;
+  paid: false; agonVerified: false; provenance: BlockProvenance;
 };
+
+/** An agent registered on one chain may read another. Keel is registered on
+ * chain 97 but answered with BSC Mainnet heights on 2026-09-09, so a stated
+ * block must be checked against the chain the buyer selected instead of being
+ * displayed as if it came from it. Tolerances: a small forward drift covers
+ * head races, and a wide backward window covers a legitimately stale read. */
+export type BlockProvenance = {
+  verdict: "matches_selected" | "matches_other_chain" | "outside_both" | "not_stated";
+  statedBlock: string | null;
+  selectedChainHead: string | null;
+  otherChainHead: string | null;
+  message: string;
+};
+
+const FORWARD_DRIFT = 200n;
+const STALE_WINDOW = 500_000n;
+
+function consistent(stated: bigint, head: bigint | null): boolean {
+  if (head === null) return false;
+  return stated <= head + FORWARD_DRIFT && head - stated <= STALE_WINDOW;
+}
+
+export function blockProvenance(
+  statedBlock: string | null,
+  selectedChainId: 56 | 97,
+  selectedChainHead: string | null,
+  otherChainHead: string | null,
+): BlockProvenance {
+  const selectedLabel = selectedChainId === 97 ? "BSC Testnet" : "BSC Mainnet";
+  const otherLabel = selectedChainId === 97 ? "BSC Mainnet" : "BSC Testnet";
+  const base = { statedBlock, selectedChainHead, otherChainHead };
+  if (!statedBlock) {
+    return { ...base, verdict: "not_stated",
+      message: "The agent did not state the block it read, so its answer cannot be anchored to a chain height." };
+  }
+  const stated = BigInt(statedBlock);
+  const selected = selectedChainHead === null ? null : BigInt(selectedChainHead);
+  const other = otherChainHead === null ? null : BigInt(otherChainHead);
+  if (consistent(stated, selected)) {
+    return { ...base, verdict: "matches_selected",
+      message: `The agent read block ${statedBlock}, which is consistent with ${selectedLabel}.` };
+  }
+  if (consistent(stated, other)) {
+    return { ...base, verdict: "matches_other_chain",
+      message: `The agent stated block ${statedBlock}, which matches ${otherLabel}, not the ${selectedLabel} listing you are viewing. Its data source is a different chain from its registration.` };
+  }
+  return { ...base, verdict: "outside_both",
+    message: `The agent stated block ${statedBlock}, which does not match the current height of ${selectedLabel} or ${otherLabel}. Treat its data source as unconfirmed.` };
+}

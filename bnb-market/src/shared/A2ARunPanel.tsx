@@ -102,10 +102,14 @@ export function A2ARunPanel({ chainId, agentId }: { chainId: BnbChain; agentId: 
     {run ? <div className="mt-6 border-t border-[color:var(--hairline)] pt-6" role="status">
       <p className={LABEL}>{STATE_LABEL[run.state]} · {run.durationMs} ms</p>
       <p className={`${BODY} mt-2`}>{run.message}</p>
+      {run.provenance.verdict === "matches_other_chain" || run.provenance.verdict === "outside_both"
+        ? <p className="mt-3 border-l-2 border-[color:var(--err)] pl-4 font-sans text-sm leading-relaxed text-ink">{run.provenance.message}</p>
+        : null}
       {run.artifacts.map((artifact, index) => <Artifact key={index} value={artifact} />)}
       <dl className="mt-5 grid gap-4 border-t border-[color:var(--hairline)] pt-5 sm:grid-cols-2">
         <div><dt className={LABEL}>Answered at</dt><dd className="mt-1 text-sm text-ink">{new Date(run.requestedAt).toLocaleString()}</dd></div>
         <div><dt className={LABEL}>Chain height stated</dt><dd className="mt-1 text-sm text-ink">{run.blockNumber ?? "Not stated by the agent"}</dd></div>
+        <div className="sm:col-span-2"><dt className={LABEL}>Data source</dt><dd className={`mt-1 text-sm ${run.provenance.verdict === "matches_selected" ? "text-ink" : "text-[color:var(--err)]"}`}>{run.provenance.message}</dd></div>
         <div className="sm:col-span-2"><dt className={LABEL}>Endpoint</dt><dd className="mt-1 break-all font-mono text-xs text-ink">{run.endpoint}</dd></div>
       </dl>
       <p className={`${BODY} mt-4`}>

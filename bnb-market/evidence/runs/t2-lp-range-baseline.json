@@ -1,0 +1,23 @@
+{
+  "task": "Is PancakeSwap v3 testnet position 37235 in range, and does its range need attention?",
+  "method": "manual viem reads against PancakeSwap v3, no marketplace agent",
+  "positionId": "37235",
+  "token0": "0x470cb6C965F8D65B098F6a08C2b108Cd4458A8CB",
+  "token1": "0xaa9D29f539628cc656E72F5347D3E53F24259894",
+  "fee": 2500,
+  "tickLower": -887250,
+  "tickUpper": 887250,
+  "tickSpacing": 50,
+  "liquidity": "223606797700000000054271809",
+  "pool": "0x3828E01d3ebD6923B6123E574FdC3924D73eb633",
+  "factory": "0x0BFbCF9fa4f9C56B0F40a671Ad40E0805A091865",
+  "tick": 29958,
+  "twapTick": 29958,
+  "deviationTicks": 0,
+  "oracleWindowSeconds": 600,
+  "positionState": "in_range",
+  "conclusion": "The position is inside its range. No range change is indicated by this check.",
+  "blockNumber": "130068550",
+  "contractCalls": 6,
+  "durationMs": 1863
+}
