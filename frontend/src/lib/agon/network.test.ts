@@ -6,6 +6,7 @@ import {
   AGON_NETWORKS,
   getAgonBalanceTarget,
   getAgonNetworkKey,
+  loginHref,
   networkHref,
 } from "./network.ts";
 
@@ -13,6 +14,17 @@ test("BNB Mainnet is the Agon default context", () => {
   assert.equal(AGON_DEFAULT_NETWORK_KEY, "bnb-mainnet");
   assert.equal(AGON_NETWORKS[AGON_DEFAULT_NETWORK_KEY].chainId, 56);
   assert.equal(AGON_NETWORKS[AGON_DEFAULT_NETWORK_KEY].brand, "BNB");
+});
+
+test("sign-in keeps the selected network in both login and return URLs", () => {
+  assert.equal(
+    loginHref("bnb-testnet", "/market/2177?network=bnb-mainnet#hire-agent"),
+    "/login?returnTo=%2Fmarket%2F2177%3Fnetwork%3Dbnb-testnet%23hire-agent&network=bnb-testnet",
+  );
+  assert.equal(
+    loginHref("bnb-mainnet", "https://hostile.example"),
+    "/login?returnTo=%2Fmarket%3Fnetwork%3Dbnb-mainnet&network=bnb-mainnet",
+  );
 });
 
 test("the supported network registry keeps all three chain identities distinct", () => {

@@ -198,6 +198,22 @@ export function networkHref(pathname: string, key: AgonNetworkKey, search = ""):
   return `${pathname}${query ? `?${query}` : ""}`;
 }
 
+/** Keep a marketplace destination on the selected network. */
+export function marketReturnHref(key: AgonNetworkKey, returnTo?: string | null): string {
+  const safeReturn = returnTo && /^\/market(?:[/?#]|$)/.test(returnTo) && !returnTo.includes("\\")
+    ? returnTo
+    : "/market";
+  const [pathAndQuery, hash = ""] = safeReturn.split("#", 2);
+  const [pathname, search = ""] = pathAndQuery.split("?", 2);
+  return `${networkHref(pathname, key, search)}${hash ? `#${hash}` : ""}`;
+}
+
+/** Keep a marketplace return destination on the same network as sign-in. */
+export function loginHref(key: AgonNetworkKey, returnTo?: string | null): string {
+  const networkReturn = marketReturnHref(key, returnTo);
+  return networkHref("/login", key, `returnTo=${encodeURIComponent(networkReturn)}`);
+}
+
 /**
  * Compatibility export for Arc-native modules that have not moved to an
  * explicit context yet. New Agon UI must use `getAgonNetwork` or

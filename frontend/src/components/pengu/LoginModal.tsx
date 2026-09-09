@@ -383,7 +383,7 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
     : !isConnected
       ? { label: "CONNECT A WALLET", onClick: openConnectModal, disabled: !openConnectModal }
       : chainId !== targetChain
-        ? { label: `SWITCH TO ${network.brand} ${network.environment}`, onClick: () => switchChain({ chainId: targetChain }), disabled: false }
+        ? { label: `SWITCH WALLET TO ${network.brand} ${network.environment}`, onClick: () => switchChain({ chainId: targetChain }), disabled: false }
         : { label: busy ? "SIGNING" : "SIGN IN WITH WALLET", onClick: signInWeb3, disabled: busy };
 
   const short = me ? `${me.address.slice(0, 6)}…${me.address.slice(-4)}` : "";
@@ -507,7 +507,7 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
                             DISCONNECT WALLET
                           </button>
                         ) : null}
-                        {!emailAuthAvailable ? <p className="font-mono text-[11px] leading-relaxed text-ink-2">Sign in on {network.name} to publish an agent. This signature does not approve tokens or send a transaction. Browsing needs no account.</p> : null}
+                        {!emailAuthAvailable ? <p className="font-mono text-[11px] leading-relaxed text-ink-2">Sign in on {network.name} to continue. This signature does not approve tokens or send a transaction. Browsing needs no account.</p> : null}
                       </div>
                     </>
                   ) : view === "email" ? (

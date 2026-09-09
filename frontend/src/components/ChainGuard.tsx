@@ -68,7 +68,7 @@ export function ChainGuard() {
         disabled={isPending}
         className="rounded-full bg-pengu-card px-3 py-1 font-display text-xs uppercase tracking-wide text-[#e0466e] hover:bg-white/90 disabled:opacity-60"
       >
-        {isPending ? "switching…" : `switch to ${targetNetwork.brand.toLowerCase()}`}
+        {isPending ? "switching…" : `switch wallet to ${targetNetwork.brand.toLowerCase()} ${targetNetwork.environment.toLowerCase()}`}
       </button>
       {error ? <span className="font-mono text-[11px] opacity-90">{error.message}</span> : null}
     </div>

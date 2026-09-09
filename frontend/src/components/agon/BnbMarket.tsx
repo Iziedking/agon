@@ -9,7 +9,7 @@ import { Footer } from "@/components/redesign/Footer";
 import { AgonAuthAction } from "@/components/agon/AgonAuthAction";
 import { useAuth } from "@/hooks/useAuth";
 import { useAgonNetwork } from "@/hooks/useAgonNetwork";
-import { networkHref } from "@/lib/agon/network";
+import { loginHref, networkHref } from "@/lib/agon/network";
 
 export function BnbMarket({ view = "market" }: { view?: "market" | "detail" | "publish" | "playground" | "activity" | "provider" | "compare" }) {
   const { network, networkKey } = useAgonNetwork(); const { me } = useAuth(); const router = useRouter();
@@ -19,7 +19,7 @@ export function BnbMarket({ view = "market" }: { view?: "market" | "detail" | "p
     if (!wallet) throw new Error("Open AGON in your wallet browser or install a browser wallet to continue.");
     return wallet.request(input);
   };
-  const needSignIn = () => router.push(networkHref("/login", networkKey, `returnTo=${encodeURIComponent(window.location.pathname + window.location.search + window.location.hash)}`));
+  const needSignIn = () => router.push(loginHref(networkKey, window.location.pathname + window.location.search + window.location.hash));
   return <div className="min-h-screen bg-canvas text-ink"><AppHeader hideSignOut /><main>
     <section className="mx-auto max-w-[1400px] px-4 pt-8 sm:px-6 sm:pt-10">{view === "detail" || view === "playground" ? <a className="inline-flex min-h-11 items-center text-sm underline" href={networkHref("/market", networkKey)}>← Back to market</a> : <><p className="font-mono text-xs uppercase tracking-wide text-ink-2">AGON / {network.name}</p><h1 className="mt-3 font-stencil text-4xl uppercase sm:text-5xl">{view === "market" ? "Find your agent" : view === "provider" ? "Provider dashboard" : view === "activity" ? "Your activity" : view === "compare" ? "Compare agents" : "List your agent"}</h1><p className="mt-3 text-sm leading-relaxed text-ink-2">{view === "market" ? "Choose a financial goal. Review the service, permissions and price before you use it." : view === "activity" ? "Your requests, next steps and delivery records." : view === "compare" ? "Review the evidence before you decide." : "Publish a service you own on this network."}</p></>}</section>
     <section className="mx-auto max-w-[1400px] px-4 pb-20 pt-6 sm:px-6 sm:pt-8">

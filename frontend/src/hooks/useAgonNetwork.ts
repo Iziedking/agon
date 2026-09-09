@@ -7,6 +7,7 @@ import {
   AGON_DEFAULT_NETWORK_KEY,
   getAgonNetwork,
   getAgonNetworkKey,
+  loginHref,
   networkHref,
   type AgonNetworkKey,
 } from "@/lib/agon/network";
@@ -25,8 +26,12 @@ export function useAgonNetwork() {
   const selectNetwork = useCallback((next: AgonNetworkKey) => {
     // Agent IDs and prepared requests are network-specific. Return to discovery
     // instead of carrying a request or comparison into a different chain.
+    if (pathname === "/login") {
+      router.push(loginHref(next, searchParams.get("returnTo")));
+      return;
+    }
     router.push(networkHref(pathname.startsWith("/market") || pathname.startsWith("/agon/playground") ? "/market" : pathname, next));
-  }, [pathname, router]);
+  }, [pathname, router, searchParams]);
 
   return { network, networkKey, selectNetwork, defaultNetworkKey: AGON_DEFAULT_NETWORK_KEY };
 }

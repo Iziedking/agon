@@ -9,6 +9,7 @@ import { AgonMark } from "@/components/redesign/AgonMark";
 import { Footer } from "@/components/redesign/Footer";
 import { TagButton } from "@/components/redesign/TagButton";
 import { useAgonNetwork } from "@/hooks/useAgonNetwork";
+import { marketReturnHref } from "@/lib/agon/network";
 
 /// Direct sign-in route. The same compact modal used by the product header is
 /// the canonical Agon entry surface, so a deep link and an in-app sign-in
@@ -23,7 +24,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     // Only local marketplace routes can be login return destinations.
-    const safeReturn = requestedReturn && /^\/market(?:[/?#]|$)/.test(requestedReturn) && !requestedReturn.includes("\\") ? requestedReturn : `/market?network=${network.key}`;
+    const safeReturn = marketReturnHref(network.key, requestedReturn);
     if (me) router.replace(safeReturn);
   }, [me, network.key, router, requestedReturn]);
 
