@@ -8,7 +8,7 @@ import { useOperatorAddress } from "@/hooks/useAuth";
 import { IS_AGON_DEPLOYMENT } from "@/lib/product";
 import { useAgonNetwork } from "@/hooks/useAgonNetwork";
 import { networkHref } from "@/lib/agon/network";
-import { isLegacyArcRunRoute } from "@/lib/agon/routes";
+import { isLegacyArcRunRoute, isPublicMarketplaceDocsRoute } from "@/lib/agon/routes";
 
 /**
  * Agon has a public discovery layer. Keep the landing page, catalog, service
@@ -24,7 +24,7 @@ export function AgonAccessGate({ children }: { children: ReactNode }) {
   const isLanding = pathname === "/";
   const isProtocolDocument = pathname.startsWith("/.well-known/");
   const isPublicMarket = pathname === "/market" || (pathname.startsWith("/market/") && (pathname !== "/market/new" || networkKey !== "arc-testnet"));
-  const isPublicDocs = pathname === "/docs" || pathname.startsWith("/docs/");
+  const isPublicDocs = isPublicMarketplaceDocsRoute(pathname);
   const isPublicPlayground = pathname === "/agon/playground";
   const isPublicOperator = pathname === "/operators" || pathname.startsWith("/operators/");
   // Admin has its own in-memory ADMIN_TOKEN gate. It must reach the token

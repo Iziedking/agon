@@ -48,28 +48,31 @@ export function ListingCard({ listing }: { listing: AgonListing }) {
   }, [listing.manifest.body, listing.manifest.hash, listing.manifest.uri, metadataState]);
 
   return (
-    <BracketedCell hover className="group flex min-h-0 flex-col" pad="md">
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex min-w-0 items-center gap-3">
-          <AgentLogo logoUrl={service.logoUrl} name={service.name} cacheKey={listing.version} />
-          <div className="min-w-0">
+    <BracketedCell hover className="group flex h-full min-h-0 flex-col" pad="md">
+      <div className="flex flex-col gap-5 sm:flex-row">
+        <AgentLogo logoUrl={service.logoUrl} name={service.name} cacheKey={listing.version} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-3">
             <div className="truncate font-mono text-[10px] uppercase tracking-[0.16em] text-accent">{service.category.label}</div>
+            <VerificationBadge status={listing.verification.status} quarantined={quarantined} />
           </div>
+          <h2 className="mt-4 font-sans text-[24px] font-semibold uppercase leading-[1.02] tracking-[-0.035em] text-ink sm:text-[28px]">{service.name}</h2>
+          <p className="mt-3 break-all font-mono text-[10px] uppercase tracking-[0.1em] text-ink-3">AGENT #{listing.agentId} · VERSION {listing.version}</p>
         </div>
-        <VerificationBadge status={listing.verification.status} quarantined={quarantined} />
       </div>
 
-      <h2 className="mt-6 font-stencil text-[28px] uppercase leading-[1.02] text-ink sm:text-[32px]">{service.name}</h2>
-      <p className="mt-3 line-clamp-2 min-h-[3.3em] font-mono text-[12px] leading-[1.65] text-ink-2">{service.description}</p>
+      <p className="mt-6 line-clamp-3 min-h-[4.8em] font-sans text-[14px] leading-[1.55] text-ink-2">{service.description}</p>
+      {service.tags.length > 0 ? <div className="mt-5 flex flex-wrap gap-2">{service.tags.slice(0, 3).map((tag) => <span key={tag} className="border border-[color:var(--hairline)] px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.1em] text-ink-3">{tag}</span>)}</div> : null}
       {metadataState === "loading" ? <p className="mt-3 font-mono text-[9px] uppercase tracking-[0.12em] text-ink-3">Checking service details</p> : null}
 
-      <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-y border-[color:var(--hairline)] py-4">
+      <div className="mt-6 flex flex-wrap items-end justify-between gap-4 border-y border-[color:var(--hairline)] py-4">
         <div>
           <div className="font-mono text-[9px] uppercase tracking-[0.14em] text-ink-3">PRICE</div>
-          <div className="mt-1 font-mono text-[12px] text-ink">{priceLabel(service.amountUSDC)}</div>
+          <div className="mt-1 font-sans text-[18px] font-medium text-ink">{priceLabel(service.amountUSDC)}</div>
         </div>
-        <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
-          {listing.payment.rail === "Escrow" ? "PROTECTED PROJECT" : "PAY PER USE"}
+        <div className="text-right font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
+          <div>{listing.payment.rail === "Escrow" ? "PROTECTED PROJECT" : "PAY PER USE"}</div>
+          <div className="mt-1 text-[9px] text-ink-3">{listing.endpointQa.status === "passed" ? "RESPONDING" : "AVAILABILITY UNCHECKED"}</div>
         </div>
       </div>
 
@@ -85,12 +88,12 @@ export function ListingCard({ listing }: { listing: AgonListing }) {
         <div className="mt-5"><UnverifiedWarning message={listing.risk.warning} quarantineReason={listing.risk.quarantineReason} /></div>
       ) : null}
 
-      <div className="mt-auto flex flex-wrap items-center justify-between gap-3 pt-5">
+      <div className="mt-auto flex flex-wrap items-center justify-between gap-3 pt-6">
         <Link href={`/market/${encodeURIComponent(listing.id)}`} className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3 underline decoration-[color:var(--hairline-strong)] underline-offset-4 hover:text-ink">
           VIEW DETAILS
         </Link>
         <Link href={unavailable || tested ? `/market/${encodeURIComponent(listing.id)}` : playgroundHref} className="inline-flex min-h-11 items-center border border-ink px-4 font-mono text-[10px] uppercase tracking-[0.12em] text-ink transition-colors hover:bg-ink hover:text-[color:var(--canvas)]">
-          {unavailable ? "UNAVAILABLE" : tested ? "USE SERVICE" : "TEST IN PLAYGROUND"} &gt;
+          {unavailable ? "UNAVAILABLE" : tested ? "USE SERVICE" : "TEST IN PLAYGROUND"} <span aria-hidden className="ml-2">→</span>
         </Link>
       </div>
     </BracketedCell>
@@ -104,7 +107,7 @@ export function AgentLogo({ logoUrl, name, cacheKey }: { logoUrl: string | null;
     ? `${logoUrl}${logoUrl.includes("?") ? "&" : "?"}v=${encodeURIComponent(String(cacheKey))}`
     : logoUrl;
   return (
-    <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden border border-[color:var(--hairline-strong)] bg-pink font-mono text-[13px] text-white" aria-label={`${name} logo`}>
+    <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden border border-[color:var(--hairline-strong)] bg-accent font-sans text-[20px] font-semibold text-accent-ink" aria-label={`${name} logo`}>
       {resolvedLogoUrl && !failed ? <img src={resolvedLogoUrl} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(true)} /> : initials}
     </div>
   );
