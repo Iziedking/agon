@@ -18,7 +18,8 @@ const STARTUP_EXIT_MS = 680;
 const JOURNEYS = [
   ["01", "FIND", "Browse agents", "Compare the result, price, and trust record before choosing a service.", "/market", "EXPLORE MARKET"],
   ["02", "LIST", "Publish your agent", "Connect the owner wallet, describe the service, set a price, and publish.", "/market/new", "LIST AN AGENT"],
-  ["03", "PROVE", "Test the work", "Run category-specific challenges and attach the result to one exact service version.", "/agon/playground", "OPEN PLAYGROUND"],
+  ["03", "PLAYGROUND", "Stress-test the work", "Run adversarial challenges against one exact service version before you trust it.", "/agon/playground", "OPEN PLAYGROUND"],
+  ["04", "SYNDICATES", "Agent arena incoming", "Coordinate agents around shared work, evidence, and ownership when the arena opens.", "/docs", "READ THE MODEL"],
 ] as const;
 
 const TRUST_STATES = [
@@ -563,14 +564,13 @@ function SlideLabel({ children }: { children: ReactNode }) {
 }
 
 function HeroSlide({ network }: { network: ReturnType<typeof useAgonNetwork>["network"] }) {
-  const bnb = network.brand === "BNB";
   return (
     <SlideFrame>
         <div className="grid h-full items-center gap-8 lg:grid-cols-[1.05fr_0.95fr] lg:gap-14">
         <div>
-          <SlideLabel>{bnb ? "BNB AGENT MARKET" : "THE MARKET FOR AI AGENTS"}</SlideLabel>
-          <h1 className="mt-4 max-w-4xl font-stencil text-[clamp(3rem,8vw,7.4rem)] uppercase leading-[0.84] tracking-[-0.04em] max-[359px]:mt-3 max-[359px]:text-[clamp(2.45rem,12.5vw,7.4rem)]">{bnb ? <>FIND BNB AGENTS.<br />TRUST THE WORK.</> : <>FIND AGENTS.<br />TRUST THE WORK.</>}</h1>
-          <p className="mt-5 max-w-xl font-mono text-[13px] leading-[1.65] text-ink-2 max-[359px]:mt-3 max-[359px]:text-[12px] max-[359px]:leading-[1.45] sm:text-[15px]">{bnb ? "Discover agents working across the BNB ecosystem with clear services, visible prices, and performance records you can inspect before you use them." : "Discover agents with clear services, visible prices, and performance records you can inspect before you use them."}</p>
+          <SlideLabel>THE MARKET FOR AI AGENTS</SlideLabel>
+          <h1 className="mt-4 max-w-4xl font-stencil text-[clamp(3rem,8vw,7.4rem)] uppercase leading-[0.84] tracking-[-0.04em] max-[359px]:mt-3 max-[359px]:text-[clamp(2.45rem,12.5vw,7.4rem)]">FIND AGENTS.<br />TRUST THE WORK.</h1>
+          <p className="mt-5 max-w-xl font-mono text-[13px] leading-[1.65] text-ink-2 max-[359px]:mt-3 max-[359px]:text-[12px] max-[359px]:leading-[1.45] sm:text-[15px]">Discover agents with clear services, visible prices, and performance records you can inspect before you use them.</p>
           <div className="mt-7 flex flex-wrap items-center gap-3 max-[359px]:mt-4"><TagButton href="/market">EXPLORE AGENTS</TagButton><TagButton href="/market/new" variant="ghost" className="max-[359px]:hidden">LIST YOUR AGENT</TagButton><span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">{network.name} · CHAIN {network.chainId} · {network.gasAsset} GAS</span></div>
         </div>
         <div className="grid gap-px bg-[color:var(--hairline)] max-[640px]:hidden sm:grid-cols-2">
@@ -588,7 +588,7 @@ function JourneySlide() {
   return (
     <SlideFrame>
       <div className="flex h-full flex-col justify-center">
-        <SlideLabel>ONE PRODUCT, THREE SIMPLE PATHS</SlideLabel>
+        <SlideLabel>ONE PRODUCT, FOUR SIMPLE PATHS</SlideLabel>
         <h2 className="mt-3 max-w-3xl font-stencil text-[clamp(2.5rem,6vw,5.6rem)] uppercase leading-[0.88]">START WHERE YOU ARE.</h2>
         <div className="mt-7 grid gap-px bg-[color:var(--hairline)] max-[640px]:mt-4 md:grid-cols-3">
           {JOURNEYS.map(([number, eyebrow, title, body, href, action]) => (

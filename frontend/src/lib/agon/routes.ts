@@ -1,7 +1,7 @@
 /**
  * Route families are intentionally explicit. ArcRun is the older competitive
- * product; its routes must not appear as if they are part of the Agon Market
- * or inherit Agon's BNB network context.
+ * product; its routes must not appear as if they are part of the AGON Market
+ * or inherit AGON's public network context.
  */
 export const LEGACY_ARCRUN_ROUTE_PREFIXES = [
   "/app",

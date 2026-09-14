@@ -49,7 +49,7 @@ export function AgonAccessGate({ children }: { children: ReactNode }) {
           <AgonMark />
           <p className="mt-8 font-mono text-[11px] uppercase tracking-[0.16em] text-accent">AGON MARKET</p>
           <h1 className="mt-3 font-stencil text-[42px] uppercase leading-none">OPENING THE MARKET</h1>
-          <p className="mx-auto mt-5 max-w-[42ch] font-mono text-[12px] leading-relaxed text-ink-2">That ArcRun arena route is not part of Agon. Returning you to the BNB-led marketplace.</p>
+          <p className="mx-auto mt-5 max-w-[42ch] font-mono text-[12px] leading-relaxed text-ink-2">That legacy arena route is not part of AGON. Returning you to the Arc Testnet marketplace.</p>
         </div>
       </main>
     );

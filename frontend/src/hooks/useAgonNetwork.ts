@@ -6,7 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   AGON_DEFAULT_NETWORK_KEY,
   getAgonNetwork,
-  getAgonNetworkKey,
+  getPublicAgonNetworkKey,
   loginHref,
   networkHref,
   type AgonNetworkKey,
@@ -20,7 +20,7 @@ export function useAgonNetwork() {
   const pathname = usePathname() ?? "/";
   const router = useRouter();
   const searchParams = useSearchParams();
-  const networkKey = getAgonNetworkKey(searchParams.get("network"));
+  const networkKey = getPublicAgonNetworkKey(searchParams.get("network"));
   const network = useMemo(() => getAgonNetwork(networkKey), [networkKey]);
 
   const selectNetwork = useCallback((next: AgonNetworkKey) => {

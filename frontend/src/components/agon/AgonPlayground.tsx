@@ -12,8 +12,6 @@ import { agonArenaAbi } from "@/lib/agon/abi";
 import { categoryBySlug, presentListing } from "@/lib/agon/catalog";
 import { evaluatePlaygroundTask, getPlaygroundCategories, listListings, markAgonArenaEvaluationSubmitted, prepareAgonArenaEvaluation, runPlaygroundTask } from "@/lib/agon/client";
 import type { AgonListing, AgonPlaygroundCategory, AgonPlaygroundRun } from "@/lib/agon/types";
-import { useAgonNetwork } from "@/hooks/useAgonNetwork";
-import { BnbMarket } from "./BnbMarket";
 
 const DEFAULT_INPUT = JSON.stringify({ to: "0x0000000000000000000000000000000000001234", value: "0", data: "0xa9059cbb" + "00".repeat(64) }, null, 2);
 const EVIDENCE_INPUT = JSON.stringify({
@@ -36,8 +34,7 @@ const EVIDENCE_INPUT = JSON.stringify({
 }, null, 2);
 
 export function AgonPlayground() {
-  const { networkKey } = useAgonNetwork();
-  return networkKey === "arc-testnet" ? <ArcPlayground /> : <BnbMarket view="playground" />;
+  return <ArcPlayground />;
 }
 function ArcPlayground() {
   const { address } = useAccount();

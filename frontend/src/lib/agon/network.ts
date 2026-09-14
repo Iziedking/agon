@@ -150,11 +150,12 @@ export const AGON_NETWORKS: Record<AgonNetworkKey, AgonNetworkDescriptor> = {
   },
 };
 
-export const AGON_DEFAULT_NETWORK_KEY: AgonNetworkKey = "bnb-mainnet";
-// Keep the selector focused on the BNB product. Arc remains a typed
-// network context and can be re-exposed after the BNB launch without changing
-// the underlying adapter or route model.
-export const AGON_TESTNET_NETWORK_KEYS: readonly AgonNetworkKey[] = ["bnb-testnet"];
+// The public product currently has one deliberate network context. The BNB
+// descriptors remain typed and dormant so they can be reintroduced behind a
+// reviewed release decision without changing the Arc adapter.
+export const AGON_PUBLIC_NETWORK_KEY: AgonNetworkKey = "arc-testnet";
+export const AGON_DEFAULT_NETWORK_KEY: AgonNetworkKey = AGON_PUBLIC_NETWORK_KEY;
+export const AGON_TESTNET_NETWORK_KEYS: readonly AgonNetworkKey[] = [AGON_PUBLIC_NETWORK_KEY];
 
 export function isAgonNetworkKey(value: string | null | undefined): value is AgonNetworkKey {
   return value === "bnb-mainnet" || value === "bnb-testnet" || value === "arc-testnet";
@@ -162,6 +163,11 @@ export function isAgonNetworkKey(value: string | null | undefined): value is Ago
 
 export function getAgonNetworkKey(value: string | null | undefined): AgonNetworkKey {
   return isAgonNetworkKey(value) ? value : AGON_DEFAULT_NETWORK_KEY;
+}
+
+/** Resolve the network exposed by public Agon routes. Old BNB links reopen on Arc. */
+export function getPublicAgonNetworkKey(_value: string | null | undefined): typeof AGON_PUBLIC_NETWORK_KEY {
+  return AGON_PUBLIC_NETWORK_KEY;
 }
 
 export function getAgonNetwork(value: string | null | undefined): AgonNetworkDescriptor {

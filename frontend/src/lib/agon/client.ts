@@ -54,7 +54,7 @@ import type {
   AgonSyndicatePrizeTransactionView,
 } from "./types";
 import { AGON_PREVIEW_HEALTH, AGON_PREVIEW_LISTINGS } from "./preview";
-import { getAgonNetwork, getAgonNetworkKey, type AgonNetworkKey } from "./network";
+import { getAgonNetwork, getPublicAgonNetworkKey, type AgonNetworkKey } from "./network";
 
 export const AGON_PREVIEW_MODE = process.env.NEXT_PUBLIC_AGON_PREVIEW_FIXTURES === "1";
 
@@ -119,7 +119,7 @@ async function request<T>(path: string, init?: RequestInit, principal?: `0x${str
 }
 
 export function listListings(query: ListListingsQuery = {}): Promise<AgonListingPage> {
-  const networkKey = getAgonNetworkKey(query.network || "arc-testnet");
+  const networkKey = getPublicAgonNetworkKey(query.network || "arc-testnet");
   const network = getAgonNetwork(networkKey);
   if (!network.apiUrl) {
     return Promise.reject(new AgonApiError("network_unavailable", `${network.name} catalog is not connected yet.`, 503));
@@ -142,6 +142,7 @@ export function listListings(query: ListListingsQuery = {}): Promise<AgonListing
 }
 
 export function getListing(reference: string, networkKey: AgonNetworkKey = "arc-testnet"): Promise<AgonListing> {
+  networkKey = getPublicAgonNetworkKey(networkKey);
   const network = getAgonNetwork(networkKey);
   if (!network.apiUrl) {
     return Promise.reject(new AgonApiError("network_unavailable", `${network.name} catalog is not connected yet.`, 503));
@@ -156,6 +157,7 @@ export function getListing(reference: string, networkKey: AgonNetworkKey = "arc-
 }
 
 export function getAgonHealth(networkKey: AgonNetworkKey = "arc-testnet"): Promise<AgonHealth> {
+  networkKey = getPublicAgonNetworkKey(networkKey);
   if (AGON_PREVIEW_MODE) return Promise.resolve(AGON_PREVIEW_HEALTH);
   return request<AgonHealth>("/health", undefined, undefined, networkKey);
 }

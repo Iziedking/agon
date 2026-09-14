@@ -9,8 +9,8 @@ type NetworkGlyphProps = {
  * Small official network marks for the selector. Text remains the authority;
  * these images are visual orientation cues only.
  *
- * BNB is the official yellow BNB Chain symbol from BNB Chain's brand kit.
- * Arc is the supplied Arc brand mark already used by AGON elsewhere.
+ * Arc is the supplied Arc brand mark already used by AGON elsewhere. A
+ * dormant alternate network mark remains supported by the typed descriptor.
  */
 export function NetworkGlyph({ brand, className = "h-4 w-4" }: NetworkGlyphProps) {
   const arc = brand !== "BNB";

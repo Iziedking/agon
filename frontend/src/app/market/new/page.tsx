@@ -24,14 +24,12 @@ import { canonicalManifestHash } from "@/lib/agon/canonical";
 import { buildServiceManifest, validateServiceDraft } from "@/lib/agon/draft";
 import type { AgonCapabilities, PaymentRail } from "@/lib/agon/types";
 import { useAgonNetwork } from "@/hooks/useAgonNetwork";
-import { BnbMarket } from "@/components/agon/BnbMarket";
 import { AGON_IDENTITY_REGISTRY, agonIdentityRegistryAbi, identityIdFromRegistrationReceipt, resolveIdentityActions, validateIdentityMetadataUri } from "@/lib/agon/identity";
 
 const INPUT_CLASS = "h-12 w-full border border-[color:var(--hairline-strong)] bg-canvas px-4 font-mono text-[12px] text-ink outline-none placeholder:text-ink-3 focus:border-ink focus:ring-2 focus:ring-ink focus:ring-offset-2 focus:ring-offset-canvas disabled:opacity-50";
 
 export default function NewListingPage() {
-  const { networkKey } = useAgonNetwork();
-  return networkKey === "arc-testnet" ? <ArcNewListingPage /> : <BnbMarket view="publish" />;
+  return <ArcNewListingPage />;
 }
 function ArcNewListingPage() {
   const { isSignedIn, settling } = useOperatorAddress();
@@ -207,7 +205,7 @@ function ArcNewListingPage() {
     event.preventDefault();
     setNotice(null);
     if (!arcWritePathAvailable) {
-      setNotice({ tone: "warn", message: `${network.name} listing publication is not connected yet. The form is review-only until a BNB adapter is verified.` });
+      setNotice({ tone: "warn", message: `${network.name} listing publication is not connected yet. The form is review-only until the publication path is verified.` });
       return;
     }
     if (!address) {
@@ -360,7 +358,7 @@ function ArcNewListingPage() {
             </Notice>
           ) : null}
           {!arcWritePathAvailable ? (
-            <Notice tone="warn">{network.name} is selected. BNB publication and identity contracts are not connected to this release yet, so this page is review-only and will not send an Arc transaction under a BNB label.</Notice>
+            <Notice tone="warn">{network.name} is selected. Publication and identity contracts are not connected to this release yet, so this page is review-only and will not send a transaction.</Notice>
           ) : null}
           {notice ? <Notice tone={notice.tone}>{notice.message}</Notice> : null}
           {pendingConfirmation ? (

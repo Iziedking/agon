@@ -20,11 +20,9 @@ import { getListing, inspectManifest } from "@/lib/agon/client";
 import type { AgonListing } from "@/lib/agon/types";
 import { assessListingAssurance, canUseEscrow, verifyManifestAnchor } from "@/lib/agon/verify";
 import { useAgonNetwork } from "@/hooks/useAgonNetwork";
-import { BnbMarket } from "@/components/agon/BnbMarket";
 
 export default function ListingDetailPage() {
-  const { networkKey } = useAgonNetwork();
-  return networkKey === "arc-testnet" ? <ArcListingDetailPage /> : <BnbMarket view="detail" />;
+  return <ArcListingDetailPage />;
 }
 function ArcListingDetailPage() {
   const params = useParams<{ id: string }>();

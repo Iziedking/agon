@@ -6,14 +6,15 @@ import {
   AGON_NETWORKS,
   getAgonBalanceTarget,
   getAgonNetworkKey,
+  getPublicAgonNetworkKey,
   loginHref,
   networkHref,
 } from "./network.ts";
 
-test("BNB Mainnet is the Agon default context", () => {
-  assert.equal(AGON_DEFAULT_NETWORK_KEY, "bnb-mainnet");
-  assert.equal(AGON_NETWORKS[AGON_DEFAULT_NETWORK_KEY].chainId, 56);
-  assert.equal(AGON_NETWORKS[AGON_DEFAULT_NETWORK_KEY].brand, "BNB");
+test("Arc Testnet is the public Agon context", () => {
+  assert.equal(AGON_DEFAULT_NETWORK_KEY, "arc-testnet");
+  assert.equal(AGON_NETWORKS[AGON_DEFAULT_NETWORK_KEY].chainId, 5042002);
+  assert.equal(AGON_NETWORKS[AGON_DEFAULT_NETWORK_KEY].brand, "ARC");
 });
 
 test("sign-in keeps the selected network in both login and return URLs", () => {
@@ -55,5 +56,7 @@ test("network links preserve the route and replace only the network context", ()
     networkHref("/market", "bnb-testnet", "?category=trading&network=arc-testnet"),
     "/market?category=trading&network=bnb-testnet",
   );
-  assert.equal(getAgonNetworkKey("not-a-network"), "bnb-mainnet");
+  assert.equal(getAgonNetworkKey("not-a-network"), "arc-testnet");
+  assert.equal(getPublicAgonNetworkKey("bnb-mainnet"), "arc-testnet");
+  assert.equal(getPublicAgonNetworkKey("bnb-testnet"), "arc-testnet");
 });

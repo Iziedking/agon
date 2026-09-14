@@ -112,7 +112,7 @@ export default function ListingVersionPage() {
 
   async function publishVersion() {
     if (!arcWritePathAvailable) {
-      setError(`${network.name} version publication is not connected yet. This page is review-only until a BNB adapter is verified.`);
+      setError(`${network.name} version publication is not connected yet. This page is review-only until the publication path is verified.`);
       return;
     }
     if (pendingConfirmation) {

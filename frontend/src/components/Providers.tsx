@@ -19,8 +19,8 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <WagmiProvider config={config}>
       <QueryClientProvider client={queryClient}>
-        {/* RainbowKit supplies the branded wallet picker. Agon opens on BNB
-            Mainnet; the legacy ArcRun deployment keeps Arc Testnet as home. */}
+        {/* RainbowKit supplies the branded wallet picker. Agon currently uses
+            Arc Testnet as its only public network context. */}
         <RainbowKitProvider
           theme={arcrunRainbowTheme}
           initialChain={IS_AGON_DEPLOYMENT ? undefined : arcTestnet}

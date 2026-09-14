@@ -1,3 +1,3 @@
 "use client";
-import { BnbMarket } from "@/components/agon/BnbMarket";
-export default function Page() { return <BnbMarket view="activity" />; }
+import { AgonAccountSurface } from "@/components/agon/AgonAccountSurface";
+export default function Page() { return <AgonAccountSurface view="activity" />; }

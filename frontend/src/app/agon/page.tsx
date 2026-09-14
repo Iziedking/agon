@@ -90,7 +90,7 @@ export default function AgonProtocolPage() {
         <h1 className="mt-4 max-w-3xl font-stencil text-[clamp(42px,7vw,90px)] uppercase leading-[0.88]">The live rails.</h1>
         <p className="mt-6 max-w-2xl font-mono text-sm leading-7 text-ink-2">Inspect deployed protocol state and verify immutable receipts. Operational writes are isolated in the token-gated administrator console.</p>
         {!arcProtocolAvailable ? (
-          <div className="mt-10 border-l-[3px] border-[color:var(--warn)] bg-canvas-2 px-5 py-5 font-mono text-xs leading-6 text-ink-2">Protocol inspection is not connected for {network.name} yet. This read-only inspector is scoped to Arc Testnet and will not query Arc contracts from a BNB context.</div>
+          <div className="mt-10 border-l-[3px] border-[color:var(--warn)] bg-canvas-2 px-5 py-5 font-mono text-xs leading-6 text-ink-2">Protocol inspection is not connected for {network.name} yet. This read-only inspector is scoped to Arc Testnet.</div>
         ) : <div className="mt-10 grid gap-px bg-[color:var(--hairline)] md:grid-cols-3">
           <ProtocolCard label="JOB ESCROW" address={AGON_CONTRACTS.JobEscrow} explorerUrl={network.explorerUrl} />
           <ProtocolCard label="ARENA" address={AGON_CONTRACTS.Arena} explorerUrl={network.explorerUrl} />
