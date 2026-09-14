@@ -46,7 +46,6 @@ const LEGACY_ROUTES = [
 
 const AGON_ROUTES = [
   { href: "/market", label: "MARKET", exact: true },
-  { href: "/market/activity", label: "ACTIVITY", exact: true },
   { href: "/market/new", label: "LIST AN AGENT", exact: true },
   { href: "/agon/playground", label: "PLAYGROUND", exact: true },
   { href: "/docs", label: "DOCS", exact: false },
@@ -147,6 +146,7 @@ export function TopNav({ hideSignOut = false }: { hideSignOut?: boolean } = {}) 
                 see the selected network's payment-token state. */}
             {isSignedIn && !isAgon ? <WalletBalanceChip variant="row" /> : null}
             {isAgon ? <div className="flex flex-wrap items-center gap-3 border-b border-[color:var(--hairline)] py-3">{!isSignedIn ? <LoginButton /> : <NotificationBell />}<ThemeToggle /></div> : null}
+            {isAgon && isSignedIn ? <Link className="inline-flex min-h-11 items-center py-3 text-sm" href={networkHref("/market/activity", networkKey)}>My activity</Link> : null}
             {isAgon && isSignedIn ? <Link className="inline-flex min-h-11 items-center py-3 text-sm" href={networkHref("/market/provider", networkKey)}>Provider dashboard</Link> : null}
             {routes.map((r) => {
               const active = pathname === r.href || (!("exact" in r) || !r.exact) && pathname.startsWith(`${r.href}/`);
