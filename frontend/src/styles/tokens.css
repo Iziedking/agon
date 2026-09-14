@@ -307,7 +307,7 @@
 html, body {
   background-color: var(--canvas);
   color: var(--ink);
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: var(--text-body);
   line-height: var(--leading-body);
   -webkit-font-smoothing: antialiased;

@@ -88,7 +88,13 @@ export function friendlyError(e: unknown, fallback = "something went wrong. try 
     return "you're signed out. sign in and try again.";
   }
   // 4xx / 5xx wrappers without a specific match
-  if (msg.includes("network") || msg.includes("fetch failed") || msg.includes("network error")) {
+  if (
+    msg.includes("network") ||
+    msg.includes("fetch failed") ||
+    msg.includes("failed to fetch") ||
+    msg.includes("network error") ||
+    msg.includes("network request failed")
+  ) {
     return "network hiccup. try again in a moment.";
   }
   return fallback;

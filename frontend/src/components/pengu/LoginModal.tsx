@@ -204,12 +204,11 @@ export function LoginModal({ open, onClose }: { open: boolean; onClose: () => vo
       await refresh();
       reportEvent("login", { context: { method: "wallet" } });
     } catch (e) {
-      // Surface the REAL reason (e.g. "bad domain", "invalid or expired nonce",
-      // "wrong chain", "bad signature") as the fallback instead of a generic
-      // "sign in failed", so a misconfig is actually visible. friendlyError
-      // still maps known cases (user rejected -> "you cancelled the request").
-      const raw = e instanceof Error ? e.message : "sign in failed.";
-      setError(friendlyError(e, raw.toLowerCase()));
+      // Map known wallet and network conditions to actionable copy. Never use
+      // the raw browser/network message as UI fallback. In particular,
+      // browsers report a vague "Failed to fetch" when auth is unavailable;
+      // consumers need a calm, recoverable message.
+      setError(friendlyError(e, "sign-in is temporarily unavailable. try again in a moment."));
       logRawError("login_error", e, { context: { method: "wallet" } });
     } finally {
       setBusy(false);

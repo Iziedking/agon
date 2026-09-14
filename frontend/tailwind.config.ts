@@ -79,12 +79,12 @@ const config: Config = {
         },
       },
       fontFamily: {
-        /* Stencil display. The `display` and `bubble` names are kept as
-           aliases so existing call sites continue to compile while pages
-           transition; new code should use `font-stencil`. */
-        stencil: ["var(--font-geist-pixel-square)", "Impact", "system-ui", "sans-serif"],
-        display: ["var(--font-geist-pixel-square)", "Impact", "system-ui", "sans-serif"],
-        bubble: ["var(--font-geist-pixel-square)", "Impact", "system-ui", "sans-serif"],
+        /* Keep the existing semantic names, but use the consumer-readable
+           Geist face for public headings. The pixel face remains available
+           for deliberately small brand moments through its own variable. */
+        stencil: ["var(--font-geist-sans)", "Geist", "Inter", "system-ui", "sans-serif"],
+        display: ["var(--font-geist-sans)", "Geist", "Inter", "system-ui", "sans-serif"],
+        bubble: ["var(--font-geist-sans)", "Geist", "Inter", "system-ui", "sans-serif"],
         sans: ["var(--font-body)"],
         mono: ["var(--font-mono)"],
       },

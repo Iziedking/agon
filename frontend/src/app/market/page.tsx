@@ -41,9 +41,9 @@ function ArcMarketPage() {
       const page = await listListings({ limit: PAGE_SIZE, category: selectedCategory || null, network: networkKey });
       setItems(page.items);
       setNextCursor(page.nextCursor);
-    } catch (failure) {
+    } catch {
       setItems([]);
-      setError(failure instanceof Error ? failure.message : "Could not read the service catalog.");
+      setError("The Arc service directory is temporarily unavailable. Try again in a moment.");
     }
   }, [networkKey, selectedCategory]);
 
@@ -65,8 +65,8 @@ function ArcMarketPage() {
       const page = await listListings({ limit: PAGE_SIZE, cursor: nextCursor, category: selectedCategory || null, network: networkKey });
       setItems((current) => [...(current ?? []), ...page.items]);
       setNextCursor(page.nextCursor);
-    } catch (failure) {
-      setError(failure instanceof Error ? failure.message : "Could not load more services.");
+    } catch {
+      setError("More Arc services could not be loaded. Try again in a moment.");
     } finally {
       setLoadingNext(false);
     }
