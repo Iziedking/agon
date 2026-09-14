@@ -152,7 +152,7 @@ jobs:
           tmp_dir="$(mktemp -d)"
           trap 'rm -rf "$tmp_dir"' EXIT
           curl --fail --silent --show-error --retry 12 --retry-all-errors --retry-delay 5 "$ARC_HEALTH_URL" > "$tmp_dir/health.json"
-          python3 "$tmp_dir/health.json" <<'PY'
+          python3 - "$tmp_dir/health.json" <<'PY'
           import json
           import sys
 
