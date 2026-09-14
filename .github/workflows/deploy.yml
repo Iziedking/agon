@@ -1,7 +1,8 @@
 name: AGON production
 
-# Vercel's Git integration owns the frontend. This pipeline tests both apps
-# and releases Arc + BNB APIs from the SAME main commit.
+# Vercel's Git integration owns the frontend. This pipeline validates the Arc
+# public product and builds the dormant BNB compatibility service from the
+# SAME main commit.
 on:
   push:
     branches: [main]
@@ -142,28 +143,25 @@ jobs:
           fingerprint: ${{ secrets.VPS_HOST_FINGERPRINT }}
           command_timeout: 15m
           script: sudo -n /usr/local/sbin/agon-deploy ${{ github.sha }}
-      - name: Verify public BNB Testnet health
+      - name: Verify public Arc Testnet health
         if: steps.gate.outputs.ready == 'true'
         env:
-          BNB_HEALTH_URL: https://api.agon.surf/api/bnb/97/health
-          BNB_STATUS_URL: https://agon.surf/api/bnb/97/providers/lp-guardian/erc8183/status
+          ARC_HEALTH_URL: https://api.agon.surf/agon/health
         run: |
           set -euo pipefail
           tmp_dir="$(mktemp -d)"
           trap 'rm -rf "$tmp_dir"' EXIT
-          curl --fail --silent --show-error --retry 12 --retry-all-errors --retry-delay 5 "$BNB_HEALTH_URL" > "$tmp_dir/health.json"
-          curl --fail --silent --show-error --retry 12 --retry-all-errors --retry-delay 5 "$BNB_STATUS_URL" > "$tmp_dir/status.json"
-          python3 - "$tmp_dir/health.json" "$tmp_dir/status.json" <<'PY'
+          curl --fail --silent --show-error --retry 12 --retry-all-errors --retry-delay 5 "$ARC_HEALTH_URL" > "$tmp_dir/health.json"
+          python3 "$tmp_dir/health.json" <<'PY'
           import json
           import sys
 
           health = json.load(open(sys.argv[1], encoding="utf-8"))
-          status = json.load(open(sys.argv[2], encoding="utf-8"))
-          assert health.get("chainId") == 97, f"unexpected health chain: {health.get('chainId')}"
-          assert health.get("rpc") == "reachable", f"BNB RPC is not reachable: {health.get('rpc')}"
-          assert health.get("storage") == "reachable", f"BNB storage is not reachable: {health.get('storage')}"
-          assert status.get("chain_id") == 97, f"unexpected provider chain: {status.get('chain_id')}"
-          assert status.get("paid_hiring") is True, "paid hiring is not enabled"
-          assert status.get("blockers") == [], f"provider blockers remain: {status.get('blockers')}"
-          print("BNB Testnet public health and paid-hiring status are healthy.")
+          capabilities = health.get("capabilities", {})
+          readiness = capabilities.get("protocolReadiness", {})
+          assert health.get("ok") is True, "Arc service did not report ok"
+          assert readiness.get("chainId") == 5042002, f"unexpected Arc chain: {readiness.get('chainId')}"
+          assert readiness.get("ready") is True, f"Arc protocol is not ready: {readiness.get('reasons')}"
+          assert capabilities.get("listingReads") is True, "Arc listing reads are unavailable"
+          print("Arc Testnet public health is healthy.")
           PY
