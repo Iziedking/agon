@@ -23,6 +23,7 @@ function close(server: ReturnType<typeof createServer>): Promise<void> {
 
 test("serves public health and keeps market intel behind the x402 middleware", async () => {
   let paymentChecks = 0;
+  let deliveryEvidence: { idempotencyKey: string; serviceStatus: number } | null = null;
   const handler = createArcX402SellerHandler({
     price: "$0.001",
     sellerAddress: "0x0000000000000000000000000000000000000042",
@@ -39,11 +40,13 @@ test("serves public health and keeps market intel behind the x402 middleware", a
           payer: "0x0000000000000000000000000000000000000007",
           amount: "0.001",
           network: "eip155:5042002",
+          transaction: `0x${"ab".repeat(32)}`,
         },
       });
       next();
     },
     loadMarketIntel: async (topic) => ({ topic, source: "test", markets: [] }),
+    onDelivery: (evidence) => { deliveryEvidence = { idempotencyKey: evidence.idempotencyKey, serviceStatus: evidence.serviceStatus }; },
   });
   const server = createServer(handler);
   const port = await listen(server);
@@ -63,8 +66,14 @@ test("serves public health and keeps market intel behind the x402 middleware", a
     assert.equal(unpaid.status, 402);
     assert.equal(paymentChecks, 1);
 
+    const signedWithoutReplayKey = await fetch(`http://127.0.0.1:${port}/x402/market-intel`, {
+      headers: { "payment-signature": "signed", "x-test-paid": "1" },
+    });
+    assert.equal(signedWithoutReplayKey.status, 400);
+    assert.equal(paymentChecks, 1);
+
     const paid = await fetch(`http://127.0.0.1:${port}/x402/market-intel?topic=crypto`, {
-      headers: { "x-test-paid": "1" },
+      headers: { "x-test-paid": "1", "idempotency-key": "seller-proof-001" },
     });
     assert.equal(paid.status, 200);
     const paidBody = await paid.json() as {
@@ -76,6 +85,7 @@ test("serves public health and keeps market intel behind the x402 middleware", a
     assert.equal(paidBody.source, "test");
     assert.equal(paidBody.payment.verified, true);
     assert.equal(paidBody.payment.amount, "0.001");
+    assert.deepEqual(deliveryEvidence, { idempotencyKey: "seller-proof-001", serviceStatus: 200 });
     assert.equal(paymentChecks, 2);
 
     const missing = await fetch(`http://127.0.0.1:${port}/not-found`);

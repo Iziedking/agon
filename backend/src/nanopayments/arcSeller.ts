@@ -25,7 +25,9 @@
 /// standard Node (req, res, next) handler. Keeping it off the Hono app means it
 /// cannot affect the main API.
 
+import { randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { createProviderHandler, type ProviderDeliveryEvidence } from "../agon/provider-handler.ts";
 
 /// Circle's Gateway facilitator. Testnet, because we sell on Arc Testnet. Check
 /// the Nanopayments column in Circle's supported-blockchains table before pointing
@@ -57,6 +59,7 @@ export type ArcX402SellerHandlerOptions = {
   sellerAddress: string;
   requirePayment: ArcX402PaymentMiddleware;
   loadMarketIntel?: (topic: string) => Promise<unknown>;
+  onDelivery?: (evidence: ProviderDeliveryEvidence, payment: NonNullable<PaidRequest["payment"]>) => void | Promise<void>;
 };
 
 /// Live Polymarket odds, keyless. The same ground truth the mission grader scores
@@ -101,6 +104,9 @@ export function createArcX402SellerHandler(
   options: ArcX402SellerHandlerOptions,
 ): (req: IncomingMessage, res: ServerResponse) => void {
   const loadMarketIntel = options.loadMarketIntel ?? marketIntel;
+  const providerHandler = createProviderHandler<{ topic: string }, unknown>({
+    handler: async (input, context) => loadMarketIntel(input.topic || "crypto"),
+  });
 
   return (req, res) => {
     const url = new URL(req.url ?? "/", "http://seller.local");
@@ -120,6 +126,17 @@ export function createArcX402SellerHandler(
       return;
     }
 
+    const idempotencyHeader = req.headers["idempotency-key"];
+    const idempotencyKey = Array.isArray(idempotencyHeader) ? idempotencyHeader[0] : idempotencyHeader;
+    const hasPaymentSignature = Boolean(req.headers["payment-signature"]);
+    // Let an unpaid caller receive the normal 402 challenge. Once a signed
+    // payment is present, reject before facilitator settlement if replay
+    // protection is missing.
+    if (hasPaymentSignature && !idempotencyKey) {
+      send(res, 400, { error: "idempotency_required" });
+      return;
+    }
+
     const onPaid = (error?: unknown) => {
       if (error) {
         sendMiddlewareError(res, error);
@@ -127,21 +144,37 @@ export function createArcX402SellerHandler(
       }
       const paid = (req as PaidRequest).payment;
       const topic = url.searchParams.get("topic") ?? "crypto";
-      void loadMarketIntel(topic)
-        .then((data) => {
-          console.log(
-            `[x402-seller] served ${topic} to ${paid?.payer ?? "?"} ` +
-              `for ${paid?.amount ?? "?"} on ${paid?.network ?? "?"} tx=${paid?.transaction ?? "pending-batch"}`,
-          );
-          send(res, 200, { ...(data as object), payment: paid ?? null });
-        })
-        .catch((loadError: unknown) => {
-          // The buyer already paid, so failing to fetch is on us. Say so plainly
-          // rather than returning a stub the agent would then be graded on.
-          send(res, 502, {
-            error: `upstream data unavailable: ${loadError instanceof Error ? loadError.message : String(loadError)}`,
-          });
-        });
+      const requestId = req.headers["x-request-id"];
+      const requestHeader = Array.isArray(requestId) ? requestId[0] : requestId;
+      if (!idempotencyKey) {
+        send(res, 400, { error: "idempotency_required" });
+        return;
+      }
+      if (!paid?.payer || !/^0x[0-9a-f]{40}$/i.test(paid.payer)) {
+        send(res, 500, { error: "payment_identity_missing" });
+        return;
+      }
+      void providerHandler.execute({
+        requestId: requestHeader || randomUUID(),
+        body: JSON.stringify({ topic }),
+        idempotencyKey: idempotencyKey,
+        payment: {
+          payer: paid.payer as `0x${string}`,
+          network: ARC_CAIP2,
+          transaction: paid.transaction ?? "pending-batch",
+        },
+      }).then(async ({ result, evidence }) => {
+        if (options.onDelivery) await options.onDelivery(evidence, paid);
+        console.log(
+          `[x402-seller] served ${topic} to ${paid.payer} ` +
+            `for ${paid.amount ?? "?"} on ${paid.network ?? "?"} tx=${paid.transaction ?? "pending-batch"}`,
+        );
+        send(res, 200, { ...(result as object), payment: paid });
+      }).catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        const status = message === "handler_timeout" ? 504 : message === "handler_not_configured" ? 501 : message === "response_too_large" ? 502 : 502;
+        send(res, status, { error: message === "handler_timeout" ? "handler_timeout" : "upstream data unavailable" });
+      });
     };
 
     try {
