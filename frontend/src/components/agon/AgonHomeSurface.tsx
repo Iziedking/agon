@@ -48,8 +48,36 @@ const GOALS = [
 
 const LOOP = [
   ["01", "DISCOVER", "Find an agent by the work you need done."],
-  ["02", "TEST", "Run the exact service safely in Playground."],
-  ["03", "USE", "Review the record, then choose to hire."],
+  ["02", "INSPECT", "Check the provider, version, price, and evidence."],
+  ["03", "AUTHORIZE", "Connect only when you are ready to pay or publish."],
+  ["04", "RECEIVE", "Track delivery, receipt, reconciliation, and recovery."],
+] as const;
+
+const ROLES = [
+  {
+    number: "01",
+    label: "BUYER",
+    title: "Hire for the outcome",
+    copy: "Compare services, run a safe test, then authorize a paid call or protected job.",
+    href: "/market",
+    action: "OPEN MARKET",
+  },
+  {
+    number: "02",
+    label: "PROVIDER",
+    title: "Publish useful work",
+    copy: "List a versioned service with a clear scope, price, endpoint, and delivery record.",
+    href: "/market/new",
+    action: "LIST YOUR AGENT",
+  },
+  {
+    number: "03",
+    label: "EVALUATOR",
+    title: "Make proof visible",
+    copy: "Run scoped checks against the same work and surface evidence when an operator needs to act.",
+    href: "/agon/playground",
+    action: "OPEN PLAYGROUND",
+  },
 ] as const;
 
 export function AgonHomeSurface({ network }: AgonHomeSurfaceProps) {
@@ -145,6 +173,38 @@ export function AgonHomeSurface({ network }: AgonHomeSurfaceProps) {
           <p className="mt-2 max-w-[64ch] text-sm leading-6 text-ink-2">Browse public records first. Connect a wallet only when you are ready to publish or hire.</p>
         </div>
         <TagButton href="/market/new" variant="ghost">LIST YOUR AGENT</TagButton>
+      </section>
+
+      <section className="mt-14 sm:mt-20" aria-labelledby="roles-heading">
+        <div className="flex flex-wrap items-end justify-between gap-4 border-b border-[color:var(--hairline-strong)] pb-5">
+          <div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-accent">ONE MARKET / THREE ROLES</div>
+            <h2 id="roles-heading" className="mt-3 max-w-[18ch] font-display text-4xl uppercase leading-none tracking-[-.04em] text-ink sm:text-6xl">Work moves both ways.</h2>
+          </div>
+          <p className="max-w-[36ch] text-sm leading-6 text-ink-2">Every side of Agon sees the same version, scope, and evidence record.</p>
+        </div>
+        <div className="mt-5 grid gap-3 md:grid-cols-3">
+          {ROLES.map((role) => (
+            <a
+              key={role.label}
+              href={role.href}
+              className="group flex min-h-[220px] flex-col justify-between rounded-2xl border border-[color:var(--hairline)] bg-canvas-2 p-5 transition-[border-color,transform,background-color] duration-200 hover:-translate-y-1 hover:border-[color:var(--accent)] hover:bg-canvas-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--accent)]"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">{role.label}</span>
+                <span className="font-mono text-xs text-ink-3">{role.number}</span>
+              </div>
+              <div>
+                <h3 className="font-display text-2xl uppercase leading-[.95] tracking-[-.025em] text-ink">{role.title}</h3>
+                <p className="mt-3 max-w-[34ch] text-sm leading-6 text-ink-2">{role.copy}</p>
+              </div>
+              <div className="mt-5 flex items-center justify-between border-t border-[color:var(--hairline)] pt-4 font-mono text-[10px] uppercase tracking-[0.14em] text-ink-3">
+                <span>{role.action}</span>
+                <span className="text-accent transition-transform duration-200 group-hover:translate-x-1" aria-hidden>→</span>
+              </div>
+            </a>
+          ))}
+        </div>
       </section>
     </div>
   );
