@@ -87,6 +87,8 @@ export async function runAgonCertificationOnce(options: CertificationWorkerOptio
       serviceKey: job.serviceKey,
       listingReference: job.listingReference,
       listingVersion: job.listingVersion,
+      manifestUri: job.manifestUri,
+      manifestHash: job.manifestHash,
     };
     if (!options.providerRunner.supports(provider)) {
       const wait = options.providerRetryMs ?? 5 * 60_000;

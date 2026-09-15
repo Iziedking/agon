@@ -63,6 +63,25 @@ function isPublicAddress(address: string): boolean {
   return true;
 }
 
+/** Validate and resolve a provider destination before making a request. */
+export async function assertPublicHttpsDestination(
+  value: string,
+  options: { resolve?: (hostname: string) => Promise<string[]> } = {},
+): Promise<URL> {
+  const uri = publicHttpsUri(value.trim());
+  const resolve = options.resolve ?? (async (hostname) => (await lookup(hostname, { all: true })).map((entry) => entry.address));
+  try {
+    const addresses = await resolve(uri.hostname);
+    if (addresses.length === 0 || addresses.some((address) => !isPublicAddress(address))) {
+      throw new ManifestInspectionError("manifest_uri_blocked", "Provider endpoint resolves to a private or reserved network.");
+    }
+  } catch (error) {
+    if (error instanceof ManifestInspectionError) throw error;
+    throw new ManifestInspectionError("manifest_dns_failed", "The provider endpoint host could not be safely resolved.");
+  }
+  return uri;
+}
+
 async function readBounded(response: Response): Promise<{ text: string; byteLength: number }> {
   if (!response.body) return { text: "", byteLength: 0 };
   const reader = response.body.getReader();

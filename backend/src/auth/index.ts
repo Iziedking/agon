@@ -33,7 +33,10 @@ import { createAgonJobEscrowTransactionAdapter } from "../agon/execution/agon-jo
 import { createViemAgonProtocolFinalityReader, type AgonProtocolFinalityClient } from "../agon/execution/protocol-finality.ts";
 import { PostgresPlaygroundRunStore, RedisPlaygroundRateLimiter } from "../agon/playground-store.ts";
 import { createHttpPlaygroundProviderRunner } from "../agon/playground-provider.ts";
-import { createHttpAgonEndpointQaRunner } from "../agon/endpoint-qa.ts";
+import {
+  createManifestDerivedAgonEndpointQaRunner,
+  createManifestDerivedPlaygroundProviderRunner,
+} from "../agon/manifest-derived-provider.ts";
 import { agonCertificationWorkerLoop } from "../agon/certification-worker.ts";
 import { PostgresAgonOperationStore } from "../agon/write/repository.js";
 import { CachedAgonReadiness } from "../agon/write/readiness.js";
@@ -400,7 +403,15 @@ const agonEscrowProductionReadiness = () => evaluateAgonEscrowProductionReadines
 });
 const agonPlaygroundStore = new PostgresPlaygroundRunStore(pool);
 const agonPlaygroundProviderRunner = createHttpPlaygroundProviderRunner(config.agon.playground.providerEndpoints);
-const agonEndpointQaRunner = createHttpAgonEndpointQaRunner(config.agon.playground.endpointQaEndpoints);
+// Certification discovers each provider endpoint from its immutable manifest.
+// The environment maps remain available only as a compatibility override for
+// older jobs that do not yet carry manifest source fields.
+const agonCertificationProviderRunner = createManifestDerivedPlaygroundProviderRunner({
+  overrides: config.agon.playground.providerEndpoints,
+});
+const agonCertificationEndpointQaRunner = createManifestDerivedAgonEndpointQaRunner({
+  overrides: config.agon.playground.endpointQaEndpoints,
+});
 const configuredJobEscrowV2 = config.agon.deployment?.contracts.AgonJobEscrowV2;
 const configuredJobEscrow = configuredJobEscrowV2 ?? config.agon.deployment?.contracts.AgonJobEscrow;
 const configuredServiceRegistry = config.agon.deployment?.contracts.AgonServiceRegistry;
@@ -459,7 +470,7 @@ const agonService = new PostgresAgonMarketService(agonRepository, {
   x402ReceiptLookup: createAgonTestnetReceiptLookupAdapter({
     enabled: config.agon.x402.reconciliationEnabled,
   }),
-  endpointQa: config.agon.certification.workerEnabled && agonEndpointQaRunner.scopes().length > 0,
+  endpointQa: config.agon.certification.workerEnabled,
   x402AgentSpendExecutor,
   escrowReadAdapter: agonEscrowReadAdapter,
   escrowPoolContract: config.contracts.PrizeEscrow,
@@ -512,8 +523,8 @@ if (config.agon.certification.workerEnabled) {
   void agonCertificationWorkerLoop({
     repository: agonRepository,
     playgroundStore: agonPlaygroundStore,
-    providerRunner: agonPlaygroundProviderRunner,
-    endpointQaRunner: agonEndpointQaRunner,
+    providerRunner: agonCertificationProviderRunner,
+    endpointQaRunner: agonCertificationEndpointQaRunner,
   }).catch((error) => {
     console.error("[agon-certification] worker stopped:", error instanceof Error ? error.message : error);
   });

@@ -21,6 +21,10 @@ export type ListedPlaygroundProvider = {
   serviceKey: string;
   listingReference: string;
   listingVersion: string;
+  /** Canonical manifest source for automatic certification. */
+  manifestUri?: string;
+  /** Hash committed by the immutable listing version. */
+  manifestHash?: string;
 };
 
 export type PlaygroundProviderExecution = {
