@@ -55,6 +55,7 @@ export function createX402ProviderExecutionAdapter(options: {
           redirect: "error",
           headers: {
             "payment-signature": encodePaymentSignatureHeader(paymentPayload),
+            ...(input.delivery.idempotencyKey ? { "idempotency-key": input.delivery.idempotencyKey } : {}),
             ...(input.delivery.method === "POST" ? { "content-type": "application/json" } : {}),
           },
           body: input.delivery.method === "POST" ? JSON.stringify(input.delivery.input) : undefined,

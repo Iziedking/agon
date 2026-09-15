@@ -69,6 +69,8 @@ export type X402SettlementRequest = {
     targetUrl: string;
     method: "GET" | "POST";
     input: unknown;
+    /** Stable provider replay key derived from the reviewed call intent. */
+    idempotencyKey?: string;
   };
 };
 

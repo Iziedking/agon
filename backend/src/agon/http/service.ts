@@ -2409,7 +2409,7 @@ export class PostgresAgonMarketService implements AgonMarketService {
       plan: plan.value,
       signature: request.signature,
       confirmation: request.confirmation,
-      delivery: { targetUrl: intent.targetUrl, method: intent.method, input: intent.input },
+      delivery: { targetUrl: intent.targetUrl, method: intent.method, input: intent.input, idempotencyKey: intent.idempotencyKey },
     } as X402SettlementInput);
     if (!settled.ok) {
       if (settled.error.code === "reconciliation_required") return { ok: false, error: { code: "conflict", message: settled.error.message } };
