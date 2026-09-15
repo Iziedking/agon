@@ -40,6 +40,16 @@ function parsePlaygroundProviderEndpoints(value: string): Record<string, string>
   return result.data;
 }
 
+function parseAddressList(value: string): `0x${string}`[] {
+  const parts = value.split(",").map((item) => item.trim()).filter(Boolean);
+  for (const address of parts) {
+    if (!/^0x[a-fA-F0-9]{40}$/.test(address)) {
+      throw new Error("AGON_X402_ALLOWED_RECIPIENTS must be comma-separated EVM addresses");
+    }
+  }
+  return parts as `0x${string}`[];
+}
+
 const envSchema = z.object({
   DATABASE_URL: z.string().url(),
   REDIS_URL: z.string().url(),
@@ -62,6 +72,10 @@ const envSchema = z.object({
   AGON_X402_VERIFICATION_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
   AGON_X402_RECONCILIATION_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
   AGON_X402_EXECUTION_MAX_BASE_UNITS: z.string().regex(/^(0|[1-9]\d*)$/).default("0"),
+  // Direct x402 execution must be pinned to an explicit recipient set. Leave
+  // empty while execution is disabled; the runtime will remain fail-closed
+  // until a controlled test recipient is configured.
+  AGON_X402_ALLOWED_RECIPIENTS: z.string().default(""),
   // Agent-to-agent x402 remains a disabled testnet seam until durable policy
   // persistence and a separately approved Circle adapter are wired.
   AGON_X402_AGENT_POLICY_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
@@ -699,6 +713,7 @@ export const config = {
       reconciliationEnabled: env.AGON_X402_RECONCILIATION_ENABLED,
       network: "eip155:5042002" as const,
       maxAmountBaseUnits: BigInt(env.AGON_X402_EXECUTION_MAX_BASE_UNITS),
+      allowedRecipients: parseAddressList(env.AGON_X402_ALLOWED_RECIPIENTS),
       agentPolicy: {
         enabled: env.AGON_X402_AGENT_POLICY_ENABLED,
         network: "eip155:5042002" as const,

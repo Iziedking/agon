@@ -347,12 +347,14 @@ const agonWriter = config.agon.deployment
     })
   : undefined;
 const x402ExecutionPolicy = createX402ExecutionPolicy({
-  enabled: config.agon.x402.executionEnabled,
+  enabled: config.agon.x402.executionEnabled && config.agon.x402.allowedRecipients.length > 0,
   maxAmountBaseUnits: config.agon.x402.maxAmountBaseUnits,
+  allowedRecipients: config.agon.x402.allowedRecipients,
 });
 const x402VerificationPolicy = createX402ExecutionPolicy({
-  enabled: config.agon.x402.verificationEnabled,
+  enabled: config.agon.x402.verificationEnabled && config.agon.x402.allowedRecipients.length > 0,
   maxAmountBaseUnits: config.agon.x402.maxAmountBaseUnits,
+  allowedRecipients: config.agon.x402.allowedRecipients,
 });
 const x402FacilitatorClient = config.agon.x402.verificationEnabled
   ? createCircleTestnetFacilitatorClient()
