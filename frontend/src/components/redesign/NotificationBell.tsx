@@ -20,6 +20,7 @@ const KIND_MARK: Record<string, string> = {
   training_done: "■",
   mystery_win: "■",
   custom_request: "■",
+  arena_review_escalation: "!",
 };
 
 function timeAgo(iso: string): string {

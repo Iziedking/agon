@@ -8,6 +8,9 @@ import {
   createViemAgonJobEscrowReadAdapter,
   validateAgonJobEscrowReceipt,
 } from "../../src/agon/execution/agon-job-escrow.ts";
+import { createViemAgonJobEscrowTransactionWriter } from "../../src/agon/execution/agon-job-escrow-writer.ts";
+import { createAgonJobEscrowTransactionAdapter } from "../../src/agon/execution/agon-job-escrow-adapter.ts";
+import type { AgonJobEscrowIntent } from "../../src/agon/execution/job-escrow-state.ts";
 import { keccak256, stringToHex, toHex } from "viem";
 
 const ESCROW = "0x1111111111111111111111111111111111111111";
@@ -19,6 +22,41 @@ const PROVIDER = "0x5555555555555555555555555555555555555555";
 const TX = `0x${"ab".repeat(32)}` as `0x${string}`;
 const TERMS = `0x${"11".repeat(32)}`;
 const REASON = `0x${"22".repeat(32)}`;
+
+function intent(overrides: Partial<AgonJobEscrowIntent> = {}): AgonJobEscrowIntent {
+  return {
+    intentId: "intent-12345678",
+    idempotencyKey: "idem-12345678",
+    actor: BUYER.toLowerCase() as `0x${string}`,
+    buyer: BUYER.toLowerCase() as `0x${string}`,
+    provider: PROVIDER.toLowerCase() as `0x${string}`,
+    listingReference: "listing:one",
+    network: "eip155:5042002",
+    asset: USDC.toLowerCase() as `0x${string}`,
+    escrowContract: ESCROW.toLowerCase() as `0x${string}`,
+    serviceRegistry: REGISTRY.toLowerCase() as `0x${string}`,
+    listingId: "9",
+    agentId: "100",
+    listingVersion: "2",
+    manifestHash: `0x${"33".repeat(32)}`,
+    termsHash: TERMS as `0x${string}`,
+    amountBaseUnits: 1000000n,
+    feeBps: 500,
+    reviewHours: 24,
+    expiresAt: new Date(Date.now() + 3600000),
+    clientReference: `0x${"aa".repeat(32)}`,
+    state: "prepared",
+    settlement: "none",
+    onchainJobId: null,
+    transactionHash: null,
+    deliverableHash: null,
+    reasonHash: null,
+    lastReconciledAt: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    ...overrides,
+  };
+}
 
 function eventTopic(signature: string) {
   return keccak256(stringToHex(signature));
@@ -186,4 +224,49 @@ test("read adapter normalizes V2 fee snapshots and keeps legacy fallback readabl
   assert.equal(result.feeBps, 250);
   assert.equal(result.reviewHours, 24);
   assert.equal(result.status, 2);
+});
+
+test("deployed writer remains disabled without an explicit client and flag", async () => {
+  let calls = 0;
+  const writer = createViemAgonJobEscrowTransactionWriter({ enabled: false, escrowAddress: ESCROW, client: { async writeContract() { calls += 1; return TX; }, async waitForTransactionReceipt() { calls += 1; return { status: "success", transactionHash: TX, to: ESCROW, logs: [] }; } } });
+  assert.equal(writer.enabled, false);
+  const result = await writer.submit({ intent: intent(), action: "create", actor: BUYER });
+  assert.deepEqual(result, { ok: false, error: { code: "transaction_disabled", message: "AgonJobEscrow transaction writing is disabled by policy" } });
+  assert.equal(calls, 0);
+});
+
+test("deployed writer binds account, contract and event-verified receipt", async () => {
+  const calls: string[] = [];
+  const writer = createViemAgonJobEscrowTransactionWriter({ enabled: true, escrowAddress: ESCROW, allowedActors: [BUYER], client: {
+    async writeContract(input) { calls.push(`${input.functionName}:${input.account}:${input.address}`); return TX; },
+    async waitForTransactionReceipt() { return { status: "success", transactionHash: TX, to: ESCROW, logs: [{ address: ESCROW, topics: [eventTopic("JobCreated(uint256,bytes32,address,address,uint256,uint256,uint256,bytes32,bytes32,uint256,uint256,uint64,uint64)")] }] }; },
+  } });
+  const result = await writer.submit({ intent: intent(), action: "create", actor: BUYER });
+  assert.equal(result.ok, true);
+  assert.equal(calls[0], `createJob:${BUYER.toLowerCase()}:${ESCROW.toLowerCase()}`);
+});
+
+test("deployed writer fails closed on ambiguous, reverted, and mismatched receipts", async () => {
+  const ambiguous = createViemAgonJobEscrowTransactionWriter({ enabled: true, escrowAddress: ESCROW, client: { async writeContract() { throw new Error("rpc timeout"); }, async waitForTransactionReceipt() { throw new Error("unreachable"); } } });
+  assert.equal((await ambiguous.submit({ intent: intent(), action: "create", actor: BUYER })).error?.code, "transaction_unknown");
+  const reverted = createViemAgonJobEscrowTransactionWriter({ enabled: true, escrowAddress: ESCROW, client: { async writeContract() { return TX; }, async waitForTransactionReceipt() { return { status: "reverted", transactionHash: TX, to: ESCROW, logs: [] }; } } });
+  assert.equal((await reverted.submit({ intent: intent(), action: "create", actor: BUYER })).error?.code, "transaction_reverted");
+  const mismatched = createViemAgonJobEscrowTransactionWriter({ enabled: true, escrowAddress: ESCROW, client: { async writeContract() { return TX; }, async waitForTransactionReceipt() { return { status: "success", transactionHash: TX, to: REGISTRY, logs: [] }; } } });
+  assert.equal((await mismatched.submit({ intent: intent(), action: "create", actor: BUYER })).error?.code, "transaction_not_ready");
+});
+
+test("deployed adapter persists only receipt-proven submissions and leaves unknowns reconcilable", async () => {
+  let marked: string | null = null;
+  const stored = intent();
+  const writer = createViemAgonJobEscrowTransactionWriter({ enabled: true, escrowAddress: ESCROW, client: {
+    async writeContract() { return TX; },
+    async waitForTransactionReceipt() { return { status: "success", transactionHash: TX, to: ESCROW, logs: [{ address: ESCROW, topics: [eventTopic("JobCreated(uint256,bytes32,address,address,uint256,uint256,uint256,bytes32,bytes32,uint256,uint256,uint64,uint64)")] }] }; },
+  } });
+  const adapter = createAgonJobEscrowTransactionAdapter({ enabled: true, writer, repository: {
+    async getAgonJobEscrowIntent() { return stored; },
+    async markAgonJobEscrowSubmitted(input) { marked = input.transactionHash; return stored; },
+  } });
+  const result = await adapter.submit({ intentId: stored.intentId, action: "create", actor: BUYER });
+  assert.equal(result.ok, true);
+  assert.equal(marked, TX);
 });

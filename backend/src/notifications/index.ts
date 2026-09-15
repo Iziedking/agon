@@ -17,7 +17,8 @@ export type NotificationKind =
   | "balance_debit"
   | "training_done"
   | "mystery_win"
-  | "custom_request";
+  | "custom_request"
+  | "arena_review_escalation";
 
 export interface NotifyInput {
   kind: NotificationKind;
