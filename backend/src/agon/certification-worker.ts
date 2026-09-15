@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { keccak256, stringToHex } from "viem";
 
 import {
   defaultPlaygroundInput,
@@ -11,6 +12,10 @@ import {
   PlaygroundProviderError,
   type PlaygroundProviderRunner,
 } from "./playground-provider.ts";
+import {
+  AgonEndpointQaError,
+  type AgonEndpointQaRunner,
+} from "./endpoint-qa.ts";
 import { certificationBackoffMs, type AgonCertificationJob } from "./certification.ts";
 
 export type CertificationWorkerRepository = {
@@ -18,6 +23,13 @@ export type CertificationWorkerRepository = {
   claimAgonCertification(now?: Date): Promise<AgonCertificationJob | null>;
   deferAgonCertification(jobId: string, nextAttemptAt: Date, reason: string): Promise<void>;
   completeAgonCertification(jobId: string, result: PlaygroundRun): Promise<void>;
+  recordAgonEndpointQa?: (input: {
+    listingId: bigint;
+    agentId: bigint;
+    passed: boolean;
+    evidenceHash: `0x${string}`;
+    evidence: unknown;
+  }) => Promise<void>;
   failAgonCertification(jobId: string, errorCode: string, nextAttemptAt: Date | null): Promise<void>;
 };
 
@@ -25,6 +37,7 @@ export type CertificationWorkerOptions = {
   repository: CertificationWorkerRepository;
   playgroundStore: PlaygroundRunStore;
   providerRunner: PlaygroundProviderRunner;
+  endpointQaRunner?: AgonEndpointQaRunner;
   now?: () => Date;
   providerRetryMs?: number;
 };
@@ -96,6 +109,33 @@ export async function runAgonCertificationOnce(options: CertificationWorkerOptio
         execute: (task, input) => options.providerRunner.run({ provider, task, taskInput: input }),
       },
     );
+    if (options.endpointQaRunner?.supports(provider) && options.repository.recordAgonEndpointQa) {
+      let qa;
+      try {
+        qa = await options.endpointQaRunner.run({ provider });
+      } catch (error) {
+        const code = error instanceof AgonEndpointQaError ? error.code : "endpoint_qa_error";
+        const evidence = {
+          endpointUrl: null,
+          endpointStatus: null,
+          checkedAt: now.toISOString(),
+          checks: { x402_payment: { passed: false, detail: error instanceof Error ? error.message : "endpoint QA failed", header: null } },
+          error: code,
+        };
+        qa = {
+          passed: false,
+          evidenceHash: keccak256(stringToHex(JSON.stringify(evidence))) as `0x${string}`,
+          evidence,
+        };
+      }
+      await options.repository.recordAgonEndpointQa({
+        listingId: BigInt(job.listingId),
+        agentId: BigInt(job.agentId),
+        passed: qa.passed,
+        evidenceHash: qa.evidenceHash,
+        evidence: qa.evidence,
+      });
+    }
     await options.repository.completeAgonCertification(job.jobId, result);
     return "completed";
   } catch (error) {

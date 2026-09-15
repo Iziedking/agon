@@ -84,6 +84,9 @@ const envSchema = z.object({
   // Playground. A static map avoids turning permissionless listing URLs into an
   // SSRF primitive. Keys pin chain:registry:listing@version to one endpoint.
   AGON_PLAYGROUND_PROVIDER_ENDPOINTS: z.string().default("{}"),
+  // Endpoint QA uses a separate operator-reviewed map for x402 payment
+  // challenge preflights. It never submits a payment or settles a request.
+  AGON_ENDPOINT_QA_ENDPOINTS: z.string().default("{}"),
   // Certification scheduling is durable but the worker is opt-in. Scheduling
   // remains safe with this off; enabling it permits bounded calls to the same
   // allowlisted providers used by Playground and never enables Arena writes.
@@ -719,6 +722,7 @@ export const config = {
     },
     playground: {
       providerEndpoints: parsePlaygroundProviderEndpoints(env.AGON_PLAYGROUND_PROVIDER_ENDPOINTS),
+      endpointQaEndpoints: parsePlaygroundProviderEndpoints(env.AGON_ENDPOINT_QA_ENDPOINTS),
     },
     certification: {
       workerEnabled: env.AGON_CERTIFICATION_WORKER_ENABLED,

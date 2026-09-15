@@ -48,6 +48,7 @@ import type {
   AgonJobEscrowTransactionView,
   AgonJobEscrowReconcileRequest,
   AgonJobEscrowSubmittedRequest,
+  AgonJobEscrowExecuteRequest,
   AgonArenaEvaluationRequest,
   AgonArenaEvaluationView,
   AgonArenaTransactionView,
@@ -227,6 +228,11 @@ export type AgonMarketService = {
     actor: string,
     intentId: string,
     request: AgonJobEscrowSubmittedRequest,
+  ): Promise<Result<AgonJobEscrowIntentView, AgonServiceError>>;
+  executeAgonJobEscrowTransaction?(
+    actor: string,
+    intentId: string,
+    request: AgonJobEscrowExecuteRequest,
   ): Promise<Result<AgonJobEscrowIntentView, AgonServiceError>>;
   prepareAgonArenaEvaluation?(
     actor: string,
@@ -469,6 +475,13 @@ const agonJobEscrowIntentSchema = z.object({
 
 const agonJobEscrowReconcileSchema = z.object({ jobId: positiveDecimal }).strict();
 const agonJobEscrowSubmittedSchema = z.object({ transactionHash: bytes32 }).strict();
+const agonJobEscrowExecuteSchema = z.object({
+  action: z.enum(["create", "accept", "submit", "accept_submission", "auto_accept", "reject", "dispute", "resolve_pay", "resolve_refund", "fail"]),
+  confirmation: z.literal("EXECUTE_ARC_TESTNET_JOB_ESCROW"),
+  jobId: positiveDecimal.optional(),
+  deliverableHash: bytes32.optional(),
+  reasonHash: bytes32.optional(),
+}).strict();
 const agonArenaEvaluationSchema = z.object({
   listingReference: z.string().regex(/^[1-9]\d*:0x[0-9a-fA-F]{40}:[1-9]\d*$/, "must be a chain:registry:listing reference"),
   idempotencyKey: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/, "must be 8-128 safe characters"),
@@ -1146,6 +1159,16 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
       context.req.param("intentId"),
       parsed.data,
     );
+    return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  app.post("/job-escrow/intents/:intentId/execute", options.requireAuth, async (context) => {
+    const body = await parseJson(context);
+    if (isApiError(body)) return context.json(body, 400);
+    const parsed = agonJobEscrowExecuteSchema.safeParse(body);
+    if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
+    if (!options.service.executeAgonJobEscrowTransaction) return serviceErrorResponse(context, { code: "execution_not_ready", message: "AgonJobEscrow transaction execution is not configured" });
+    const result = await options.service.executeAgonJobEscrowTransaction(context.get("address"), context.req.param("intentId"), parsed.data as AgonJobEscrowExecuteRequest);
     return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
   });
 

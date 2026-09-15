@@ -15,7 +15,7 @@ import {
   type AgonJobEscrowIntentState,
   type AgonJobEscrowSettlement,
 } from "../execution/job-escrow-state.ts";
-import type { AgonJobEscrowJob } from "../execution/agon-job-escrow.ts";
+import type { AgonJobEscrowAction, AgonJobEscrowJob } from "../execution/agon-job-escrow.ts";
 import type { AgonArenaEvaluation, AgonArenaEvaluationInput, AgonArenaEvaluationState } from "../execution/arena-verification.ts";
 import { buildAgonCertificationJob, type AgonCertificationJob, type AgonCertificationScheduleInput } from "../certification.ts";
 import type { PlaygroundRun } from "../playground.ts";
@@ -1301,6 +1301,20 @@ export class PostgresAgonRepository {
     if (updated.rowCount !== 1) throw new AgonStoreInvariantError("certification job was not running");
   }
 
+  async recordAgonEndpointQa(input: {
+    listingId: bigint;
+    agentId: bigint;
+    passed: boolean;
+    evidenceHash: `0x${string}`;
+    evidence: unknown;
+  }): Promise<void> {
+    await this.pool.query(
+      `insert into agon_verification_evidence (listing_id, agent_id, passed, evidence_hash, evidence, verifier)
+       values ($1, $2, $3, $4, $5::jsonb, $6)`,
+      [input.listingId.toString(), input.agentId.toString(), input.passed, normalizeHash(input.evidenceHash), JSON.stringify({ source: "agon-endpoint-qa", ...((input.evidence as Record<string, unknown> | null) ?? {}) }), "agon-endpoint-qa"],
+    );
+  }
+
   async failAgonCertification(jobId: string, errorCode: string, nextAttemptAt: Date | null): Promise<void> {
     const updated = await this.pool.query(
       `update agon_certification_jobs
@@ -1810,6 +1824,60 @@ export class PostgresAgonRepository {
         `update agon_job_escrow_intents set state = 'submitted', transaction_hash = $2, updated_at = now()
          where intent_id = $1 returning ${AGON_JOB_ESCROW_INTENT_COLUMNS}`,
         [input.intentId, transactionHash],
+      );
+      await client.query("commit");
+      return mapAgonJobEscrowIntent(updated.rows[0]!);
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async recordAgonJobEscrowAction(input: {
+    intentId: string;
+    action: AgonJobEscrowAction;
+    transactionHash: `0x${string}`;
+    jobId?: string | null;
+    deliverableHash?: string | null;
+    reasonHash?: string | null;
+  }): Promise<StoredAgonJobEscrowIntent> {
+    if (!/^[0-9a-f-]{36}$/i.test(input.intentId)) throw new AgonStoreInvariantError("job escrow intent id must be a UUID");
+    const transactionHash = normalizeHash(input.transactionHash) as `0x${string}`;
+    const nextState: AgonJobEscrowIntentState = input.action === "create" ? "submitted"
+      : input.action === "accept" ? "accepted"
+        : input.action === "submit" ? "job_submitted"
+          : input.action === "accept_submission" || input.action === "auto_accept" || input.action === "resolve_pay" ? "complete"
+            : input.action === "reject" ? "rejected"
+              : input.action === "dispute" ? "disputed"
+                : "failed";
+    const client = await this.pool.connect();
+    try {
+      await client.query("begin");
+      const current = await client.query<AgonJobEscrowIntentRow>(
+        `select ${AGON_JOB_ESCROW_INTENT_COLUMNS} from agon_job_escrow_intents where intent_id = $1 for update`,
+        [input.intentId],
+      );
+      const row = current.rows[0];
+      if (!row) throw new AgonStoreInvariantError("job escrow intent not found");
+      if (row.state === nextState && row.transaction_hash === transactionHash) {
+        await client.query("commit");
+        return mapAgonJobEscrowIntent(row);
+      }
+      if (!isAgonJobEscrowTransitionAllowed(row.state, nextState)) {
+        throw new AgonStoreInvariantError(`cannot transition job escrow intent from ${row.state} to ${nextState}`);
+      }
+      const updated = await client.query<AgonJobEscrowIntentRow>(
+        `update agon_job_escrow_intents set
+           state = $2,
+           transaction_hash = $3,
+           onchain_job_id = coalesce($4, onchain_job_id),
+           deliverable_hash = coalesce($5, deliverable_hash),
+           reason_hash = coalesce($6, reason_hash),
+           updated_at = now()
+         where intent_id = $1 returning ${AGON_JOB_ESCROW_INTENT_COLUMNS}`,
+        [input.intentId, nextState, transactionHash, input.jobId ?? null, input.deliverableHash ? normalizeHash(input.deliverableHash) : null, input.reasonHash ? normalizeHash(input.reasonHash) : null],
       );
       await client.query("commit");
       return mapAgonJobEscrowIntent(updated.rows[0]!);

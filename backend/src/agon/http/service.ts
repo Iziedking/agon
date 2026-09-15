@@ -79,6 +79,7 @@ import type {
   AgonJobEscrowTransactionView,
   AgonJobEscrowReconcileRequest,
   AgonJobEscrowSubmittedRequest,
+  AgonJobEscrowExecuteRequest,
   AgonArenaEvaluationRequest,
   AgonArenaEvaluationView,
   AgonArenaTransactionView,
@@ -103,6 +104,7 @@ import { buildAgonArenaEvaluationInput, buildAgonArenaEvidencePlan, buildAgonAre
 import { buildAgonPrizeClaimPlan, buildAgonSyndicateContributionPlan, prizeClaimLeaf } from "../execution/syndicate-prize.ts";
 import type { AgonProtocolFinalityReader } from "../execution/protocol-finality.ts";
 import type { X402AgentSpendExecutor } from "../execution/x402-agent-executor.ts";
+import type { AgonJobEscrowTransactionAdapter } from "../execution/agon-job-escrow-adapter.ts";
 
 const cursorSchema = z.object({
   updatedAt: z.string().datetime(),
@@ -164,6 +166,8 @@ export type PostgresAgonMarketServiceOptions = {
   protocolReadiness?: () => AgonProtocolReadiness;
   /** Read-only deployed AgonJobEscrow inspection; never submits transactions. */
   jobEscrowReadAdapter?: AgonJobEscrowReadAdapter;
+  /** Server-side deployed AgonJobEscrow lifecycle writer; disabled unless explicitly enabled. */
+  jobEscrowTransactionAdapter?: AgonJobEscrowTransactionAdapter;
   agonJobEscrowAddress?: `0x${string}`;
   agonArenaAddress?: `0x${string}`;
   validationRegistryAddress?: `0x${string}`;
@@ -398,7 +402,7 @@ function escrowIntentView(intent: StoredAgonEscrowIntent, listingReference: stri
   };
 }
 
-function jobEscrowIntentView(intent: StoredAgonJobEscrowIntent): AgonJobEscrowIntentView {
+function jobEscrowIntentView(intent: StoredAgonJobEscrowIntent, executionEnabled = false): AgonJobEscrowIntentView {
   const terminal = intent.state === "complete" || intent.state === "rejected" || intent.state === "failed";
   return {
     intentId: intent.intentId,
@@ -429,8 +433,8 @@ function jobEscrowIntentView(intent: StoredAgonJobEscrowIntent): AgonJobEscrowIn
     transactionHash: intent.transactionHash,
     deliverableHash: intent.deliverableHash,
     lastReconciledAt: intent.lastReconciledAt?.toISOString() ?? null,
-    executionEnabled: false,
-    nextAction: terminal ? "none" : intent.state === "unknown" ? "manual_reconciliation" : intent.state === "prepared" ? "prepare_transaction" : "inspect_chain",
+    executionEnabled,
+    nextAction: terminal ? "none" : intent.state === "unknown" ? "manual_reconciliation" : executionEnabled ? "execute_lifecycle" : intent.state === "prepared" ? "prepare_transaction" : "inspect_chain",
     createdAt: intent.createdAt.toISOString(),
     updatedAt: intent.updatedAt.toISOString(),
   };
@@ -1127,7 +1131,7 @@ export class PostgresAgonMarketService implements AgonMarketService {
         reasonHash: null,
         lastReconciledAt: null,
       });
-      return { ok: true, value: jobEscrowIntentView(stored) };
+      return { ok: true, value: jobEscrowIntentView(stored, this.options.jobEscrowTransactionAdapter?.enabled === true) };
     } catch (error) {
       if (error instanceof AgonStoreInvariantError && error.message.includes("idempotency")) return { ok: false, error: { code: "conflict", message: error.message } };
       return internalError(error);
@@ -1141,7 +1145,7 @@ export class PostgresAgonMarketService implements AgonMarketService {
     const intent = await this.repository.getAgonJobEscrowIntent(intentId);
     if (!intent) return { ok: false, error: { code: "not_found", message: "AgonJobEscrow intent not found" } };
     if (intent.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the job escrow intent owner can read this intent" } };
-    return { ok: true, value: jobEscrowIntentView(intent) };
+    return { ok: true, value: jobEscrowIntentView(intent, this.options.jobEscrowTransactionAdapter?.enabled === true) };
   }
 
   async getAgonJobEscrowTransaction(
@@ -1189,7 +1193,7 @@ export class PostgresAgonMarketService implements AgonMarketService {
     try {
       const job = await this.options.jobEscrowReadAdapter.inspect(request.jobId);
       const stored = await this.repository.reconcileAgonJobEscrowIntent({ intentId, job });
-      return { ok: true, value: jobEscrowIntentView(stored) };
+      return { ok: true, value: jobEscrowIntentView(stored, this.options.jobEscrowTransactionAdapter?.enabled === true) };
     } catch (error) {
       if (error instanceof AgonStoreInvariantError) {
         const code = error.message.includes("does not match") || error.message.includes("different on-chain")
@@ -1211,7 +1215,7 @@ export class PostgresAgonMarketService implements AgonMarketService {
     if (intent.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the job escrow intent owner can record submission" } };
     try {
       const stored = await this.repository.markAgonJobEscrowSubmitted({ intentId, transactionHash: request.transactionHash as `0x${string}` });
-      return { ok: true, value: jobEscrowIntentView(stored) };
+      return { ok: true, value: jobEscrowIntentView(stored, this.options.jobEscrowTransactionAdapter?.enabled === true) };
     } catch (error) {
       if (error instanceof AgonStoreInvariantError) return { ok: false, error: { code: "conflict", message: error.message } };
       return internalError(error);
@@ -2253,6 +2257,40 @@ export class PostgresAgonMarketService implements AgonMarketService {
     };
   }
 
+  async executeAgonJobEscrowTransaction(
+    actor: string,
+    intentId: string,
+    request: AgonJobEscrowExecuteRequest,
+  ): Promise<Result<AgonJobEscrowIntentView, AgonServiceError>> {
+    const adapter = this.options.jobEscrowTransactionAdapter;
+    if (!adapter?.enabled) return { ok: false, error: { code: "execution_not_ready", message: "AgonJobEscrow transaction execution is disabled by policy" } };
+    if (request.confirmation !== "EXECUTE_ARC_TESTNET_JOB_ESCROW") return { ok: false, error: { code: "validation_failed", message: "explicit Arc Testnet job escrow confirmation is required" } };
+    const intent = await this.repository.getAgonJobEscrowIntent(intentId);
+    if (!intent) return { ok: false, error: { code: "not_found", message: "AgonJobEscrow intent not found" } };
+    const normalizedActor = actor.toLowerCase();
+    if (intent.actor !== normalizedActor && intent.buyer !== normalizedActor && intent.provider !== normalizedActor) {
+      return { ok: false, error: { code: "not_owner", message: "only an escrow party can execute this lifecycle action" } };
+    }
+    if (request.action !== "create" && !request.jobId && !intent.onchainJobId) {
+      return { ok: false, error: { code: "validation_failed", message: "jobId is required for lifecycle actions after create" } };
+    }
+    const result = await adapter.submit({
+      intentId,
+      actor: normalizedActor,
+      action: request.action,
+      jobId: request.jobId,
+      deliverableHash: request.deliverableHash,
+      reasonHash: request.reasonHash,
+    });
+    if (!result.ok) {
+      const code = result.error.code === "transaction_unknown" ? "reconciliation_unavailable" : result.error.code === "transaction_reverted" ? "conflict" : "execution_not_ready";
+      return { ok: false, error: { code, message: result.error.message } };
+    }
+    const stored = await this.repository.getAgonJobEscrowIntent(intentId);
+    if (!stored) return { ok: false, error: { code: "reconciliation_unavailable", message: "transaction succeeded but intent could not be reloaded" } };
+    return { ok: true, value: jobEscrowIntentView(stored, this.options.jobEscrowTransactionAdapter?.enabled === true) };
+  }
+
   async executeX402AgentSpend(
     actor: string,
     request: X402AgentSpendRequest,
@@ -2557,6 +2595,7 @@ export class PostgresAgonMarketService implements AgonMarketService {
       endpointQa: this.options.endpointQa ?? false,
       directX402: this.options.directX402 ?? this.options.x402ExecutionEnabled === true,
       escrow: Boolean(this.options.agonJobEscrowAddress),
+      jobEscrowExecution: this.options.jobEscrowTransactionAdapter?.enabled === true,
       arenaVerification: Boolean(this.options.agonArenaAddress),
       syndicateRegistry: Boolean(this.options.agonSyndicateRegistryAddress),
       prizeVault: Boolean(this.options.agonPrizeVaultAddress),

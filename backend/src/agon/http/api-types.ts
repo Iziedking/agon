@@ -26,6 +26,7 @@ export type AgonCapabilities = {
   endpointQa: boolean;
   directX402: boolean;
   escrow: boolean;
+  jobEscrowExecution: boolean;
   arenaVerification: boolean;
   syndicateRegistry: boolean;
   prizeVault: boolean;
@@ -491,8 +492,8 @@ export type AgonJobEscrowIntentView = {
   transactionHash: `0x${string}` | null;
   deliverableHash: `0x${string}` | null;
   lastReconciledAt: string | null;
-  executionEnabled: false;
-  nextAction: "prepare_transaction" | "inspect_chain" | "manual_reconciliation" | "none";
+  executionEnabled: boolean;
+  nextAction: "prepare_transaction" | "inspect_chain" | "manual_reconciliation" | "execute_lifecycle" | "none";
   createdAt: string;
   updatedAt: string;
 };
@@ -514,6 +515,14 @@ export type AgonJobEscrowReconcileRequest = {
 
 export type AgonJobEscrowSubmittedRequest = {
   transactionHash: string;
+};
+
+export type AgonJobEscrowExecuteRequest = {
+  action: "create" | "accept" | "submit" | "accept_submission" | "auto_accept" | "reject" | "dispute" | "resolve_pay" | "resolve_refund" | "fail";
+  confirmation: "EXECUTE_ARC_TESTNET_JOB_ESCROW";
+  jobId?: string;
+  deliverableHash?: string;
+  reasonHash?: string;
 };
 
 export type AgonArenaEvaluationRequest = {

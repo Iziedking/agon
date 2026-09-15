@@ -8,6 +8,14 @@ import type {
 export type AgonJobEscrowIntentStore = {
   getAgonJobEscrowIntent(intentId: string): Promise<StoredAgonJobEscrowIntent | null>;
   markAgonJobEscrowSubmitted(input: { intentId: string; transactionHash: `0x${string}` }): Promise<StoredAgonJobEscrowIntent>;
+  recordAgonJobEscrowAction?(input: {
+    intentId: string;
+    action: AgonJobEscrowTransactionWriterInput["action"];
+    transactionHash: `0x${string}`;
+    jobId?: string | null;
+    deliverableHash?: string | null;
+    reasonHash?: string | null;
+  }): Promise<StoredAgonJobEscrowIntent>;
 };
 
 export type AgonJobEscrowAdapterInput = Omit<AgonJobEscrowTransactionWriterInput, "intent"> & { intentId: string };
@@ -40,7 +48,19 @@ export function createAgonJobEscrowTransactionAdapter(options: {
       const result = await options.writer.submit({ ...input, intent });
       if (!result.ok) return result;
       try {
-        await options.repository.markAgonJobEscrowSubmitted({ intentId: intent.intentId, transactionHash: result.value.transaction });
+        if (options.repository.recordAgonJobEscrowAction) {
+          await options.repository.recordAgonJobEscrowAction({
+            intentId: intent.intentId,
+            action: input.action,
+            transactionHash: result.value.transaction,
+            jobId: input.jobId ? String(input.jobId) : null,
+            deliverableHash: input.deliverableHash ?? null,
+            reasonHash: input.reasonHash ?? null,
+          });
+        } else {
+          if (input.action !== "create") return { ok: false, error: { code: "transaction_unknown", message: "transaction succeeded but lifecycle evidence store is not configured; reconcile before retrying" } };
+          await options.repository.markAgonJobEscrowSubmitted({ intentId: intent.intentId, transactionHash: result.value.transaction });
+        }
       } catch {
         return { ok: false, error: { code: "transaction_unknown", message: "transaction succeeded but durable intent update failed; reconcile before retrying" } };
       }

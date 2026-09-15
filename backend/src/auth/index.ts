@@ -28,9 +28,13 @@ import { AGON_ESCROW_TRANSACTION_APPROVAL_PHRASES } from "../agon/execution/escr
 import { PostgresAgonMarketService } from "../agon/http/service.js";
 import { inspectAgonProtocolReadiness } from "../agon/protocol-readiness.ts";
 import { createViemAgonJobEscrowReadAdapter, type AgonJobEscrowReadClient } from "../agon/execution/agon-job-escrow.ts";
+import { createViemAgonJobEscrowTransactionWriter } from "../agon/execution/agon-job-escrow-writer.ts";
+import { createAgonJobEscrowTransactionAdapter } from "../agon/execution/agon-job-escrow-adapter.ts";
 import { createViemAgonProtocolFinalityReader, type AgonProtocolFinalityClient } from "../agon/execution/protocol-finality.ts";
 import { PostgresPlaygroundRunStore, RedisPlaygroundRateLimiter } from "../agon/playground-store.ts";
 import { createHttpPlaygroundProviderRunner } from "../agon/playground-provider.ts";
+import { createHttpAgonEndpointQaRunner } from "../agon/endpoint-qa.ts";
+import { agonCertificationWorkerLoop } from "../agon/certification-worker.ts";
 import { PostgresAgonOperationStore } from "../agon/write/repository.js";
 import { CachedAgonReadiness } from "../agon/write/readiness.js";
 import { ViemAgonWriteAdapter } from "../agon/write/adapter.js";
@@ -396,11 +400,55 @@ const agonEscrowProductionReadiness = () => evaluateAgonEscrowProductionReadines
 });
 const agonPlaygroundStore = new PostgresPlaygroundRunStore(pool);
 const agonPlaygroundProviderRunner = createHttpPlaygroundProviderRunner(config.agon.playground.providerEndpoints);
+const agonEndpointQaRunner = createHttpAgonEndpointQaRunner(config.agon.playground.endpointQaEndpoints);
 const configuredJobEscrowV2 = config.agon.deployment?.contracts.AgonJobEscrowV2;
 const configuredJobEscrow = configuredJobEscrowV2 ?? config.agon.deployment?.contracts.AgonJobEscrow;
 const configuredServiceRegistry = config.agon.deployment?.contracts.AgonServiceRegistry;
 const legacyJobEscrow = configuredJobEscrowV2 && config.agon.deployment?.contracts.AgonJobEscrow
   ? [config.agon.deployment.contracts.AgonJobEscrow]
+  : undefined;
+const coordinatorJobEscrowSigner = config.coordinator.privateKey && configuredJobEscrow
+  ? privateKeyToAccount(config.coordinator.privateKey)
+  : undefined;
+const coordinatorJobEscrowWallet = coordinatorJobEscrowSigner
+  ? createWalletClient({ account: coordinatorJobEscrowSigner, chain: arcTestnet, transport: http(config.rpcHttp) })
+  : undefined;
+const coordinatorJobEscrowClient = coordinatorJobEscrowWallet
+  ? {
+      writeContract: (input: { address: `0x${string}`; abi: unknown; functionName: string; args: readonly unknown[]; account: `0x${string}` }) =>
+        coordinatorJobEscrowWallet.writeContract({
+          address: input.address,
+          abi: input.abi as never,
+          functionName: input.functionName as never,
+          args: input.args as never,
+          account: input.account,
+        }),
+      waitForTransactionReceipt: (input: { hash: `0x${string}`; timeout?: number }) =>
+        publicClient.waitForTransactionReceipt({ hash: input.hash, timeout: input.timeout }),
+    }
+  : undefined;
+const jobEscrowExecutionEnabled = Boolean(
+  config.agon.writesEnabled
+  && config.agon.escrow.enabled
+  && config.agon.escrow.executionEnabled
+  && coordinatorJobEscrowSigner
+  && configuredJobEscrow,
+);
+const jobEscrowTransactionWriter = configuredJobEscrow
+  ? createViemAgonJobEscrowTransactionWriter({
+      enabled: jobEscrowExecutionEnabled,
+      client: coordinatorJobEscrowClient,
+      escrowAddress: configuredJobEscrow,
+      escrowVersion: configuredJobEscrowV2 ? "v2" : "v1",
+      allowedActors: coordinatorJobEscrowSigner ? [coordinatorJobEscrowSigner.address] : [],
+    })
+  : undefined;
+const jobEscrowTransactionAdapter = jobEscrowTransactionWriter
+  ? createAgonJobEscrowTransactionAdapter({
+      enabled: jobEscrowExecutionEnabled,
+      repository: agonRepository,
+      writer: jobEscrowTransactionWriter,
+    })
   : undefined;
 const agonService = new PostgresAgonMarketService(agonRepository, {
   writer: agonWriter,
@@ -411,6 +459,7 @@ const agonService = new PostgresAgonMarketService(agonRepository, {
   x402ReceiptLookup: createAgonTestnetReceiptLookupAdapter({
     enabled: config.agon.x402.reconciliationEnabled,
   }),
+  endpointQa: config.agon.certification.workerEnabled && agonEndpointQaRunner.scopes().length > 0,
   x402AgentSpendExecutor,
   escrowReadAdapter: agonEscrowReadAdapter,
   escrowPoolContract: config.contracts.PrizeEscrow,
@@ -426,6 +475,7 @@ const agonService = new PostgresAgonMarketService(agonRepository, {
         expectedServiceRegistry: configuredServiceRegistry,
       })
     : undefined,
+  jobEscrowTransactionAdapter,
   agonJobEscrowAddress: configuredJobEscrow,
   agonArenaAddress: config.agon.deployment?.contracts.AgonArena,
   validationRegistryAddress: config.agon.deployment?.external.ValidationRegistry?.address,
@@ -457,6 +507,17 @@ app.route("/agon", createAgonRoutes({
   playgroundRateLimiter: new RedisPlaygroundRateLimiter(redis),
   playgroundProviderRunner: agonPlaygroundProviderRunner,
 }));
+
+if (config.agon.certification.workerEnabled) {
+  void agonCertificationWorkerLoop({
+    repository: agonRepository,
+    playgroundStore: agonPlaygroundStore,
+    providerRunner: agonPlaygroundProviderRunner,
+    endpointQaRunner: agonEndpointQaRunner,
+  }).catch((error) => {
+    console.error("[agon-certification] worker stopped:", error instanceof Error ? error.message : error);
+  });
+}
 
 // ----- SIWE wallet login -----
 

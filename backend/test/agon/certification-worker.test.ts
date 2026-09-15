@@ -6,6 +6,7 @@ import { agonCertificationWorkerLoop, runAgonCertificationOnce } from "../../src
 import { InMemoryPlaygroundRunStore } from "../../src/agon/playground-store.ts";
 import type { PlaygroundProviderRunner } from "../../src/agon/playground-provider.ts";
 import type { PlaygroundRun } from "../../src/agon/playground.ts";
+import type { AgonEndpointQaRunner } from "../../src/agon/endpoint-qa.ts";
 
 const NOW = new Date("2026-09-01T12:00:00.000Z");
 
@@ -38,6 +39,7 @@ class FakeCertificationRepository {
   completed: PlaygroundRun | null = null;
   deferred: string | null = null;
   failed: { code: string; retryAt: Date | null } | null = null;
+  endpointQa: { passed: boolean; evidenceHash: `0x${string}`; evidence: unknown } | null = null;
 
   constructor(value: AgonCertificationJob) {
     this.current = value;
@@ -67,6 +69,10 @@ class FakeCertificationRepository {
   async failAgonCertification(_jobId: string, errorCode: string, retryAt: Date | null): Promise<void> {
     this.failed = { code: errorCode, retryAt };
     this.current = this.current ? { ...this.current, state: retryAt ? "scheduled" : "failed" } : null;
+  }
+
+  async recordAgonEndpointQa(input: { listingId: bigint; agentId: bigint; passed: boolean; evidenceHash: `0x${string}`; evidence: unknown }): Promise<void> {
+    this.endpointQa = input;
   }
 }
 
@@ -102,6 +108,30 @@ test("certification worker runs the real provider seam and stores Playground evi
   assert.equal(repository.completed?.provenance.externalWrites, false);
   assert.equal(repository.completed?.score, 100);
   assert.equal(repository.current?.state, "completed");
+});
+
+test("certification worker records x402 endpoint QA separately from the Playground run", async () => {
+  const repository = new FakeCertificationRepository(job());
+  const endpointQaRunner: AgonEndpointQaRunner = {
+    scopes: () => ["5042002:0x2144c156b0a4581da2d046c2e41ac41c6c3938cb:2@3"],
+    supports: () => true,
+    run: async () => ({
+      passed: true,
+      evidenceHash: `0x${"33".repeat(32)}`,
+      evidence: { endpointStatus: 402, checks: { x402_payment: { passed: true } } },
+    }),
+  };
+  const result = await runAgonCertificationOnce({
+    repository,
+    playgroundStore: new InMemoryPlaygroundRunStore(),
+    providerRunner: runner(),
+    endpointQaRunner,
+    now: () => NOW,
+  });
+  assert.equal(result, "completed");
+  assert.equal(repository.endpointQa?.passed, true);
+  assert.equal(repository.endpointQa?.evidenceHash, `0x${"33".repeat(32)}`);
+  assert.equal(repository.completed?.provenance.externalWrites, false);
 });
 
 test("certification worker defers when the provider is not allowlisted", async () => {
