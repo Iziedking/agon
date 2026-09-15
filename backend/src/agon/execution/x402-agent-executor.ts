@@ -5,6 +5,7 @@ import {
   type X402AgentWalletPolicyStore,
   type X402AgentWalletSettlementAdapter,
 } from "./x402-agent-policy.ts";
+import { createCircleX402AgentWalletAdapter, type AgentTransfer } from "./x402-agent-circle.ts";
 
 export type X402AgentExecutionErrorCode =
   | "wallet_disabled"
@@ -90,6 +91,7 @@ export class X402AgentSpendExecutor {
       outcome = await this.adapter.settle({
         agentId: input.agentId,
         walletId: policy.walletId,
+        ...(policy.walletAddress ? { walletAddress: policy.walletAddress } : {}),
         recipient: reservation.record.recipient,
         amountBaseUnits: reservation.record.amountBaseUnits,
         idempotencyKey: input.idempotencyKey,
@@ -134,4 +136,12 @@ export class X402AgentSpendExecutor {
     if (!result.ok) return { ok: false, error: result.error };
     return { ok: true, decision: "idempotent_replay", record: result.record };
   }
+}
+
+/** Construct the reserve-before-execute path with the Circle Agent Wallet adapter. */
+export function createCircleX402AgentSpendExecutor(
+  ledger: X402AgentWalletPolicyStore,
+  options: { enabled?: boolean; transfer?: AgentTransfer } = {},
+): X402AgentSpendExecutor {
+  return new X402AgentSpendExecutor(ledger, createCircleX402AgentWalletAdapter({ enabled: options.enabled === true, transfer: options.transfer }));
 }

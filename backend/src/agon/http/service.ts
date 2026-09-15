@@ -58,6 +58,8 @@ import type {
   X402SettlementReadinessView,
   X402ReconciliationReadinessView,
   X402ReconciliationRequest,
+  X402AgentSpendRequest,
+  X402AgentSpendView,
   X402DeliveryEvidenceRequest,
   X402DeliveryEvidenceView,
   X402ReconciliationView,
@@ -100,6 +102,7 @@ import type { PlaygroundRunStore } from "../playground-store.ts";
 import { buildAgonArenaEvaluationInput, buildAgonArenaEvidencePlan, buildAgonArenaRequestPlan, type AgonArenaEvaluation } from "../execution/arena-verification.ts";
 import { buildAgonPrizeClaimPlan, buildAgonSyndicateContributionPlan, prizeClaimLeaf } from "../execution/syndicate-prize.ts";
 import type { AgonProtocolFinalityReader } from "../execution/protocol-finality.ts";
+import type { X402AgentSpendExecutor } from "../execution/x402-agent-executor.ts";
 
 const cursorSchema = z.object({
   updatedAt: z.string().datetime(),
@@ -142,6 +145,8 @@ export type PostgresAgonMarketServiceOptions = {
   };
   /** Server-side provider lookup only. Undefined keeps reconciliation disabled. */
   x402ReceiptLookup?: X402ReceiptLookupAdapter;
+  /** Durable reserve-before-execute agent wallet path. Disabled unless the executor and flags are enabled. */
+  x402AgentSpendExecutor?: X402AgentSpendExecutor;
   /** Server-side PrizeEscrow view lookup only. Undefined keeps pool reads disabled. */
   escrowReadAdapter?: AgonPrizeEscrowReadAdapter;
   /** Configured PrizeEscrow address used to pin any durable pool binding. */
@@ -2244,6 +2249,63 @@ export class PostgresAgonMarketService implements AgonMarketService {
           ? "none"
           : lookup.status === "pending" ? "reconcile_receipt" : "deliver_service",
         recordedAt: reconciled.receipt.updatedAt.toISOString(),
+      },
+    };
+  }
+
+  async executeX402AgentSpend(
+    actor: string,
+    request: X402AgentSpendRequest,
+  ): Promise<Result<X402AgentSpendView, AgonServiceError>> {
+    const executor = this.options.x402AgentSpendExecutor;
+    if (!executor) {
+      return { ok: false, error: { code: "wallet_disabled", message: "agent wallet execution is not configured" } };
+    }
+    if (request.confirmation !== "EXECUTE_ARC_TESTNET_AGENT_X402") {
+      return { ok: false, error: { code: "validation_failed", message: "explicit Arc Testnet agent-spend confirmation is required" } };
+    }
+    const reference = parseReference(request.listingReference);
+    if (!reference) return { ok: false, error: { code: "validation_failed", message: "listing reference is invalid" } };
+    const listing = await this.repository.getListing(reference);
+    if (!listing) return { ok: false, error: { code: "not_found", message: "agent listing not found" } };
+    if (listing.status !== "Listed" || listing.quarantineReason) {
+      return { ok: false, error: { code: "conflict", message: "agent listing is not eligible for machine-to-machine spending" } };
+    }
+    if (listing.providerSnapshot.toLowerCase() !== actor.toLowerCase()) {
+      return { ok: false, error: { code: "not_owner", message: "only the listed agent owner can initiate this spend" } };
+    }
+    const result = await executor.execute({
+      agentId: listing.agentId.toString(),
+      idempotencyKey: request.idempotencyKey,
+      amountBaseUnits: request.amountBaseUnits,
+      recipient: request.recipient,
+    });
+    if (!result.ok) {
+      const code = result.error.code === "wallet_disabled" || result.error.code === "wallet_unavailable"
+        || result.error.code === "wallet_unknown" || result.error.code === "wallet_reconciliation_required"
+        || result.error.code === "wallet_failed_replay"
+        ? result.error.code
+        : result.error.code === "wallet_policy_disabled" || result.error.code === "wallet_not_ready"
+          ? "wallet_disabled"
+          : result.error.code === "wallet_cap_exceeded" || result.error.code === "recipient_not_allowed" || result.error.code === "idempotency_conflict"
+            ? "conflict"
+            : "validation_failed";
+      return { ok: false, error: { code, message: result.error.message } };
+    }
+    const record = result.record;
+    const terminal = record.state === "confirmed" || record.state === "failed";
+    return {
+      ok: true,
+      value: {
+        agentId: record.agentId,
+        listingReference: request.listingReference,
+        idempotencyKey: record.idempotencyKey,
+        state: record.state,
+        providerTransferId: record.providerTransferId ?? null,
+        transaction: record.transaction ?? null,
+        executionEnabled: true,
+        nextAction: terminal ? "none" : "reconcile_wallet",
+        recordedAt: record.updatedAt.toISOString(),
       },
     };
   }

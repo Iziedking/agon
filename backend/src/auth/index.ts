@@ -19,7 +19,9 @@ import { PostgresAgonRepository } from "../agon/store/repository.js";
 import { createAgonRoutes } from "../agon/http/routes.js";
 import { createCircleTestnetFacilitatorClient, createX402ExecutionPolicy, createX402FacilitatorAdapter } from "../agon/execution/x402-settlement.js";
 import { createX402ProviderExecutionAdapter } from "../agon/execution/x402-provider-execution.js";
-import { createCircleTestnetX402ReceiptLookupAdapter } from "../agon/execution/x402-reconciliation.js";
+import { createAgonTestnetReceiptLookupAdapter } from "../agon/execution/x402-reconciliation.js";
+import { createCircleX402AgentSpendExecutor } from "../agon/execution/x402-agent-executor.ts";
+import { PostgresX402AgentWalletPolicyStore } from "../agon/store/x402-agent-policy.ts";
 import { createViemAgonPrizeEscrowReadAdapter, type AgonPrizeEscrowReadClient } from "../agon/execution/escrow-reconciliation.js";
 import { evaluateAgonEscrowProductionReadiness } from "../agon/execution/escrow-production-readiness.js";
 import { AGON_ESCROW_TRANSACTION_APPROVAL_PHRASES } from "../agon/execution/escrow-transaction-approval.js";
@@ -362,6 +364,10 @@ const x402FacilitatorVerifier = createX402FacilitatorAdapter({
   policy: x402VerificationPolicy,
   client: x402FacilitatorClient,
 });
+const x402AgentPolicyStore = new PostgresX402AgentWalletPolicyStore(pool);
+const x402AgentSpendExecutor = createCircleX402AgentSpendExecutor(x402AgentPolicyStore, {
+  enabled: config.agon.x402.executionEnabled && config.agon.x402.agentPolicy.enabled,
+});
 const agonEscrowProductionReadiness = () => evaluateAgonEscrowProductionReadiness({
   chainId: config.chainId,
   network: config.agon.escrow.network,
@@ -402,9 +408,10 @@ const agonService = new PostgresAgonMarketService(agonRepository, {
   x402ExecutionPolicy,
   x402SettlementAdapter,
   x402FacilitatorVerifier,
-  x402ReceiptLookup: createCircleTestnetX402ReceiptLookupAdapter({
+  x402ReceiptLookup: createAgonTestnetReceiptLookupAdapter({
     enabled: config.agon.x402.reconciliationEnabled,
   }),
+  x402AgentSpendExecutor,
   escrowReadAdapter: agonEscrowReadAdapter,
   escrowPoolContract: config.contracts.PrizeEscrow,
   escrowProductionReadiness: agonEscrowProductionReadiness,

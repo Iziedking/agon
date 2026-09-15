@@ -1080,6 +1080,59 @@ test("keeps reconciliation mutation behind authentication and explicit confirmat
   assert.equal(body.nextAction, "deliver_service");
 });
 
+test("keeps machine-to-machine agent spends owner-scoped and explicitly confirmed", async () => {
+  const service = new FakeAgonService();
+  const app = testApp(service);
+  const payload = {
+    listingReference: listing.id,
+    recipient: ADDRESS,
+    amountBaseUnits: "1000",
+    idempotencyKey: "agent-spend-001",
+    confirmation: "EXECUTE_ARC_TESTNET_AGENT_X402",
+  };
+  assert.equal((await app.request("/agon/agent-spends", { method: "POST", body: JSON.stringify(payload) })).status, 401);
+  const invalid = await app.request("/agon/agent-spends", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-test-address": ADDRESS },
+    body: JSON.stringify({ ...payload, confirmation: "EXECUTE" }),
+  });
+  assert.equal(invalid.status, 400);
+  const disabled = await app.request("/agon/agent-spends", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-test-address": ADDRESS },
+    body: JSON.stringify(payload),
+  });
+  assert.equal(disabled.status, 503);
+  assert.equal((await disabled.json() as { error: { code: string } }).error.code, "wallet_disabled");
+
+  let observedActor = "";
+  (service as FakeAgonService & { executeX402AgentSpend: Function }).executeX402AgentSpend = async (actor, request) => {
+    observedActor = actor;
+    return {
+      ok: true,
+      value: {
+        agentId: "42",
+        listingReference: request.listingReference,
+        idempotencyKey: request.idempotencyKey,
+        state: "submitted",
+        providerTransferId: "transfer-1",
+        transaction: null,
+        executionEnabled: true,
+        nextAction: "reconcile_wallet",
+        recordedAt: new Date().toISOString(),
+      },
+    };
+  };
+  const submitted = await app.request("/agon/agent-spends", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-test-address": ADDRESS },
+    body: JSON.stringify(payload),
+  });
+  assert.equal(submitted.status, 200);
+  assert.equal(observedActor, ADDRESS);
+  assert.equal((await submitted.json() as { nextAction: string }).nextAction, "reconcile_wallet");
+});
+
 test("requires authentication before facilitator verification", async () => {
   const app = testApp(new FakeAgonService());
   const response = await app.request("/agon/call-intents/00000000-0000-4000-8000-000000000001/facilitator-verify", {

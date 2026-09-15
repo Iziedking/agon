@@ -31,6 +31,7 @@ import type {
   X402SettlementReadinessView,
   X402ReconciliationReadinessView,
   X402ReconciliationRequest,
+  X402AgentSpendRequest,
   X402DeliveryEvidenceRequest,
   X402SettlementRequest,
   X402FacilitatorVerificationRequest,
@@ -79,6 +80,11 @@ export type AgonServiceError = {
     | "reconciliation_disabled"
     | "reconciliation_unavailable"
     | "reconciliation_invalid"
+    | "wallet_disabled"
+    | "wallet_unavailable"
+    | "wallet_unknown"
+    | "wallet_reconciliation_required"
+    | "wallet_failed_replay"
     | "escrow_disabled"
     | "arena_disabled"
     | "arena_reconciliation_required"
@@ -156,6 +162,10 @@ export type AgonMarketService = {
     intentId: string,
     request: X402ReconciliationRequest,
   ): Promise<Result<import("./api-types.ts").X402ReconciliationView, AgonServiceError>>;
+  executeX402AgentSpend?(
+    actor: string,
+    request: X402AgentSpendRequest,
+  ): Promise<Result<import("./api-types.ts").X402AgentSpendView, AgonServiceError>>;
   recordX402Delivery?(
     actor: string,
     intentId: string,
@@ -406,6 +416,14 @@ const x402ReconciliationSchema = z.object({
   confirmation: z.literal("RECONCILE_ARC_TESTNET_X402"),
 }).strict();
 
+const x402AgentSpendSchema = z.object({
+  listingReference: z.string().regex(/^[1-9]\d*:0x[0-9a-fA-F]{40}:[1-9]\d*$/, "must be a chain:registry:listing reference"),
+  recipient: z.string().regex(/^0x[0-9a-fA-F]{40}$/, "must be an EVM address"),
+  amountBaseUnits: z.string().regex(/^[1-9]\d*$/, "must be a positive integer base-unit amount"),
+  idempotencyKey: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/, "must be 8-128 safe characters"),
+  confirmation: z.literal("EXECUTE_ARC_TESTNET_AGENT_X402"),
+}).strict();
+
 const x402DeliveryEvidenceSchema = z.object({
   deliveryId: z.string().uuid(),
   serviceStatus: z.number().int().min(200).max(299),
@@ -545,6 +563,14 @@ function serviceErrorResponse(
     case "signature_invalid":
       return context.json(body, 422);
     case "execution_not_ready":
+      return context.json(body, 409);
+    case "wallet_disabled":
+      return context.json(body, 503);
+    case "wallet_unavailable":
+      return context.json(body, 503);
+    case "wallet_unknown":
+    case "wallet_reconciliation_required":
+    case "wallet_failed_replay":
       return context.json(body, 409);
     case "escrow_disabled":
       return context.json(body, 503);
@@ -1119,6 +1145,21 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
       context.get("address"),
       context.req.param("intentId"),
       parsed.data,
+    );
+    return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  app.post("/agent-spends", options.requireAuth, async (context) => {
+    const body = await parseJson(context);
+    if (isApiError(body)) return context.json(body, 400);
+    const parsed = x402AgentSpendSchema.safeParse(body);
+    if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
+    if (!options.service.executeX402AgentSpend) {
+      return serviceErrorResponse(context, { code: "wallet_disabled", message: "agent wallet execution is not configured" });
+    }
+    const result = await options.service.executeX402AgentSpend(
+      context.get("address"),
+      parsed.data as X402AgentSpendRequest,
     );
     return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
   });

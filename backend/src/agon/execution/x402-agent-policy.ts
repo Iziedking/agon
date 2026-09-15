@@ -259,6 +259,7 @@ export type X402AgentWalletSettlementAdapter = {
   settle(input: {
     agentId: string;
     walletId: string;
+    walletAddress?: `0x${string}`;
     recipient: `0x${string}`;
     amountBaseUnits: bigint;
     idempotencyKey: string;

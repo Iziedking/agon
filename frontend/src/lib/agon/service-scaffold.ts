@@ -76,98 +76,128 @@ export function scaffoldServiceProject(input: ServiceScaffoldInput): ServiceScaf
     certification: { adapter: "agon-http", adapterVersion: "1" },
   };
 
-  const runtime = `import { createServer } from "node:http";
+  const runtime = `import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { createHash } from "node:crypto";
+import { createGatewayMiddleware, type PaymentRequest, type PaymentResponse } from "@circle-fin/x402-batching/server";
 
 const serviceKey = ${JSON.stringify(serviceKey)};
 const version = "0.1.0";
 const port = Number(process.env.PORT || 8789);
-const paymentRequired = Buffer.from(JSON.stringify({
-  x402Version: 2,
-  resource: { url: process.env.PUBLIC_ENDPOINT || "http://localhost:" + port + "/execute" },
-  accepts: [{
-    scheme: "exact",
-    network: "eip155:5042002",
-    asset: process.env.USDC_ASSET || "0x3600000000000000000000000000000000000000",
-    amount: process.env.AMOUNT_BASE_UNITS || "1000",
-    payTo: process.env.PAY_TO || "0x0000000000000000000000000000000000000001",
-    maxTimeoutSeconds: 60,
-    extra: { name: "GatewayWalletBatched", version: "1", serviceKey, serviceVersion: version, verifyingContract: process.env.GATEWAY_VERIFYING_CONTRACT || "0x0000000000000000000000000000000000000001" }
-  }]
-})).toString("base64");
+const network = "eip155:5042002";
+const requestLimit = 65536;
+const responseLimit = 524288;
+const timeoutMs = Math.max(250, Math.min(Number(process.env.PROVIDER_TIMEOUT_MS || 15000), 30000));
+const price = process.env.PRICE_USDC || "0.001";
+const sellerAddress = process.env.PAY_TO || "";
+const gateway = sellerAddress ? createGatewayMiddleware({
+  sellerAddress,
+  networks: [network],
+  facilitatorUrl: process.env.CIRCLE_GATEWAY_FACILITATOR_URL || "https://gateway-api-testnet.circle.com",
+  description: process.env.SERVICE_DESCRIPTION || ${JSON.stringify(description)},
+}) : null;
 
-function send(response, status, body, headers = {}) {
-  response.writeHead(status, { "content-type": "application/json; charset=utf-8", ...headers });
-  response.end(JSON.stringify(body));
-}
+export type CategoryHandlerContext = {
+  serviceKey: string;
+  version: string;
+  payer: string;
+  network: string;
+  paymentTransaction?: string;
+  idempotencyKey: string;
+  signal: AbortSignal;
+};
+export type CategoryHandler = (input: unknown, context: CategoryHandlerContext) => Promise<unknown>;
 
-function decodePaymentResponse(value) {
-  if (!value) return null;
-  try {
-    const decoded = Buffer.from(value, "base64").toString("utf8");
-    return JSON.parse(decoded);
-  } catch {
-    try { return JSON.parse(value); } catch { return null; }
+const categoryHandler: CategoryHandler = async () => {
+  throw new Error("handler_not_configured");
+};
+const completed = new Map<string, { inputHash: string; result: unknown }>();
+
+function send(response: ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}) {
+  const encoded = JSON.stringify(body);
+  if (Buffer.byteLength(encoded, "utf8") > responseLimit) {
+    response.writeHead(500, { "content-type": "application/json; charset=utf-8" });
+    response.end(JSON.stringify({ error: "response_too_large" }));
+    return;
   }
+  response.writeHead(status, { "content-type": "application/json; charset=utf-8", ...headers });
+  response.end(encoded);
 }
 
-function readBody(request, limit = 65536) {
+function readBody(request: IncomingMessage, limit = requestLimit): Promise<string> {
   return new Promise((resolve, reject) => {
     let body = "";
+    let rejected = false;
     request.setEncoding("utf8");
     request.on("data", (chunk) => {
+      if (rejected) return;
       body += chunk;
-      if (Buffer.byteLength(body, "utf8") > limit) reject(new Error("request_too_large"));
+      if (Buffer.byteLength(body, "utf8") > limit) {
+        rejected = true;
+        reject(new Error("request_too_large"));
+      }
     });
-    request.on("end", () => resolve(body));
-    request.on("error", reject);
+    request.on("end", () => { if (!rejected) resolve(body); });
+    request.on("error", (error) => { if (!rejected) reject(error); });
   });
 }
 
-function validSettlement(settlement) {
-  if (!settlement || settlement.success !== true) return false;
-  if (settlement.network !== "eip155:5042002") return false;
-  if (settlement.amount !== undefined && settlement.amount !== (process.env.AMOUNT_BASE_UNITS || "1000")) return false;
-  return typeof settlement.transaction === "string" &&
-    (/^0x[0-9a-fA-F]{64}$/.test(settlement.transaction) || /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(settlement.transaction));
+function inputHash(body: string): string { return createHash("sha256").update(body).digest("hex"); }
+
+async function withTimeout<T>(work: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try { return await Promise.race([work(controller.signal), new Promise<T>((_, reject) => controller.signal.addEventListener("abort", () => reject(new Error("handler_timeout")), { once: true }))]); }
+  finally { clearTimeout(timer); }
+}
+
+function paymentMiddleware(request: PaymentRequest, response: PaymentResponse, next: (error?: unknown) => void) {
+  if (!gateway) { send(response, 503, { error: "provider_not_configured", message: "PAY_TO is required before accepting paid work." }); return; }
+  void gateway.require(price)(request, response, next);
 }
 
 createServer(async (request, response) => {
   if (request.method === "GET" && request.url === "/health") {
-    send(response, 200, { ok: true, service: "agon-provider", serviceKey, version, status: "ready", runtime: "node" });
+    send(response, 200, { ok: true, service: "agon-provider", serviceKey, version, status: sellerAddress ? "ready" : "misconfigured", runtime: "node", network });
     return;
   }
   if (request.method === "POST" && request.url === "/execute") {
-    if (!request.headers["payment-signature"]) {
-      send(response, 402, { error: "payment_required", serviceKey, version }, { "payment-required": paymentRequired });
-      return;
-    }
-    const paymentResponse = process.env.AGON_PAYMENT_RESPONSE;
-    const settlement = decodePaymentResponse(paymentResponse);
-    if (!paymentResponse || !validSettlement(settlement)) {
-      send(response, 503, { error: "facilitator_not_configured", message: "Payment verification is disabled until a trusted facilitator is configured." });
-      return;
-    }
-    let input = null;
-    try {
-      const body = await readBody(request);
-      input = body ? JSON.parse(body) : null;
-    } catch (error) {
-      send(response, error.message === "request_too_large" ? 413 : 400, { error: error.message === "request_too_large" ? "request_too_large" : "invalid_json" });
-      return;
-    }
-    send(response, 200, {
-      ok: true,
-      serviceKey,
-      version,
-      result: { accepted: true, input },
-    }, { "payment-response": paymentResponse });
+    paymentMiddleware(request as PaymentRequest, response as PaymentResponse, async (error) => {
+      if (error) { send(response, 500, { error: "payment_middleware_failed" }); return; }
+      const idempotencyKey = String(request.headers["idempotency-key"] || "").trim();
+      if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/.test(idempotencyKey)) { send(response, 400, { error: "idempotency_key_required" }); return; }
+      let body: string;
+      try { body = await readBody(request); } catch (error) { send(response, error.message === "request_too_large" ? 413 : 400, { error: error.message === "request_too_large" ? "request_too_large" : "invalid_request" }); return; }
+      let input: unknown;
+      try { input = body ? JSON.parse(body) : null; } catch { send(response, 400, { error: "invalid_json" }); return; }
+      const payment = (request as PaymentRequest).payment;
+      if (!payment?.verified || payment.network !== network) { send(response, 402, { error: "payment_not_verified" }); return; }
+      const key = payment.payer + ":" + idempotencyKey;
+      const hash = inputHash(body);
+      const previous = completed.get(key);
+      if (previous) {
+        if (previous.inputHash !== hash) { send(response, 409, { error: "idempotency_conflict" }); return; }
+        send(response, 200, { ok: true, serviceKey, version, result: previous.result });
+        return;
+      }
+      try {
+        const result = await withTimeout((signal) => categoryHandler(input, { serviceKey, version, payer: payment.payer, network, paymentTransaction: payment.transaction, idempotencyKey, signal }));
+        const encoded = JSON.stringify({ ok: true, serviceKey, version, result });
+        if (Buffer.byteLength(encoded, "utf8") > responseLimit) { send(response, 500, { error: "response_too_large" }); return; }
+        completed.set(key, { inputHash: hash, result });
+        send(response, 200, { ok: true, serviceKey, version, result });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "handler_failed";
+        send(response, message === "handler_timeout" ? 504 : message === "handler_not_configured" ? 501 : 500, { error: message === "handler_timeout" ? "handler_timeout" : message === "handler_not_configured" ? "handler_not_configured" : "handler_failed" });
+      }
+    });
     return;
   }
   send(response, 404, { error: "not_found" });
-}).listen(port, "0.0.0.0", () => console.log(JSON.stringify({ serviceKey, port, status: "ready" })));
+}).listen(port, "0.0.0.0", () => console.log(JSON.stringify({ serviceKey, port, status: sellerAddress ? "ready" : "misconfigured" })));
 `;
 
-  const dockerfile = `FROM node:22-alpine\nWORKDIR /app\nCOPY service.ts ./service.ts\nCOPY agon.service.json ./agon.service.json\nEXPOSE 8789\nCMD ["node", "--experimental-strip-types", "service.ts"]\n`;
+  const packageJson = json({ name: `${serviceKey}-agon-provider`, private: true, type: "module", engines: { node: ">=22" }, dependencies: { "@circle-fin/x402-batching": "3.0.4" } });
+  const dockerfile = `FROM node:22-alpine\nWORKDIR /app\nCOPY package.json ./package.json\nRUN npm install --omit=dev --ignore-scripts\nCOPY service.ts ./service.ts\nCOPY agon.service.json ./agon.service.json\nEXPOSE 8789\nCMD ["node", "--experimental-strip-types", "service.ts"]\n`;
   const readme = [
     `# ${name}`,
     "",
@@ -175,7 +205,7 @@ createServer(async (request, response) => {
     "",
     "1. Replace the ERC-8004 agent ID and public URLs in agon.service.json.",
     "2. Replace the default result handler in service.ts with your category-specific logic.",
-    "3. Configure AGON_PAYMENT_RESPONSE from a trusted x402 facilitator before accepting paid work.",
+    "3. Configure PAY_TO, PRICE_USDC, and CIRCLE_GATEWAY_FACILITATOR_URL (the Arc Testnet default is already selected).",
     "4. Run agon deploy --directory . --target docker --run.",
     "",
     "The default runtime is deliberately fail-closed: health is public, unpaid execution returns HTTP 402, and a signed request cannot be treated as settled without facilitator evidence.",
@@ -187,6 +217,7 @@ createServer(async (request, response) => {
       { path: "agon.service.json", content: json(config) },
       { path: "service.ts", content: runtime },
       { path: "Dockerfile", content: dockerfile },
+      { path: "package.json", content: packageJson },
       { path: "README.md", content: readme },
     ],
   };

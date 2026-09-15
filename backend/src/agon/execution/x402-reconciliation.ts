@@ -4,6 +4,10 @@ const CIRCLE_TESTNET_GATEWAY = "https://gateway-api-testnet.circle.com";
 const MAX_CIRCLE_RESPONSE_BYTES = 64 * 1024;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const ADDRESS = /^0x[0-9a-f]{40}$/i;
+const ARC_TESTNET_RPC = "https://rpc.testnet.arc.network";
+const ARC_TESTNET_CHAIN_ID = 5_042_002;
+const ARC_USDC = "0x3600000000000000000000000000000000000000";
+const TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a9df523b3ef";
 
 export type X402ReceiptLookupRequest = {
   network: typeof AGON_X402_TESTNET_NETWORK;
@@ -135,4 +139,90 @@ export function createCircleTestnetX402ReceiptLookupAdapter(options: { enabled: 
       throw new Error(error instanceof Error ? error.message : "Circle receipt lookup failed");
     } finally { clearTimeout(timer); }
   } };
+}
+
+type RpcLog = { address?: string; topics?: string[]; data?: string };
+type RpcReceipt = { status?: string; blockNumber?: string; transactionHash?: string; logs?: RpcLog[] } | null;
+type RpcTransaction = { from?: string; hash?: string } | null;
+
+async function rpcCall(fetchImpl: typeof fetch, rpcUrl: string, method: string, params: unknown[], signal: AbortSignal): Promise<unknown> {
+  const response = await fetchImpl(rpcUrl, { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }), signal });
+  const text = await readBoundedResponseBody(response, MAX_CIRCLE_RESPONSE_BYTES);
+  if (!response.ok) throw new Error(`Arc RPC returned HTTP ${response.status}`);
+  const value = JSON.parse(text) as { result?: unknown; error?: { message?: string } };
+  if (value.error) throw new Error(value.error.message ?? "Arc RPC returned an error");
+  return value.result;
+}
+
+function parseHexBigInt(value: unknown): bigint | null { return typeof value === "string" && /^0x[0-9a-f]+$/i.test(value) ? BigInt(value) : null; }
+
+/**
+ * Read-only Arc Testnet receipt/finality adapter. It never treats a missing
+ * receipt, insufficient confirmations, or an unrecognised USDC transfer as
+ * success; those states remain pending for reconciliation.
+ */
+export function createArcTestnetReceiptLookupAdapter(options: {
+  enabled: boolean;
+  rpcUrl?: string;
+  fetchImpl?: typeof fetch;
+  timeoutMs?: number;
+  minConfirmations?: number;
+}): X402ReceiptLookupAdapter {
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const rpcUrl = options.rpcUrl ?? ARC_TESTNET_RPC;
+  const timeoutMs = Math.max(500, Math.min(options.timeoutMs ?? 8_000, 30_000));
+  const minConfirmations = Math.max(1, Math.min(Math.floor(options.minConfirmations ?? 1), 64));
+  return {
+    enabled: options.enabled === true,
+    async lookup(input): Promise<X402ReceiptLookupResult> {
+      if (options.enabled !== true) throw new Error("Arc Testnet receipt lookup is disabled by policy");
+      if (input.network !== AGON_X402_TESTNET_NETWORK || !input.transaction || !isX402Transaction(input.transaction)) throw new Error("Arc receipt lookup requires an Arc Testnet transaction hash");
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const chainId = parseHexBigInt(await rpcCall(fetchImpl, rpcUrl, "eth_chainId", [], controller.signal));
+        if (chainId !== BigInt(ARC_TESTNET_CHAIN_ID)) throw new Error("Arc RPC chain id does not match Arc Testnet");
+        const [receipt, transaction] = await Promise.all([
+          rpcCall(fetchImpl, rpcUrl, "eth_getTransactionReceipt", [input.transaction], controller.signal) as Promise<RpcReceipt>,
+          rpcCall(fetchImpl, rpcUrl, "eth_getTransactionByHash", [input.transaction], controller.signal) as Promise<RpcTransaction>,
+        ]);
+        if (!receipt || !receipt.blockNumber) return { network: AGON_X402_TESTNET_NETWORK, transaction: input.transaction, status: "pending", payer: transaction?.from as `0x${string}` | undefined, reason: "Arc Testnet receipt is not available yet" };
+        if (receipt.transactionHash && receipt.transactionHash.toLowerCase() !== input.transaction.toLowerCase()) throw new Error("Arc receipt transaction hash does not match the requested hash");
+        if (receipt.status !== "0x1") return { network: AGON_X402_TESTNET_NETWORK, transaction: input.transaction, status: "failed", payer: transaction?.from as `0x${string}` | undefined, reason: "Arc Testnet transaction reverted" };
+        const currentBlock = parseHexBigInt(await rpcCall(fetchImpl, rpcUrl, "eth_blockNumber", [], controller.signal));
+        const receiptBlock = parseHexBigInt(receipt.blockNumber);
+        if (currentBlock === null || receiptBlock === null || currentBlock - receiptBlock < BigInt(minConfirmations)) {
+          return { network: AGON_X402_TESTNET_NETWORK, transaction: input.transaction, status: "pending", payer: transaction?.from as `0x${string}` | undefined, blockNumber: receipt.blockNumber, reason: "Arc Testnet transaction is confirmed but not final at the configured depth" };
+        }
+        const transfer = (receipt.logs ?? []).find((log) => log.address?.toLowerCase() === ARC_USDC.toLowerCase() && log.topics?.[0]?.toLowerCase() === TRANSFER_TOPIC && typeof log.topics?.[2] === "string");
+        if (!transfer || !transfer.topics?.[2]) return { network: AGON_X402_TESTNET_NETWORK, transaction: input.transaction, status: "pending", payer: transaction?.from as `0x${string}` | undefined, blockNumber: receipt.blockNumber, reason: "final receipt has no recognised Arc USDC transfer evidence" };
+        const payer = transfer.topics[1] ? `0x${transfer.topics[1].slice(-40)}` as `0x${string}` : transaction?.from as `0x${string}` | undefined;
+        const recipient = `0x${transfer.topics[2].slice(-40)}` as `0x${string}`;
+        const amount = parseHexBigInt(transfer.data);
+        if (amount === null) return { network: AGON_X402_TESTNET_NETWORK, transaction: input.transaction, status: "pending", payer, recipient, blockNumber: receipt.blockNumber, reason: "Arc USDC transfer amount is not decodable" };
+        if (input.expected?.recipient && recipient.toLowerCase() !== input.expected.recipient.toLowerCase()) return { network: AGON_X402_TESTNET_NETWORK, transaction: input.transaction, status: "failed", payer, recipient, amountAtomicUnits: amount.toString(), blockNumber: receipt.blockNumber, reason: "Arc USDC recipient does not match the reviewed quote" };
+        if (input.expected?.amountAtomicUnits && amount.toString() !== input.expected.amountAtomicUnits) return { network: AGON_X402_TESTNET_NETWORK, transaction: input.transaction, status: "failed", payer, recipient, amountAtomicUnits: amount.toString(), blockNumber: receipt.blockNumber, reason: "Arc USDC amount does not match the reviewed quote" };
+        return validateX402ReceiptLookupResult({ network: AGON_X402_TESTNET_NETWORK, transaction: input.transaction, status: "confirmed", payer, recipient, amountAtomicUnits: amount.toString(), blockNumber: receipt.blockNumber }, input);
+      } finally { clearTimeout(timer); }
+    },
+  };
+}
+
+/** Select the real read-only source from the settlement reference type. */
+export function createAgonTestnetReceiptLookupAdapter(options: {
+  enabled: boolean;
+  fetchImpl?: typeof fetch;
+  rpcUrl?: string;
+  gatewayUrl?: string;
+}): X402ReceiptLookupAdapter {
+  const arc = createArcTestnetReceiptLookupAdapter({ enabled: options.enabled, fetchImpl: options.fetchImpl, rpcUrl: options.rpcUrl });
+  const circle = createCircleTestnetX402ReceiptLookupAdapter({ enabled: options.enabled, fetchImpl: options.fetchImpl, baseUrl: options.gatewayUrl });
+  return {
+    enabled: options.enabled === true,
+    async lookup(input) {
+      if (input.transaction) return arc.lookup(input);
+      if (input.providerTransferId) return circle.lookup(input);
+      throw new Error("receipt reconciliation requires a transaction or Circle transfer id");
+    },
+  };
 }

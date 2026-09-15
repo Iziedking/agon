@@ -197,10 +197,10 @@ export async function getTxState(id: string): Promise<{
 /**
  * Circle Developer-Controlled Wallets 9.6.0, installed in
  * backend/node_modules/@circle-fin/developer-controlled-wallets (types read
- * 2026-09-15). This is the only production seam for an agent's Arc USDC
- * transfer; callers still own the durable reserve and confirmation boundary.
+ * 2026-09-15). This is a platform/operator transfer seam, separate from the
+ * Circle Agent Wallet CLI used for autonomous buyer spending.
  */
-export async function createAgentUsdcTransfer(params: {
+export async function createPlatformUsdcTransfer(params: {
   walletId: string;
   destinationAddress: `0x${string}`;
   amountBaseUnits: bigint;

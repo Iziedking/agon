@@ -6,7 +6,7 @@ import {
   createDisabledX402AgentWalletAdapter,
   type X402AgentWalletPolicy,
 } from "../../src/agon/execution/x402-agent-policy.ts";
-import { X402AgentSpendExecutor } from "../../src/agon/execution/x402-agent-executor.ts";
+import { createCircleX402AgentSpendExecutor, X402AgentSpendExecutor } from "../../src/agon/execution/x402-agent-executor.ts";
 
 const AGENT = "agent-alpha";
 const WALLET = "0x1111111111111111111111111111111111111111" as const;
@@ -138,6 +138,18 @@ test("disabled adapter never reaches a provider and marks the reservation failed
   if (result.ok) return;
   assert.equal(result.error.code, "wallet_disabled");
   assert.equal(result.record?.state, "failed");
+});
+
+test("Circle Agent Wallet factory preserves reserve-before-execute and stays disabled by default", async () => {
+  let calls = 0;
+  const ledger = new X402AgentWalletPolicyLedger([policy()]);
+  const executor = createCircleX402AgentSpendExecutor(ledger, {
+    transfer: async () => { calls += 1; return { id: "11111111-1111-4111-8111-111111111111", state: "INITIATED" }; },
+  });
+  const result = await executor.execute({ agentId: AGENT, idempotencyKey: "spend-factory", amountBaseUnits: 10n, recipient: RECIPIENT, now: DAY_ONE });
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.error.code, "wallet_disabled");
+  assert.equal(calls, 0);
 });
 
 test("executor reserves before execution, exposes submitted state, and requires confirmation for replay", async () => {

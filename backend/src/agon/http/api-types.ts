@@ -319,6 +319,26 @@ export type X402ReconciliationRequest = {
   confirmation: "RECONCILE_ARC_TESTNET_X402";
 };
 
+export type X402AgentSpendRequest = {
+  listingReference: string;
+  recipient: string;
+  amountBaseUnits: string;
+  idempotencyKey: string;
+  confirmation: "EXECUTE_ARC_TESTNET_AGENT_X402";
+};
+
+export type X402AgentSpendView = {
+  agentId: string;
+  listingReference: string;
+  idempotencyKey: string;
+  state: "reserved" | "submitted" | "unknown" | "confirmed" | "failed";
+  providerTransferId: string | null;
+  transaction: `0x${string}` | null;
+  executionEnabled: boolean;
+  nextAction: "reconcile_wallet" | "none";
+  recordedAt: string;
+};
+
 export type X402DeliveryEvidenceRequest = {
   deliveryId: string;
   serviceStatus: number;
