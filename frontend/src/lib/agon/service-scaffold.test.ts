@@ -12,6 +12,11 @@ test("scaffold creates a valid service config and fail-closed runtime", () => {
   assert.match(scaffold.files[1]!.content, /status: \"ready\"/);
   assert.match(scaffold.files[1]!.content, /facilitator_not_configured/);
   assert.match(scaffold.files[1]!.content, /send\(response, 402/);
+  assert.match(scaffold.files[1]!.content, /createServer\(async \(request, response\)/);
+  assert.match(scaffold.files[1]!.content, /eip155:5042002/);
+  assert.match(scaffold.files[1]!.content, /request_too_large/);
+  assert.match(scaffold.files[1]!.content, /send\(response, 200/);
+  assert.match(scaffold.files[1]!.content, /payment-response/);
 });
 
 test("scaffold rejects unsafe identifiers", () => {

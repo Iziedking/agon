@@ -1,6 +1,7 @@
 import {
   initiateDeveloperControlledWalletsClient,
   type CreateContractExecutionTransactionInput,
+  type CreateTransferTransactionInput,
 } from "@circle-fin/developer-controlled-wallets";
 import { config } from "../config/index.js";
 
@@ -191,4 +192,36 @@ export async function getTxState(id: string): Promise<{
     txHash: tx.txHash ?? null,
     errorReason: tx.errorReason ?? null,
   };
+}
+
+/**
+ * Circle Developer-Controlled Wallets 9.6.0, installed in
+ * backend/node_modules/@circle-fin/developer-controlled-wallets (types read
+ * 2026-09-15). This is the only production seam for an agent's Arc USDC
+ * transfer; callers still own the durable reserve and confirmation boundary.
+ */
+export async function createAgentUsdcTransfer(params: {
+  walletId: string;
+  destinationAddress: `0x${string}`;
+  amountBaseUnits: bigint;
+  idempotencyKey: string;
+  refId?: string;
+}): Promise<{ id: string; state: string }> {
+  if (params.amountBaseUnits <= 0n) throw new Error("agent transfer amount must be positive");
+  const whole = params.amountBaseUnits / 1_000_000n;
+  const fractional = (params.amountBaseUnits % 1_000_000n).toString().padStart(6, "0").replace(/0+$/, "");
+  const amount = fractional ? `${whole.toString()}.${fractional}` : whole.toString();
+  const input: CreateTransferTransactionInput = {
+    walletId: params.walletId,
+    tokenAddress: "0x3600000000000000000000000000000000000000",
+    amount: [amount],
+    destinationAddress: params.destinationAddress,
+    fee: { type: "level", config: { feeLevel: "MEDIUM" } },
+    idempotencyKey: params.idempotencyKey,
+    ...(params.refId ? { refId: params.refId } : {}),
+  };
+  const response = await getClient().createTransaction(input);
+  const data = response.data;
+  if (!data?.id) throw new Error("Circle createTransaction returned no id");
+  return { id: data.id, state: data.state };
 }

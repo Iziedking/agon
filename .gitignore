@@ -124,6 +124,16 @@ backend/circle-bootstrap.env.snippet
 # Internal research, evidence, and implementation plans are local-only.
 docs/superpowers/
 
+# Internal and legacy engineering documents. Keep local copies for
+# implementation and operations, but do not publish them as product docs.
+docs/AGON.md
+docs/CIRCLE.md
+docs/legacy-arcrun.md
+docs/agentTier.md
+docs/agents.md
+docs/missions.md
+docs/ops/
+
 .worktrees/
 
 .vercel

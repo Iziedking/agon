@@ -46,6 +46,11 @@ export function scaffoldServiceProject(input: ServiceScaffoldInput): ServiceScaf
   const serviceKeyHash = keccak256(stringToHex(serviceKey));
 
   const config = {
+    // Keep the flat fields for the ASP CLI contract. The nested identity block
+    // is the canonical manifest shape consumed by the marketplace.
+    serviceKey,
+    chainId: "5042002",
+    agentId: "REPLACE_WITH_ERC8004_AGENT_ID",
     protocol: "agon-service/2",
     identity: { chainId: 5042002, agentId: "REPLACE_WITH_ERC8004_AGENT_ID", serviceKey: serviceKeyHash },
     service: {
@@ -95,7 +100,38 @@ function send(response, status, body, headers = {}) {
   response.end(JSON.stringify(body));
 }
 
-createServer((request, response) => {
+function decodePaymentResponse(value) {
+  if (!value) return null;
+  try {
+    const decoded = Buffer.from(value, "base64").toString("utf8");
+    return JSON.parse(decoded);
+  } catch {
+    try { return JSON.parse(value); } catch { return null; }
+  }
+}
+
+function readBody(request, limit = 65536) {
+  return new Promise((resolve, reject) => {
+    let body = "";
+    request.setEncoding("utf8");
+    request.on("data", (chunk) => {
+      body += chunk;
+      if (Buffer.byteLength(body, "utf8") > limit) reject(new Error("request_too_large"));
+    });
+    request.on("end", () => resolve(body));
+    request.on("error", reject);
+  });
+}
+
+function validSettlement(settlement) {
+  if (!settlement || settlement.success !== true) return false;
+  if (settlement.network !== "eip155:5042002") return false;
+  if (settlement.amount !== undefined && settlement.amount !== (process.env.AMOUNT_BASE_UNITS || "1000")) return false;
+  return typeof settlement.transaction === "string" &&
+    (/^0x[0-9a-fA-F]{64}$/.test(settlement.transaction) || /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(settlement.transaction));
+}
+
+createServer(async (request, response) => {
   if (request.method === "GET" && request.url === "/health") {
     send(response, 200, { ok: true, service: "agon-provider", serviceKey, version, status: "ready", runtime: "node" });
     return;
@@ -105,11 +141,26 @@ createServer((request, response) => {
       send(response, 402, { error: "payment_required", serviceKey, version }, { "payment-required": paymentRequired });
       return;
     }
-    if (!process.env.AGON_PAYMENT_RESPONSE) {
+    const paymentResponse = process.env.AGON_PAYMENT_RESPONSE;
+    const settlement = decodePaymentResponse(paymentResponse);
+    if (!paymentResponse || !validSettlement(settlement)) {
       send(response, 503, { error: "facilitator_not_configured", message: "Payment verification is disabled until a trusted facilitator is configured." });
       return;
     }
-    send(response, 501, { error: "handler_not_configured", message: "Implement the service handler before accepting paid work." });
+    let input = null;
+    try {
+      const body = await readBody(request);
+      input = body ? JSON.parse(body) : null;
+    } catch (error) {
+      send(response, error.message === "request_too_large" ? 413 : 400, { error: error.message === "request_too_large" ? "request_too_large" : "invalid_json" });
+      return;
+    }
+    send(response, 200, {
+      ok: true,
+      serviceKey,
+      version,
+      result: { accepted: true, input },
+    }, { "payment-response": paymentResponse });
     return;
   }
   send(response, 404, { error: "not_found" });
@@ -123,8 +174,8 @@ createServer((request, response) => {
     `Agon provider scaffold for the **${serviceKey}** service.`,
     "",
     "1. Replace the ERC-8004 agent ID and public URLs in agon.service.json.",
-    "2. Implement the paid handler in service.ts.",
-    "3. Configure a trusted x402 facilitator before accepting paid work.",
+    "2. Replace the default result handler in service.ts with your category-specific logic.",
+    "3. Configure AGON_PAYMENT_RESPONSE from a trusted x402 facilitator before accepting paid work.",
     "4. Run agon deploy --directory . --target docker --run.",
     "",
     "The default runtime is deliberately fail-closed: health is public, unpaid execution returns HTTP 402, and a signed request cannot be treated as settled without facilitator evidence.",
