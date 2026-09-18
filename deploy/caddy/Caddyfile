@@ -107,3 +107,18 @@ api.avow.site {
 api.sface.site {
 	reverse_proxy sface-api:8790
 }
+
+# NIM RUSH is the sFace game under its own domain, and the same sface-api
+# service answers both names. The client is on Vercel at www.nim-rush.xyz.
+api.nim-rush.xyz {
+	reverse_proxy sface-api:8790
+}
+
+# KOVA (the kova repository's deploy/docker-compose.yml). Same arrangement as
+# Agent QA, Avow and sFace above: its container joins this project's default
+# network and borrows this Caddy as ingress, so its site block belongs in this
+# tracked file. The consumer frontend is on Vercel at kova.surf; only the
+# read-only evidence API is served here.
+api.kova.surf {
+	reverse_proxy kova-api:8787
+}
