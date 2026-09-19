@@ -29,6 +29,7 @@ function toServiceReference(listing: AgonListingView): ServiceReference {
   const verification = listing.risk.quarantineReason ? "quarantined" : listing.verification.status === "Verified" ? "verified" : listing.verification.status === "Unverified" ? "unverified" : "listed";
   return serviceReference.parse({
     reference: listing.id,
+    source: { id: "arc", name: "AGON Arc" },
     name: text(service.name, `Service ${listing.listingId}`),
     provider: `Agent ${listing.agentId}`,
     outcome: text(service.description, "A bounded agent service"),

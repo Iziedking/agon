@@ -4,6 +4,7 @@ import { authorizeHireInput, mcpOperation, previewHireInput, providerDraftInput,
 
 const service = {
   reference: "5042002:registry:3",
+  source: { id: "arc", name: "AGON Arc" },
   name: "Lead enrichment",
   provider: "Example provider",
   outcome: "Enrich a bounded CRM list",
@@ -59,4 +60,3 @@ test("provider drafts require HTTPS and explicit terms", () => {
   assert.equal(draft.endpoint.startsWith("https://"), true);
   assert.throws(() => providerDraftInput.parse({ ...draft, endpoint: "http://provider.example/execute" }));
 });
-

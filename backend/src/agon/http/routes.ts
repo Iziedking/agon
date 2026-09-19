@@ -5,6 +5,7 @@ import { PlaygroundProviderError, type PlaygroundProviderRunner } from "../playg
 import { PlaygroundRunConflictError, type PlaygroundRateLimiter, type PlaygroundRunStore } from "../playground-store.ts";
 import { inspectManifest, ManifestInspectionError } from "../manifest-inspector.ts";
 import { createMcpAccessAdapter } from "../mcp/adapter.ts";
+import { createMarketAggregator, type MarketSource } from "../mcp/aggregator.ts";
 import { z, type ZodError } from "zod";
 import type { Result } from "../core/result.ts";
 import type {
@@ -341,6 +342,8 @@ export type AgonMarketService = {
 
 export type CreateAgonRoutesOptions = {
   service: AgonMarketService;
+  /** Optional external marketplace adapters. Arc remains the default source. */
+  marketSources?: MarketSource[];
   requireAuth: MiddlewareHandler<{ Variables: AgonRouteVariables }>;
   requireListingWriteAuth?: MiddlewareHandler<{ Variables: AgonRouteVariables }>;
   requireListingConfirmAuth?: MiddlewareHandler<{ Variables: AgonRouteVariables }>;
@@ -645,6 +648,17 @@ function queryFromRequest(context: Context, overrides: Partial<ListingQuery> = {
 export function createAgonRoutes(options: CreateAgonRoutesOptions) {
   const app = new Hono<{ Variables: AgonRouteVariables }>();
   const mcp = createMcpAccessAdapter(options.service);
+  const marketAggregator = createMarketAggregator(options.marketSources ?? [
+    {
+      id: "arc",
+      name: "AGON Arc",
+      async search(input) {
+        const result = await mcp.searchServices(input);
+        if (!result.ok) throw new Error(result.message);
+        return result.value.services;
+      },
+    },
+  ]);
   const requirePrincipal = options.requirePrincipal ?? (async (_context, next) => { await next(); });
 
   async function consumePlaygroundLimit(context: Context<{ Variables: AgonRouteVariables }>, scope: "sample" | "evaluation") {
@@ -985,8 +999,8 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
   app.post("/mcp/search-services", async (context) => {
     const body = await parseJson(context);
     if (isApiError(body)) return context.json(body, 400);
-    const result = await mcp.searchServices(body);
-    return result.ok ? context.json(result.value) : context.json({ error: { code: result.code, message: result.message } }, 400);
+    const result = await marketAggregator.search(body);
+    return context.json(result);
   });
 
   app.get("/mcp/services/:reference", async (context) => {

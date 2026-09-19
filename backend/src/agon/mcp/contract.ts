@@ -29,6 +29,7 @@ export const serviceSearchInput = z.object({
 
 export const serviceReference = z.object({
   reference: id,
+  source: z.object({ id, name: nonEmpty }).strict(),
   name: nonEmpty,
   provider: nonEmpty,
   outcome: nonEmpty,
