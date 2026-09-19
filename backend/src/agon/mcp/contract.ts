@@ -91,6 +91,24 @@ export const providerDraftInput = z.object({
   endpoint: z.string().url().startsWith("https://"),
 }).strict();
 
+export const publishListingInput = z.object({
+  draftId: id,
+  approval: z.literal("approve"),
+}).strict();
+
+export const pauseListingInput = z.object({
+  reference: id,
+  approval: z.literal("approve"),
+}).strict();
+
+export const providerMutationResult = z.object({
+  status: z.enum(["prepared", "published", "paused", "needs_attention"]),
+  nextAction: nonEmpty,
+  draftId: id.optional(),
+  reference: id.optional(),
+  operationId: id.optional(),
+}).strict();
+
 export const mcpOperation = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("search_services"), input: serviceSearchInput }),
   z.object({ kind: z.literal("get_service"), reference: id }),
@@ -100,8 +118,8 @@ export const mcpOperation = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("retry_or_report_work"), hireId: id, action: z.enum(["retry_delivery", "report_problem"]) }),
   z.object({ kind: z.literal("start_listing"), input: providerDraftInput }),
   z.object({ kind: z.literal("check_listing"), draftId: id }),
-  z.object({ kind: z.literal("publish_listing"), draftId: id, approval: z.literal("approve") }),
-  z.object({ kind: z.literal("pause_listing"), reference: id, approval: z.literal("approve") }),
+  z.object({ kind: z.literal("publish_listing"), input: publishListingInput }),
+  z.object({ kind: z.literal("pause_listing"), input: pauseListingInput }),
 ]);
 
 export type McpOperation = z.infer<typeof mcpOperation>;
@@ -110,3 +128,4 @@ export type ServiceReference = z.infer<typeof serviceReference>;
 export type ServiceTerms = z.infer<typeof serviceTerms>;
 export type HireResult = z.infer<typeof hireResult>;
 export type ProviderDraftInput = z.infer<typeof providerDraftInput>;
+export type ProviderMutationResult = z.infer<typeof providerMutationResult>;

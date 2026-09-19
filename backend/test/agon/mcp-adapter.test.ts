@@ -67,5 +67,11 @@ test("MCP provider draft returns a stable draft and pre-publication checks", () 
     assert.equal(checked.value.nextAction, "review_and_approve_publication");
     const rechecked = adapter.checkListing({ draftId: checked.value.draftId });
     assert.equal(rechecked.ok, true);
+    const published = await adapter.publishListing("provider", { draftId: checked.value.draftId, approval: "approve" });
+    assert.equal(published.ok, true);
+    if (published.ok) assert.equal(published.value.nextAction, "connect_provider_wallet");
+    const paused = await adapter.pauseListing("provider", { reference: listing.id, approval: "approve" });
+    assert.equal(paused.ok, true);
+    if (paused.ok) assert.equal(paused.value.nextAction, "operator_pause_required");
   }
 });

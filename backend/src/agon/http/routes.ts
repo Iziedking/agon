@@ -436,6 +436,16 @@ const mcpRetryOrReportSchema = z.object({
   action: z.enum(["retry_delivery", "report_problem"]),
 }).strict();
 
+const mcpPublishListingSchema = z.object({
+  draftId: z.string().trim().min(1).max(256),
+  approval: z.literal("approve"),
+}).strict();
+
+const mcpPauseListingSchema = z.object({
+  reference: z.string().trim().min(1).max(256),
+  approval: z.literal("approve"),
+}).strict();
+
 const x402AgentSpendSchema = z.object({
   listingReference: z.string().regex(/^[1-9]\d*:0x[0-9a-fA-F]{40}:[1-9]\d*$/, "must be a chain:registry:listing reference"),
   recipient: z.string().regex(/^0x[0-9a-fA-F]{40}$/, "must be an EVM address"),
@@ -1059,6 +1069,24 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
     const body = await parseJson(context);
     if (isApiError(body)) return context.json(body, 400);
     const result = mcp.checkListing(body);
+    return result.ok ? context.json(result.value) : context.json({ error: { code: result.code, message: result.message } }, 400);
+  });
+
+  app.post("/mcp/publish-listing", options.requireAuth, async (context) => {
+    const body = await parseJson(context);
+    if (isApiError(body)) return context.json(body, 400);
+    const parsed = mcpPublishListingSchema.safeParse(body);
+    if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
+    const result = await mcp.publishListing(context.get("address"), parsed.data);
+    return result.ok ? context.json(result.value) : context.json({ error: { code: result.code, message: result.message } }, 400);
+  });
+
+  app.post("/mcp/pause-listing", options.requireAuth, async (context) => {
+    const body = await parseJson(context);
+    if (isApiError(body)) return context.json(body, 400);
+    const parsed = mcpPauseListingSchema.safeParse(body);
+    if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
+    const result = await mcp.pauseListing(context.get("address"), parsed.data);
     return result.ok ? context.json(result.value) : context.json({ error: { code: result.code, message: result.message } }, 400);
   });
 

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { AgonListingView, ListingPage, X402ApprovalRequest, X402CallIntentRequest, X402CallIntentView, X402SettlementReadinessView } from "../http/api-types.ts";
-import { authorizeHireInput, previewHireInput, providerDraftInput, serviceReference, serviceSearchInput, serviceTerms, type ProviderDraftInput, type ServiceReference } from "./contract.ts";
+import { authorizeHireInput, pauseListingInput, previewHireInput, providerDraftInput, providerMutationResult, publishListingInput, serviceReference, serviceSearchInput, serviceTerms, type ProviderDraftInput, type ServiceReference } from "./contract.ts";
 
 export type McpResult<T> = { ok: true; value: T } | { ok: false; code: string; message: string };
 
@@ -10,6 +10,8 @@ export type McpCatalogService = {
   prepareX402Call(actor: string, reference: string, request: X402CallIntentRequest): Promise<{ ok: true; value: X402CallIntentView } | { ok: false; error: { code: string; message: string } }>;
   approveX402Call?(actor: string, intentId: string, request: X402ApprovalRequest): Promise<{ ok: true; value: unknown } | { ok: false; error: { code: string; message: string } }>;
   getX402SettlementReadiness?(actor: string, intentId: string): Promise<{ ok: true; value: X402SettlementReadinessView } | { ok: false; error: { code: string; message: string } }>;
+  publishProviderDraft?(actor: string, draft: ProviderDraftInput): Promise<{ ok: true; value: { operationId?: string; reference?: string } } | { ok: false; error: { code: string; message: string } }>;
+  pauseProviderListing?(actor: string, reference: string): Promise<{ ok: true; value: { reference: string; operationId?: string } } | { ok: false; error: { code: string; message: string } }>;
 };
 
 function text(value: unknown, fallback: string): string {
@@ -143,6 +145,26 @@ export function createMcpAccessAdapter(service: McpCatalogService) {
         { name: "wallet_publication", status: "needs_attention" as const, detail: "A provider wallet approval is required before publication." },
       ];
       return { ok: true, value: { draftId: started.value.draftId, checks, nextAction: "review_and_approve_publication" } };
+    },
+
+    async publishListing(actor: string, input: unknown): Promise<McpResult<import("./contract.ts").ProviderMutationResult>> {
+      const parsed = publishListingInput.safeParse(input);
+      if (!parsed.success) return { ok: false, code: "invalid_request", message: parsed.error.issues[0]?.message ?? "Invalid publication request" };
+      const draft = drafts.get(parsed.data.draftId);
+      if (!draft) return { ok: false, code: "draft_not_found", message: "Create or resume the provider draft before publishing." };
+      if (!service.publishProviderDraft) return { ok: true, value: providerMutationResult.parse({ status: "needs_attention", nextAction: "connect_provider_wallet", draftId: parsed.data.draftId }) };
+      const result = await service.publishProviderDraft(actor, draft);
+      if (!result.ok) return { ok: false, code: result.error.code, message: result.error.message };
+      return { ok: true, value: providerMutationResult.parse({ status: "published", nextAction: "wait_for_listing_checks", draftId: parsed.data.draftId, operationId: result.value.operationId, reference: result.value.reference }) };
+    },
+
+    async pauseListing(actor: string, input: unknown): Promise<McpResult<import("./contract.ts").ProviderMutationResult>> {
+      const parsed = pauseListingInput.safeParse(input);
+      if (!parsed.success) return { ok: false, code: "invalid_request", message: parsed.error.issues[0]?.message ?? "Invalid pause request" };
+      if (!service.pauseProviderListing) return { ok: true, value: providerMutationResult.parse({ status: "needs_attention", nextAction: "operator_pause_required", reference: parsed.data.reference }) };
+      const result = await service.pauseProviderListing(actor, parsed.data.reference);
+      if (!result.ok) return { ok: false, code: result.error.code, message: result.error.message };
+      return { ok: true, value: providerMutationResult.parse({ status: "paused", nextAction: "none", reference: result.value.reference, operationId: result.value.operationId }) };
     },
   };
 }
