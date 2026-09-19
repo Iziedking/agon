@@ -46,7 +46,9 @@ function ArcListingDetailPage() {
         setManifestBody(value.manifest.body);
         if (value.manifest.body !== undefined) return;
         void inspectManifest(value.manifest.uri).then((inspection) => {
-          if (!live || !inspection.validation.ok || inspection.manifestHash.toLowerCase() !== value.manifest.hash.toLowerCase()) return;
+          if (!live || !inspection.validation.ok) return;
+          // Keep readable provider metadata visible while still treating an
+          // immutable anchor mismatch as unsafe for hiring.
           setManifestBody(inspection.body);
         }).catch(() => { /* The anchor-only view remains safe and usable. */ });
       })
@@ -118,10 +120,9 @@ function ArcListingDetailPage() {
 
                     <dl className="mt-7 grid gap-px bg-[color:var(--hairline)] sm:grid-cols-2">
                       <OverviewFact label="CATEGORY" value={service.category.label} note={service.category.description} />
-                      <OverviewFact label="AGENT ID" value={`ERC-8004 #${listing.agentId}`} note="The identity that owns this service listing." />
                       <OverviewFact label="PROVIDER" value="Independent service" note="The provider owns and operates this service." />
                       <OverviewFact label="DELIVERY" value={service.endpoint ? "Public service endpoint" : "Delivery details loading"} note={service.endpoint ? "The provider receives requests through its public endpoint." : "Open the service file to inspect delivery details."} />
-                      <OverviewFact label="VERSION" value={`Current version ${listing.version}`} note={listing.status === "Listed" ? "This is the version shown in the marketplace." : "This service is not currently available."} />
+                      <OverviewFact label="DELIVERY TIME" value={service.timeoutMs ? `Up to ${Math.round(service.timeoutMs / 1000)} seconds` : "Provider terms"} note="The service declares its maximum response time." />
                     </dl>
 
                     {service.tags.length ? (
@@ -142,6 +143,10 @@ function ArcListingDetailPage() {
 
                   <details className="border border-[color:var(--hairline-strong)] bg-canvas">
                     <summary className="cursor-pointer px-5 py-5 font-mono text-[11px] uppercase tracking-[0.14em] text-ink sm:px-6">VIEW TECHNICAL PROOF AND PROVENANCE</summary>
+                    <div className="grid gap-px border-b border-[color:var(--hairline)] bg-[color:var(--hairline)] sm:grid-cols-2">
+                      <OverviewFact label="AGENT ID" value={`ERC-8004 #${listing.agentId}`} note="The identity that owns this service listing." />
+                      <OverviewFact label="VERSION" value={`Current version ${listing.version}`} note="The immutable service version used for evidence." />
+                    </div>
                     <ServiceProof listing={listing} proof={proof} assurance={assurance} identityRegistry={null} currentOwner={null} />
                     <div className="border-t border-[color:var(--hairline)] px-5 py-5 sm:px-6">
                       <TagButton variant="ghost" href={`/market/version?listingId=${encodeURIComponent(listing.listingId)}&manifestUri=${encodeURIComponent(listing.manifest.uri)}`}>UPDATE THIS SERVICE</TagButton>

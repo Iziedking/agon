@@ -181,6 +181,7 @@ test("presents indexed manifest details and honest fallbacks", () => {
     category: categoryById("3"),
     tags: ["security", "solidity"],
     endpoint: "https://example.com/review",
+    timeoutMs: null,
     amountUSDC: "12.50",
     hasIndexedManifest: true,
   });

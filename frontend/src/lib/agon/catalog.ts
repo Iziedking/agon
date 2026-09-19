@@ -29,6 +29,7 @@ export type ListingPresentation = {
   category: PresentedCategory;
   tags: string[];
   endpoint: string | null;
+  timeoutMs: number | null;
   amountUSDC: string | null;
   hasIndexedManifest: boolean;
 };
@@ -63,6 +64,7 @@ export function presentListing(listing: AgonListing): ListingPresentation {
   const invocation = record(body?.invocation);
   const pricing = record(body?.pricing);
   const execution = record(body?.execution);
+  const timeoutValue = invocation?.timeoutMs;
   const tagsValue = service?.tags;
   const tags = Array.isArray(tagsValue)
     ? [...new Set(tagsValue.filter((tag): tag is string => typeof tag === "string" && Boolean(tag.trim())).map((tag) => tag.trim()))]
@@ -78,6 +80,7 @@ export function presentListing(listing: AgonListing): ListingPresentation {
     category,
     tags,
     endpoint: text(invocation?.endpoint) ?? text(body?.endpoint) ?? text(execution?.endpoint),
+    timeoutMs: typeof timeoutValue === "number" && Number.isFinite(timeoutValue) && timeoutValue > 0 ? timeoutValue : null,
     amountUSDC: text(pricing?.amountUSDC) ?? text(pricing?.amount),
     hasIndexedManifest: body !== null,
   };

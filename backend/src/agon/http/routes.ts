@@ -4,6 +4,7 @@ import { listPlaygroundCategories, runPlaygroundTask, PlaygroundError } from "..
 import { PlaygroundProviderError, type PlaygroundProviderRunner } from "../playground-provider.ts";
 import { PlaygroundRunConflictError, type PlaygroundRateLimiter, type PlaygroundRunStore } from "../playground-store.ts";
 import { inspectManifest, ManifestInspectionError } from "../manifest-inspector.ts";
+import { createMcpAccessAdapter } from "../mcp/adapter.ts";
 import { z, type ZodError } from "zod";
 import type { Result } from "../core/result.ts";
 import type {
@@ -643,6 +644,7 @@ function queryFromRequest(context: Context, overrides: Partial<ListingQuery> = {
 
 export function createAgonRoutes(options: CreateAgonRoutesOptions) {
   const app = new Hono<{ Variables: AgonRouteVariables }>();
+  const mcp = createMcpAccessAdapter(options.service);
   const requirePrincipal = options.requirePrincipal ?? (async (_context, next) => { await next(); });
 
   async function consumePlaygroundLimit(context: Context<{ Variables: AgonRouteVariables }>, scope: "sample" | "evaluation") {
@@ -975,6 +977,42 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
   app.get("/listings/:reference", async (context) => {
     const result = await options.service.getListing(context.req.param("reference"));
     return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  // Task-level MCP access keeps discovery and inspection public while placing
+  // hire previews behind the same authenticated buyer boundary as the web UI.
+  // Raw x402 and registry details remain inside the existing service adapters.
+  app.post("/mcp/search-services", async (context) => {
+    const body = await parseJson(context);
+    if (isApiError(body)) return context.json(body, 400);
+    const result = await mcp.searchServices(body);
+    return result.ok ? context.json(result.value) : context.json({ error: { code: result.code, message: result.message } }, 400);
+  });
+
+  app.get("/mcp/services/:reference", async (context) => {
+    const result = await mcp.getService(context.req.param("reference"));
+    return result.ok ? context.json(result.value) : context.json({ error: { code: result.code, message: result.message } }, 404);
+  });
+
+  app.post("/mcp/preview-hire", options.requireAuth, async (context) => {
+    const body = await parseJson(context);
+    if (isApiError(body)) return context.json(body, 400);
+    const result = await mcp.previewHire(context.get("address"), body);
+    return result.ok ? context.json(result.value) : context.json({ error: { code: result.code, message: result.message } }, 400);
+  });
+
+  app.post("/mcp/start-listing", options.requireAuth, async (context) => {
+    const body = await parseJson(context);
+    if (isApiError(body)) return context.json(body, 400);
+    const result = mcp.startListing(body);
+    return result.ok ? context.json(result.value, 201) : context.json({ error: { code: result.code, message: result.message } }, 400);
+  });
+
+  app.post("/mcp/check-listing", options.requireAuth, async (context) => {
+    const body = await parseJson(context);
+    if (isApiError(body)) return context.json(body, 400);
+    const result = mcp.checkListing(body);
+    return result.ok ? context.json(result.value) : context.json({ error: { code: result.code, message: result.message } }, 400);
   });
 
   app.post("/escrow/intents", options.requireAuth, async (context) => {

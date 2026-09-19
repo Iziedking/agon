@@ -36,11 +36,15 @@ export function ListingCard({ listing }: { listing: AgonListing }) {
           setMetadataState("error");
           return;
         }
+        // Keep the provider's human-facing name and logo visible even when the
+        // immutable listing anchor is stale. The mismatch must still block
+        // hiring, but a generic AGENT #... card hides the service a buyer is
+        // trying to understand and makes recovery harder.
+        setManifestBody(inspection.body);
         if (inspection.manifestHash.toLowerCase() !== listing.manifest.hash.toLowerCase()) {
           setMetadataState("mismatch");
           return;
         }
-        setManifestBody(inspection.body);
         setMetadataState("ready");
       })
       .catch(() => { if (active) setMetadataState("error"); });
@@ -57,7 +61,11 @@ export function ListingCard({ listing }: { listing: AgonListing }) {
             <VerificationBadge status={listing.verification.status} quarantined={quarantined} />
           </div>
           <h2 className="mt-4 font-sans text-[24px] font-semibold uppercase leading-[1.02] tracking-[-0.035em] text-ink sm:text-[28px]">{service.name}</h2>
-          <p className="mt-3 break-all font-mono text-[10px] uppercase tracking-[0.1em] text-ink-3">AGENT #{listing.agentId} · VERSION {listing.version}</p>
+          <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.1em] text-ink-3">
+            {listing.payment.rail === "Escrow" ? "PROTECTED PROJECT" : "PAY PER USE"}
+            <span aria-hidden className="mx-2">·</span>
+            {listing.endpointQa.status === "passed" ? "READY TO USE" : "AVAILABILITY CHECKING"}
+          </p>
         </div>
       </div>
 

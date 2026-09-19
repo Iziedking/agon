@@ -21,6 +21,26 @@ The same package is downloadable from the Agon BUILD guide at `/downloads/agon-a
 
 Read [references/cli.md](references/cli.md) before preparing, publishing, or verifying a service. Use its config schema and exact commands.
 
+## MCP-first operation
+
+When an MCP-capable host is available, prefer task-level AGON operations over
+asking the user to run protocol commands. The agent should:
+
+1. Search services by the requested outcome, category, price, privacy, and
+   availability.
+2. Explain the provider, one-call price, inputs, outputs, delivery time, and
+   failure policy in plain language.
+3. Preview an immutable terms digest before any payment or escrow action.
+4. Ask for approval only at the irreversible payment or publication boundary.
+5. Execute through the configured wallet policy, preserving caps, recipient
+   allowlists, expiry, and the kill switch.
+6. Return delivery, payment, and reconciliation evidence as separate facts.
+
+Never require a buyer to construct x402 headers, registry calldata, manifest
+hashes, or facilitator requests manually. Keep those details in an advanced
+diagnostic result. Pay-per-call is the default; use escrow only when the
+service terms require milestones or acceptance.
+
 ## Follow the workflow
 
 1. Confirm the current directory is the Agon repository root and `frontend/package.json` exposes the `asp` script.
