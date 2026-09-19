@@ -48,6 +48,7 @@ function toServiceReference(listing: AgonListingView): ServiceReference {
 
 export function createMcpAccessAdapter(service: McpCatalogService) {
   const hires = new Map<string, { terms: ReturnType<typeof serviceTerms.parse>; intent: X402CallIntentView }>();
+  const drafts = new Map<string, ProviderDraftInput>();
 
   function workStatus(readiness: X402SettlementReadinessView): "preparing" | "paid" | "working" | "delivered" | "reconciling" | "complete" | "needs_attention" {
     if (readiness.status === "terminal" && readiness.state === "reconciled") return "complete";
@@ -127,11 +128,14 @@ export function createMcpAccessAdapter(service: McpCatalogService) {
       const parsed = providerDraftInput.safeParse(input);
       if (!parsed.success) return { ok: false, code: "invalid_request", message: parsed.error.issues[0]?.message ?? "Invalid provider draft" };
       const draftId = `draft-${createHash("sha256").update(JSON.stringify(parsed.data)).digest("hex").slice(0, 24)}`;
+      drafts.set(draftId, parsed.data);
       return { ok: true, value: { draftId, draft: parsed.data, nextAction: "run_listing_checks" } };
     },
 
     checkListing(input: unknown): McpResult<{ draftId: string; checks: Array<{ name: string; status: "passed" | "needs_attention"; detail: string }>; nextAction: string }> {
-      const started = this.startListing(input);
+      const reference = input && typeof input === "object" && "draftId" in input && typeof (input as { draftId?: unknown }).draftId === "string" ? (input as { draftId: string }).draftId : null;
+      const draft = reference ? drafts.get(reference) : null;
+      const started = draft && reference ? { ok: true as const, value: { draftId: reference, draft, nextAction: "run_listing_checks" } } : this.startListing(input);
       if (!started.ok) return started;
       const checks = [
         { name: "secure_endpoint", status: "passed" as const, detail: "The service uses a public HTTPS endpoint." },

@@ -65,5 +65,7 @@ test("MCP provider draft returns a stable draft and pre-publication checks", () 
     assert.match(checked.value.draftId, /^draft-/);
     assert.equal(checked.value.checks[0]?.status, "passed");
     assert.equal(checked.value.nextAction, "review_and_approve_publication");
+    const rechecked = adapter.checkListing({ draftId: checked.value.draftId });
+    assert.equal(rechecked.ok, true);
   }
 });
