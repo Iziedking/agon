@@ -42,6 +42,7 @@ import {
   createManifestDerivedPlaygroundProviderRunner,
 } from "../agon/manifest-derived-provider.ts";
 import { agonCertificationWorkerLoop } from "../agon/certification-worker.ts";
+import { isAgonCertificationSchemaReady } from "../agon/certification-readiness.ts";
 import { PostgresAgonOperationStore } from "../agon/write/repository.js";
 import { CachedAgonReadiness } from "../agon/write/readiness.js";
 import { ViemAgonWriteAdapter } from "../agon/write/adapter.js";
@@ -502,12 +503,7 @@ const agonService = new PostgresAgonMarketService(agonRepository, {
     enabled: config.agon.x402.reconciliationEnabled,
   }),
   endpointQa: config.agon.certification.workerEnabled
-    ? async () => {
-        const result = await pool.query<{ available: boolean }>(
-          "select to_regclass('public.agon_certification_jobs') is not null as available",
-        );
-        return result.rows[0]?.available === true;
-      }
+    ? () => isAgonCertificationSchemaReady(pool)
     : false,
   x402AgentSpendExecutor,
   escrowReadAdapter: agonEscrowReadAdapter,
