@@ -426,6 +426,16 @@ const x402ReconciliationSchema = z.object({
   confirmation: z.literal("RECONCILE_ARC_TESTNET_X402"),
 }).strict();
 
+const mcpAuthorizeHireSchema = z.object({
+  termsDigest: z.string().regex(/^0x[0-9a-fA-F]{64}$/),
+  approval: z.literal("approve"),
+  idempotencyKey: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/),
+}).strict();
+
+const mcpRetryOrReportSchema = z.object({
+  action: z.enum(["retry_delivery", "report_problem"]),
+}).strict();
+
 const x402AgentSpendSchema = z.object({
   listingReference: z.string().regex(/^[1-9]\d*:0x[0-9a-fA-F]{40}:[1-9]\d*$/, "must be a chain:registry:listing reference"),
   recipient: z.string().regex(/^0x[0-9a-fA-F]{40}$/, "must be an EVM address"),
@@ -1013,6 +1023,29 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
     if (isApiError(body)) return context.json(body, 400);
     const result = await mcp.previewHire(context.get("address"), body);
     return result.ok ? context.json(result.value) : context.json({ error: { code: result.code, message: result.message } }, 400);
+  });
+
+  app.post("/mcp/hire/:hireId/authorize", options.requireAuth, async (context) => {
+    const body = await parseJson(context);
+    if (isApiError(body)) return context.json(body, 400);
+    const parsed = mcpAuthorizeHireSchema.safeParse(body);
+    if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
+    const result = await mcp.authorizeHire(context.get("address"), context.req.param("hireId"), parsed.data);
+    return result.ok ? context.json(result.value) : context.json({ error: { code: result.code, message: result.message } }, 400);
+  });
+
+  app.get("/mcp/hire/:hireId", options.requireAuth, async (context) => {
+    const result = await mcp.getWork(context.get("address"), context.req.param("hireId"));
+    return result.ok ? context.json(result.value) : context.json({ error: { code: result.code, message: result.message } }, 404);
+  });
+
+  app.post("/mcp/hire/:hireId/retry-or-report", options.requireAuth, async (context) => {
+    const body = await parseJson(context);
+    if (isApiError(body)) return context.json(body, 400);
+    const parsed = mcpRetryOrReportSchema.safeParse(body);
+    if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
+    const result = await mcp.retryOrReportWork(context.req.param("hireId"), parsed.data.action);
+    return result.ok ? context.json(result.value) : context.json({ error: { code: result.code, message: result.message } }, 404);
   });
 
   app.post("/mcp/start-listing", options.requireAuth, async (context) => {

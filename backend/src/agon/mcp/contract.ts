@@ -95,7 +95,7 @@ export const mcpOperation = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("search_services"), input: serviceSearchInput }),
   z.object({ kind: z.literal("get_service"), reference: id }),
   z.object({ kind: z.literal("preview_hire"), input: previewHireInput }),
-  z.object({ kind: z.literal("authorize_hire"), input: authorizeHireInput }),
+  z.object({ kind: z.literal("authorize_hire"), hireId: id, input: authorizeHireInput }),
   z.object({ kind: z.literal("get_work"), hireId: id }),
   z.object({ kind: z.literal("retry_or_report_work"), hireId: id, action: z.enum(["retry_delivery", "report_problem"]) }),
   z.object({ kind: z.literal("start_listing"), input: providerDraftInput }),

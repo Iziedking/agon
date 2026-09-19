@@ -34,6 +34,24 @@ test("MCP preview binds terms to the provider price and input", async () => {
   }
 });
 
+test("MCP authorization and work status stay task-oriented", async () => {
+  const adapter = createMcpAccessAdapter({
+    async listListings() { return { ok: true, value: { items: [], nextCursor: null } }; },
+    async getListing() { return { ok: true, value: listing }; },
+    async prepareX402Call() { return { ok: true, value: { intentId: "intent-1", actor: "buyer", idempotencyKey: "mcp-test-001", listingReference: listing.id, listingVersion: "1", inputHash: `0x${"1".repeat(64)}`, maxAmountUSDC: "0.04", state: "prepared", executionEnabled: false, nextAction: "execution_adapter_not_enabled" } }; },
+    async approveX402Call() { return { ok: true, value: { state: "approved" } }; },
+    async getX402SettlementReadiness() { return { ok: true, value: { receiptId: "receipt-1", intentId: "intent-1", state: "service_delivery_pending", network: "eip155:5042002", settlementRef: null, providerTransferId: null, status: "service_delivery_pending", reason: "provider delivery pending", executionEnabled: false, nextAction: "deliver_service", checkedAt: new Date().toISOString() } }; },
+  });
+  const preview = await adapter.previewHire("buyer", { serviceReference: listing.id, input: { records: [] } });
+  assert.equal(preview.ok, true);
+  if (!preview.ok) return;
+  const approved = await adapter.authorizeHire("buyer", "intent-1", { termsDigest: preview.value.terms.termsDigest, approval: "approve", idempotencyKey: "hire-test-001" });
+  assert.equal(approved.ok, true);
+  const work = await adapter.getWork("buyer", "intent-1");
+  assert.equal(work.ok, true);
+  if (work.ok) assert.equal(work.value.status, "working");
+});
+
 test("MCP provider draft returns a stable draft and pre-publication checks", () => {
   const adapter = createMcpAccessAdapter({
     async listListings() { return { ok: true, value: { items: [], nextCursor: null } }; },
