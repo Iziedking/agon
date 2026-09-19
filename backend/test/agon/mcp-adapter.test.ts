@@ -52,7 +52,7 @@ test("MCP authorization and work status stay task-oriented", async () => {
   if (work.ok) assert.equal(work.value.status, "working");
 });
 
-test("MCP provider draft returns a stable draft and pre-publication checks", () => {
+test("MCP provider draft returns a stable draft and pre-publication checks", async () => {
   const adapter = createMcpAccessAdapter({
     async listListings() { return { ok: true, value: { items: [], nextCursor: null } }; },
     async getListing() { return { ok: false, error: { code: "not_found", message: "unused" } }; },
