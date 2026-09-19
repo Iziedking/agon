@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { AgonListingView, ListingPage, X402ApprovalRequest, X402CallIntentRequest, X402CallIntentView, X402SettlementReadinessView } from "../http/api-types.ts";
-import { authorizeHireInput, pauseListingInput, previewHireInput, providerDraftInput, providerMutationResult, publishListingInput, serviceReference, serviceSearchInput, serviceTerms, type ProviderDraftInput, type ServiceReference } from "./contract.ts";
+import { authorizeHireInput, compileListingInput, pauseListingInput, previewHireInput, providerDraftInput, providerMutationResult, publishListingInput, serviceReference, serviceSearchInput, serviceTerms, type ProviderDraftInput, type ServiceReference } from "./contract.ts";
+import { compileProviderManifest } from "./provider-manifest.ts";
 
 export type McpResult<T> = { ok: true; value: T } | { ok: false; code: string; message: string };
 
@@ -165,6 +166,18 @@ export function createMcpAccessAdapter(service: McpCatalogService) {
       const result = await service.pauseProviderListing(actor, parsed.data.reference);
       if (!result.ok) return { ok: false, code: result.error.code, message: result.error.message };
       return { ok: true, value: providerMutationResult.parse({ status: "paused", nextAction: "none", reference: result.value.reference, operationId: result.value.operationId }) };
+    },
+
+    compileListing(input: unknown): McpResult<ReturnType<typeof compileProviderManifest>> {
+      const parsed = compileListingInput.safeParse(input);
+      if (!parsed.success) return { ok: false, code: "invalid_request", message: parsed.error.issues[0]?.message ?? "Invalid listing compilation request" };
+      const draft = drafts.get(parsed.data.draftId);
+      if (!draft) return { ok: false, code: "draft_not_found", message: "Create or resume the provider draft before compiling it." };
+      try {
+        return { ok: true, value: compileProviderManifest(draft, { agentId: parsed.data.agentId, logoUrl: parsed.data.logoUrl }) };
+      } catch (error) {
+        return { ok: false, code: "manifest_invalid", message: error instanceof Error ? error.message : "Provider manifest is invalid" };
+      }
     },
   };
 }

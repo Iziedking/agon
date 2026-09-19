@@ -101,6 +101,12 @@ export const pauseListingInput = z.object({
   approval: z.literal("approve"),
 }).strict();
 
+export const compileListingInput = z.object({
+  draftId: id,
+  agentId: z.string().regex(/^\d+$/),
+  logoUrl: z.string().url().startsWith("https://").optional(),
+}).strict();
+
 export const providerMutationResult = z.object({
   status: z.enum(["prepared", "published", "paused", "needs_attention"]),
   nextAction: nonEmpty,
@@ -120,6 +126,7 @@ export const mcpOperation = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("check_listing"), draftId: id }),
   z.object({ kind: z.literal("publish_listing"), input: publishListingInput }),
   z.object({ kind: z.literal("pause_listing"), input: pauseListingInput }),
+  z.object({ kind: z.literal("compile_listing"), input: compileListingInput }),
 ]);
 
 export type McpOperation = z.infer<typeof mcpOperation>;
@@ -129,3 +136,4 @@ export type ServiceTerms = z.infer<typeof serviceTerms>;
 export type HireResult = z.infer<typeof hireResult>;
 export type ProviderDraftInput = z.infer<typeof providerDraftInput>;
 export type ProviderMutationResult = z.infer<typeof providerMutationResult>;
+export type CompileListingInput = z.infer<typeof compileListingInput>;

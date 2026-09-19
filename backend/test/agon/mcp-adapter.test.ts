@@ -73,5 +73,11 @@ test("MCP provider draft returns a stable draft and pre-publication checks", asy
     const paused = await adapter.pauseListing("provider", { reference: listing.id, approval: "approve" });
     assert.equal(paused.ok, true);
     if (paused.ok) assert.equal(paused.value.nextAction, "operator_pause_required");
+    const compiled = adapter.compileListing({ draftId: checked.value.draftId, agentId: "42" });
+    assert.equal(compiled.ok, true);
+    if (compiled.ok) {
+      assert.equal(compiled.value.body.identity.agentId, "42");
+      assert.match(compiled.value.manifestHash, /^0x[0-9a-f]{64}$/);
+    }
   }
 });

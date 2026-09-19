@@ -446,6 +446,12 @@ const mcpPauseListingSchema = z.object({
   approval: z.literal("approve"),
 }).strict();
 
+const mcpCompileListingSchema = z.object({
+  draftId: z.string().trim().min(1).max(256),
+  agentId: z.string().regex(/^\d+$/),
+  logoUrl: z.string().url().startsWith("https://").optional(),
+}).strict();
+
 const x402AgentSpendSchema = z.object({
   listingReference: z.string().regex(/^[1-9]\d*:0x[0-9a-fA-F]{40}:[1-9]\d*$/, "must be a chain:registry:listing reference"),
   recipient: z.string().regex(/^0x[0-9a-fA-F]{40}$/, "must be an EVM address"),
@@ -1087,6 +1093,15 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
     const parsed = mcpPauseListingSchema.safeParse(body);
     if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
     const result = await mcp.pauseListing(context.get("address"), parsed.data);
+    return result.ok ? context.json(result.value) : context.json({ error: { code: result.code, message: result.message } }, 400);
+  });
+
+  app.post("/mcp/compile-listing", options.requireAuth, async (context) => {
+    const body = await parseJson(context);
+    if (isApiError(body)) return context.json(body, 400);
+    const parsed = mcpCompileListingSchema.safeParse(body);
+    if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
+    const result = mcp.compileListing(parsed.data);
     return result.ok ? context.json(result.value) : context.json({ error: { code: result.code, message: result.message } }, 400);
   });
 
