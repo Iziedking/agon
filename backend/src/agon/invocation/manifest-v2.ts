@@ -53,6 +53,7 @@ export type AgonServiceManifestV2 = {
   certification: {
     adapter: "agon-http";
     adapterVersion: "1";
+    endpoint?: string;
   };
 };
 
@@ -124,7 +125,11 @@ export const AGON_SERVICE_MANIFEST_V2_JSON_SCHEMA = {
       type: "object",
       additionalProperties: false,
       required: ["adapter", "adapterVersion"],
-      properties: { adapter: { const: "agon-http" }, adapterVersion: { const: "1" } },
+      properties: {
+        adapter: { const: "agon-http" },
+        adapterVersion: { const: "1" },
+        endpoint: { type: "string", format: "uri", pattern: "^https://" },
+      },
     },
   },
   $defs: {
@@ -223,6 +228,7 @@ function normalize(input: Record<string, unknown>): AgonServiceManifestV2 {
     certification: {
       adapter: "agon-http",
       adapterVersion: "1",
+      ...(certification.endpoint === undefined ? {} : { endpoint: String(certification.endpoint).trim() }),
     },
   };
 }
@@ -250,6 +256,9 @@ export function normalizeManifestV2(input: unknown): ManifestV2Validation {
     return { ok: false, code: "invalid_pricing", message: "pricing must pin Arc Testnet USDC with up to 6 decimals" };
   }
   if (!isRecord(certification) || certification.adapter !== "agon-http" || certification.adapterVersion !== "1") return { ok: false, code: "invalid_certification", message: "manifest certification adapter is unsupported" };
+  if (certification.endpoint !== undefined && (typeof certification.endpoint !== "string" || !safePublicHttps(certification.endpoint))) {
+    return { ok: false, code: "invalid_certification", message: "certification.endpoint must use public HTTPS" };
+  }
   return { ok: true, value: normalize(input) };
 }
 

@@ -145,3 +145,13 @@ test("refuses new jobs when the deployed escrow interface cannot accept generate
     },
   });
 });
+
+test("reports endpoint QA only when its runtime dependency is available", async () => {
+  const unavailable = new PostgresAgonMarketService(repository, { endpointQa: async () => false });
+  const available = new PostgresAgonMarketService(repository, { endpointQa: async () => true });
+  const failed = new PostgresAgonMarketService(repository, { endpointQa: async () => { throw new Error("database unavailable"); } });
+
+  assert.equal((await unavailable.getCapabilities()).endpointQa, false);
+  assert.equal((await available.getCapabilities()).endpointQa, true);
+  assert.equal((await failed.getCapabilities()).endpointQa, false);
+});

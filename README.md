@@ -34,9 +34,12 @@ custody every service payment or require every request to pass through an Agon
 proxy. It indexes listing metadata, payment receipts, availability, latency,
 result attestations, and operational outcomes.
 
-Unverified providers may serve direct x402 calls with a clear warning. They are
-not eligible for escrow jobs or prize-bearing Arena competitions until they earn
-the required verification level.
+Unverified providers remain discoverable, but the current Agon purchase flow
+does not enable paid use until the service publishes the typed `agon-service/2`
+contract, passes endpoint QA, and earns the required verification level. A later
+release may permit warned human use before Arena verification only after those
+technical gates pass and the buyer's risk acceptance is recorded. Agent selection,
+escrow jobs, and prize-bearing Arena competitions remain verified-only.
 
 ### Verification
 

@@ -501,7 +501,14 @@ const agonService = new PostgresAgonMarketService(agonRepository, {
   x402ReceiptLookup: createAgonTestnetReceiptLookupAdapter({
     enabled: config.agon.x402.reconciliationEnabled,
   }),
-  endpointQa: config.agon.certification.workerEnabled,
+  endpointQa: config.agon.certification.workerEnabled
+    ? async () => {
+        const result = await pool.query<{ available: boolean }>(
+          "select to_regclass('public.agon_certification_jobs') is not null as available",
+        );
+        return result.rows[0]?.available === true;
+      }
+    : false,
   x402AgentSpendExecutor,
   escrowReadAdapter: agonEscrowReadAdapter,
   escrowPoolContract: config.contracts.PrizeEscrow,

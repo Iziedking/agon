@@ -9,6 +9,7 @@ import {
 
 const manifestUrl = "https://provider.example/agon-service.json";
 const endpointUrl = "https://provider.example/x402/analyze";
+const certificationUrl = "https://provider.example/agon/v1/challenge";
 const baseProvider = {
   agentId: "886270",
   serviceKey: `0x${"11".repeat(32)}`,
@@ -16,10 +17,34 @@ const baseProvider = {
   listingVersion: "3",
 };
 const manifest = {
-  protocol: "agon-service/1",
-  endpoint: endpointUrl,
-  tags: ["analysis"],
-  pricing: { rail: "x402", amountUSDC: "0.01" },
+  protocol: "agon-service/2",
+  identity: { chainId: 5042002, agentId: baseProvider.agentId, serviceKey: baseProvider.serviceKey },
+  service: {
+    name: "Provider",
+    description: "Returns a bounded analysis result.",
+    category: "analysis",
+    tags: ["analysis"],
+    version: baseProvider.listingVersion,
+    capabilities: ["analysis"],
+  },
+  invocation: {
+    endpoint: endpointUrl,
+    method: "POST",
+    requestSchema: { type: "object" },
+    responseSchema: { type: "object" },
+    timeoutMs: 12_000,
+    maxResponseBytes: 65_536,
+    idempotency: "supported",
+    sideEffects: "none",
+    privacy: { retention: "none", sendsToThirdParties: false, description: "No retention." },
+  },
+  pricing: {
+    rail: "x402",
+    amountUSDC: "0.01",
+    network: "eip155:5042002",
+    asset: "0x3600000000000000000000000000000000000000",
+  },
+  certification: { adapter: "agon-http", adapterVersion: "1", endpoint: certificationUrl },
 };
 
 function provider() {
@@ -32,7 +57,7 @@ function fetchForManifest() {
     if (request.method === "GET") {
       return new Response(JSON.stringify(manifest), { status: 200, headers: { "content-type": "application/json" } });
     }
-    if (request.url === endpointUrl) {
+    if (request.url === certificationUrl) {
       return new Response(JSON.stringify({
         protocol: "agon-playground/1",
         agent: { name: "Provider", version: "1.0.0", capabilities: ["analysis"] },
@@ -57,6 +82,28 @@ test("automatic provider runner fetches and hash-checks the listing manifest", a
   });
   assert.equal(result.passed, true);
   assert.equal(result.providerHost, "provider.example");
+});
+
+test("automatic certification refuses legacy manifests without the typed invocation contract", async () => {
+  const legacy = {
+    version: 1,
+    endpoint: endpointUrl,
+    tags: ["analysis"],
+    pricing: { rail: "x402", amountUSDC: "0.01" },
+    execution: { network: "eip155:5042002", challengeEndpoint: certificationUrl, externalWrites: false },
+  };
+  const runner = createManifestDerivedPlaygroundProviderRunner({
+    fetch: async () => new Response(JSON.stringify(legacy), { status: 200, headers: { "content-type": "application/json" } }),
+    resolve: async () => ["93.184.216.34"],
+  });
+  await assert.rejects(
+    runner.run({
+      provider: { ...baseProvider, manifestUri: manifestUrl, manifestHash: canonicalManifestHash(legacy) },
+      task: { id: "evidence-under-pressure", category: "analysis", title: "test", adversarialPrompt: "test", capability: "analysis" },
+      taskInput: {},
+    }),
+    /manifest protocol must be agon-service\/2/,
+  );
 });
 
 test("automatic provider runner fails closed on a manifest hash mismatch", async () => {
@@ -90,4 +137,3 @@ test("automatic endpoint QA uses the manifest payment endpoint and records 402",
   assert.equal(result.passed, true);
   assert.equal(result.evidence.endpointStatus, 402);
 });
-

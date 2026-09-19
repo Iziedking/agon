@@ -137,7 +137,7 @@ export type AgonWriteAdapter = {
 export type PostgresAgonMarketServiceOptions = {
   writer?: AgonWriteAdapter;
   identityReads?: boolean;
-  endpointQa?: boolean;
+  endpointQa?: boolean | (() => Promise<boolean>);
   directX402?: boolean;
   x402ExecutionEnabled?: boolean;
   x402ExecutionPolicy?: import("../execution/x402-policy.ts").X402ExecutionPolicy;
@@ -2594,12 +2594,20 @@ export class PostgresAgonMarketService implements AgonMarketService {
       externalRegistry: { identity: null, validation: null },
       reasons: ["protocol_readiness_unconfigured"],
     };
+    let endpointQa = false;
+    try {
+      endpointQa = typeof this.options.endpointQa === "function"
+        ? await this.options.endpointQa()
+        : this.options.endpointQa ?? false;
+    } catch {
+      endpointQa = false;
+    }
     return {
       identityReads: this.options.identityReads ?? false,
       profileWrites: writesReady,
       listingReads: true,
       listingWrites: writesReady,
-      endpointQa: this.options.endpointQa ?? false,
+      endpointQa,
       directX402: this.options.directX402 ?? this.options.x402ExecutionEnabled === true,
       escrow: Boolean(this.options.agonJobEscrowAddress),
       jobEscrowCalldataSupported: this.options.jobEscrowCalldataSupported === true,

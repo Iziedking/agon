@@ -4,6 +4,7 @@ import {
   ManifestInspectionError,
   type ManifestInspection,
 } from "./manifest-inspector.ts";
+import { normalizeManifestV2 } from "./core/manifest.ts";
 import {
   createHttpPlaygroundProviderRunner,
   PlaygroundProviderError,
@@ -35,9 +36,10 @@ function record(value: unknown): ManifestRecord | null {
 function declaredEndpoint(body: unknown, kind: "challenge" | "payment"): string {
   const root = record(body);
   const invocation = record(root?.invocation);
+  const certification = record(root?.certification);
   const execution = record(root?.execution);
   const candidates = kind === "challenge"
-    ? [execution?.challengeEndpoint, root?.challengeEndpoint, invocation?.challengeEndpoint, invocation?.endpoint, root?.endpoint]
+    ? [certification?.endpoint, execution?.challengeEndpoint, root?.challengeEndpoint, invocation?.challengeEndpoint, invocation?.endpoint, root?.endpoint]
     : [invocation?.endpoint, root?.endpoint];
   const endpoint = candidates.find((value): value is string => typeof value === "string" && value.trim().length > 0);
   if (!endpoint) {
@@ -65,6 +67,10 @@ async function loadManifest(provider: ListedPlaygroundProvider, options: Manifes
   }
   if (!inspection.validation.ok) {
     throw new PlaygroundProviderError("manifest_invalid", inspection.validation.message);
+  }
+  const contract = normalizeManifestV2(inspection.body);
+  if (!contract.ok) {
+    throw new PlaygroundProviderError("manifest_contract_unsupported", contract.message);
   }
   if (inspection.manifestHash.toLowerCase() !== provider.manifestHash.toLowerCase()) {
     throw new PlaygroundProviderError("manifest_hash_mismatch", "The fetched manifest hash does not match the immutable listing version.");
