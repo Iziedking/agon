@@ -121,3 +121,27 @@ test("keeps direct x402 declared when no endpoint evidence exists", async () => 
   assert.equal(result.value.endpointQa.endpointStatus, null);
   assert.equal(result.value.endpointQa.attempts, 0);
 });
+
+test("refuses new jobs when the deployed escrow interface cannot accept generated calldata", async () => {
+  const incompatibleService = new PostgresAgonMarketService(repository, {
+    agonJobEscrowAddress: "0x4444444444444444444444444444444444444444",
+    jobEscrowCalldataSupported: false,
+    jobEscrowExecutionReason: "deployed_abi_requires_buyer_supplied_fee",
+  });
+
+  const result = await incompatibleService.prepareAgonJobEscrowIntent(PROVIDER, {
+    listingReference: `${CHAIN_ID}:${SERVICE_REGISTRY}:1`,
+    idempotencyKey: "incompatible-escrow-001",
+    amountBaseUnits: "1000000",
+    reviewHours: 24,
+    expiresAt: "2026-08-30T12:00:00.000Z",
+  });
+
+  assert.deepEqual(result, {
+    ok: false,
+    error: {
+      code: "capability_unavailable",
+      message: "The deployed AgonJobEscrow interface is not supported for new jobs",
+    },
+  });
+});

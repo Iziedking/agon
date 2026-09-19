@@ -104,7 +104,10 @@ export function createViemAgonJobEscrowTransactionWriter(options: {
   const allowedValues = rawAllowed.map((value) => address(value));
   const allowed = new Set(allowedValues.filter((value): value is `0x${string}` => value !== null));
   const timeoutMs = Math.max(500, Math.min(options.receiptTimeoutMs ?? RECEIPT_TIMEOUT_MS, 120_000));
-  const enabled = options.enabled === true && options.client !== undefined && configuredContract !== null && allowedValues.every((value) => value !== null);
+  // The deployed legacy contract accepts a buyer-supplied fee parameter. This
+  // writer intentionally supports only the fixed/governed five-argument ABI.
+  const supportedInterface = options.escrowVersion !== "legacy";
+  const enabled = options.enabled === true && supportedInterface && options.client !== undefined && configuredContract !== null && allowedValues.every((value) => value !== null);
 
   return {
     enabled,

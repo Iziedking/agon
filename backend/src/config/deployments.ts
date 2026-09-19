@@ -7,6 +7,10 @@ const address = z.string().regex(/^0x[a-fA-F0-9]{40}$/, "expected deployed contr
 // the parser forward-compatible while protocol readiness validates the
 // contract records it actually consumes.
 const sourceVerification = z.record(z.unknown()).optional();
+const contractInterfaces = z.object({
+  AgonJobEscrow: z.enum(["legacy-fee-input", "v1-fixed-fee"]).optional(),
+  AgonJobEscrowV2: z.literal("v2-governed-fee").optional(),
+}).optional();
 const schema = z.object({
   chainId: z.number().int().positive(),
   deployBlock: z.number().int().nonnegative().optional(),
@@ -19,6 +23,7 @@ const schema = z.object({
     AgonSyndicateRegistry: address.optional(),
     AgonPrizeVault: address.optional(),
   }),
+  contractInterfaces,
   external: z.object({
     IdentityRegistry: z.object({ address, chainId: z.number().int().positive() }),
     ValidationRegistry: z.object({ address, chainId: z.number().int().positive() }).optional(),
@@ -35,6 +40,10 @@ export type AgonDeployment = z.infer<typeof schema> & {
     AgonArena?: `0x${string}`;
     AgonSyndicateRegistry?: `0x${string}`;
     AgonPrizeVault?: `0x${string}`;
+  };
+  contractInterfaces?: {
+    AgonJobEscrow?: "legacy-fee-input" | "v1-fixed-fee";
+    AgonJobEscrowV2?: "v2-governed-fee";
   };
   external: {
     IdentityRegistry: { address: `0x${string}`; chainId: number };

@@ -76,9 +76,11 @@ agent's measured contribution and owner snapshot.
 - ASP CLI and Agon Skills for coding-agent workflows. State-changing commands
   require explicit confirmation and never accept private keys.
 
-Agon job escrow, Arena evaluation contracts, syndicates, prize vaults, and
-expanded operational evidence are separate protocol layers and are not claimed
-as deployed here.
+The job escrow, Arena, syndicate registry, and prize vault contracts are
+deployed and source-verified on Arc Testnet. Deployment does not mean their
+product workflows are ready. Job-escrow execution, automatic Arena evaluation,
+syndicate operations, and prize funding remain capability-gated until their
+signers, reconciliation, recovery paths, and release checks pass.
 
 ## Live contract inventory
 
@@ -92,6 +94,10 @@ contract an active Agon dependency.
 | --- | --- | --- |
 | `AgonProfileRegistry` | `0xE0c7A2545C2f4eE6d2bD797B6f2742c73E640574` | Active Agon foundation |
 | `AgonServiceRegistry` | `0x2144C156B0a4581da2D046C2E41AC41C6C3938CB` | Active Agon foundation |
+| `AgonJobEscrow` | `0x6373E576AcFC9DE6cB182dA201d8e857D2A918aD` | Deployed and verified; live execution is capability-gated |
+| `AgonArena` | `0x2c6196dB6491A3D3837f53Ce72B84778bc5E9d8F` | Deployed and verified; automatic evaluation is incomplete |
+| `AgonSyndicateRegistry` | `0xD77312288E4019bD3Fc7a6C0234B9c84D09C1Ab4` | Deployed and verified; routine product operations are inactive |
+| `AgonPrizeVault` | `0xd3a538fD48FA81CF102E5b5381B47e46eC176D3b` | Deployed and verified; prize funding and claims are inactive |
 
 ### External contracts used or reserved by the protocol
 

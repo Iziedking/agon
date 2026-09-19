@@ -168,6 +168,10 @@ export type PostgresAgonMarketServiceOptions = {
   jobEscrowReadAdapter?: AgonJobEscrowReadAdapter;
   /** Server-side deployed AgonJobEscrow lifecycle writer; disabled unless explicitly enabled. */
   jobEscrowTransactionAdapter?: AgonJobEscrowTransactionAdapter;
+  /** True only when the configured deployment interface matches generated calldata. */
+  jobEscrowCalldataSupported?: boolean;
+  /** Stable operator-facing reason when job escrow execution is unavailable. */
+  jobEscrowExecutionReason?: string | null;
   agonJobEscrowAddress?: `0x${string}`;
   agonArenaAddress?: `0x${string}`;
   validationRegistryAddress?: `0x${string}`;
@@ -1014,6 +1018,7 @@ export class PostgresAgonMarketService implements AgonMarketService {
     if (intent.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the escrow intent owner can prepare this transaction" } };
     if (intent.state !== "prepared") return { ok: false, error: { code: "execution_not_ready", message: `escrow intent is ${intent.state}; funding is no longer ready` } };
     if (!this.options.agonJobEscrowAddress) return { ok: false, error: { code: "capability_unavailable", message: "AgonJobEscrow is not configured" } };
+    if (this.options.jobEscrowCalldataSupported !== true) return { ok: false, error: { code: "capability_unavailable", message: "The deployed AgonJobEscrow interface is not supported for transaction preparation" } };
     if (operation !== "fund") return { ok: false, error: { code: "validation_failed", message: "unsupported escrow transaction" } };
 
     const clientReference = keccak256(stringToHex(intent.idempotencyKey));
@@ -1061,6 +1066,7 @@ export class PostgresAgonMarketService implements AgonMarketService {
     request: AgonJobEscrowIntentRequest,
   ): Promise<Result<AgonJobEscrowIntentView, AgonServiceError>> {
     if (!this.options.agonJobEscrowAddress) return { ok: false, error: { code: "capability_unavailable", message: "AgonJobEscrow is not configured" } };
+    if (this.options.jobEscrowCalldataSupported !== true) return { ok: false, error: { code: "capability_unavailable", message: "The deployed AgonJobEscrow interface is not supported for new jobs" } };
     const listing = await this.getListing(request.listingReference);
     if (!listing.ok) return listing;
     const expiresAt = new Date(request.expiresAt);
@@ -1156,6 +1162,7 @@ export class PostgresAgonMarketService implements AgonMarketService {
     if (!intent) return { ok: false, error: { code: "not_found", message: "AgonJobEscrow intent not found" } };
     if (intent.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the job escrow intent owner can prepare this transaction" } };
     if (intent.state !== "prepared") return { ok: false, error: { code: "execution_not_ready", message: `job escrow intent is ${intent.state}; createJob is no longer ready` } };
+    if (this.options.jobEscrowCalldataSupported !== true) return { ok: false, error: { code: "capability_unavailable", message: "The deployed AgonJobEscrow interface is not supported for transaction preparation" } };
     const plan = buildAgonJobEscrowWritePlan({
       contractAddress: intent.escrowContract,
       action: "create",
@@ -2595,7 +2602,9 @@ export class PostgresAgonMarketService implements AgonMarketService {
       endpointQa: this.options.endpointQa ?? false,
       directX402: this.options.directX402 ?? this.options.x402ExecutionEnabled === true,
       escrow: Boolean(this.options.agonJobEscrowAddress),
+      jobEscrowCalldataSupported: this.options.jobEscrowCalldataSupported === true,
       jobEscrowExecution: this.options.jobEscrowTransactionAdapter?.enabled === true,
+      jobEscrowExecutionReason: this.options.jobEscrowTransactionAdapter?.enabled === true ? null : this.options.jobEscrowExecutionReason ?? "job_escrow_execution_disabled",
       arenaVerification: Boolean(this.options.agonArenaAddress),
       syndicateRegistry: Boolean(this.options.agonSyndicateRegistryAddress),
       prizeVault: Boolean(this.options.agonPrizeVaultAddress),

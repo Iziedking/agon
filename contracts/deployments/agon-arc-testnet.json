@@ -16,6 +16,9 @@
     "AgonSyndicateRegistry": "0xD77312288E4019bD3Fc7a6C0234B9c84D09C1Ab4",
     "AgonPrizeVault": "0xd3a538fD48FA81CF102E5b5381B47e46eC176D3b"
   },
+  "contractInterfaces": {
+    "AgonJobEscrow": "legacy-fee-input"
+  },
   "transactions": {
     "AgonProfileRegistry": "0xf90172c1e54fadfa695c09624970e421d097012b7e3e01693a32c9140d9dd6ad",
     "AgonServiceRegistry": "0x71430f9b2c019b74fa3f4e4139a48ad1f67daa5c2c3c2f8540caa8a6f749444e",

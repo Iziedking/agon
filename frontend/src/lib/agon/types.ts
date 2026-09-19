@@ -16,6 +16,9 @@ export type AgonCapabilities = {
   endpointQa: boolean;
   directX402: boolean;
   escrow: boolean;
+  jobEscrowCalldataSupported?: boolean;
+  jobEscrowExecution?: boolean;
+  jobEscrowExecutionReason?: string | null;
   arenaVerification: boolean;
   syndicateRegistry: boolean;
   prizeVault: boolean;

@@ -88,6 +88,9 @@ export type AspInspection = {
   effectivePayment: {
     directX402: boolean;
     escrow: boolean;
+    jobEscrowCalldataSupported?: boolean;
+    jobEscrowExecution?: boolean;
+    jobEscrowExecutionReason?: string | null;
     message: string;
   };
   risk: AgonListing["risk"];

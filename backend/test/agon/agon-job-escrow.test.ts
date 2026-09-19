@@ -170,7 +170,7 @@ test("read adapter can inspect a pre-switch job through the legacy contract addr
   const legacy = "0x6666666666666666666666666666666666666666";
   const job = [
     7n, BUYER, PROVIDER, 9n, 100n, 1n, `0x${"33".repeat(32)}`, TERMS, `0x${"44".repeat(32)}`,
-    1000000n, 10000n, 24n, 1_900_000_000n, 0n, 1_899_900_000n, 0n, 2, 0,
+    1000000n, 10000n, 500, 24n, 1_900_000_000n, 0n, 1_899_900_000n, 0n, 2, 0,
   ];
   const adapter = createViemAgonJobEscrowReadAdapter({
     enabled: true,
@@ -183,6 +183,7 @@ test("read adapter can inspect a pre-switch job through the legacy contract addr
       async getBytecode(input) { return input.address === legacy ? "0x6001" : "0x"; },
       async readContract(input) {
         if (input.address !== legacy) throw new Error("current escrow has no job");
+        assert.equal(input.abi, AGON_JOB_ESCROW_V2_READ_ABI);
         if (input.functionName === "usdc") return USDC;
         if (input.functionName === "serviceRegistry") return REGISTRY;
         if (input.functionName === "disputeResolver") return RESOLVER;
@@ -190,7 +191,9 @@ test("read adapter can inspect a pre-switch job through the legacy contract addr
       },
     },
   });
-  assert.equal((await adapter.inspect("7")).listingVersion, "1");
+  const result = await adapter.inspect("7");
+  assert.equal(result.listingVersion, "1");
+  assert.equal(result.feeBps, 500);
 });
 
 test("read adapter normalizes V2 fee snapshots and keeps legacy fallback readable", async () => {
@@ -232,6 +235,22 @@ test("deployed writer remains disabled without an explicit client and flag", asy
   assert.equal(writer.enabled, false);
   const result = await writer.submit({ intent: intent(), action: "create", actor: BUYER });
   assert.deepEqual(result, { ok: false, error: { code: "transaction_disabled", message: "AgonJobEscrow transaction writing is disabled by policy" } });
+  assert.equal(calls, 0);
+});
+
+test("legacy fee-input deployment cannot enable the fixed-fee writer", async () => {
+  let calls = 0;
+  const writer = createViemAgonJobEscrowTransactionWriter({
+    enabled: true,
+    escrowAddress: ESCROW,
+    escrowVersion: "legacy",
+    client: {
+      async writeContract() { calls += 1; return TX; },
+      async waitForTransactionReceipt() { calls += 1; return { status: "success", transactionHash: TX, to: ESCROW, logs: [] }; },
+    },
+  });
+  assert.equal(writer.enabled, false);
+  assert.equal((await writer.submit({ intent: intent(), action: "create", actor: BUYER })).error?.code, "transaction_disabled");
   assert.equal(calls, 0);
 });
 

@@ -20,6 +20,10 @@ Require-Match "frontend/Dockerfile" "FROM node:22-slim" "frontend image must use
 Require-Match "backend/docker-compose.local.yml" '3003:3000' "local frontend must be exposed on host port 3003"
 Require-Match "backend/docker-compose.local.yml" '8082/health' "local auth healthcheck must be configured"
 Require-Match "deploy/docker-compose.yml" '8082/health' "production auth healthcheck must be configured"
+Require-Match "backend/package.json" '"@x402/core": "2\.15\.0"' "backend must exact-pin @x402/core 2.15.0"
+Require-Match "backend/package.json" '"@x402/evm": "2\.15\.0"' "backend must exact-pin @x402/evm 2.15.0"
+Require-Match "README.md" '`AgonJobEscrow`.*Deployed and verified' "README must distinguish the deployed job escrow contract from execution readiness"
+Require-Match "README.md" '`AgonArena`.*Deployed and verified' "README must distinguish the deployed Arena contract from automation readiness"
 
 $productionCompose = Get-Content -LiteralPath (Join-Path $repoRoot "deploy/docker-compose.yml") -Raw
 $authService = [regex]::Match($productionCompose, '(?ms)^  auth:\s*$.*?(?=^  \S|\z)').Value

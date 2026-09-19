@@ -27,7 +27,11 @@ import { evaluateAgonEscrowProductionReadiness } from "../agon/execution/escrow-
 import { AGON_ESCROW_TRANSACTION_APPROVAL_PHRASES } from "../agon/execution/escrow-transaction-approval.js";
 import { PostgresAgonMarketService } from "../agon/http/service.js";
 import { inspectAgonProtocolReadiness } from "../agon/protocol-readiness.ts";
-import { createViemAgonJobEscrowReadAdapter, type AgonJobEscrowReadClient } from "../agon/execution/agon-job-escrow.ts";
+import {
+  createViemAgonJobEscrowReadAdapter,
+  type AgonJobEscrowContractVersion,
+  type AgonJobEscrowReadClient,
+} from "../agon/execution/agon-job-escrow.ts";
 import { createViemAgonJobEscrowTransactionWriter } from "../agon/execution/agon-job-escrow-writer.ts";
 import { createAgonJobEscrowTransactionAdapter } from "../agon/execution/agon-job-escrow-adapter.ts";
 import { createViemAgonProtocolFinalityReader, type AgonProtocolFinalityClient } from "../agon/execution/protocol-finality.ts";
@@ -417,6 +421,22 @@ const agonCertificationEndpointQaRunner = createManifestDerivedAgonEndpointQaRun
 const configuredJobEscrowV2 = config.agon.deployment?.contracts.AgonJobEscrowV2;
 const configuredJobEscrow = configuredJobEscrowV2 ?? config.agon.deployment?.contracts.AgonJobEscrow;
 const configuredServiceRegistry = config.agon.deployment?.contracts.AgonServiceRegistry;
+
+function resolveConfiguredJobEscrowVersion(): AgonJobEscrowContractVersion | null {
+  if (configuredJobEscrowV2) {
+    return config.agon.deployment?.contractInterfaces?.AgonJobEscrowV2 === "v2-governed-fee" ? "v2" : null;
+  }
+  if (config.agon.deployment?.contractInterfaces?.AgonJobEscrow === "v1-fixed-fee") {
+    return "v1";
+  }
+  if (config.agon.deployment?.contractInterfaces?.AgonJobEscrow === "legacy-fee-input") {
+    return "legacy";
+  }
+  return null;
+}
+
+const configuredJobEscrowVersion = resolveConfiguredJobEscrowVersion();
+const jobEscrowCalldataSupported = configuredJobEscrowVersion === "v1" || configuredJobEscrowVersion === "v2";
 const legacyJobEscrow = configuredJobEscrowV2 && config.agon.deployment?.contracts.AgonJobEscrow
   ? [config.agon.deployment.contracts.AgonJobEscrow]
   : undefined;
@@ -445,14 +465,15 @@ const jobEscrowExecutionEnabled = Boolean(
   && config.agon.escrow.enabled
   && config.agon.escrow.executionEnabled
   && coordinatorJobEscrowSigner
-  && configuredJobEscrow,
+  && configuredJobEscrow
+  && jobEscrowCalldataSupported,
 );
-const jobEscrowTransactionWriter = configuredJobEscrow
+const jobEscrowTransactionWriter = configuredJobEscrow && configuredJobEscrowVersion
   ? createViemAgonJobEscrowTransactionWriter({
       enabled: jobEscrowExecutionEnabled,
       client: coordinatorJobEscrowClient,
       escrowAddress: configuredJobEscrow,
-      escrowVersion: configuredJobEscrowV2 ? "v2" : "v1",
+      escrowVersion: configuredJobEscrowVersion,
       allowedActors: coordinatorJobEscrowSigner ? [coordinatorJobEscrowSigner.address] : [],
     })
   : undefined;
@@ -463,6 +484,14 @@ const jobEscrowTransactionAdapter = jobEscrowTransactionWriter
       writer: jobEscrowTransactionWriter,
     })
   : undefined;
+
+function explainJobEscrowExecutionReadiness(): string | null {
+  if (!configuredJobEscrow) return "job_escrow_not_configured";
+  if (configuredJobEscrowVersion === "legacy") return "deployed_abi_requires_buyer_supplied_fee";
+  if (configuredJobEscrowVersion === null) return "job_escrow_interface_metadata_missing";
+  return jobEscrowExecutionEnabled ? null : "job_escrow_execution_disabled";
+}
+
 const agonService = new PostgresAgonMarketService(agonRepository, {
   writer: agonWriter,
   x402ExecutionEnabled: config.agon.x402.executionEnabled,
@@ -479,16 +508,19 @@ const agonService = new PostgresAgonMarketService(agonRepository, {
   escrowProductionReadiness: agonEscrowProductionReadiness,
   protocolReadiness: () => inspectAgonProtocolReadiness(config.agon.deployment),
   jobEscrowReadAdapter: config.agon.jobEscrowReadsEnabled && configuredJobEscrow && configuredServiceRegistry
+    && configuredJobEscrowVersion
     ? createViemAgonJobEscrowReadAdapter({
         enabled: true,
         client: publicClient as unknown as AgonJobEscrowReadClient,
         escrowAddress: configuredJobEscrow,
-        escrowVersion: configuredJobEscrowV2 ? "v2" : "v1",
+        escrowVersion: configuredJobEscrowVersion,
         legacyEscrowAddresses: legacyJobEscrow,
         expectedServiceRegistry: configuredServiceRegistry,
       })
     : undefined,
   jobEscrowTransactionAdapter,
+  jobEscrowCalldataSupported,
+  jobEscrowExecutionReason: explainJobEscrowExecutionReadiness(),
   agonJobEscrowAddress: configuredJobEscrow,
   agonArenaAddress: config.agon.deployment?.contracts.AgonArena,
   validationRegistryAddress: config.agon.deployment?.external.ValidationRegistry?.address,

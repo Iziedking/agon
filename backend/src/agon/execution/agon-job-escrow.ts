@@ -36,8 +36,8 @@ export const AGON_JOB_ESCROW_ABI = [
   ] }] },
 ] as const;
 
-/** Read ABI for the separately deployable V2 escrow. V2 adds feeBps to the
- * returned job tuple while preserving the legacy lifecycle view functions. */
+/** Read ABI shared by the deployed buyer-fee contract and governed V2. Both
+ * return the fee basis-point snapshot stored with each job. */
 export const AGON_JOB_ESCROW_V2_READ_ABI = [
   { type: "function", name: "usdc", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
   { type: "function", name: "serviceRegistry", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
@@ -53,7 +53,7 @@ export const AGON_JOB_ESCROW_V2_READ_ABI = [
   ] }] },
 ] as const;
 
-export type AgonJobEscrowContractVersion = "v1" | "v2";
+export type AgonJobEscrowContractVersion = "legacy" | "v1" | "v2";
 type AgonJobEscrowReadAbi = typeof AGON_JOB_ESCROW_ABI | typeof AGON_JOB_ESCROW_V2_READ_ABI;
 
 export type AgonJobEscrowAction =
@@ -215,7 +215,7 @@ export function validateAgonJobEscrowReceipt(input: {
   if (input.receipt.status !== "success" && input.receipt.status !== 1) return { ok: false, code: "receipt_unknown", message: "receipt did not prove a successful AgonJobEscrow transaction" };
   if (!input.receipt.transactionHash || hash(input.receipt.transactionHash, "receipt transaction hash") !== expectedHash) return { ok: false, code: "receipt_invalid", message: "receipt hash does not match the submitted transaction" };
   if (!input.receipt.to || address(input.receipt.to, "receipt contract address") !== expectedContract) return { ok: false, code: "receipt_invalid", message: "receipt is not for the configured AgonJobEscrow contract" };
-  const expectedEvent = input.contractVersion === "v2" && input.action === "create"
+  const expectedEvent = input.contractVersion !== undefined && input.contractVersion !== "v1" && input.action === "create"
     ? { name: "JobCreated", topic: topic("JobCreated(uint256,bytes32,address,address,uint256,uint256,uint256,bytes32,bytes32,uint256,uint256,uint16,uint64,uint64)") }
     : EVENTS[input.action];
   const expectedJobTopic = input.action === "create" ? null : toHex(jobId(input.jobId ?? ""), { size: 32 }).toLowerCase();
@@ -295,7 +295,7 @@ export function createViemAgonJobEscrowReadAdapter(options: {
     { address: escrowAddress, version: currentVersion },
     ...(options.legacyEscrowAddresses ?? []).map((value) => ({
       address: address(value, "configured legacy AgonJobEscrow contract address"),
-      version: "v1" as const,
+      version: "legacy" as const,
     })),
   ].filter((candidate, index, all) => all.findIndex((other) => other.address === candidate.address) === index);
   const serviceRegistry = address(options.expectedServiceRegistry, "configured AgonServiceRegistry address");
@@ -310,7 +310,7 @@ export function createViemAgonJobEscrowReadAdapter(options: {
       let lastError: unknown = new Error("AgonJobEscrow job was not found in configured contracts");
       for (const candidate of escrowCandidates) {
         try {
-          const abi = candidate.version === "v2" ? AGON_JOB_ESCROW_V2_READ_ABI : AGON_JOB_ESCROW_ABI;
+          const abi = candidate.version === "v1" ? AGON_JOB_ESCROW_ABI : AGON_JOB_ESCROW_V2_READ_ABI;
           const [code, asset, registry, resolver, rawJob] = await Promise.all([
             options.client.getBytecode({ address: candidate.address }),
             options.client.readContract({ address: candidate.address, abi, functionName: "usdc" }),
