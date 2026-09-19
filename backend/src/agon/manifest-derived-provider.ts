@@ -75,6 +75,15 @@ async function loadManifest(provider: ListedPlaygroundProvider, options: Manifes
   if (inspection.manifestHash.toLowerCase() !== provider.manifestHash.toLowerCase()) {
     throw new PlaygroundProviderError("manifest_hash_mismatch", "The fetched manifest hash does not match the immutable listing version.");
   }
+  const identityMatches = contract.value.identity.agentId === provider.agentId
+    && contract.value.identity.serviceKey.toLowerCase() === provider.serviceKey.toLowerCase()
+    && contract.value.service.version === provider.listingVersion;
+  if (!identityMatches) {
+    throw new PlaygroundProviderError(
+      "manifest_identity_mismatch",
+      "The fetched manifest identity does not match the immutable listing agent, service key, and version.",
+    );
+  }
   return inspection;
 }
 

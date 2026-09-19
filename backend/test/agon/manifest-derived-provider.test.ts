@@ -121,6 +121,36 @@ test("automatic provider runner fails closed on a manifest hash mismatch", async
   );
 });
 
+test("automatic provider runner binds the manifest to the immutable listing identity", async () => {
+  const mismatches = [
+    { ...manifest, identity: { ...manifest.identity, agentId: "886271" } },
+    { ...manifest, identity: { ...manifest.identity, serviceKey: `0x${"33".repeat(32)}` } },
+    { ...manifest, service: { ...manifest.service, version: "4" } },
+  ];
+
+  for (const mismatchedManifest of mismatches) {
+    const runner = createManifestDerivedPlaygroundProviderRunner({
+      fetch: async () => new Response(JSON.stringify(mismatchedManifest), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+      resolve: async () => ["93.184.216.34"],
+    });
+    await assert.rejects(
+      runner.run({
+        provider: {
+          ...baseProvider,
+          manifestUri: manifestUrl,
+          manifestHash: canonicalManifestHash(mismatchedManifest),
+        },
+        task: { id: "evidence-under-pressure", category: "analysis", title: "test", adversarialPrompt: "test", capability: "analysis" },
+        taskInput: {},
+      }),
+      /manifest identity does not match the immutable listing/,
+    );
+  }
+});
+
 test("automatic endpoint QA uses the manifest payment endpoint and records 402", async () => {
   const qa = createManifestDerivedAgonEndpointQaRunner({
     fetch: async (input, init) => {
