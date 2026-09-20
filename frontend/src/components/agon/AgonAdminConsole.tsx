@@ -33,6 +33,20 @@ import type { AgonArenaEvaluationView, AgonArenaTransactionView, AgonEscrowInten
 
 const inputClass = "w-full border border-[color:var(--hairline-strong)] bg-canvas px-3 py-2 font-mono text-xs text-ink outline-none focus:border-ink";
 
+// Arena tasks are selected from the immutable on-chain listing category. The
+// operator console must never run a development challenge against an analysis
+// listing (or silently anchor evidence to the wrong category).
+const ARENA_TASK_BY_LISTING_CATEGORY: Record<string, {
+  category: "development" | "research" | "analysis" | "verification" | "execution";
+  taskId: string;
+}> = {
+  "1": { category: "research", taskId: "arc-live-fact" },
+  "3": { category: "analysis", taskId: "risk-snapshot" },
+  "5": { category: "execution", taskId: "transaction-safety" },
+  "7": { category: "development", taskId: "selector-guard" },
+  "8": { category: "verification", taskId: "manifest-anchor" },
+};
+
 export function AgonAdminConsole({ adminToken }: { adminToken: string }) {
   const { address } = useAccount();
   const [health, setHealth] = useState<AgonHealth | null>(null);
@@ -129,13 +143,17 @@ function AgonArenaEvaluationPanel({ listing }: { listing: AgonListing | null }) 
 
   async function prepare() {
     if (!listing || !me) { setMessage("Sign in as the current listing provider before running Arena verification."); return; }
+    const task = ARENA_TASK_BY_LISTING_CATEGORY[listing.category];
+    if (!task) {
+      setMessage(`Arena verification is not available for listing category ${listing.category} yet.`);
+      return;
+    }
     setBusy(true); setMessage(null); setEvaluation(null); setRequestTransaction(null); setEvidenceTransaction(null);
     try {
       const key = `admin-arena-${listing.listingId}-${Date.now()}`;
       const run = await evaluatePlaygroundTask({
-        category: "development",
-        taskId: "selector-guard",
-        input: { to: "0x0000000000000000000000000000000000001234", value: "0", data: `0xa9059cbb${"00".repeat(64)}` },
+        category: task.category,
+        taskId: task.taskId,
         listingReference: listing.id,
         listingVersion: listing.version,
         idempotencyKey: `${key}-run`,
