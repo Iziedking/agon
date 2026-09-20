@@ -9,6 +9,7 @@ import { ProtocolActions } from "@/components/agon/ProtocolActions";
 import { X402CallIntentPanel } from "@/components/agon/X402CallIntentPanel";
 import { AgonSyndicatePrizeIntentPanel } from "@/components/agon/AgonSyndicatePrizeIntentPanel";
 import { useAuth } from "@/hooks/useAuth";
+import { categoryById } from "@/lib/agon/catalog";
 import {
   getAgonEscrowReadiness,
   getAgonEscrowTransaction,
@@ -86,47 +87,62 @@ export function AgonAdminConsole({ adminToken }: { adminToken: string }) {
   );
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
+    <div className="flex flex-col gap-8">
+      <header className="flex flex-wrap items-end justify-between gap-6 border-b border-[color:var(--hairline-strong)] pb-6">
         <div>
-          <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">AGON OPERATIONS</div>
-          <h2 className="mt-2 font-stencil text-4xl uppercase leading-none">Operator control plane</h2>
-          <p className="mt-3 max-w-2xl font-mono text-xs leading-6 text-ink-2">Backend readiness, listing verification, x402 preparation, escrow preparation, and wallet-originated protocol writes live in one workflow. Every ownership-sensitive action still requires the connected operator session or wallet.</p>
+          <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">AGON OPS / ARC TESTNET</div>
+          <h2 className="mt-2 font-stencil text-4xl uppercase leading-none sm:text-5xl">Run the market safely</h2>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-ink-2">Choose a service, run its proof, then prepare a hire or payment. Chain details stay available when you need to inspect them.</p>
         </div>
-        <div className="flex flex-wrap items-center gap-3"><ConnectButton /><button onClick={() => void load()} disabled={loading} className="border border-[color:var(--hairline-strong)] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:text-ink disabled:opacity-50">{loading ? "LOADING" : "REFRESH AGON"}</button></div>
-      </div>
-
-      {!address ? <p className="border-l-2 border-[color:var(--warn)] p-3 font-mono text-xs text-ink-2">Connect the authorized Arc wallet to bind admin API intents to an actor and sign contract writes. The admin token remains the only console login.</p> : null}
+        <div className="flex items-center gap-2"><ConnectButton /><button onClick={() => void load()} disabled={loading} className="border border-[color:var(--hairline-strong)] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:text-ink disabled:opacity-50">{loading ? "READING" : "REFRESH"}</button></div>
+      </header>
 
       {error ? <p className="border-l-2 border-[color:var(--err)] p-3 font-mono text-xs text-[color:var(--err)]">{error}</p> : null}
-      <AgonReadiness health={health} />
+      <AgonStatusSummary health={health} address={address ?? null} listingCount={listings.length} />
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <AgonListingPicker listings={listings} selectedId={selectedId} onChange={setSelectedId} />
-        <AgonEscrowPreparation listing={selected} />
-      </div>
-      <AgonJobEscrowIntentPanel listing={selected} capabilities={health?.capabilities ?? null} />
-      <AgonArenaEvaluationPanel listing={selected} />
-      <AgonSyndicatePrizeIntentPanel />
+      <section>
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-3"><div><div className="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">01 / CHOOSE A SERVICE</div><h3 className="mt-2 font-stencil text-3xl uppercase leading-none">What are you working on?</h3></div><p className="max-w-md text-sm leading-5 text-ink-2">Every action below uses the selected listing and its immutable version.</p></div>
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(300px,.9fr)]"><AgonListingPicker listings={listings} selectedId={selectedId} onChange={setSelectedId} /><AgonSelectedService listing={selected} /></div>
+      </section>
 
-      {selected ? (
-        <section className="border border-[color:var(--hairline-strong)] bg-canvas p-5">
-          <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">SELECTED SERVICE / X402 BACKEND FLOW</div>
-          <div className="mt-3 grid gap-2 font-mono text-[11px] text-ink-2 sm:grid-cols-3">
-            <span>LISTING {selected.listingId}</span>
-            <span>{selected.verification.status.toUpperCase()}</span>
-            <span>{selected.payment.rail}</span>
-          </div>
-          <X402CallIntentPanel listing={selected} defaultAmount={selected.manifest.body && typeof selected.manifest.body === "object" && "pricing" in selected.manifest.body ? null : "0.01"} endpointUrl={selected.endpointQa.endpointUrl ?? null} />
-        </section>
-      ) : (
-        <EmptyState message="No indexed listings are available. Publish a service from the market workflow, then refresh this console." />
-      )}
+      <section>
+        <div className="mb-4"><div className="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">02 / VERIFY</div><h3 className="mt-2 font-stencil text-3xl uppercase leading-none">Prove this service works</h3><p className="mt-2 max-w-2xl text-sm leading-5 text-ink-2">The provider signs in, Agon runs the matching category task, and Arena records the evidence. Nothing is marked tested until chain state reconciles.</p></div>
+        <AgonArenaEvaluationPanel listing={selected} />
+      </section>
 
-      <ProtocolActions />
-      <AgonJobInspector />
+      <section>
+        <div className="mb-4"><div className="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">03 / HIRE</div><h3 className="mt-2 font-stencil text-3xl uppercase leading-none">Run paid work</h3><p className="mt-2 max-w-2xl text-sm leading-5 text-ink-2">Use direct x402 for a single call. Use escrow when the deployed contract and policy gates are ready.</p></div>
+        <div className="grid gap-6 lg:grid-cols-2">
+          {selected ? <section className="border border-[color:var(--hairline-strong)] bg-canvas p-5"><div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">DIRECT X402 CALL</div><div className="mt-2 text-sm text-ink-2">Prepare a bounded call against the selected provider.</div><X402CallIntentPanel listing={selected} defaultAmount={selected.manifest.body && typeof selected.manifest.body === "object" && "pricing" in selected.manifest.body ? null : "0.01"} endpointUrl={selected.endpointQa.endpointUrl ?? null} /></section> : <EmptyState message="Choose a listed service first." />}
+          <AgonJobEscrowIntentPanel listing={selected} capabilities={health?.capabilities ?? null} />
+        </div>
+      </section>
+
+      <details className="border border-[color:var(--hairline-strong)] bg-canvas">
+        <summary className="cursor-pointer list-none px-5 py-4 font-mono text-[11px] uppercase tracking-[0.14em] text-ink-2">Advanced controls and audit tools</summary>
+        <div className="grid gap-6 border-t border-[color:var(--hairline)] p-5"><AgonReadiness health={health} /><AgonEscrowPreparation listing={selected} /><AgonSyndicatePrizeIntentPanel /><ProtocolActions /><AgonJobInspector /></div>
+      </details>
     </div>
   );
+}
+
+function AgonStatusSummary({ health, address, listingCount }: { health: AgonHealth | null; address: string | null; listingCount: number }) {
+  const capabilities = health?.capabilities;
+  const cells = [
+    { label: "API", value: health?.ok ? "ONLINE" : "READING", tone: health?.ok ? "var(--ok)" : "var(--ink-3)" },
+    { label: "ARC", value: capabilities?.protocolReadiness.chainId ? String(capabilities.protocolReadiness.chainId) : "UNKNOWN", tone: "var(--accent)" },
+    { label: "LISTINGS", value: String(listingCount), tone: "var(--ink)" },
+    { label: "ARENA", value: capabilities?.arenaEvaluatorReadiness.assigned ? "READY" : "ACTION NEEDED", tone: capabilities?.arenaEvaluatorReadiness.assigned ? "var(--ok)" : "var(--warn)" },
+    { label: "X402", value: capabilities?.directX402 ? "READY" : "GATED", tone: capabilities?.directX402 ? "var(--ok)" : "var(--ink-3)" },
+    { label: "WALLET", value: address ? "CONNECTED" : "CONNECT", tone: address ? "var(--ok)" : "var(--warn)" },
+  ];
+  return <section className="border border-[color:var(--hairline-strong)] bg-canvas-2 p-4"><div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">LIVE CONTROL STATUS</div><span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">refresh before a write</span></div><div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">{cells.map((cell) => <div key={cell.label} className="border border-[color:var(--hairline)] bg-canvas px-3 py-3"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-ink-3">{cell.label}</div><div className="mt-2 font-mono text-sm" style={{ color: cell.tone }}>{cell.value}</div></div>)}</div>{capabilities?.arenaEvaluatorReadiness.assigned ? null : <p className="mt-3 border-l-2 border-[color:var(--warn)] p-3 text-sm text-ink-2">Arena evaluation is waiting for evaluator authority. Role setup must finish before a service can become tested.</p>}</section>;
+}
+
+function AgonSelectedService({ listing }: { listing: AgonListing | null }) {
+  if (!listing) return <EmptyState message="No service selected. Publish a listing, then refresh this console." />;
+  const category = categoryById(listing.category);
+  return <section className="border border-[color:var(--hairline-strong)] bg-canvas p-5"><div className="flex items-start justify-between gap-3"><div><div className="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">SELECTED SERVICE</div><h4 className="mt-2 font-stencil text-2xl uppercase leading-none">Agent {listing.agentId}</h4></div><span className={`border px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em] ${listing.status === "Listed" ? "border-[color:var(--ok)] text-[color:var(--ok)]" : "border-[color:var(--err)] text-[color:var(--err)]"}`}>{listing.status}</span></div><div className="mt-5 grid gap-3 text-sm"><div className="flex items-center justify-between border-t border-[color:var(--hairline)] pt-3"><span className="text-ink-3">Category</span><span className="font-mono text-ink">{category.label} / {listing.category}</span></div><div className="flex items-center justify-between border-t border-[color:var(--hairline)] pt-3"><span className="text-ink-3">Version</span><span className="font-mono text-ink">v{listing.version}</span></div><div className="flex items-center justify-between border-t border-[color:var(--hairline)] pt-3"><span className="text-ink-3">Trust</span><span className="font-mono" style={{ color: listing.verification.status === "Verified" ? "var(--ok)" : "var(--warn)" }}>{listing.verification.status}</span></div><div className="flex items-center justify-between border-t border-[color:var(--hairline)] pt-3"><span className="text-ink-3">Payment</span><span className="font-mono text-ink">{listing.payment.rail}</span></div><div className="flex items-center justify-between border-t border-[color:var(--hairline)] pt-3"><span className="text-ink-3">Endpoint check</span><span className="font-mono text-ink">{listing.endpointQa.status.replace(/_/g, " ")}</span></div></div><details className="mt-5 border-t border-[color:var(--hairline)] pt-3"><summary className="cursor-pointer font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">Technical record</summary><div className="mt-3 grid gap-2 break-all font-mono text-[10px] leading-5 text-ink-3"><span>LISTING {listing.listingId}</span><span>SERVICE KEY {listing.serviceKey}</span><span>MANIFEST {listing.manifest.hash}</span><span>URI {listing.manifest.uri}</span><span>PROVIDER SNAPSHOT {listing.providerSnapshot}</span></div></details></section>;
 }
 
 function AgonArenaEvaluationPanel({ listing }: { listing: AgonListing | null }) {
@@ -209,7 +225,7 @@ function AgonArenaEvaluationPanel({ listing }: { listing: AgonListing | null }) 
     finally { setBusy(false); }
   }
 
-  return <section className="border border-[color:var(--hairline-strong)] bg-canvas p-5"><div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">AGON ARENA VERIFICATION</div><p className="mt-2 max-w-3xl font-mono text-[10px] leading-5 text-ink-3">Runs an authenticated adversarial playground task, pins its evidence to the exact listing version, and prepares unsigned Arena calldata. Final states are accepted only after an independent contract read matches every pinned field.</p><button disabled={busy || !listing} onClick={() => void prepare()} className="mt-4 bg-accent px-3 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-accent-ink hover:bg-accent-press disabled:opacity-50">{busy ? "WORKING" : "RUN PLAYGROUND + PREPARE ARENA"}</button>{message ? <p className="mt-3 font-mono text-[10px] text-[color:var(--err)]">{message}</p> : null}{evaluation ? <div className="mt-4 grid gap-2 border-t border-[color:var(--hairline)] pt-3 font-mono text-[10px] leading-5 text-ink-2"><span>INTENT {evaluation.intentId}</span><span>STATE {evaluation.state} / {evaluation.verificationStatus}</span><span>RUN {evaluation.playgroundRunId}</span><span className="break-all">EVIDENCE {evaluation.evidenceRoot}</span><span className="break-all">VALIDATION REQUEST {evaluation.validationRequestHash}</span>{requestTransaction ? <span className="break-all">UNSIGNED REQUEST {requestTransaction.to} / {requestTransaction.data}</span> : null}<div className="mt-2 grid gap-2 sm:grid-cols-[1fr_1fr_auto]"><input value={evaluationId} onChange={(event) => setEvaluationId(event.target.value)} placeholder="onchain evaluation id" className={inputClass} /><input value={requestTxHash} onChange={(event) => setRequestTxHash(event.target.value)} placeholder="request tx hash marker" className={inputClass} /><button disabled={busy || !/^[1-9]\d*$/.test(evaluationId) || !/^0x[0-9a-fA-F]{64}$/.test(requestTxHash)} onClick={() => void recordRequest()} className="border border-[color:var(--hairline-strong)] px-3 py-2 uppercase disabled:opacity-50">RECORD REQUEST</button></div><div className="grid gap-2 sm:grid-cols-[1fr_auto]"><input value={startTxHash} onChange={(event) => setStartTxHash(event.target.value)} placeholder="evaluator start tx hash marker" className={inputClass} /><button disabled={busy || evaluation.state !== "request_submitted" || !/^0x[0-9a-fA-F]{64}$/.test(startTxHash)} onClick={() => void recordStart()} className="border border-[color:var(--hairline-strong)] px-3 py-2 uppercase disabled:opacity-50">RECORD EVALUATOR START</button></div><button disabled={busy || evaluation.state !== "evidence_ready"} onClick={() => void loadEvidencePlan()} className="border border-[color:var(--hairline-strong)] px-3 py-2 uppercase disabled:opacity-50">PREPARE EVIDENCE CALL</button>{evidenceTransaction ? <span className="break-all">UNSIGNED EVIDENCE {evidenceTransaction.to} / {evidenceTransaction.data}</span> : null}<div className="grid gap-2 sm:grid-cols-[1fr_auto]"><input value={evidenceTxHash} onChange={(event) => setEvidenceTxHash(event.target.value)} placeholder="evidence tx hash marker" className={inputClass} /><button disabled={busy || !/^0x[0-9a-fA-F]{64}$/.test(evidenceTxHash)} onClick={() => void recordEvidence()} className="border border-[color:var(--hairline-strong)] px-3 py-2 uppercase disabled:opacity-50">RECORD EVIDENCE</button></div><button disabled={busy || !evaluation.evaluationId} onClick={() => void reconcileEvaluation()} className="border border-[color:var(--hairline-strong)] px-3 py-2 uppercase disabled:opacity-50">RECONCILE ARENA FINALITY</button></div> : null}</section>;
+  return <section className="border border-[color:var(--hairline-strong)] bg-canvas p-5"><div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">AGON ARENA VERIFICATION</div><p className="mt-2 max-w-3xl font-mono text-[10px] leading-5 text-ink-3">Runs the category task for this exact listing version, pins its evidence, and prepares unsigned Arena calldata. Final states are accepted only after an independent contract read matches every pinned field.</p><button disabled={busy || !listing} onClick={() => void prepare()} className="mt-4 bg-accent px-3 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-accent-ink hover:bg-accent-press disabled:opacity-50">{busy ? "WORKING" : "RUN PLAYGROUND, PREPARE ARENA"}</button>{message ? <p className="mt-3 font-mono text-[10px] text-[color:var(--err)]">{message}</p> : null}{evaluation ? <div className="mt-4 grid gap-2 border-t border-[color:var(--hairline)] pt-3 font-mono text-[10px] leading-5 text-ink-2"><span>INTENT {evaluation.intentId}</span><span>STATE {evaluation.state} / {evaluation.verificationStatus}</span><span>RUN {evaluation.playgroundRunId}</span><span className="break-all">EVIDENCE {evaluation.evidenceRoot}</span><span className="break-all">VALIDATION REQUEST {evaluation.validationRequestHash}</span>{requestTransaction ? <span className="break-all">UNSIGNED REQUEST {requestTransaction.to} / {requestTransaction.data}</span> : null}<div className="mt-2 grid gap-2 sm:grid-cols-[1fr_1fr_auto]"><input value={evaluationId} onChange={(event) => setEvaluationId(event.target.value)} placeholder="onchain evaluation id" className={inputClass} /><input value={requestTxHash} onChange={(event) => setRequestTxHash(event.target.value)} placeholder="request tx hash marker" className={inputClass} /><button disabled={busy || !/^[1-9]\d*$/.test(evaluationId) || !/^0x[0-9a-fA-F]{64}$/.test(requestTxHash)} onClick={() => void recordRequest()} className="border border-[color:var(--hairline-strong)] px-3 py-2 uppercase disabled:opacity-50">RECORD REQUEST</button></div><div className="grid gap-2 sm:grid-cols-[1fr_auto]"><input value={startTxHash} onChange={(event) => setStartTxHash(event.target.value)} placeholder="evaluator start tx hash marker" className={inputClass} /><button disabled={busy || evaluation.state !== "request_submitted" || !/^0x[0-9a-fA-F]{64}$/.test(startTxHash)} onClick={() => void recordStart()} className="border border-[color:var(--hairline-strong)] px-3 py-2 uppercase disabled:opacity-50">RECORD EVALUATOR START</button></div><button disabled={busy || evaluation.state !== "evidence_ready"} onClick={() => void loadEvidencePlan()} className="border border-[color:var(--hairline-strong)] px-3 py-2 uppercase disabled:opacity-50">PREPARE EVIDENCE CALL</button>{evidenceTransaction ? <span className="break-all">UNSIGNED EVIDENCE {evidenceTransaction.to} / {evidenceTransaction.data}</span> : null}<div className="grid gap-2 sm:grid-cols-[1fr_auto]"><input value={evidenceTxHash} onChange={(event) => setEvidenceTxHash(event.target.value)} placeholder="evidence tx hash marker" className={inputClass} /><button disabled={busy || !/^0x[0-9a-fA-F]{64}$/.test(evidenceTxHash)} onClick={() => void recordEvidence()} className="border border-[color:var(--hairline-strong)] px-3 py-2 uppercase disabled:opacity-50">RECORD EVIDENCE</button></div><button disabled={busy || !evaluation.evaluationId} onClick={() => void reconcileEvaluation()} className="border border-[color:var(--hairline-strong)] px-3 py-2 uppercase disabled:opacity-50">RECONCILE ARENA FINALITY</button></div> : null}</section>;
 }
 
 const JOB_STATUS = ["Created", "Accepted", "Submitted", "Complete", "Rejected", "Disputed", "Failed"];
@@ -323,10 +339,18 @@ function AgonReadiness({ health }: { health: AgonHealth | null }) {
 function AgonListingPicker({ listings, selectedId, onChange }: { listings: AgonListing[]; selectedId: string; onChange: (value: string) => void }) {
   return (
     <section className="border border-[color:var(--hairline-strong)] bg-canvas p-5">
-      <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">INDEXED LISTINGS</div>
-      <p className="mt-2 font-mono text-[10px] leading-5 text-ink-3">Choose the service that the x402 and escrow backend workflows should target.</p>
-      <div className="mt-4 grid gap-2">
-        {listings.length ? listings.map((listing) => <button key={listing.id} onClick={() => onChange(listing.id)} className={`grid gap-1 border p-3 text-left font-mono text-[11px] ${selectedId === listing.id ? "border-accent bg-canvas-2" : "border-[color:var(--hairline)] hover:border-[color:var(--hairline-strong)]"}`}><span className="text-ink">#{listing.listingId} / agent {listing.agentId}</span><span className="text-ink-3">{listing.verification.status} / {listing.payment.rail} / v{listing.version}</span><span className="break-all text-ink-3">{listing.id}</span></button>) : <EmptyState message="No listings returned." />}
+      <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">INDEXED SERVICES</div>
+      <p className="mt-2 text-sm leading-5 text-ink-2">Pick one service. The verification, hire, and payment tools will follow this selection.</p>
+      <div className="mt-5 grid gap-3">
+        {listings.length ? listings.map((listing) => {
+          const category = categoryById(listing.category);
+          const selected = selectedId === listing.id;
+          return <button key={listing.id} onClick={() => onChange(listing.id)} className={`grid gap-3 border p-4 text-left transition-colors ${selected ? "border-accent bg-canvas-2" : "border-[color:var(--hairline)] hover:border-[color:var(--hairline-strong)]"}`}>
+            <div className="flex items-start justify-between gap-3"><span className="font-mono text-sm text-ink">Agent {listing.agentId}</span><span className="font-mono text-[10px] uppercase tracking-[0.12em]" style={{ color: listing.verification.status === "Verified" ? "var(--ok)" : "var(--warn)" }}>{listing.verification.status}</span></div>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-[10px] uppercase tracking-[0.1em] text-ink-3"><span>{category.label}</span><span>v{listing.version}</span><span>{listing.payment.rail}</span><span>QA {listing.endpointQa.status.replace(/_/g, " ")}</span></div>
+            {selected ? <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-accent">SELECTED</span> : null}
+          </button>;
+        }) : <EmptyState message="No listings returned." />}
       </div>
     </section>
   );

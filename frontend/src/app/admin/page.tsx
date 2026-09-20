@@ -214,7 +214,7 @@ export default function AdminPage() {
             </>
           ) : null}
 
-          {activeTab === "agon" ? <><AgonAdminConsole adminToken={token} /><AgonVerificationPanel token={token} /></> : null}
+          {activeTab === "agon" ? <><AgonAdminConsole adminToken={token} /><details className="border border-[color:var(--hairline-strong)] bg-canvas"><summary className="cursor-pointer list-none px-5 py-4 font-mono text-[11px] uppercase tracking-[0.14em] text-ink-2">Administrative permissions and listing review</summary><div className="border-t border-[color:var(--hairline)] p-5"><AgonVerificationPanel token={token} /></div></details></> : null}
 
           {activeTab === "activity" ? <CommandsLog token={token} /> : null}
         </div>
