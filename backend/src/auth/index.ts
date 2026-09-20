@@ -36,6 +36,7 @@ import {
 import { createViemAgonJobEscrowTransactionWriter } from "../agon/execution/agon-job-escrow-writer.ts";
 import { createAgonJobEscrowTransactionAdapter } from "../agon/execution/agon-job-escrow-adapter.ts";
 import { createViemAgonProtocolFinalityReader, type AgonProtocolFinalityClient } from "../agon/execution/protocol-finality.ts";
+import { readAgonArenaEvaluatorReadiness, type AgonArenaRoleReadClient } from "../agon/execution/arena-readiness.ts";
 import { PostgresPlaygroundRunStore, RedisPlaygroundRateLimiter } from "../agon/playground-store.ts";
 import { createHttpPlaygroundProviderRunner } from "../agon/playground-provider.ts";
 import {
@@ -528,6 +529,17 @@ const agonService = new PostgresAgonMarketService(agonRepository, {
   jobEscrowExecutionReason: explainJobEscrowExecutionReadiness(),
   agonJobEscrowAddress: configuredJobEscrow,
   agonArenaAddress: config.agon.deployment?.contracts.AgonArena,
+  arenaEvaluatorReadiness: config.agon.deployment?.contracts.AgonArena
+    ? () => readAgonArenaEvaluatorReadiness({
+        enabled: config.agon.x402.validation.enabled,
+        client: publicClient as unknown as AgonArenaRoleReadClient,
+        arenaAddress: config.agon.deployment!.contracts.AgonArena!,
+        evaluatorAddress: typeof config.agon.x402.validation.validatorAddress === "string"
+          && /^0x[a-fA-F0-9]{40}$/.test(config.agon.x402.validation.validatorAddress)
+          ? config.agon.x402.validation.validatorAddress
+          : undefined,
+      })
+    : undefined,
   validationRegistryAddress: config.agon.deployment?.external.ValidationRegistry?.address,
   playgroundStore: agonPlaygroundStore,
   agonSyndicateRegistryAddress: config.agon.deployment?.contracts.AgonSyndicateRegistry,

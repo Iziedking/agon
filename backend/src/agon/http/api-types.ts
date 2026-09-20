@@ -30,6 +30,15 @@ export type AgonCapabilities = {
   jobEscrowExecution: boolean;
   jobEscrowExecutionReason: string | null;
   arenaVerification: boolean;
+  arenaEvaluatorReadiness: {
+    enabled: boolean;
+    arenaAddress: `0x${string}` | null;
+    evaluatorAddress: `0x${string}` | null;
+    role: `0x${string}`;
+    assigned: boolean;
+    reason: "assigned" | "evaluator_not_configured" | "role_not_assigned" | "read_failed" | "disabled" | "unconfigured";
+    checkedAt: string | null;
+  };
   syndicateRegistry: boolean;
   prizeVault: boolean;
   protocolReadiness: {

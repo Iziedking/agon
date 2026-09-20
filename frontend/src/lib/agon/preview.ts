@@ -198,6 +198,15 @@ export const AGON_PREVIEW_CAPABILITIES: AgonCapabilities = {
   directX402: true,
   escrow: false,
   arenaVerification: false,
+  arenaEvaluatorReadiness: {
+    enabled: false,
+    arenaAddress: null,
+    evaluatorAddress: null,
+    role: `0x${"00".repeat(32)}`,
+    assigned: false,
+    reason: "unconfigured",
+    checkedAt: null,
+  },
   syndicateRegistry: false,
   prizeVault: false,
   protocolReadiness: {

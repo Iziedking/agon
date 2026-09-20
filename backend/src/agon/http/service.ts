@@ -104,6 +104,7 @@ import type { PlaygroundRunStore } from "../playground-store.ts";
 import { buildAgonArenaEvaluationInput, buildAgonArenaEvidencePlan, buildAgonArenaRequestPlan, type AgonArenaEvaluation } from "../execution/arena-verification.ts";
 import { buildAgonPrizeClaimPlan, buildAgonSyndicateContributionPlan, prizeClaimLeaf } from "../execution/syndicate-prize.ts";
 import type { AgonProtocolFinalityReader } from "../execution/protocol-finality.ts";
+import { AGON_ARENA_EVALUATOR_ROLE, type AgonArenaEvaluatorReadiness } from "../execution/arena-readiness.ts";
 import type { X402AgentSpendExecutor } from "../execution/x402-agent-executor.ts";
 import type { AgonJobEscrowTransactionAdapter } from "../execution/agon-job-escrow-adapter.ts";
 import type { ProviderDraftInput } from "../mcp/contract.ts";
@@ -181,6 +182,8 @@ export type PostgresAgonMarketServiceOptions = {
   jobEscrowExecutionReason?: string | null;
   agonJobEscrowAddress?: `0x${string}`;
   agonArenaAddress?: `0x${string}`;
+  /** Read-only evaluator-role readiness. This never grants the role or submits a transaction. */
+  arenaEvaluatorReadiness?: () => Promise<AgonArenaEvaluatorReadiness> | AgonArenaEvaluatorReadiness;
   validationRegistryAddress?: `0x${string}`;
   playgroundStore?: PlaygroundRunStore;
   agonSyndicateRegistryAddress?: `0x${string}`;
@@ -2667,6 +2670,29 @@ export class PostgresAgonMarketService implements AgonMarketService {
       externalRegistry: { identity: null, validation: null },
       reasons: ["protocol_readiness_unconfigured"],
     };
+    let arenaEvaluatorReadiness: AgonCapabilities["arenaEvaluatorReadiness"] = {
+      enabled: false,
+      arenaAddress: null,
+      evaluatorAddress: null,
+      role: AGON_ARENA_EVALUATOR_ROLE,
+      assigned: false,
+      reason: "unconfigured",
+      checkedAt: null,
+    };
+    if (this.options.arenaEvaluatorReadiness) {
+      try {
+        const result = await this.options.arenaEvaluatorReadiness();
+        arenaEvaluatorReadiness = { ...result, checkedAt: new Date().toISOString() };
+      } catch {
+        arenaEvaluatorReadiness = {
+          ...arenaEvaluatorReadiness,
+          enabled: true,
+          arenaAddress: this.options.agonArenaAddress ?? null,
+          reason: "read_failed",
+          checkedAt: new Date().toISOString(),
+        };
+      }
+    }
     let endpointQa = false;
     try {
       endpointQa = typeof this.options.endpointQa === "function"
@@ -2687,6 +2713,7 @@ export class PostgresAgonMarketService implements AgonMarketService {
       jobEscrowExecution: this.options.jobEscrowTransactionAdapter?.enabled === true,
       jobEscrowExecutionReason: this.options.jobEscrowTransactionAdapter?.enabled === true ? null : this.options.jobEscrowExecutionReason ?? "job_escrow_execution_disabled",
       arenaVerification: Boolean(this.options.agonArenaAddress),
+      arenaEvaluatorReadiness,
       syndicateRegistry: Boolean(this.options.agonSyndicateRegistryAddress),
       prizeVault: Boolean(this.options.agonPrizeVaultAddress),
       protocolReadiness,

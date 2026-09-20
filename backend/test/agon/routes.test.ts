@@ -96,6 +96,15 @@ const capabilities: AgonCapabilities = {
   jobEscrowExecution: false,
   jobEscrowExecutionReason: "job_escrow_not_configured",
   arenaVerification: false,
+  arenaEvaluatorReadiness: {
+    enabled: false,
+    arenaAddress: null,
+    evaluatorAddress: null,
+    role: `0x${"00".repeat(32)}`,
+    assigned: false,
+    reason: "unconfigured",
+    checkedAt: null,
+  },
   syndicateRegistry: false,
   prizeVault: false,
   protocolReadiness: {
@@ -722,6 +731,8 @@ test("reports granular Agon capabilities and keeps escrow disabled", async () =>
   assert.equal(body.capabilities.jobEscrowCalldataSupported, false);
   assert.equal(body.capabilities.jobEscrowExecution, false);
   assert.equal(body.capabilities.jobEscrowExecutionReason, "job_escrow_not_configured");
+  assert.equal(body.capabilities.arenaEvaluatorReadiness.reason, "unconfigured");
+  assert.equal(body.capabilities.arenaEvaluatorReadiness.assigned, false);
   assert.equal(body.capabilities.protocolReadiness.ready, false);
   assert.deepEqual(body.capabilities.protocolReadiness.reasons, ["source_verification_incomplete"]);
   assert.deepEqual(body.capabilities.writeReadiness.reasons, ["adapter_unconfigured"]);
