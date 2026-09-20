@@ -35,6 +35,19 @@ test("MCP publication prepares an exact listing write after manifest compilation
       calls.push({ input, compiled, manifestUri });
       return { ok: true, value: { operationId: "op-1", reference: "prepared-reference" } };
     },
+    async confirmOperation(_actor, operationId, txHash) {
+      return {
+        ok: true,
+        value: {
+          operationId,
+          state: "confirmed",
+          transaction: { chainId: "5042002", to: `0x${"1".repeat(40)}`, data: "0x", functionName: "publish", args: [] },
+          txHash,
+          resultReference: "5042002:registry:7",
+          proof: { blockNumber: "10", logIndex: 0 },
+        },
+      };
+    },
   }, { providerDraftStore: createMemoryProviderDraftStore() });
   const started = await adapter.startListing(actor, draft);
   assert.equal(started.ok, true);
@@ -47,5 +60,11 @@ test("MCP publication prepares an exact listing write after manifest compilation
     assert.equal(published.value.status, "prepared");
     assert.equal(published.value.operationId, "op-1");
   }
+  const confirmed = await adapter.confirmListing(actor, { draftId: started.value.draftId, operationId: "op-1", txHash: `0x${"a".repeat(64)}` });
+  assert.equal(confirmed.ok, true);
+  if (confirmed.ok) assert.equal(confirmed.value.status, "published");
+  const status = await adapter.getListingPublication(actor, started.value.draftId);
+  assert.equal(status.ok, true);
+  if (status.ok) assert.equal(status.value.nextAction, "wait_for_listing_checks");
   assert.equal(calls.length, 1);
 });

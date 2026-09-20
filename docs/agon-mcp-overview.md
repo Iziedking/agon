@@ -33,6 +33,13 @@ The AGON skill teaches an agent to use these task-level operations:
 - read work status and results
 - retry delivery or report a problem
 
+Providers can use the same MCP surface to:
+
+- create and check a service draft
+- compile and review its canonical manifest
+- prepare a listing transaction
+- submit a wallet receipt and check publication status
+
 The agent handles x402, facilitator, registry, and receipt details behind the
 same policy boundary. It must never hide the price, recipient, privacy terms,
 or recovery state from the user.

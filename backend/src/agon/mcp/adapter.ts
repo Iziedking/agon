@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import type { AgonListingView, ListingPage, X402ApprovalRequest, X402CallIntentRequest, X402CallIntentView, X402SettlementReadinessView } from "../http/api-types.ts";
-import { authorizeHireInput, compileListingInput, pauseListingInput, previewHireInput, providerDraftInput, providerMutationResult, publishListingInput, serviceReference, serviceSearchInput, serviceTerms, type ProviderDraftInput, type ServiceReference } from "./contract.ts";
+import type { AgonListingView, ListingPage, SubmittedOperation, X402ApprovalRequest, X402CallIntentRequest, X402CallIntentView, X402SettlementReadinessView } from "../http/api-types.ts";
+import { authorizeHireInput, compileListingInput, confirmListingInput, pauseListingInput, previewHireInput, providerDraftInput, providerMutationResult, publishListingInput, serviceReference, serviceSearchInput, serviceTerms, type ProviderDraftInput, type ServiceReference } from "./contract.ts";
 import { compileProviderManifest } from "./provider-manifest.ts";
 import { createMemoryProviderDraftStore, type ProviderDraftStore } from "./provider-draft-store.ts";
 
@@ -13,6 +13,7 @@ export type McpCatalogService = {
   approveX402Call?(actor: string, intentId: string, request: X402ApprovalRequest): Promise<{ ok: true; value: unknown } | { ok: false; error: { code: string; message: string } }>;
   getX402SettlementReadiness?(actor: string, intentId: string): Promise<{ ok: true; value: X402SettlementReadinessView } | { ok: false; error: { code: string; message: string } }>;
   publishProviderDraft?(actor: string, draft: ProviderDraftInput, compiled: ReturnType<typeof compileProviderManifest>, manifestUri: string): Promise<{ ok: true; value: { operationId?: string; reference?: string } } | { ok: false; error: { code: string; message: string } }>;
+  confirmOperation?(actor: string, operationId: string, txHash: `0x${string}`): Promise<{ ok: true; value: SubmittedOperation } | { ok: false; error: { code: string; message: string } }>;
   pauseProviderListing?(actor: string, reference: string): Promise<{ ok: true; value: { reference: string; operationId?: string } } | { ok: false; error: { code: string; message: string } }>;
 };
 
@@ -182,6 +183,33 @@ export function createMcpAccessAdapter(service: McpCatalogService, options: { pr
       const result = await service.pauseProviderListing(actor, parsed.data.reference);
       if (!result.ok) return { ok: false, code: result.error.code, message: result.error.message };
       return { ok: true, value: providerMutationResult.parse({ status: "paused", nextAction: "none", reference: result.value.reference, operationId: result.value.operationId }) };
+    },
+
+    async confirmListing(actor: string, input: unknown): Promise<McpResult<import("./contract.ts").ProviderMutationResult>> {
+      const parsed = confirmListingInput.safeParse(input);
+      if (!parsed.success) return { ok: false, code: "invalid_request", message: parsed.error.issues[0]?.message ?? "Invalid publication confirmation" };
+      const stored = await providerDraftStore.get(actor, parsed.data.draftId);
+      if (!stored) return { ok: false, code: "draft_not_found", message: "The provider draft is not available for this account." };
+      if (stored.operationId !== parsed.data.operationId) return { ok: false, code: "operation_mismatch", message: "The transaction does not match the prepared publication." };
+      if (stored.state === "confirmed") return { ok: true, value: providerMutationResult.parse({ status: "published", nextAction: "wait_for_listing_checks", draftId: parsed.data.draftId, operationId: stored.operationId, reference: stored.reference }) };
+      if (!service.confirmOperation) return { ok: false, code: "execution_not_ready", message: "Publication confirmation is not configured." };
+      const result = await service.confirmOperation(actor, parsed.data.operationId, parsed.data.txHash as `0x${string}`);
+      if (!result.ok) return { ok: false, code: result.error.code, message: result.error.message };
+      await providerDraftStore.markConfirmed(actor, parsed.data.draftId, result.value.resultReference ?? undefined);
+      return { ok: true, value: providerMutationResult.parse({ status: "published", nextAction: "wait_for_listing_checks", draftId: parsed.data.draftId, operationId: result.value.operationId, reference: result.value.resultReference ?? undefined }) };
+    },
+
+    async getListingPublication(actor: string, draftId: string): Promise<McpResult<import("./contract.ts").ProviderMutationResult>> {
+      const stored = await providerDraftStore.get(actor, draftId);
+      if (!stored) return { ok: false, code: "draft_not_found", message: "The provider draft is not available for this account." };
+      const nextAction = stored.state === "confirmed"
+        ? "wait_for_listing_checks"
+        : stored.state === "prepared"
+          ? "review_and_sign_publication"
+          : stored.state === "compiled"
+            ? "approve_publication"
+            : "run_listing_checks";
+      return { ok: true, value: providerMutationResult.parse({ status: stored.state === "confirmed" ? "published" : stored.state === "prepared" ? "prepared" : "needs_attention", nextAction, draftId, operationId: stored.operationId ?? undefined, reference: stored.reference ?? undefined }) };
     },
 
     async compileListing(actorOrInput: string | unknown, maybeInput?: unknown): Promise<McpResult<ReturnType<typeof compileProviderManifest>>> {

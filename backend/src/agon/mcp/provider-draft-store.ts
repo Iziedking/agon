@@ -20,6 +20,7 @@ export type ProviderDraftStore = {
   get(actor: string, draftId: string): Promise<StoredProviderDraft | null>;
   saveCompilation(actor: string, draftId: string, compiled: CompiledProviderManifest, manifestUri: string | null): Promise<StoredProviderDraft | null>;
   markPrepared(actor: string, draftId: string, operationId: string, reference?: string): Promise<StoredProviderDraft | null>;
+  markConfirmed(actor: string, draftId: string, reference?: string): Promise<StoredProviderDraft | null>;
   markPaused(actor: string, draftId: string): Promise<StoredProviderDraft | null>;
 };
 
@@ -69,6 +70,13 @@ export function createMemoryProviderDraftStore(): ProviderDraftStore {
       row.state = "prepared";
       row.operationId = operationId;
       row.reference = reference ?? null;
+      return row;
+    },
+    async markConfirmed(actor, draftId, reference) {
+      const row = rows.get(key(actor, draftId));
+      if (!row) return null;
+      row.state = "confirmed";
+      row.reference = reference ?? row.reference;
       return row;
     },
     async markPaused(actor, draftId) {
@@ -126,6 +134,16 @@ export function createPostgresProviderDraftStore(pool: Pool): ProviderDraftStore
             set state = 'prepared', operation_id = $3, reference = $4, updated_at = now()
           where draft_id = $1 and actor_address = $2`,
         [draftId, normalized, operationId, reference ?? null],
+      );
+      return this.get(normalized, draftId);
+    },
+    async markConfirmed(actor, draftId, reference) {
+      const normalized = normalizedActor(actor);
+      await pool.query(
+        `update agon_mcp_provider_drafts
+            set state = 'confirmed', reference = coalesce($3, reference), updated_at = now()
+          where draft_id = $1 and actor_address = $2`,
+        [draftId, normalized, reference ?? null],
       );
       return this.get(normalized, draftId);
     },

@@ -454,6 +454,12 @@ const mcpPauseListingSchema = z.object({
   approval: z.literal("approve"),
 }).strict();
 
+const mcpConfirmListingSchema = z.object({
+  draftId: z.string().trim().min(1).max(256),
+  operationId: z.string().trim().min(1).max(256),
+  txHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/),
+}).strict();
+
 const mcpCompileListingSchema = z.object({
   draftId: z.string().trim().min(1).max(256),
   agentId: z.string().regex(/^\d+$/),
@@ -1102,6 +1108,20 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
     const parsed = mcpPauseListingSchema.safeParse(body);
     if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
     const result = await mcp.pauseListing(context.get("address"), parsed.data);
+    return result.ok ? context.json(result.value) : context.json({ error: { code: result.code, message: result.message } }, 400);
+  });
+
+  app.get("/mcp/listing/:draftId", options.requireAuth, async (context) => {
+    const result = await mcp.getListingPublication(context.get("address"), context.req.param("draftId"));
+    return result.ok ? context.json(result.value) : context.json({ error: { code: result.code, message: result.message } }, 404);
+  });
+
+  app.post("/mcp/confirm-listing", options.requireListingConfirmAuth ?? options.requireAuth, requirePrincipal, async (context) => {
+    const body = await parseJson(context);
+    if (isApiError(body)) return context.json(body, 400);
+    const parsed = mcpConfirmListingSchema.safeParse(body);
+    if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
+    const result = await mcp.confirmListing(context.get("address"), parsed.data);
     return result.ok ? context.json(result.value) : context.json({ error: { code: result.code, message: result.message } }, 400);
   });
 

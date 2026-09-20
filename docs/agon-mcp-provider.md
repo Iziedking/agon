@@ -25,5 +25,10 @@ broadcasts that transaction through MCP. Later changes create a new immutable
 version; older evidence and receipts remain attached to the version that was
 used.
 
+After signing, submit the returned transaction hash with `confirm-listing` or
+query `GET /mcp/listing/:draftId`. Confirmation is receipt-verified against
+the prepared operation; a mismatched, reverted, or unavailable receipt stays
+recoverable and never marks the service as published.
+
 The same operations are available in the web provider workspace for review and
 recovery.
