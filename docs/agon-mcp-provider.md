@@ -38,8 +38,9 @@ operator action instead of claiming the listing changed.
 
 After signing, submit the returned transaction hash with `confirm-listing` or
 query `GET /mcp/listing/:draftId`. Confirmation is receipt-verified against
-the prepared operation; a mismatched, reverted, or unavailable receipt stays
-recoverable and never marks the service as published.
+the prepared operation and stores the exact transaction hash, block number,
+and event log index as publication evidence. A mismatched, reverted, or
+unavailable receipt stays recoverable and never marks the service as published.
 
 The same operations are available in the web provider workspace for review and
 recovery.

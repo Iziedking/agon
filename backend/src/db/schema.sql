@@ -1336,6 +1336,9 @@ create table if not exists agon_mcp_provider_drafts (
   listing_id         text,
   operation_id       text,
   reference          text,
+  tx_hash            text check (tx_hash is null or tx_hash ~ '^0x[0-9a-f]{64}$'),
+  block_number       numeric(78, 0) check (block_number is null or block_number >= 0),
+  log_index          integer check (log_index is null or log_index >= 0),
   created_at         timestamptz not null default now(),
   updated_at         timestamptz not null default now(),
   primary key (draft_id, actor_address)
@@ -1344,6 +1347,12 @@ create index if not exists agon_mcp_provider_drafts_actor_idx
   on agon_mcp_provider_drafts(actor_address, updated_at desc);
 alter table agon_mcp_provider_drafts add column if not exists publication_kind text not null default 'new';
 alter table agon_mcp_provider_drafts add column if not exists listing_id text;
+alter table agon_mcp_provider_drafts add column if not exists tx_hash text;
+alter table agon_mcp_provider_drafts add column if not exists block_number numeric(78, 0);
+alter table agon_mcp_provider_drafts add column if not exists log_index integer;
+alter table agon_mcp_provider_drafts drop constraint if exists agon_mcp_provider_drafts_tx_hash_check;
+alter table agon_mcp_provider_drafts add constraint agon_mcp_provider_drafts_tx_hash_check
+  check (tx_hash is null or tx_hash ~ '^0x[0-9a-f]{64}$');
 
 create table if not exists agon_verification_evidence (
   id              bigserial primary key,

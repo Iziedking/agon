@@ -42,6 +42,9 @@ Providers can use the same MCP surface to:
 - prepare an owner-scoped listing pause
 - submit a wallet receipt and check publication status
 
+Publication status includes the receipt transaction, block, and canonical event
+log proof after confirmation.
+
 The agent handles x402, facilitator, registry, and receipt details behind the
 same policy boundary. It must never hide the price, recipient, privacy terms,
 or recovery state from the user.

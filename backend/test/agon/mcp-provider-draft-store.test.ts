@@ -66,10 +66,14 @@ test("MCP publication prepares an exact listing write after manifest compilation
   }
   const confirmed = await adapter.confirmListing(actor, { draftId: started.value.draftId, operationId: "op-1", txHash: `0x${"a".repeat(64)}` });
   assert.equal(confirmed.ok, true);
-  if (confirmed.ok) assert.equal(confirmed.value.status, "published");
+  if (confirmed.ok) {
+    assert.equal(confirmed.value.status, "published");
+    assert.deepEqual(confirmed.value.evidence, { txHash: `0x${"a".repeat(64)}`, blockNumber: "10", logIndex: 0 });
+  }
   const status = await adapter.getListingPublication(actor, started.value.draftId);
   assert.equal(status.ok, true);
   if (status.ok) assert.equal(status.value.nextAction, "wait_for_listing_checks");
+  if (status.ok) assert.deepEqual(status.value.evidence, { txHash: `0x${"a".repeat(64)}`, blockNumber: "10", logIndex: 0 });
   assert.equal(calls.length, 1);
 
   const versionStarted = await adapter.startListing(actor, { ...draft, name: "CRM helper v2" });

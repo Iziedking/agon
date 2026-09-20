@@ -126,6 +126,11 @@ export const providerMutationResult = z.object({
   draftId: id.optional(),
   reference: id.optional(),
   operationId: id.optional(),
+  evidence: z.object({
+    txHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/),
+    blockNumber: z.string().regex(/^\d+$/),
+    logIndex: z.number().int().nonnegative(),
+  }).strict().optional(),
 }).strict();
 
 export const mcpOperation = z.discriminatedUnion("kind", [
