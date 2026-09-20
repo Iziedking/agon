@@ -21,6 +21,7 @@ const AGON_TABLES = [
   "agon_listing_events",
   "agon_chain_events",
   "agon_write_operations",
+  "agon_mcp_provider_drafts",
   "agon_verification_evidence",
   "agon_playground_runs",
   "agon_certification_jobs",

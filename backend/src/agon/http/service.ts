@@ -105,6 +105,8 @@ import { buildAgonPrizeClaimPlan, buildAgonSyndicateContributionPlan, prizeClaim
 import type { AgonProtocolFinalityReader } from "../execution/protocol-finality.ts";
 import type { X402AgentSpendExecutor } from "../execution/x402-agent-executor.ts";
 import type { AgonJobEscrowTransactionAdapter } from "../execution/agon-job-escrow-adapter.ts";
+import type { ProviderDraftInput } from "../mcp/contract.ts";
+import type { CompiledProviderManifest } from "../mcp/provider-manifest.ts";
 
 const cursorSchema = z.object({
   updatedAt: z.string().datetime(),
@@ -852,6 +854,32 @@ export class PostgresAgonMarketService implements AgonMarketService {
       };
     }
     return this.options.writer.publishListing(actor, request);
+  }
+
+  async publishProviderDraft(
+    actor: string,
+    draft: ProviderDraftInput,
+    compiled: CompiledProviderManifest,
+    manifestUri: string,
+  ): Promise<Result<{ operationId?: string; reference?: string }, AgonServiceError>> {
+    if (!this.options.writer) return { ok: false, error: { code: "capability_unavailable", message: "listing writes are unavailable" } };
+    if (!/^\d+$/.test(draft.category) || BigInt(draft.category) <= 0n) {
+      return { ok: false, error: { code: "validation_failed", message: "provider category must be a positive onchain category id" } };
+    }
+    if (!/^https:\/\//.test(manifestUri)) {
+      return { ok: false, error: { code: "validation_failed", message: "a public HTTPS manifest URI is required" } };
+    }
+    const result = await this.options.writer.publishListing(actor, {
+      chainId: "5042002",
+      agentId: compiled.body.identity.agentId,
+      serviceKey: compiled.serviceKey,
+      manifestHash: compiled.manifestHash,
+      manifestUri,
+      category: draft.category,
+      paymentRail: "X402",
+    });
+    if (!result.ok) return result;
+    return { ok: true, value: { operationId: result.value.operationId, reference: result.value.resultReference ?? undefined } };
   }
 
   async publishListingVersion(

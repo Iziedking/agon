@@ -59,21 +59,21 @@ test("MCP provider draft returns a stable draft and pre-publication checks", asy
     async prepareX402Call() { return { ok: false, error: { code: "unused", message: "unused" } }; },
   });
   const draft = { name: "CRM helper", outcome: "Enrich a bounded CRM list", category: "crm", inputs: ["records"], outputs: ["enriched records"], priceUSDC: "0.04", expectedLatencyMs: 90_000, privacy: "Deletes input after delivery", failurePolicy: "Retry delivery without another charge when safe", endpoint: "https://provider.example/execute" };
-  const checked = adapter.checkListing(draft);
+  const checked = await adapter.checkListing(draft);
   assert.equal(checked.ok, true);
   if (checked.ok) {
     assert.match(checked.value.draftId, /^draft-/);
     assert.equal(checked.value.checks[0]?.status, "passed");
     assert.equal(checked.value.nextAction, "review_and_approve_publication");
-    const rechecked = adapter.checkListing({ draftId: checked.value.draftId });
+    const rechecked = await adapter.checkListing({ draftId: checked.value.draftId });
     assert.equal(rechecked.ok, true);
     const published = await adapter.publishListing("provider", { draftId: checked.value.draftId, approval: "approve" });
     assert.equal(published.ok, true);
-    if (published.ok) assert.equal(published.value.nextAction, "connect_provider_wallet");
+    if (published.ok) assert.equal(published.value.nextAction, "compile_listing_with_manifest_uri");
     const paused = await adapter.pauseListing("provider", { reference: listing.id, approval: "approve" });
     assert.equal(paused.ok, true);
     if (paused.ok) assert.equal(paused.value.nextAction, "operator_pause_required");
-    const compiled = adapter.compileListing({ draftId: checked.value.draftId, agentId: "42" });
+    const compiled = await adapter.compileListing({ draftId: checked.value.draftId, agentId: "42" });
     assert.equal(compiled.ok, true);
     if (compiled.ok) {
       assert.equal(compiled.value.body.identity.agentId, "42");

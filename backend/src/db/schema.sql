@@ -1320,6 +1320,24 @@ create table if not exists agon_write_operations (
 create index if not exists agon_write_operations_actor_idx
   on agon_write_operations(actor_address, created_at desc);
 
+-- MCP provider drafts are durable before a wallet review. The compiled
+-- manifest is retained so publication always uses the exact reviewed bytes.
+create table if not exists agon_mcp_provider_drafts (
+  draft_id           text not null,
+  actor_address      text not null check (actor_address ~ '^0x[0-9a-f]{40}$'),
+  draft              jsonb not null,
+  compiled_manifest  jsonb,
+  manifest_uri       text,
+  state              text not null default 'draft' check (state in ('draft', 'compiled', 'prepared', 'confirmed', 'paused')),
+  operation_id       text,
+  reference          text,
+  created_at         timestamptz not null default now(),
+  updated_at         timestamptz not null default now(),
+  primary key (draft_id, actor_address)
+);
+create index if not exists agon_mcp_provider_drafts_actor_idx
+  on agon_mcp_provider_drafts(actor_address, updated_at desc);
+
 create table if not exists agon_verification_evidence (
   id              bigserial primary key,
   listing_id      numeric(78, 0) not null check (listing_id > 0),

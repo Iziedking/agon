@@ -26,6 +26,7 @@ import { createViemAgonPrizeEscrowReadAdapter, type AgonPrizeEscrowReadClient } 
 import { evaluateAgonEscrowProductionReadiness } from "../agon/execution/escrow-production-readiness.js";
 import { AGON_ESCROW_TRANSACTION_APPROVAL_PHRASES } from "../agon/execution/escrow-transaction-approval.js";
 import { PostgresAgonMarketService } from "../agon/http/service.js";
+import { createPostgresProviderDraftStore } from "../agon/mcp/provider-draft-store.ts";
 import { inspectAgonProtocolReadiness } from "../agon/protocol-readiness.ts";
 import {
   createViemAgonJobEscrowReadAdapter,
@@ -332,6 +333,7 @@ app.post("/auth/cli/device/token", async (c) => {
 });
 
 const agonRepository = new PostgresAgonRepository(pool);
+const agonProviderDraftStore = createPostgresProviderDraftStore(pool);
 const agonOperations = new PostgresAgonOperationStore(pool);
 const agonReadiness = new CachedAgonReadiness(
   {
@@ -554,6 +556,7 @@ app.route("/agon", createAgonRoutes({
   playgroundStore: agonPlaygroundStore,
   playgroundRateLimiter: new RedisPlaygroundRateLimiter(redis),
   playgroundProviderRunner: agonPlaygroundProviderRunner,
+  providerDraftStore: agonProviderDraftStore,
 }));
 
 if (config.agon.certification.workerEnabled) {

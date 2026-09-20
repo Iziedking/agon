@@ -5,6 +5,7 @@ import { PlaygroundProviderError, type PlaygroundProviderRunner } from "../playg
 import { PlaygroundRunConflictError, type PlaygroundRateLimiter, type PlaygroundRunStore } from "../playground-store.ts";
 import { inspectManifest, ManifestInspectionError } from "../manifest-inspector.ts";
 import { createMcpAccessAdapter } from "../mcp/adapter.ts";
+import type { ProviderDraftStore } from "../mcp/provider-draft-store.ts";
 import { createMarketAggregator, type MarketSource } from "../mcp/aggregator.ts";
 import { z, type ZodError } from "zod";
 import type { Result } from "../core/result.ts";
@@ -107,6 +108,12 @@ export type AgonMarketService = {
     actor: string,
     request: PublishListingRequest,
   ): Promise<Result<SubmittedOperation, AgonServiceError>>;
+  publishProviderDraft?(
+    actor: string,
+    draft: import("../mcp/contract.ts").ProviderDraftInput,
+    compiled: import("../mcp/provider-manifest.ts").CompiledProviderManifest,
+    manifestUri: string,
+  ): Promise<Result<{ operationId?: string; reference?: string }, AgonServiceError>>;
   publishListingVersion(
     actor: string,
     request: PublishListingVersionRequest,
@@ -353,6 +360,7 @@ export type CreateAgonRoutesOptions = {
   playgroundStore?: PlaygroundRunStore;
   playgroundRateLimiter?: PlaygroundRateLimiter;
   playgroundProviderRunner?: PlaygroundProviderRunner;
+  providerDraftStore?: ProviderDraftStore;
 };
 
 const positiveDecimal = z.string().regex(/^[1-9]\d*$/, "must be a positive decimal string");
@@ -450,6 +458,7 @@ const mcpCompileListingSchema = z.object({
   draftId: z.string().trim().min(1).max(256),
   agentId: z.string().regex(/^\d+$/),
   logoUrl: z.string().url().startsWith("https://").optional(),
+  manifestUri: z.string().url().startsWith("https://").max(2048).optional(),
 }).strict();
 
 const x402AgentSpendSchema = z.object({
@@ -673,7 +682,7 @@ function queryFromRequest(context: Context, overrides: Partial<ListingQuery> = {
 
 export function createAgonRoutes(options: CreateAgonRoutesOptions) {
   const app = new Hono<{ Variables: AgonRouteVariables }>();
-  const mcp = createMcpAccessAdapter(options.service);
+  const mcp = createMcpAccessAdapter(options.service, { providerDraftStore: options.providerDraftStore });
   const marketAggregator = createMarketAggregator(options.marketSources ?? [
     {
       id: "arc",
@@ -1067,14 +1076,14 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
   app.post("/mcp/start-listing", options.requireAuth, async (context) => {
     const body = await parseJson(context);
     if (isApiError(body)) return context.json(body, 400);
-    const result = mcp.startListing(body);
+    const result = await mcp.startListing(context.get("address"), body);
     return result.ok ? context.json(result.value, 201) : context.json({ error: { code: result.code, message: result.message } }, 400);
   });
 
   app.post("/mcp/check-listing", options.requireAuth, async (context) => {
     const body = await parseJson(context);
     if (isApiError(body)) return context.json(body, 400);
-    const result = mcp.checkListing(body);
+    const result = await mcp.checkListing(context.get("address"), body);
     return result.ok ? context.json(result.value) : context.json({ error: { code: result.code, message: result.message } }, 400);
   });
 
@@ -1101,7 +1110,7 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
     if (isApiError(body)) return context.json(body, 400);
     const parsed = mcpCompileListingSchema.safeParse(body);
     if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
-    const result = mcp.compileListing(parsed.data);
+    const result = await mcp.compileListing(context.get("address"), parsed.data);
     return result.ok ? context.json(result.value) : context.json({ error: { code: result.code, message: result.message } }, 400);
   });
 

@@ -105,6 +105,7 @@ export const compileListingInput = z.object({
   draftId: id,
   agentId: z.string().regex(/^\d+$/),
   logoUrl: z.string().url().startsWith("https://").optional(),
+  manifestUri: z.string().url().startsWith("https://").max(2048).optional(),
 }).strict();
 
 export const providerMutationResult = z.object({

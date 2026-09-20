@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { AgonListingView, ListingPage, X402ApprovalRequest, X402CallIntentRequest, X402CallIntentView, X402SettlementReadinessView } from "../http/api-types.ts";
 import { authorizeHireInput, compileListingInput, pauseListingInput, previewHireInput, providerDraftInput, providerMutationResult, publishListingInput, serviceReference, serviceSearchInput, serviceTerms, type ProviderDraftInput, type ServiceReference } from "./contract.ts";
 import { compileProviderManifest } from "./provider-manifest.ts";
+import { createMemoryProviderDraftStore, type ProviderDraftStore } from "./provider-draft-store.ts";
 
 export type McpResult<T> = { ok: true; value: T } | { ok: false; code: string; message: string };
 
@@ -11,7 +12,7 @@ export type McpCatalogService = {
   prepareX402Call(actor: string, reference: string, request: X402CallIntentRequest): Promise<{ ok: true; value: X402CallIntentView } | { ok: false; error: { code: string; message: string } }>;
   approveX402Call?(actor: string, intentId: string, request: X402ApprovalRequest): Promise<{ ok: true; value: unknown } | { ok: false; error: { code: string; message: string } }>;
   getX402SettlementReadiness?(actor: string, intentId: string): Promise<{ ok: true; value: X402SettlementReadinessView } | { ok: false; error: { code: string; message: string } }>;
-  publishProviderDraft?(actor: string, draft: ProviderDraftInput): Promise<{ ok: true; value: { operationId?: string; reference?: string } } | { ok: false; error: { code: string; message: string } }>;
+  publishProviderDraft?(actor: string, draft: ProviderDraftInput, compiled: ReturnType<typeof compileProviderManifest>, manifestUri: string): Promise<{ ok: true; value: { operationId?: string; reference?: string } } | { ok: false; error: { code: string; message: string } }>;
   pauseProviderListing?(actor: string, reference: string): Promise<{ ok: true; value: { reference: string; operationId?: string } } | { ok: false; error: { code: string; message: string } }>;
 };
 
@@ -49,9 +50,10 @@ function toServiceReference(listing: AgonListingView): ServiceReference {
   });
 }
 
-export function createMcpAccessAdapter(service: McpCatalogService) {
+export function createMcpAccessAdapter(service: McpCatalogService, options: { providerDraftStore?: ProviderDraftStore } = {}) {
   const hires = new Map<string, { terms: ReturnType<typeof serviceTerms.parse>; intent: X402CallIntentView }>();
-  const drafts = new Map<string, ProviderDraftInput>();
+  const providerDraftStore = options.providerDraftStore ?? createMemoryProviderDraftStore();
+  const legacyDrafts = new Map<string, { draft: ProviderDraftInput; compiled: ReturnType<typeof compileProviderManifest> | null; manifestUri: string | null }>();
 
   function workStatus(readiness: X402SettlementReadinessView): "preparing" | "paid" | "working" | "delivered" | "reconciling" | "complete" | "needs_attention" {
     if (readiness.status === "terminal" && readiness.state === "reconciled") return "complete";
@@ -127,18 +129,26 @@ export function createMcpAccessAdapter(service: McpCatalogService) {
       return { ok: true, value: { status: action === "report_problem" ? "needs_attention" : "working", nextAction: action === "report_problem" ? "open_support_case" : "check_work_status", hireId, terms: hire.terms } };
     },
 
-    startListing(input: unknown): McpResult<{ draftId: string; draft: ProviderDraftInput; nextAction: string }> {
+    async startListing(actorOrInput: string | unknown, maybeInput?: unknown): Promise<McpResult<{ draftId: string; draft: ProviderDraftInput; nextAction: string }>> {
+      const actor = typeof actorOrInput === "string" && maybeInput !== undefined ? actorOrInput : null;
+      const input = maybeInput === undefined ? actorOrInput : maybeInput;
       const parsed = providerDraftInput.safeParse(input);
       if (!parsed.success) return { ok: false, code: "invalid_request", message: parsed.error.issues[0]?.message ?? "Invalid provider draft" };
       const draftId = `draft-${createHash("sha256").update(JSON.stringify(parsed.data)).digest("hex").slice(0, 24)}`;
-      drafts.set(draftId, parsed.data);
+      if (actor) await providerDraftStore.create(actor, draftId, parsed.data);
+      else legacyDrafts.set(draftId, { draft: parsed.data, compiled: null, manifestUri: null });
       return { ok: true, value: { draftId, draft: parsed.data, nextAction: "run_listing_checks" } };
     },
 
-    checkListing(input: unknown): McpResult<{ draftId: string; checks: Array<{ name: string; status: "passed" | "needs_attention"; detail: string }>; nextAction: string }> {
+    async checkListing(actorOrInput: string | unknown, maybeInput?: unknown): Promise<McpResult<{ draftId: string; checks: Array<{ name: string; status: "passed" | "needs_attention"; detail: string }>; nextAction: string }>> {
+      const actor = typeof actorOrInput === "string" && maybeInput !== undefined ? actorOrInput : null;
+      const input = maybeInput === undefined ? actorOrInput : maybeInput;
       const reference = input && typeof input === "object" && "draftId" in input && typeof (input as { draftId?: unknown }).draftId === "string" ? (input as { draftId: string }).draftId : null;
-      const draft = reference ? drafts.get(reference) : null;
-      const started = draft && reference ? { ok: true as const, value: { draftId: reference, draft, nextAction: "run_listing_checks" } } : this.startListing(input);
+      const draft = actor && reference ? await providerDraftStore.get(actor, reference) : null;
+      const legacy = reference ? legacyDrafts.get(reference) : null;
+      const started = (draft || legacy) && reference
+        ? { ok: true as const, value: { draftId: reference, draft: draft?.draft ?? legacy!.draft, nextAction: "run_listing_checks" } }
+        : await this.startListing(actor ?? input, actor ? input : undefined);
       if (!started.ok) return started;
       const checks = [
         { name: "secure_endpoint", status: "passed" as const, detail: "The service uses a public HTTPS endpoint." },
@@ -151,12 +161,18 @@ export function createMcpAccessAdapter(service: McpCatalogService) {
     async publishListing(actor: string, input: unknown): Promise<McpResult<import("./contract.ts").ProviderMutationResult>> {
       const parsed = publishListingInput.safeParse(input);
       if (!parsed.success) return { ok: false, code: "invalid_request", message: parsed.error.issues[0]?.message ?? "Invalid publication request" };
-      const draft = drafts.get(parsed.data.draftId);
+      const legacy = legacyDrafts.get(parsed.data.draftId);
+      const stored = legacy ? null : await providerDraftStore.get(actor, parsed.data.draftId);
+      const draft = stored?.draft ?? legacy?.draft;
       if (!draft) return { ok: false, code: "draft_not_found", message: "Create or resume the provider draft before publishing." };
+      const compiled = stored?.compiled ?? legacy?.compiled;
+      const manifestUri = stored?.manifestUri ?? legacy?.manifestUri;
+      if (!compiled || !manifestUri) return { ok: true, value: providerMutationResult.parse({ status: "needs_attention", nextAction: "compile_listing_with_manifest_uri", draftId: parsed.data.draftId }) };
       if (!service.publishProviderDraft) return { ok: true, value: providerMutationResult.parse({ status: "needs_attention", nextAction: "connect_provider_wallet", draftId: parsed.data.draftId }) };
-      const result = await service.publishProviderDraft(actor, draft);
+      const result = await service.publishProviderDraft(actor, draft, compiled, manifestUri);
       if (!result.ok) return { ok: false, code: result.error.code, message: result.error.message };
-      return { ok: true, value: providerMutationResult.parse({ status: "published", nextAction: "wait_for_listing_checks", draftId: parsed.data.draftId, operationId: result.value.operationId, reference: result.value.reference }) };
+      if (stored) await providerDraftStore.markPrepared(actor, parsed.data.draftId, result.value.operationId ?? "prepared", result.value.reference);
+      return { ok: true, value: providerMutationResult.parse({ status: "prepared", nextAction: "review_and_sign_publication", draftId: parsed.data.draftId, operationId: result.value.operationId, reference: result.value.reference }) };
     },
 
     async pauseListing(actor: string, input: unknown): Promise<McpResult<import("./contract.ts").ProviderMutationResult>> {
@@ -168,13 +184,20 @@ export function createMcpAccessAdapter(service: McpCatalogService) {
       return { ok: true, value: providerMutationResult.parse({ status: "paused", nextAction: "none", reference: result.value.reference, operationId: result.value.operationId }) };
     },
 
-    compileListing(input: unknown): McpResult<ReturnType<typeof compileProviderManifest>> {
+    async compileListing(actorOrInput: string | unknown, maybeInput?: unknown): Promise<McpResult<ReturnType<typeof compileProviderManifest>>> {
+      const actor = typeof actorOrInput === "string" && maybeInput !== undefined ? actorOrInput : null;
+      const input = maybeInput === undefined ? actorOrInput : maybeInput;
       const parsed = compileListingInput.safeParse(input);
       if (!parsed.success) return { ok: false, code: "invalid_request", message: parsed.error.issues[0]?.message ?? "Invalid listing compilation request" };
-      const draft = drafts.get(parsed.data.draftId);
+      const stored = actor ? await providerDraftStore.get(actor, parsed.data.draftId) : null;
+      const legacy = legacyDrafts.get(parsed.data.draftId);
+      const draft = stored?.draft ?? legacy?.draft;
       if (!draft) return { ok: false, code: "draft_not_found", message: "Create or resume the provider draft before compiling it." };
       try {
-        return { ok: true, value: compileProviderManifest(draft, { agentId: parsed.data.agentId, logoUrl: parsed.data.logoUrl }) };
+        const compiled = compileProviderManifest(draft, { agentId: parsed.data.agentId, logoUrl: parsed.data.logoUrl });
+        if (actor && stored) await providerDraftStore.saveCompilation(actor, parsed.data.draftId, compiled, parsed.data.manifestUri ?? null);
+        if (legacy) { legacy.compiled = compiled; legacy.manifestUri = parsed.data.manifestUri ?? null; }
+        return { ok: true, value: compiled };
       } catch (error) {
         return { ok: false, code: "manifest_invalid", message: error instanceof Error ? error.message : "Provider manifest is invalid" };
       }
