@@ -13,6 +13,7 @@ import type { AgonDeployment } from "../../config/deployments.ts";
 import type { Result } from "../core/result.ts";
 import type {
   BindProfileRequest,
+  PauseListingRequest,
   PublishListingRequest,
   PublishListingVersionRequest,
   SubmittedOperation,
@@ -147,9 +148,11 @@ export class ViemAgonWriteAdapter implements AgonWriteAdapter {
     }
     const expectedSignature = operation.transaction.functionName === "bindProfile"
       ? "bindProfile(uint256,string)"
-      : operation.transaction.functionName === "publishVersion"
-        ? "publishVersion(uint256,bytes32,string,uint8)"
-        : "publish(uint256,bytes32,bytes32,string,uint256,uint8)";
+        : operation.transaction.functionName === "publishVersion"
+          ? "publishVersion(uint256,bytes32,string,uint8)"
+          : operation.transaction.functionName === "setStatus"
+            ? "setStatus(uint256,uint8)"
+            : "publish(uint256,bytes32,bytes32,string,uint256,uint8)";
     const normalizedParameters = parameters.map((value) => String(value));
     if (
       !isAddressEqual(operation.transaction.to, contractAddress as `0x${string}`) ||
@@ -367,6 +370,69 @@ export class ViemAgonWriteAdapter implements AgonWriteAdapter {
     }
   }
 
+  async pauseListing(
+    actorInput: string,
+    request: PauseListingRequest,
+  ): Promise<Result<SubmittedOperation, AgonServiceError>> {
+    try {
+      const readiness = await this.readiness.get();
+      if (!readiness.ready) return failure("capability_unavailable", "listing writes are unavailable");
+      if (request.chainId !== String(this.deployment.chainId)) {
+        return failure("validation_failed", "request chain does not match the Agon deployment");
+      }
+      const actor = getAddress(actorInput);
+      const listingId = positive(request.listingId, "listing id");
+      const args = [listingId, 1] as const;
+      const data = encodeFunctionData({ abi: agonServiceRegistryAbi, functionName: "setStatus", args });
+      const transaction: AgonTransactionIntent = {
+        chainId: request.chainId,
+        to: this.deployment.contracts.AgonServiceRegistry,
+        data,
+        functionName: "setStatus",
+        args: [request.listingId, "1"],
+      };
+      const payloadHash = intentHash(BigInt(request.chainId), actor, transaction);
+      const existing = await this.operations.getByPayload(actor, "pause_listing", payloadHash);
+      if (existing?.state === "confirmed") return { ok: true, value: operationView(existing) };
+      const listing = await this.client.readContract({
+        address: this.deployment.contracts.AgonServiceRegistry,
+        abi: agonServiceRegistryAbi,
+        functionName: "getListing",
+        args: [listingId],
+      }) as { agentId: bigint };
+      const owner = await this.client.readContract({
+        address: this.deployment.contracts.AgonProfileRegistry,
+        abi: agonProfileRegistryAbi,
+        functionName: "currentOwner",
+        args: [listing.agentId],
+      });
+      if (!isAddressEqual(actor, owner)) return failure("not_owner", "authenticated wallet is not the current ERC-8004 owner");
+      await this.client.simulateContract({
+        account: actor,
+        address: this.deployment.contracts.AgonServiceRegistry,
+        abi: agonServiceRegistryAbi,
+        functionName: "setStatus",
+        args,
+      });
+      const operation = await this.operations.prepare({
+        actor: actor.toLowerCase() as `0x${string}`,
+        kind: "pause_listing",
+        payloadHash,
+        request,
+        transaction,
+      });
+      return { ok: true, value: operationView(operation) };
+    } catch (error) {
+      if (error instanceof Error && /revert|simulation/i.test(error.message)) {
+        return failure("conflict", "listing pause simulation was refused by the contract");
+      }
+      if (error instanceof Error && /must be|invalid address/i.test(error.message)) {
+        return failure("validation_failed", error.message);
+      }
+      return unexpectedFailure("listing pause preparation failed", error);
+    }
+  }
+
   async confirmOperation(
     actorInput: string,
     operationId: string,
@@ -399,14 +465,18 @@ export class ViemAgonWriteAdapter implements AgonWriteAdapter {
 
     const proof = operation.kind === "bind_profile"
       ? this.verifyProfileEvent(operation, receipt)
-      : operation.transaction.functionName === "publishVersion"
-        ? this.verifyListingVersionEvent(operation, receipt)
-        : this.verifyListingEvent(operation, receipt);
+      : operation.transaction.functionName === "setStatus"
+        ? this.verifyListingStatusEvent(operation, receipt)
+        : operation.transaction.functionName === "publishVersion"
+          ? this.verifyListingVersionEvent(operation, receipt)
+          : this.verifyListingEvent(operation, receipt);
     if (!proof.ok) return proof;
 
-    if ("anchor" in proof.value && proof.value.anchor && this.listingAnchors) {
-      await this.listingAnchors.insertValidatedListingVersion(proof.value.anchor);
-      await this.listingAnchors.reconcileListingAnchor?.(proof.value.anchor);
+    const proofValue = proof.value as { logIndex: number; resultReference: string | null; anchor?: AgonListingAnchor };
+
+    if (proofValue.anchor && this.listingAnchors) {
+      await this.listingAnchors.insertValidatedListingVersion(proofValue.anchor);
+      await this.listingAnchors.reconcileListingAnchor?.(proofValue.anchor);
     }
 
     try {
@@ -414,9 +484,9 @@ export class ViemAgonWriteAdapter implements AgonWriteAdapter {
         operationId,
         actor,
         txHash: txHash.toLowerCase() as `0x${string}`,
-        resultReference: proof.value.resultReference,
+        resultReference: proofValue.resultReference,
         blockNumber: receipt.blockNumber,
-        logIndex: proof.value.logIndex,
+        logIndex: proofValue.logIndex,
       });
       return { ok: true, value: operationView(confirmed) };
     } catch (error) {
@@ -508,8 +578,15 @@ export class ViemAgonWriteAdapter implements AgonWriteAdapter {
     for (const log of matchingLogs(receipt, this.deployment.contracts.AgonServiceRegistry)) {
       try {
         const decoded = decodeEventLog({ abi: agonServiceRegistryAbi, ...log, strict: true });
-        if (String(decoded.eventName) !== "ListingVersionPublished") continue;
-        const args = decoded.args;
+        if (decoded.eventName !== "ListingVersionPublished") continue;
+        const args = decoded.args as {
+          listingId: bigint;
+          manifestHash: `0x${string}`;
+          manifestURI: string;
+          paymentRail: number;
+          providerSnapshot: `0x${string}`;
+          version: bigint;
+        };
         if (
           args.listingId === BigInt(request.listingId) &&
           args.manifestHash.toLowerCase() === request.manifestHash.toLowerCase() &&
@@ -536,5 +613,35 @@ export class ViemAgonWriteAdapter implements AgonWriteAdapter {
     return matches.length === 1
       ? { ok: true, value: matches[0]! }
       : failure("receipt_invalid", "receipt does not contain exactly one matching ListingVersionPublished event");
+  }
+
+  private verifyListingStatusEvent(
+    operation: StoredAgonWriteOperation,
+    receipt: TransactionReceipt,
+  ): Result<{ logIndex: number; resultReference: string }, AgonServiceError> {
+    const request = operation.request as PauseListingRequest;
+    const matches: Array<{ logIndex: number; resultReference: string }> = [];
+    for (const log of matchingLogs(receipt, this.deployment.contracts.AgonServiceRegistry)) {
+      try {
+        const decoded = decodeEventLog({ abi: agonServiceRegistryAbi, ...log, strict: true });
+        if (decoded.eventName !== "ListingStatusChanged") continue;
+        const args = decoded.args;
+        if (
+          args.listingId === BigInt(request.listingId) &&
+          args.status === 1 &&
+          isAddressEqual(args.providerSnapshot, operation.actor)
+        ) {
+          matches.push({
+            logIndex: log.logIndex ?? 0,
+            resultReference: `${request.chainId}:${this.deployment.contracts.AgonServiceRegistry.toLowerCase()}:${args.listingId}`,
+          });
+        }
+      } catch {
+        // Ignore unrelated logs from the canonical contract.
+      }
+    }
+    return matches.length === 1
+      ? { ok: true, value: matches[0]! }
+      : failure("receipt_invalid", "receipt does not contain exactly one matching ListingStatusChanged event");
   }
 }

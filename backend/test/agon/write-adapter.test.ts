@@ -172,6 +172,19 @@ function listingVersionLog(overrides: { actor?: `0x${string}`; manifestHash?: `0
   } as Log;
 }
 
+function listingStatusLog(actor = ACTOR, listingId = 9n, status = 1): Log {
+  return {
+    address: SERVICE,
+    topics: encodeEventTopics({
+      abi: agonServiceRegistryAbi,
+      eventName: "ListingStatusChanged",
+      args: { listingId, providerSnapshot: actor },
+    }),
+    data: encodeAbiParameters([{ type: "uint8" }], [status]),
+    logIndex: 10,
+  } as Log;
+}
+
 function setup(options: {
   owner?: `0x${string}`;
   readiness?: AgonReadiness;
@@ -317,6 +330,21 @@ test("confirms listing version publication from its canonical event", async () =
   if (!confirmed.ok) return;
   assert.equal(confirmed.value.resultReference, `5042002:${SERVICE}:9`);
   assert.deepEqual(confirmed.value.proof, { blockNumber: "123", logIndex: 9 });
+});
+
+test("prepares and confirms an owner-scoped listing pause", async () => {
+  const { adapter } = setup({ transactionReceipt: receipt([listingStatusLog()]) });
+  const prepared = await adapter.pauseListing(ACTOR, { chainId: "5042002", listingId: "9" });
+  assert.equal(prepared.ok, true);
+  if (!prepared.ok) return;
+  assert.equal(prepared.value.state, "prepared");
+  assert.equal(prepared.value.transaction.functionName, "setStatus");
+  assert.deepEqual(prepared.value.transaction.args, ["9", "1"]);
+  const confirmed = await adapter.confirmOperation(ACTOR, prepared.value.operationId, TX_HASH);
+  assert.equal(confirmed.ok, true);
+  if (!confirmed.ok) return;
+  assert.equal(confirmed.value.resultReference, `5042002:${SERVICE}:9`);
+  assert.deepEqual(confirmed.value.proof, { blockNumber: "123", logIndex: 10 });
 });
 
 test("rechecks an already confirmed listing receipt to repair a missing anchor", async () => {

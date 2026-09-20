@@ -13,12 +13,14 @@ export type StoredProviderDraft = {
   state: ProviderDraftState;
   operationId: string | null;
   reference: string | null;
+  publicationKind: "new" | "version";
+  listingId: string | null;
 };
 
 export type ProviderDraftStore = {
   create(actor: string, draftId: string, draft: ProviderDraftInput): Promise<StoredProviderDraft>;
   get(actor: string, draftId: string): Promise<StoredProviderDraft | null>;
-  saveCompilation(actor: string, draftId: string, compiled: CompiledProviderManifest, manifestUri: string | null): Promise<StoredProviderDraft | null>;
+  saveCompilation(actor: string, draftId: string, compiled: CompiledProviderManifest, manifestUri: string | null, target?: { kind: "new" | "version"; listingId?: string }): Promise<StoredProviderDraft | null>;
   markPrepared(actor: string, draftId: string, operationId: string, reference?: string): Promise<StoredProviderDraft | null>;
   markConfirmed(actor: string, draftId: string, reference?: string): Promise<StoredProviderDraft | null>;
   markPaused(actor: string, draftId: string): Promise<StoredProviderDraft | null>;
@@ -39,6 +41,8 @@ function draftView(input: Omit<StoredProviderDraft, "actor"> & { actor: string }
     state: input.state,
     operationId: input.operationId,
     reference: input.reference,
+    publicationKind: input.publicationKind,
+    listingId: input.listingId,
   };
 }
 
@@ -51,17 +55,19 @@ export function createMemoryProviderDraftStore(): ProviderDraftStore {
       const k = key(actor, draftId);
       const existing = rows.get(k);
       if (existing) return existing;
-      const row = draftView({ draftId, actor, draft, compiled: null, manifestUri: null, state: "draft", operationId: null, reference: null });
+      const row = draftView({ draftId, actor, draft, compiled: null, manifestUri: null, state: "draft", operationId: null, reference: null, publicationKind: "new", listingId: null });
       rows.set(k, row);
       return row;
     },
     async get(actor, draftId) { return rows.get(key(actor, draftId)) ?? null; },
-    async saveCompilation(actor, draftId, compiled, manifestUri) {
+    async saveCompilation(actor, draftId, compiled, manifestUri, target) {
       const row = rows.get(key(actor, draftId));
       if (!row) return null;
       row.compiled = compiled;
       row.manifestUri = manifestUri;
       row.state = "compiled";
+      row.publicationKind = target?.kind ?? "new";
+      row.listingId = target?.listingId ?? null;
       return row;
     },
     async markPrepared(actor, draftId, operationId, reference) {
@@ -94,8 +100,8 @@ export function createPostgresProviderDraftStore(pool: Pool): ProviderDraftStore
     async create(actor, draftId, draft) {
       const normalized = normalizedActor(actor);
       await pool.query(
-        `insert into agon_mcp_provider_drafts (draft_id, actor_address, draft, state)
-         values ($1, $2, $3::jsonb, 'draft')
+        `insert into agon_mcp_provider_drafts (draft_id, actor_address, draft, state, publication_kind)
+         values ($1, $2, $3::jsonb, 'draft', 'new')
          on conflict (draft_id, actor_address) do nothing`,
         [draftId, normalized, JSON.stringify(draft)],
       );
@@ -109,21 +115,22 @@ export function createPostgresProviderDraftStore(pool: Pool): ProviderDraftStore
         draft_id: string; actor_address: string; draft: ProviderDraftInput;
         compiled_manifest: CompiledProviderManifest | null; manifest_uri: string | null;
         state: ProviderDraftState; operation_id: string | null; reference: string | null;
+        publication_kind: "new" | "version"; listing_id: string | null;
       }>(
-        `select draft_id, actor_address, draft, compiled_manifest, manifest_uri, state, operation_id, reference
+        `select draft_id, actor_address, draft, compiled_manifest, manifest_uri, state, operation_id, reference, publication_kind, listing_id
            from agon_mcp_provider_drafts where draft_id = $1 and actor_address = $2`,
         [draftId, normalized],
       );
       const row = result.rows[0];
-      return row ? draftView({ draftId: row.draft_id, actor: row.actor_address, draft: row.draft, compiled: row.compiled_manifest, manifestUri: row.manifest_uri, state: row.state, operationId: row.operation_id, reference: row.reference }) : null;
+      return row ? draftView({ draftId: row.draft_id, actor: row.actor_address, draft: row.draft, compiled: row.compiled_manifest, manifestUri: row.manifest_uri, state: row.state, operationId: row.operation_id, reference: row.reference, publicationKind: row.publication_kind, listingId: row.listing_id }) : null;
     },
-    async saveCompilation(actor, draftId, compiled, manifestUri) {
+    async saveCompilation(actor, draftId, compiled, manifestUri, target) {
       const normalized = normalizedActor(actor);
       await pool.query(
         `update agon_mcp_provider_drafts
-            set compiled_manifest = $3::jsonb, manifest_uri = $4, state = 'compiled', updated_at = now()
+            set compiled_manifest = $3::jsonb, manifest_uri = $4, state = 'compiled', publication_kind = $5, listing_id = $6, updated_at = now()
           where draft_id = $1 and actor_address = $2`,
-        [draftId, normalized, JSON.stringify(compiled), manifestUri],
+        [draftId, normalized, JSON.stringify(compiled), manifestUri, target?.kind ?? "new", target?.listingId ?? null],
       );
       return this.get(normalized, draftId);
     },

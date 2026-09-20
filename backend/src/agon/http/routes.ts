@@ -114,6 +114,17 @@ export type AgonMarketService = {
     compiled: import("../mcp/provider-manifest.ts").CompiledProviderManifest,
     manifestUri: string,
   ): Promise<Result<{ operationId?: string; reference?: string }, AgonServiceError>>;
+  publishProviderDraftVersion?(
+    actor: string,
+    draft: import("../mcp/contract.ts").ProviderDraftInput,
+    compiled: import("../mcp/provider-manifest.ts").CompiledProviderManifest,
+    manifestUri: string,
+    listingId: string,
+  ): Promise<Result<{ operationId?: string; reference?: string }, AgonServiceError>>;
+  pauseProviderListing?(
+    actor: string,
+    reference: string,
+  ): Promise<Result<{ reference: string; operationId?: string }, AgonServiceError>>;
   publishListingVersion(
     actor: string,
     request: PublishListingVersionRequest,
@@ -463,6 +474,7 @@ const mcpConfirmListingSchema = z.object({
 const mcpCompileListingSchema = z.object({
   draftId: z.string().trim().min(1).max(256),
   agentId: z.string().regex(/^\d+$/),
+  listingId: z.string().regex(/^[1-9]\d*$/).optional(),
   logoUrl: z.string().url().startsWith("https://").optional(),
   manifestUri: z.string().url().startsWith("https://").max(2048).optional(),
 }).strict();
@@ -1099,6 +1111,15 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
     const parsed = mcpPublishListingSchema.safeParse(body);
     if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
     const result = await mcp.publishListing(context.get("address"), parsed.data);
+    return result.ok ? context.json(result.value) : context.json({ error: { code: result.code, message: result.message } }, 400);
+  });
+
+  app.post("/mcp/publish-listing-version", options.requireAuth, async (context) => {
+    const body = await parseJson(context);
+    if (isApiError(body)) return context.json(body, 400);
+    const parsed = mcpPublishListingSchema.safeParse(body);
+    if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
+    const result = await mcp.publishListingVersion(context.get("address"), parsed.data);
     return result.ok ? context.json(result.value) : context.json({ error: { code: result.code, message: result.message } }, 400);
   });
 

@@ -1,15 +1,15 @@
 import { randomUUID } from "node:crypto";
 import type { Pool, QueryResultRow } from "pg";
-import type { BindProfileRequest, PublishListingRequest, PublishListingVersionRequest } from "../http/api-types.ts";
+import type { BindProfileRequest, PauseListingRequest, PublishListingRequest, PublishListingVersionRequest } from "../http/api-types.ts";
 
-export type AgonWriteKind = "bind_profile" | "publish_listing";
-export type AgonWriteRequest = BindProfileRequest | PublishListingRequest | PublishListingVersionRequest;
+export type AgonWriteKind = "bind_profile" | "publish_listing" | "pause_listing";
+export type AgonWriteRequest = BindProfileRequest | PublishListingRequest | PublishListingVersionRequest | PauseListingRequest;
 
 export type AgonTransactionIntent = {
   chainId: string;
   to: `0x${string}`;
   data: `0x${string}`;
-  functionName: "bindProfile" | "publish" | "publishVersion";
+  functionName: "bindProfile" | "publish" | "publishVersion" | "setStatus";
   args: string[];
 };
 

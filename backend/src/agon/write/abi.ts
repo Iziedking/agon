@@ -12,7 +12,9 @@ export const agonServiceRegistryAbi = parseAbi([
   "function getListing(uint256 id) view returns ((uint256 listingId,uint256 agentId,bytes32 serviceKey,bytes32 manifestHash,string manifestURI,uint256 category,uint8 paymentRail,uint256 version,address providerSnapshot,uint8 status,uint8 verification,uint64 createdAt,uint64 updatedAt))",
   "function publish(uint256 agentId, bytes32 serviceKey, bytes32 manifestHash, string uri, uint256 category, uint8 rail) returns (uint256 id)",
   "function publishVersion(uint256 id, bytes32 hash, string uri, uint8 rail)",
+  "function setStatus(uint256 id, uint8 status)",
   "event ListingPublished(uint256 indexed listingId, uint256 indexed agentId, bytes32 indexed serviceKey, bytes32 manifestHash, string manifestURI, uint256 category, uint8 paymentRail, uint256 version, address providerSnapshot, uint8 status, uint8 verification)",
   "event ListingVersionPublished(uint256 indexed listingId, uint256 indexed version, bytes32 indexed manifestHash, string manifestURI, uint8 paymentRail, address providerSnapshot)",
+  "event ListingStatusChanged(uint256 indexed listingId, address indexed providerSnapshot, uint8 status)",
 ]);
 

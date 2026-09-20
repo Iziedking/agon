@@ -1299,7 +1299,7 @@ create index if not exists agon_chain_events_contract_block_idx
 create table if not exists agon_write_operations (
   operation_id        uuid primary key,
   actor_address       text not null check (actor_address ~ '^0x[0-9a-f]{40}$'),
-  operation_kind      text not null check (operation_kind in ('bind_profile', 'publish_listing')),
+  operation_kind      text not null check (operation_kind in ('bind_profile', 'publish_listing', 'pause_listing')),
   payload_hash        text not null check (payload_hash ~ '^0x[0-9a-f]{64}$'),
   request_payload     jsonb not null,
   transaction_intent jsonb not null,
@@ -1319,6 +1319,9 @@ create table if not exists agon_write_operations (
 );
 create index if not exists agon_write_operations_actor_idx
   on agon_write_operations(actor_address, created_at desc);
+alter table agon_write_operations drop constraint if exists agon_write_operations_operation_kind_check;
+alter table agon_write_operations add constraint agon_write_operations_operation_kind_check
+  check (operation_kind in ('bind_profile', 'publish_listing', 'pause_listing'));
 
 -- MCP provider drafts are durable before a wallet review. The compiled
 -- manifest is retained so publication always uses the exact reviewed bytes.
@@ -1329,6 +1332,8 @@ create table if not exists agon_mcp_provider_drafts (
   compiled_manifest  jsonb,
   manifest_uri       text,
   state              text not null default 'draft' check (state in ('draft', 'compiled', 'prepared', 'confirmed', 'paused')),
+  publication_kind   text not null default 'new' check (publication_kind in ('new', 'version')),
+  listing_id         text,
   operation_id       text,
   reference          text,
   created_at         timestamptz not null default now(),
@@ -1337,6 +1342,8 @@ create table if not exists agon_mcp_provider_drafts (
 );
 create index if not exists agon_mcp_provider_drafts_actor_idx
   on agon_mcp_provider_drafts(actor_address, updated_at desc);
+alter table agon_mcp_provider_drafts add column if not exists publication_kind text not null default 'new';
+alter table agon_mcp_provider_drafts add column if not exists listing_id text;
 
 create table if not exists agon_verification_evidence (
   id              bigserial primary key,

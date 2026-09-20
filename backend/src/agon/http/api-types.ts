@@ -791,6 +791,11 @@ export type PublishListingVersionRequest = {
   paymentRail: PaymentRail;
 };
 
+export type PauseListingRequest = {
+  chainId: string;
+  listingId: string;
+};
+
 export type SubmittedOperation = {
   operationId: string;
   state: "prepared" | "confirmed";
@@ -798,7 +803,7 @@ export type SubmittedOperation = {
     chainId: string;
     to: `0x${string}`;
     data: `0x${string}`;
-    functionName: "bindProfile" | "publish" | "publishVersion";
+    functionName: "bindProfile" | "publish" | "publishVersion" | "setStatus";
     args: string[];
   };
   txHash: `0x${string}` | null;

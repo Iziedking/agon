@@ -25,6 +25,17 @@ broadcasts that transaction through MCP. Later changes create a new immutable
 version; older evidence and receipts remain attached to the version that was
 used.
 
+To update a listed service, create a new draft, compile it with the existing
+`listingId`, and call `publish-listing-version`. Agon prepares
+`publishVersion` against that listing and keeps the prior version immutable.
+The same `confirm-listing` receipt path applies. To pause a listed service, call
+`POST /mcp/pause-listing` with its canonical Arc listing reference and the
+explicit `approve` literal. When the configured writer is present, Agon
+prepares an owner-scoped `setStatus(Suspended)` transaction and returns
+`review_and_sign_pause`; the provider wallet signs it and confirms it through
+the normal operation receipt path. Without that writer, MCP returns an explicit
+operator action instead of claiming the listing changed.
+
 After signing, submit the returned transaction hash with `confirm-listing` or
 query `GET /mcp/listing/:draftId`. Confirmation is receipt-verified against
 the prepared operation; a mismatched, reverted, or unavailable receipt stays

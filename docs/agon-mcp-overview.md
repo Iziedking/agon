@@ -38,6 +38,8 @@ Providers can use the same MCP surface to:
 - create and check a service draft
 - compile and review its canonical manifest
 - prepare a listing transaction
+- prepare an immutable listing version update
+- prepare an owner-scoped listing pause
 - submit a wallet receipt and check publication status
 
 The agent handles x402, facilitator, registry, and receipt details behind the

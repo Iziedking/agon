@@ -35,6 +35,10 @@ test("MCP publication prepares an exact listing write after manifest compilation
       calls.push({ input, compiled, manifestUri });
       return { ok: true, value: { operationId: "op-1", reference: "prepared-reference" } };
     },
+    async publishProviderDraftVersion(_actor, _input, _compiled, _manifestUri, listingId) {
+      calls.push({ listingId });
+      return { ok: true, value: { operationId: "op-version", reference: `version:${listingId}` } };
+    },
     async confirmOperation(_actor, operationId, txHash) {
       return {
         ok: true,
@@ -67,4 +71,14 @@ test("MCP publication prepares an exact listing write after manifest compilation
   assert.equal(status.ok, true);
   if (status.ok) assert.equal(status.value.nextAction, "wait_for_listing_checks");
   assert.equal(calls.length, 1);
+
+  const versionStarted = await adapter.startListing(actor, { ...draft, name: "CRM helper v2" });
+  assert.equal(versionStarted.ok, true);
+  if (versionStarted.ok) {
+    const versionCompiled = await adapter.compileListing(actor, { draftId: versionStarted.value.draftId, agentId: "42", listingId: "7", manifestUri: "https://provider.example/manifest-v2.json" });
+    assert.equal(versionCompiled.ok, true);
+    const versionPrepared = await adapter.publishListingVersion(actor, { draftId: versionStarted.value.draftId, approval: "approve" });
+    assert.equal(versionPrepared.ok, true);
+    if (versionPrepared.ok) assert.equal(versionPrepared.value.operationId, "op-version");
+  }
 });

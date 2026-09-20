@@ -96,6 +96,11 @@ export const publishListingInput = z.object({
   approval: z.literal("approve"),
 }).strict();
 
+export const publishListingVersionInput = z.object({
+  draftId: id,
+  approval: z.literal("approve"),
+}).strict();
+
 export const pauseListingInput = z.object({
   reference: id,
   approval: z.literal("approve"),
@@ -110,6 +115,7 @@ export const confirmListingInput = z.object({
 export const compileListingInput = z.object({
   draftId: id,
   agentId: z.string().regex(/^\d+$/),
+  listingId: z.string().regex(/^[1-9]\d*$/).optional(),
   logoUrl: z.string().url().startsWith("https://").optional(),
   manifestUri: z.string().url().startsWith("https://").max(2048).optional(),
 }).strict();
@@ -132,6 +138,7 @@ export const mcpOperation = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("start_listing"), input: providerDraftInput }),
   z.object({ kind: z.literal("check_listing"), draftId: id }),
   z.object({ kind: z.literal("publish_listing"), input: publishListingInput }),
+  z.object({ kind: z.literal("publish_listing_version"), input: publishListingVersionInput }),
   z.object({ kind: z.literal("pause_listing"), input: pauseListingInput }),
   z.object({ kind: z.literal("confirm_listing"), input: confirmListingInput }),
   z.object({ kind: z.literal("compile_listing"), input: compileListingInput }),

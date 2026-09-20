@@ -41,6 +41,7 @@ import type {
   X402ApprovalRequest,
   X402ApprovalView,
   BindProfileRequest,
+  PauseListingRequest,
   ListingPage,
   ListingQuery,
   PublishListingRequest,
@@ -128,6 +129,10 @@ export type AgonWriteAdapter = {
   publishListingVersion(
     actor: string,
     request: PublishListingVersionRequest,
+  ): Promise<Result<SubmittedOperation, AgonServiceError>>;
+  pauseListing?(
+    actor: string,
+    request: PauseListingRequest,
   ): Promise<Result<SubmittedOperation, AgonServiceError>>;
   confirmOperation(
     actor: string,
@@ -882,6 +887,27 @@ export class PostgresAgonMarketService implements AgonMarketService {
     return { ok: true, value: { operationId: result.value.operationId, reference: result.value.resultReference ?? undefined } };
   }
 
+  async publishProviderDraftVersion(
+    actor: string,
+    _draft: ProviderDraftInput,
+    compiled: CompiledProviderManifest,
+    manifestUri: string,
+    listingId: string,
+  ): Promise<Result<{ operationId?: string; reference?: string }, AgonServiceError>> {
+    if (!this.options.writer) return { ok: false, error: { code: "capability_unavailable", message: "listing writes are unavailable" } };
+    if (!/^[1-9]\d*$/.test(listingId)) return { ok: false, error: { code: "validation_failed", message: "listing id must be a positive decimal string" } };
+    if (!/^https:\/\//.test(manifestUri)) return { ok: false, error: { code: "validation_failed", message: "a public HTTPS manifest URI is required" } };
+    const result = await this.options.writer.publishListingVersion(actor, {
+      chainId: "5042002",
+      listingId,
+      manifestHash: compiled.manifestHash,
+      manifestUri,
+      paymentRail: "X402",
+    });
+    if (!result.ok) return result;
+    return { ok: true, value: { operationId: result.value.operationId, reference: result.value.resultReference ?? undefined } };
+  }
+
   async publishListingVersion(
     actor: string,
     request: PublishListingVersionRequest,
@@ -893,6 +919,25 @@ export class PostgresAgonMarketService implements AgonMarketService {
       };
     }
     return this.options.writer.publishListingVersion(actor, request);
+  }
+
+  async pauseProviderListing(
+    actor: string,
+    reference: string,
+  ): Promise<Result<{ reference: string; operationId?: string }, AgonServiceError>> {
+    if (!this.options.writer?.pauseListing) {
+      return { ok: false, error: { code: "capability_unavailable", message: "listing status writes are unavailable" } };
+    }
+    const parsed = parseReference(reference);
+    if (!parsed || parsed.chainId !== 5_042_002n) {
+      return { ok: false, error: { code: "validation_failed", message: "listing reference must be an Arc Testnet listing reference" } };
+    }
+    const result = await this.options.writer.pauseListing(actor, {
+      chainId: parsed.chainId.toString(),
+      listingId: parsed.listingId.toString(),
+    });
+    if (!result.ok) return result;
+    return { ok: true, value: { reference, operationId: result.value.operationId } };
   }
 
   async confirmOperation(
