@@ -1,17 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { decodeEventLog, keccak256, stringToHex } from "viem";
-import { useAccount } from "wagmi";
+import { keccak256, stringToHex } from "viem";
 
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { BracketedCell, CornerMarkers, SectionHeader, StatusChip, TagButton } from "@/components/redesign";
 import { useArcWrite } from "@/hooks/useArcWrite";
 import { AGON_CONTRACTS, confirmTx } from "@/lib/arc";
 import { agonArenaAbi } from "@/lib/agon/abi";
+import { arenaEvaluationIdFromReceipt, arenaPrimaryAction } from "@/lib/agon/arena";
 import { categoryBySlug, presentListing } from "@/lib/agon/catalog";
-import { evaluatePlaygroundTask, getPlaygroundCategories, listListings, markAgonArenaEvaluationSubmitted, prepareAgonArenaEvaluation, runPlaygroundTask } from "@/lib/agon/client";
-import type { AgonListing, AgonPlaygroundCategory, AgonPlaygroundRun } from "@/lib/agon/types";
+import { evaluatePlaygroundTask, getAgonArenaEvidenceTransaction, getPlaygroundCategories, listListings, markAgonArenaEvaluationSubmitted, markAgonArenaEvidenceSubmitted, prepareAgonArenaEvaluation, reconcileAgonArenaEvaluation, runPlaygroundTask } from "@/lib/agon/client";
+import type { AgonArenaEvaluationView, AgonListing, AgonPlaygroundCategory, AgonPlaygroundRun } from "@/lib/agon/types";
 
 const DEFAULT_INPUT = JSON.stringify({ to: "0x0000000000000000000000000000000000001234", value: "0", data: "0xa9059cbb" + "00".repeat(64) }, null, 2);
 const EVIDENCE_INPUT = JSON.stringify({
@@ -37,8 +37,7 @@ export function AgonPlayground() {
   return <ArcPlayground />;
 }
 function ArcPlayground() {
-  const { address } = useAccount();
-  const { writeContractAsync, isPending } = useArcWrite();
+  const { writeContractAsync, signerAddress, isPending } = useArcWrite();
   const [categories, setCategories] = useState<AgonPlaygroundCategory[]>([]);
   const [listings, setListings] = useState<AgonListing[]>([]);
   const [providerScopes, setProviderScopes] = useState<string[]>([]);
@@ -46,6 +45,7 @@ function ArcPlayground() {
   const [taskId, setTaskId] = useState("selector-guard");
   const [input, setInput] = useState(DEFAULT_INPUT);
   const [runs, setRuns] = useState<AgonPlaygroundRun[]>([]);
+  const [evaluations, setEvaluations] = useState<Record<string, AgonArenaEvaluationView>>({});
   const [listingIds, setListingIds] = useState<[string, string]>(["", ""]);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -164,15 +164,48 @@ function ArcPlayground() {
         args: [intent.validationRequestHash, BigInt(intent.listing.listingId), intent.capabilityHash, intent.evaluatorVersionHash, intent.taskCommitment, BigInt(Math.floor(new Date(intent.expiresAt).getTime() / 1000))],
       });
       const receipt = await confirmTx(hash);
-      const event = receipt.logs.map((log) => {
-        try { return decodeEventLog({ abi: agonArenaAbi, data: log.data, topics: log.topics }); } catch { return null; }
-      }).find((item) => item?.eventName === "EvaluationRequested");
-      const id = event && "args" in event && event.args && "evaluationId" in event.args ? String(event.args.evaluationId) : "";
-      if (!id) throw new Error("The verification transaction did not contain an evaluation id.");
-      await markAgonArenaEvaluationSubmitted(intent.intentId, id, hash);
-      setNotice(`Verification request confirmed${id ? ` as test #${id}` : ""}. AGON will complete the independent review.`);
+      const id = arenaEvaluationIdFromReceipt(receipt, intent.arenaContract, intent.validationRequestHash);
+      const submitted = await markAgonArenaEvaluationSubmitted(intent.intentId, id, hash);
+      const next = await reconcileAgonArenaEvaluation(submitted.intentId);
+      setEvaluations((current) => ({ ...current, [run.runId]: next }));
+      setNotice(`Verification request confirmed as test #${id}. Continue with the next action below.`);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The verification request failed.");
+    }
+  }
+
+  async function refreshEvaluation(run: AgonPlaygroundRun) {
+    const evaluation = evaluations[run.runId];
+    if (!evaluation) return;
+    setError(null);
+    try {
+      const next = await reconcileAgonArenaEvaluation(evaluation.intentId);
+      setEvaluations((current) => ({ ...current, [run.runId]: next }));
+      if (next.state === "verified") setNotice("AGON verification is complete.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The verification status could not be refreshed.");
+    }
+  }
+
+  async function submitEvidence(run: AgonPlaygroundRun) {
+    const evaluation = evaluations[run.runId];
+    if (!evaluation?.evaluationId) return;
+    setError(null);
+    try {
+      const plan = await getAgonArenaEvidenceTransaction(evaluation.intentId);
+      const hash = await writeContractAsync({
+        address: plan.to,
+        abi: agonArenaAbi,
+        functionName: "submitEvidence",
+        args: [BigInt(evaluation.evaluationId), evaluation.evidenceRoot],
+      });
+      await confirmTx(hash);
+      const submitted = await markAgonArenaEvidenceSubmitted(evaluation.intentId, hash);
+      const next = await reconcileAgonArenaEvaluation(submitted.intentId);
+      setEvaluations((current) => ({ ...current, [run.runId]: next }));
+      setNotice(next.state === "verified" ? "AGON verification is complete." : "Evidence confirmed. AGON is finalizing the result.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The Arena evidence transaction failed.");
     }
   }
 
@@ -280,7 +313,7 @@ function ArcPlayground() {
                         </div>
                       </details>
                     </BracketedCell>
-                    {scopedListing ? <VerificationRequest run={run} listing={scopedListing} address={address} isPending={isPending} onRequest={() => void requestEvaluation(run, scopedListing)} /> : null}
+                    {scopedListing ? <VerificationRequest run={run} listing={scopedListing} signerAddress={signerAddress ?? null} evaluation={evaluations[run.runId] ?? null} isPending={isPending} onRequest={() => void requestEvaluation(run, scopedListing)} onEvidence={() => void submitEvidence(run)} onRefresh={() => void refreshEvaluation(run)} /> : null}
                   </div>
                 );
               })}
@@ -292,7 +325,20 @@ function ArcPlayground() {
   );
 }
 
-function VerificationRequest({ run, listing, address, isPending, onRequest }: { run: AgonPlaygroundRun; listing: AgonListing; address?: `0x${string}`; isPending: boolean; onRequest: () => void }) {
+function VerificationRequest({ run, listing, signerAddress, evaluation, isPending, onRequest, onEvidence, onRefresh }: { run: AgonPlaygroundRun; listing: AgonListing; signerAddress: string | null; evaluation: AgonArenaEvaluationView | null; isPending: boolean; onRequest: () => void; onEvidence: () => void; onRefresh: () => void }) {
+  const action = evaluation ? arenaPrimaryAction(evaluation) : null;
+  const buttonLabel = !signerAddress
+    ? "CONNECT OWNER WALLET"
+    : !run.passed
+      ? "PASS THE TEST FIRST"
+      : !evaluation
+        ? "SUBMIT FOR VERIFICATION"
+        : action === "submit_evidence"
+          ? "SUBMIT TEST EVIDENCE"
+          : action === "complete"
+            ? evaluation.state === "verified" ? "VERIFIED" : "REVIEW RESULT"
+            : "CHECK VERIFICATION";
+  const onAction = !evaluation ? onRequest : action === "submit_evidence" ? onEvidence : onRefresh;
   return (
     <BracketedCell pad="lg">
       <div className="font-mono text-[10px] uppercase tracking-[.15em] text-accent">NEXT STEP</div>
@@ -300,9 +346,10 @@ function VerificationRequest({ run, listing, address, isPending, onRequest }: { 
       <p className="mt-4 font-mono text-[11px] leading-5 text-ink-2">
         Submit this exact test result for independent review. The badge appears only after AGON confirms the evidence and score onchain.
       </p>
-      <button type="button" disabled={isPending || !address || !run.passed} onClick={onRequest} className="mt-5 w-full bg-accent px-3 py-3 font-mono text-[11px] uppercase tracking-[.12em] text-accent-ink disabled:opacity-50">
-        {!run.passed ? "PASS THE TEST FIRST" : !address ? "CONNECT OWNER WALLET" : "SUBMIT FOR VERIFICATION"}
+      <button type="button" disabled={isPending || !signerAddress || !run.passed || evaluation?.state === "verified"} onClick={onAction} className="mt-5 w-full bg-accent px-3 py-3 font-mono text-[11px] uppercase tracking-[.12em] text-accent-ink disabled:opacity-50">
+        {buttonLabel}
       </button>
+      {evaluation ? <p className="mt-3 font-mono text-[10px] uppercase leading-5 tracking-[.1em] text-ink-2">ARENA {evaluation.evaluationId ?? "PREPARING"} / {evaluation.state.replace(/_/g, " ")}</p> : null}
       <p className="mt-4 font-mono text-[9px] uppercase leading-5 tracking-[.1em] text-ink-3">{presentListing(listing).name} / VERSION {listing.version}</p>
     </BracketedCell>
   );

@@ -27,6 +27,8 @@ export type AgonCapabilities = {
     role: `0x${string}`;
     assigned: boolean;
     reason: "assigned" | "evaluator_not_configured" | "role_not_assigned" | "read_failed" | "disabled" | "unconfigured";
+    executionEnabled: boolean;
+    executionReason: "ready" | "role_not_assigned" | "writer_disabled";
     checkedAt: string | null;
   };
   syndicateRegistry: boolean;

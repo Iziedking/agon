@@ -103,6 +103,8 @@ const capabilities: AgonCapabilities = {
     role: `0x${"00".repeat(32)}`,
     assigned: false,
     reason: "unconfigured",
+    executionEnabled: false,
+    executionReason: "writer_disabled",
     checkedAt: null,
   },
   syndicateRegistry: false,

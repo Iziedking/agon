@@ -23,6 +23,8 @@ test("capabilities expose read-only Arena evaluator readiness", async () => {
   assert.equal(capabilities.arenaVerification, true);
   assert.equal(capabilities.arenaEvaluatorReadiness.assigned, true);
   assert.equal(capabilities.arenaEvaluatorReadiness.reason, "assigned");
+  assert.equal(capabilities.arenaEvaluatorReadiness.executionEnabled, false);
+  assert.equal(capabilities.arenaEvaluatorReadiness.executionReason, "writer_disabled");
   assert.equal(capabilities.arenaEvaluatorReadiness.arenaAddress, ARENA);
   assert.ok(capabilities.arenaEvaluatorReadiness.checkedAt);
 });

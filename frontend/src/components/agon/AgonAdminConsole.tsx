@@ -9,6 +9,10 @@ import { ProtocolActions } from "@/components/agon/ProtocolActions";
 import { X402CallIntentPanel } from "@/components/agon/X402CallIntentPanel";
 import { AgonSyndicatePrizeIntentPanel } from "@/components/agon/AgonSyndicatePrizeIntentPanel";
 import { useAuth } from "@/hooks/useAuth";
+import { useArcWrite } from "@/hooks/useArcWrite";
+import { confirmTx } from "@/lib/arc";
+import { agonArenaAbi } from "@/lib/agon/abi";
+import { arenaEvaluationIdFromReceipt, arenaPrimaryAction, arenaProgressPercent } from "@/lib/agon/arena";
 import { categoryById } from "@/lib/agon/catalog";
 import {
   getAgonEscrowReadiness,
@@ -17,11 +21,11 @@ import {
   getAgonJobEscrowJob,
   getAgonJobEscrowTransaction,
   evaluatePlaygroundTask,
+  getAgonArenaEvaluation,
   prepareAgonArenaEvaluation,
   getAgonArenaRequestTransaction,
   getAgonArenaEvidenceTransaction,
   markAgonArenaEvaluationSubmitted,
-  markAgonArenaEvaluationStarted,
   markAgonArenaEvidenceSubmitted,
   reconcileAgonArenaEvaluation,
   listListings,
@@ -135,11 +139,11 @@ function AgonStatusSummary({ health, address, authenticated, listingCount }: { h
     { label: "API", value: health?.ok ? "ONLINE" : "READING", tone: health?.ok ? "var(--ok)" : "var(--ink-3)" },
     { label: "ARC", value: capabilities?.protocolReadiness.chainId ? String(capabilities.protocolReadiness.chainId) : "UNKNOWN", tone: "var(--accent)" },
     { label: "LISTINGS", value: String(listingCount), tone: "var(--ink)" },
-    { label: "ARENA", value: capabilities?.arenaEvaluatorReadiness.assigned ? "READY" : "ACTION NEEDED", tone: capabilities?.arenaEvaluatorReadiness.assigned ? "var(--ok)" : "var(--warn)" },
+    { label: "ARENA", value: capabilities?.arenaEvaluatorReadiness.executionEnabled ? "READY" : "ACTION NEEDED", tone: capabilities?.arenaEvaluatorReadiness.executionEnabled ? "var(--ok)" : "var(--warn)" },
     { label: "X402", value: capabilities?.directX402 ? "READY" : "GATED", tone: capabilities?.directX402 ? "var(--ok)" : "var(--ink-3)" },
     { label: "WALLET", value: !address ? "CONNECT" : authenticated ? "SIWE READY" : "SIGN IN", tone: !address ? "var(--warn)" : authenticated ? "var(--ok)" : "var(--warn)" },
   ];
-  return <section className="border border-[color:var(--hairline-strong)] bg-canvas-2 p-4"><div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">LIVE CONTROL STATUS</div><span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">refresh before a write</span></div><div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">{cells.map((cell) => <div key={cell.label} className="border border-[color:var(--hairline)] bg-canvas px-3 py-3"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-ink-3">{cell.label}</div><div className="mt-2 font-mono text-sm" style={{ color: cell.tone }}>{cell.value}</div></div>)}</div>{address && !authenticated ? <p className="mt-3 border-l-2 border-[color:var(--warn)] p-3 text-sm text-ink-2">Wallet connected. Sign in with your wallet before running provider verification or other operator actions.</p> : null}{capabilities?.arenaEvaluatorReadiness.assigned ? null : <p className="mt-3 border-l-2 border-[color:var(--warn)] p-3 text-sm text-ink-2">Arena evaluation is waiting for evaluator authority. Role setup must finish before a service can become tested.</p>}</section>;
+  return <section className="border border-[color:var(--hairline-strong)] bg-canvas-2 p-4"><div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">LIVE CONTROL STATUS</div><span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">refresh before a write</span></div><div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">{cells.map((cell) => <div key={cell.label} className="border border-[color:var(--hairline)] bg-canvas px-3 py-3"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-ink-3">{cell.label}</div><div className="mt-2 font-mono text-sm" style={{ color: cell.tone }}>{cell.value}</div></div>)}</div>{address && !authenticated ? <p className="mt-3 border-l-2 border-[color:var(--warn)] p-3 text-sm text-ink-2">Wallet connected. Sign in with your wallet before running provider verification or other operator actions.</p> : null}{capabilities?.arenaEvaluatorReadiness.executionEnabled ? null : <p className="mt-3 border-l-2 border-[color:var(--warn)] p-3 text-sm text-ink-2">Arena automation is not ready. Confirm the evaluator role, validator signer, and Arena execution flag before starting a provider review.</p>}</section>;
 }
 
 function AgonSelectedService({ listing }: { listing: AgonListing | null }) {
@@ -150,29 +154,64 @@ function AgonSelectedService({ listing }: { listing: AgonListing | null }) {
 
 function AgonArenaEvaluationPanel({ listing }: { listing: AgonListing | null }) {
   const { me } = useAuth();
+  const { writeContractAsync, isPending } = useArcWrite();
   const [loginOpen, setLoginOpen] = useState(false);
   const [evaluation, setEvaluation] = useState<AgonArenaEvaluationView | null>(null);
   const [requestTransaction, setRequestTransaction] = useState<AgonArenaTransactionView | null>(null);
   const [evidenceTransaction, setEvidenceTransaction] = useState<AgonArenaTransactionView | null>(null);
-  const [requestTxHash, setRequestTxHash] = useState("");
-  const [evaluationId, setEvaluationId] = useState("");
-  const [startTxHash, setStartTxHash] = useState("");
-  const [evidenceTxHash, setEvidenceTxHash] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  const storageKey = listing ? `agon:arena:${listing.id}:${listing.version}` : null;
+  const working = busy || isPending;
+
+  async function refresh(intent = evaluation, quiet = false) {
+    if (!intent) return;
+    if (!quiet) { setBusy(true); setMessage(null); }
+    try {
+      const next = await reconcileAgonArenaEvaluation(intent.intentId);
+      setEvaluation(next);
+      if (next.state === "evidence_ready") {
+        setEvidenceTransaction(await getAgonArenaEvidenceTransaction(next.intentId));
+      }
+      if (next.state === "verified") setMessage("Verification complete. This service passed the Arena review.");
+      if (next.state === "rejected") setMessage("Verification finished. This result needs provider review before another attempt.");
+    } catch (cause) {
+      if (!quiet) setMessage(cause instanceof Error ? cause.message : "Could not refresh Arena verification.");
+    } finally {
+      if (!quiet) setBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    setEvaluation(null);
+    setRequestTransaction(null);
+    setEvidenceTransaction(null);
+    setMessage(null);
+    if (!storageKey || !me) return;
+    const intentId = window.localStorage.getItem(storageKey);
+    if (!intentId) return;
+    let cancelled = false;
+    void getAgonArenaEvaluation(intentId).then(async (next) => {
+      if (cancelled) return;
+      setEvaluation(next);
+      if (next.state === "prepared") setRequestTransaction(await getAgonArenaRequestTransaction(next.intentId));
+      if (next.state === "evidence_ready") setEvidenceTransaction(await getAgonArenaEvidenceTransaction(next.intentId));
+    }).catch(() => window.localStorage.removeItem(storageKey));
+    return () => { cancelled = true; };
+  }, [storageKey, me]);
+
+  useEffect(() => {
+    if (!evaluation?.evaluationId || !["request_submitted", "evidence_submitted", "unknown"].includes(evaluation.state)) return;
+    const timer = window.setInterval(() => void refresh(evaluation, true), 5_000);
+    return () => window.clearInterval(timer);
+  }, [evaluation?.intentId, evaluation?.state]);
+
   async function prepare() {
     if (!listing) return;
-    if (!me) {
-      setMessage("Sign in to continue. The wallet signature creates an AGON session and does not send a transaction.");
-      setLoginOpen(true);
-      return;
-    }
+    if (!me) { setLoginOpen(true); return; }
     const task = ARENA_TASK_BY_LISTING_CATEGORY[listing.category];
-    if (!task) {
-      setMessage(`Arena verification is not available for listing category ${listing.category} yet.`);
-      return;
-    }
+    if (!task) { setMessage(`Arena verification is not available for ${categoryById(listing.category).label} services yet.`); return; }
     setBusy(true); setMessage(null); setEvaluation(null); setRequestTransaction(null); setEvidenceTransaction(null);
     try {
       const key = `admin-arena-${listing.listingId}-${Date.now()}`;
@@ -183,6 +222,7 @@ function AgonArenaEvaluationPanel({ listing }: { listing: AgonListing | null }) 
         listingVersion: listing.version,
         idempotencyKey: `${key}-run`,
       });
+      if (!run.passed) throw new Error("This service did not pass the category test. Review the result before trying again.");
       const next = await prepareAgonArenaEvaluation({
         listingReference: listing.id,
         idempotencyKey: key,
@@ -191,50 +231,107 @@ function AgonArenaEvaluationPanel({ listing }: { listing: AgonListing | null }) 
       });
       setEvaluation(next);
       setRequestTransaction(await getAgonArenaRequestTransaction(next.intentId));
+      if (storageKey) window.localStorage.setItem(storageKey, next.intentId);
+      setMessage("Test passed. Confirm the Arena request in the provider wallet.");
     } catch (cause) { setMessage(cause instanceof Error ? cause.message : "Could not prepare Arena verification."); }
     finally { setBusy(false); }
   }
 
-  async function loadEvidencePlan() {
-    if (!evaluation) return;
+  async function submitRequest() {
+    if (!evaluation || !requestTransaction) return;
     setBusy(true); setMessage(null);
-    try { setEvidenceTransaction(await getAgonArenaEvidenceTransaction(evaluation.intentId)); }
-    catch (cause) { setMessage(cause instanceof Error ? cause.message : "Could not prepare Arena evidence transaction."); }
+    try {
+      const hash = await writeContractAsync({
+        address: requestTransaction.to,
+        abi: agonArenaAbi,
+        functionName: "requestEvaluation",
+        args: [
+          evaluation.validationRequestHash,
+          BigInt(evaluation.listing.listingId),
+          evaluation.capabilityHash,
+          evaluation.evaluatorVersionHash,
+          evaluation.taskCommitment,
+          BigInt(Math.floor(new Date(evaluation.expiresAt).getTime() / 1000)),
+        ],
+      });
+      const receipt = await confirmTx(hash);
+      const onchainId = arenaEvaluationIdFromReceipt(receipt, evaluation.arenaContract, evaluation.validationRequestHash);
+      const next = await markAgonArenaEvaluationSubmitted(evaluation.intentId, onchainId, hash);
+      setEvaluation(next);
+      setRequestTransaction(null);
+      setMessage("Request confirmed. AGON's evaluator will start the independent review automatically.");
+      await refresh(next, true);
+    } catch (cause) { setMessage(cause instanceof Error ? cause.message : "Could not submit the Arena request."); }
     finally { setBusy(false); }
   }
 
-  async function recordStart() {
-    if (!evaluation || !/^0x[0-9a-fA-F]{64}$/.test(startTxHash)) return;
+  async function submitEvidence() {
+    if (!evaluation?.evaluationId) return;
     setBusy(true); setMessage(null);
-    try { setEvaluation(await markAgonArenaEvaluationStarted(evaluation.intentId, startTxHash as `0x${string}`)); }
-    catch (cause) { setMessage(cause instanceof Error ? cause.message : "Could not record the evaluator start marker."); }
+    try {
+      const plan = evidenceTransaction ?? await getAgonArenaEvidenceTransaction(evaluation.intentId);
+      const hash = await writeContractAsync({
+        address: plan.to,
+        abi: agonArenaAbi,
+        functionName: "submitEvidence",
+        args: [BigInt(evaluation.evaluationId), evaluation.evidenceRoot],
+      });
+      await confirmTx(hash);
+      const next = await markAgonArenaEvidenceSubmitted(evaluation.intentId, hash);
+      setEvaluation(next);
+      setEvidenceTransaction(null);
+      setMessage("Evidence confirmed. AGON is finalizing the score and public verification record.");
+      await refresh(next, true);
+    } catch (cause) { setMessage(cause instanceof Error ? cause.message : "Could not submit Arena evidence."); }
     finally { setBusy(false); }
   }
 
-  async function recordRequest() {
-    if (!evaluation || !/^0x[0-9a-fA-F]{64}$/.test(requestTxHash) || !/^[1-9]\d*$/.test(evaluationId)) return;
-    setBusy(true); setMessage(null);
-    try { setEvaluation(await markAgonArenaEvaluationSubmitted(evaluation.intentId, evaluationId, requestTxHash as `0x${string}`)); }
-    catch (cause) { setMessage(cause instanceof Error ? cause.message : "Could not record the Arena request marker."); }
-    finally { setBusy(false); }
-  }
+  const action = evaluation ? arenaPrimaryAction(evaluation) : null;
+  const progress = arenaProgressPercent(evaluation);
+  const actionLabel = !me
+    ? "SIGN IN TO VERIFY"
+    : !evaluation
+      ? "RUN SERVICE TEST"
+      : action === "submit_request"
+        ? "CONFIRM VERIFICATION REQUEST"
+        : action === "submit_evidence"
+          ? "SUBMIT TEST EVIDENCE"
+          : action === "retry_reconciliation"
+            ? "CHECK VERIFICATION"
+            : null;
+  const actionHandler = !evaluation
+    ? prepare
+    : action === "submit_request"
+      ? submitRequest
+      : action === "submit_evidence"
+        ? submitEvidence
+        : action === "retry_reconciliation"
+          ? () => refresh()
+          : null;
+  const statusText = !evaluation
+    ? "Ready to test"
+    : evaluation.state === "request_submitted"
+      ? "Evaluator is reviewing the request"
+      : evaluation.state === "evidence_ready"
+        ? "Evidence is ready for provider confirmation"
+        : evaluation.state === "evidence_submitted"
+          ? "Final score is being confirmed"
+          : evaluation.state === "verified"
+            ? "Verified by AGON Arena"
+            : evaluation.state === "rejected"
+              ? "Review did not pass"
+              : evaluation.state.replace(/_/g, " ");
 
-  async function recordEvidence() {
-    if (!evaluation || !/^0x[0-9a-fA-F]{64}$/.test(evidenceTxHash)) return;
-    setBusy(true); setMessage(null);
-    try { setEvaluation(await markAgonArenaEvidenceSubmitted(evaluation.intentId, evidenceTxHash as `0x${string}`)); }
-    catch (cause) { setMessage(cause instanceof Error ? cause.message : "Could not record the Arena evidence marker."); }
-    finally { setBusy(false); }
-  }
-  async function reconcileEvaluation() {
-    if (!evaluation) return;
-    setBusy(true); setMessage(null);
-    try { setEvaluation(await reconcileAgonArenaEvaluation(evaluation.intentId)); }
-    catch (failure) { setMessage(failure instanceof Error ? failure.message : "Arena finality reconciliation failed."); }
-    finally { setBusy(false); }
-  }
-
-  return <section className="border border-[color:var(--hairline-strong)] bg-canvas p-5"><div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">AGON ARENA VERIFICATION</div><p className="mt-2 max-w-3xl font-mono text-[10px] leading-5 text-ink-3">Runs the category task for this exact listing version, pins its evidence, and prepares unsigned Arena calldata. Final states are accepted only after an independent contract read matches every pinned field.</p><button disabled={busy || !listing} onClick={() => void prepare()} className="mt-4 bg-accent px-3 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-accent-ink hover:bg-accent-press disabled:opacity-50">{busy ? "WORKING" : me ? "RUN PLAYGROUND, PREPARE ARENA" : "SIGN IN TO VERIFY"}</button>{message ? <p className="mt-3 font-mono text-[10px] text-[color:var(--err)]">{message}</p> : null}{evaluation ? <div className="mt-4 grid gap-2 border-t border-[color:var(--hairline)] pt-3 font-mono text-[10px] leading-5 text-ink-2"><span>INTENT {evaluation.intentId}</span><span>STATE {evaluation.state} / {evaluation.verificationStatus}</span><span>RUN {evaluation.playgroundRunId}</span><span className="break-all">EVIDENCE {evaluation.evidenceRoot}</span><span className="break-all">VALIDATION REQUEST {evaluation.validationRequestHash}</span>{requestTransaction ? <span className="break-all">UNSIGNED REQUEST {requestTransaction.to} / {requestTransaction.data}</span> : null}<div className="mt-2 grid gap-2 sm:grid-cols-[1fr_1fr_auto]"><input value={evaluationId} onChange={(event) => setEvaluationId(event.target.value)} placeholder="onchain evaluation id" className={inputClass} /><input value={requestTxHash} onChange={(event) => setRequestTxHash(event.target.value)} placeholder="request tx hash marker" className={inputClass} /><button disabled={busy || !/^[1-9]\d*$/.test(evaluationId) || !/^0x[0-9a-fA-F]{64}$/.test(requestTxHash)} onClick={() => void recordRequest()} className="border border-[color:var(--hairline-strong)] px-3 py-2 uppercase disabled:opacity-50">RECORD REQUEST</button></div><div className="grid gap-2 sm:grid-cols-[1fr_auto]"><input value={startTxHash} onChange={(event) => setStartTxHash(event.target.value)} placeholder="evaluator start tx hash marker" className={inputClass} /><button disabled={busy || evaluation.state !== "request_submitted" || !/^0x[0-9a-fA-F]{64}$/.test(startTxHash)} onClick={() => void recordStart()} className="border border-[color:var(--hairline-strong)] px-3 py-2 uppercase disabled:opacity-50">RECORD EVALUATOR START</button></div><button disabled={busy || evaluation.state !== "evidence_ready"} onClick={() => void loadEvidencePlan()} className="border border-[color:var(--hairline-strong)] px-3 py-2 uppercase disabled:opacity-50">PREPARE EVIDENCE CALL</button>{evidenceTransaction ? <span className="break-all">UNSIGNED EVIDENCE {evidenceTransaction.to} / {evidenceTransaction.data}</span> : null}<div className="grid gap-2 sm:grid-cols-[1fr_auto]"><input value={evidenceTxHash} onChange={(event) => setEvidenceTxHash(event.target.value)} placeholder="evidence tx hash marker" className={inputClass} /><button disabled={busy || !/^0x[0-9a-fA-F]{64}$/.test(evidenceTxHash)} onClick={() => void recordEvidence()} className="border border-[color:var(--hairline-strong)] px-3 py-2 uppercase disabled:opacity-50">RECORD EVIDENCE</button></div><button disabled={busy || !evaluation.evaluationId} onClick={() => void reconcileEvaluation()} className="border border-[color:var(--hairline-strong)] px-3 py-2 uppercase disabled:opacity-50">RECONCILE ARENA FINALITY</button></div> : null}<LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} /></section>;
+  return <section className="border border-[color:var(--hairline-strong)] bg-canvas p-5">
+    <div className="flex flex-wrap items-start justify-between gap-3"><div><div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">AGON ARENA VERIFICATION</div><h4 className="mt-2 font-stencil text-2xl uppercase leading-none">{statusText}</h4></div>{evaluation ? <span className="border border-[color:var(--hairline-strong)] px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em]">{progress}%</span> : null}</div>
+    <p className="mt-3 max-w-3xl text-sm leading-6 text-ink-2">AGON runs the correct challenge for this service, records the provider's evidence, and independently checks the final chain result. Wallet confirmations appear only for the provider's two Arena actions.</p>
+    {evaluation ? <div className="mt-5 h-1 bg-canvas-2"><div className="h-full bg-accent transition-all" style={{ width: `${progress}%` }} /></div> : null}
+    {actionLabel && actionHandler ? <button disabled={working || !listing} onClick={() => !me ? setLoginOpen(true) : void actionHandler()} className="mt-5 bg-accent px-4 py-3 font-mono text-[11px] uppercase tracking-[0.12em] text-accent-ink hover:bg-accent-press disabled:opacity-50">{working ? "WORKING" : actionLabel}</button> : null}
+    {action === "wait_for_evaluator" || action === "finalizing" ? <div className="mt-5 flex flex-wrap items-center gap-3"><span className="h-2 w-2 animate-pulse rounded-full bg-[color:var(--warn)]" /><span className="text-sm text-ink-2">This page refreshes the Arena status automatically.</span><button disabled={working} onClick={() => void refresh()} className="border border-[color:var(--hairline-strong)] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.12em]">CHECK NOW</button></div> : null}
+    {message ? <p role={evaluation?.state === "rejected" ? "alert" : "status"} className="mt-4 border-l-2 border-[color:var(--hairline-strong)] px-4 py-2 text-sm leading-6 text-ink-2">{message}</p> : null}
+    {evaluation ? <details className="mt-5 border-t border-[color:var(--hairline)] pt-4"><summary className="cursor-pointer font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">Technical record</summary><div className="mt-3 grid gap-2 break-all font-mono text-[10px] leading-5 text-ink-3"><span>INTENT {evaluation.intentId}</span><span>ARENA TEST {evaluation.evaluationId ?? "NOT SUBMITTED"}</span><span>PLAYGROUND RUN {evaluation.playgroundRunId}</span><span>EVIDENCE {evaluation.evidenceRoot}</span><span>REQUEST TX {evaluation.requestTransactionHash ?? "PENDING"}</span><span>EVALUATOR TX {evaluation.startTransactionHash ?? "PENDING"}</span><span>EVIDENCE TX {evaluation.evidenceTransactionHash ?? "PENDING"}</span></div></details> : null}
+    <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
+  </section>;
 }
 
 const JOB_STATUS = ["Created", "Accepted", "Submitted", "Complete", "Rejected", "Disputed", "Failed"];

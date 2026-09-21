@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { encodeAbiParameters, encodeEventTopics, parseAbiItem } from "viem";
 
 import { canonicalManifestHash, canonicalizeManifest } from "./canonical.ts";
 import {
@@ -15,6 +16,8 @@ import {
   verifyManifestAnchor,
 } from "./verify.ts";
 import { AGON_PREVIEW_LISTINGS } from "./preview.ts";
+import { arenaEvaluationIdFromReceipt, arenaPrimaryAction, arenaProgressPercent } from "./arena.ts";
+import type { AgonArenaEvaluationView } from "./types.ts";
 
 const manifest = {
   name: "Review",
@@ -243,4 +246,64 @@ test("builds the browser manifest from user-facing service fields", () => {
       { field: "endpoint", message: "Service endpoint must be a public HTTPS URL." },
     ],
   );
+});
+
+function arenaEvaluation(state: AgonArenaEvaluationView["state"]): AgonArenaEvaluationView {
+  const hash = `0x${"11".repeat(32)}` as `0x${string}`;
+  const address = `0x${"22".repeat(20)}` as `0x${string}`;
+  return {
+    intentId: "00000000-0000-4000-8000-000000000001",
+    actor: address,
+    idempotencyKey: "arena-evaluation-test",
+    listingReference: "listing-1",
+    network: "eip155:5042002",
+    arenaContract: address,
+    validationRegistry: address,
+    participant: address,
+    listing: { serviceRegistry: address, listingId: "7", agentId: "42", version: "3", category: "3", manifestHash: hash },
+    capabilityHash: hash,
+    evaluatorVersionHash: hash,
+    taskCommitment: hash,
+    validationRequestHash: hash,
+    evidenceRoot: hash,
+    playgroundRunId: "00000000-0000-4000-8000-000000000002",
+    expiresAt: "2030-01-01T00:00:00.000Z",
+    state,
+    evaluationId: state === "prepared" ? null : "9",
+    requestTransactionHash: null,
+    startTransactionHash: null,
+    evidenceTransactionHash: null,
+    executionEnabled: false,
+    verificationStatus: state === "verified" ? "verified" : "prepared",
+    nextAction: "none",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  };
+}
+
+test("maps every Arena lifecycle state to one clear user action", () => {
+  assert.equal(arenaPrimaryAction(arenaEvaluation("prepared")), "submit_request");
+  assert.equal(arenaPrimaryAction(arenaEvaluation("request_submitted")), "wait_for_evaluator");
+  assert.equal(arenaPrimaryAction(arenaEvaluation("evidence_ready")), "submit_evidence");
+  assert.equal(arenaPrimaryAction(arenaEvaluation("evidence_submitted")), "finalizing");
+  assert.equal(arenaPrimaryAction(arenaEvaluation("verified")), "complete");
+  assert.equal(arenaProgressPercent(arenaEvaluation("verified")), 100);
+});
+
+test("accepts an Arena id only from the exact contract and validation request", () => {
+  const arena = `0x${"33".repeat(20)}` as `0x${string}`;
+  const requestHash = `0x${"44".repeat(32)}` as `0x${string}`;
+  const event = parseAbiItem("event EvaluationRequested(uint256 indexed evaluationId,bytes32 indexed validationRequestHash,uint256 indexed listingId,uint256 agentId,uint256 listingVersion,address participant,bytes32 capabilityHash,bytes32 evaluatorVersionHash,bytes32 taskCommitment,uint64 expiresAt)");
+  const topics = encodeEventTopics({ abi: [event], eventName: "EvaluationRequested", args: { evaluationId: 9n, validationRequestHash: requestHash, listingId: 7n } });
+  const data = encodeAbiParameters(
+    [
+      { type: "uint256" }, { type: "uint256" }, { type: "address" }, { type: "bytes32" },
+      { type: "bytes32" }, { type: "bytes32" }, { type: "uint64" },
+    ],
+    [42n, 3n, `0x${"55".repeat(20)}`, `0x${"66".repeat(32)}`, `0x${"77".repeat(32)}`, `0x${"88".repeat(32)}`, 2_000_000_000n],
+  );
+  const receipt = { status: "success" as const, logs: [{ address: arena, topics, data }] };
+  assert.equal(arenaEvaluationIdFromReceipt(receipt as never, arena, requestHash), "9");
+  assert.throws(() => arenaEvaluationIdFromReceipt(receipt as never, `0x${"99".repeat(20)}`, requestHash), /expected Arena request/);
+  assert.throws(() => arenaEvaluationIdFromReceipt(receipt as never, arena, `0x${"aa".repeat(32)}`), /expected Arena request/);
 });

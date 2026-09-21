@@ -37,6 +37,7 @@ import { createViemAgonJobEscrowTransactionWriter } from "../agon/execution/agon
 import { createAgonJobEscrowTransactionAdapter } from "../agon/execution/agon-job-escrow-adapter.ts";
 import { createViemAgonProtocolFinalityReader, type AgonProtocolFinalityClient } from "../agon/execution/protocol-finality.ts";
 import { readAgonArenaEvaluatorReadiness, type AgonArenaRoleReadClient } from "../agon/execution/arena-readiness.ts";
+import { createViemAgonArenaEvaluator, type AgonArenaEvaluatorClient, type AgonArenaEvaluatorWallet } from "../agon/execution/arena-evaluator.ts";
 import { PostgresPlaygroundRunStore, RedisPlaygroundRateLimiter } from "../agon/playground-store.ts";
 import { createHttpPlaygroundProviderRunner } from "../agon/playground-provider.ts";
 import {
@@ -425,6 +426,7 @@ const agonCertificationEndpointQaRunner = createManifestDerivedAgonEndpointQaRun
 const configuredJobEscrowV2 = config.agon.deployment?.contracts.AgonJobEscrowV2;
 const configuredJobEscrow = configuredJobEscrowV2 ?? config.agon.deployment?.contracts.AgonJobEscrow;
 const configuredServiceRegistry = config.agon.deployment?.contracts.AgonServiceRegistry;
+const configuredArena = config.agon.deployment?.contracts.AgonArena;
 
 function resolveConfiguredJobEscrowVersion(): AgonJobEscrowContractVersion | null {
   if (configuredJobEscrowV2) {
@@ -488,6 +490,36 @@ const jobEscrowTransactionAdapter = jobEscrowTransactionWriter
       writer: jobEscrowTransactionWriter,
     })
   : undefined;
+const arenaEvaluatorSigner = config.validator.privateKey && configuredArena
+  ? privateKeyToAccount(config.validator.privateKey)
+  : undefined;
+const configuredArenaEvaluator = config.agon.x402.validation.validatorAddress?.toLowerCase();
+const signerMatchesArenaEvaluator = Boolean(
+  arenaEvaluatorSigner
+  && configuredArenaEvaluator
+  && arenaEvaluatorSigner.address.toLowerCase() === configuredArenaEvaluator,
+);
+const arenaEvaluatorWallet = arenaEvaluatorSigner
+  ? createWalletClient({ account: arenaEvaluatorSigner, chain: arcTestnet, transport: http(config.rpcHttp) })
+  : undefined;
+const arenaEvaluatorAdapter = configuredArena
+  ? createViemAgonArenaEvaluator({
+      enabled: config.agon.writesEnabled && config.agon.x402.validation.enabled && signerMatchesArenaEvaluator,
+      arenaAddress: configuredArena,
+      client: publicClient as unknown as AgonArenaEvaluatorClient,
+      wallet: arenaEvaluatorWallet
+        ? {
+            writeContract: (input) => arenaEvaluatorWallet.writeContract({
+              address: input.address,
+              abi: input.abi as never,
+              functionName: input.functionName as never,
+              args: input.args as never,
+              account: arenaEvaluatorSigner!,
+            }),
+          } as AgonArenaEvaluatorWallet
+        : undefined,
+    })
+  : undefined;
 
 function explainJobEscrowExecutionReadiness(): string | null {
   if (!configuredJobEscrow) return "job_escrow_not_configured";
@@ -540,6 +572,7 @@ const agonService = new PostgresAgonMarketService(agonRepository, {
           : undefined,
       })
     : undefined,
+  arenaEvaluatorAdapter,
   validationRegistryAddress: config.agon.deployment?.external.ValidationRegistry?.address,
   playgroundStore: agonPlaygroundStore,
   agonSyndicateRegistryAddress: config.agon.deployment?.contracts.AgonSyndicateRegistry,

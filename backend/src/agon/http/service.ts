@@ -105,6 +105,7 @@ import { buildAgonArenaEvaluationInput, buildAgonArenaEvidencePlan, buildAgonAre
 import { buildAgonPrizeClaimPlan, buildAgonSyndicateContributionPlan, prizeClaimLeaf } from "../execution/syndicate-prize.ts";
 import type { AgonProtocolFinalityReader } from "../execution/protocol-finality.ts";
 import { AGON_ARENA_EVALUATOR_ROLE, type AgonArenaEvaluatorReadiness } from "../execution/arena-readiness.ts";
+import type { AgonArenaEvaluatorAdapter } from "../execution/arena-evaluator.ts";
 import type { X402AgentSpendExecutor } from "../execution/x402-agent-executor.ts";
 import type { AgonJobEscrowTransactionAdapter } from "../execution/agon-job-escrow-adapter.ts";
 import type { ProviderDraftInput } from "../mcp/contract.ts";
@@ -184,6 +185,8 @@ export type PostgresAgonMarketServiceOptions = {
   agonArenaAddress?: `0x${string}`;
   /** Read-only evaluator-role readiness. This never grants the role or submits a transaction. */
   arenaEvaluatorReadiness?: () => Promise<AgonArenaEvaluatorReadiness> | AgonArenaEvaluatorReadiness;
+  /** Guarded evaluator writer. Provider actions remain wallet-signed by the provider. */
+  arenaEvaluatorAdapter?: AgonArenaEvaluatorAdapter;
   validationRegistryAddress?: `0x${string}`;
   playgroundStore?: PlaygroundRunStore;
   agonSyndicateRegistryAddress?: `0x${string}`;
@@ -1433,7 +1436,7 @@ export class PostgresAgonMarketService implements AgonMarketService {
     if (evaluation.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the Arena evaluation owner can reconcile this evaluation" } };
     if (!evaluation.evaluationId) return { ok: false, error: { code: "conflict", message: "record the on-chain evaluation id before reconciliation" } };
     try {
-      const chain = await reader.inspectArenaEvaluation(evaluation.evaluationId);
+      let chain = await reader.inspectArenaEvaluation(evaluation.evaluationId);
       const matches = [
         [chain.evaluationId === evaluation.evaluationId, "evaluation id"],
         [chain.listingId === evaluation.listingId, "listing id"],
@@ -1452,6 +1455,31 @@ export class PostgresAgonMarketService implements AgonMarketService {
       if (mismatch) return { ok: false, error: { code: "reconciliation_invalid", message: `Arena chain state does not match the prepared ${mismatch[1]}` } };
       if (chain.state >= 2 && chain.evidenceRoot !== evaluation.evidenceRoot.toLowerCase()) {
         return { ok: false, error: { code: "reconciliation_invalid", message: "Arena chain evidence root does not match the playground evidence" } };
+      }
+      const evaluator = this.options.arenaEvaluatorAdapter;
+      if (chain.state === 0 && evaluator?.enabled) {
+        const transactionHash = await evaluator.startEvaluation(evaluation.evaluationId);
+        if (transactionHash) {
+          return { ok: true, value: arenaEvaluationView(await this.repository.markAgonArenaEvaluationStarted({ intentId, transactionHash })) };
+        }
+        chain = await reader.inspectArenaEvaluation(evaluation.evaluationId);
+      }
+      if (chain.state === 2 && evaluator?.enabled) {
+        const storedRun = await this.options.playgroundStore?.getRun(evaluation.playgroundRunId);
+        const run = storedRun?.state === "completed" ? storedRun.result : null;
+        if (!run?.evidence) return { ok: false, error: { code: "reconciliation_unavailable", message: "Arena score evidence is unavailable; operator review is required" } };
+        await evaluator.scoreEvaluation({
+          evaluationId: evaluation.evaluationId,
+          score: run.score,
+          validationResponseHash: run.evidence.responseHash,
+        });
+        chain = await reader.inspectArenaEvaluation(evaluation.evaluationId);
+        if (chain.state !== 3 && chain.state !== 4) {
+          return { ok: false, error: { code: "reconciliation_unavailable", message: "Arena score transaction confirmed without a final contract state" } };
+        }
+        if (chain.score !== run.score || chain.validationResponseHash !== run.evidence.responseHash.toLowerCase()) {
+          return { ok: false, error: { code: "reconciliation_invalid", message: "Arena final score does not match the pinned playground result" } };
+        }
       }
       const state = (["request_submitted", "evidence_ready", "evidence_submitted", "verified", "rejected", "expired", "revoked"] as const)[chain.state];
       if (!state) return { ok: false, error: { code: "reconciliation_invalid", message: "Agon Arena returned an unknown state" } };
@@ -2681,18 +2709,28 @@ export class PostgresAgonMarketService implements AgonMarketService {
       role: AGON_ARENA_EVALUATOR_ROLE,
       assigned: false,
       reason: "unconfigured",
+      executionEnabled: false,
+      executionReason: "writer_disabled",
       checkedAt: null,
     };
     if (this.options.arenaEvaluatorReadiness) {
       try {
         const result = await this.options.arenaEvaluatorReadiness();
-        arenaEvaluatorReadiness = { ...result, checkedAt: new Date().toISOString() };
+        const executionEnabled = result.assigned && this.options.arenaEvaluatorAdapter?.enabled === true;
+        arenaEvaluatorReadiness = {
+          ...result,
+          executionEnabled,
+          executionReason: executionEnabled ? "ready" : result.assigned ? "writer_disabled" : "role_not_assigned",
+          checkedAt: new Date().toISOString(),
+        };
       } catch {
         arenaEvaluatorReadiness = {
           ...arenaEvaluatorReadiness,
           enabled: true,
           arenaAddress: this.options.agonArenaAddress ?? null,
           reason: "read_failed",
+          executionEnabled: false,
+          executionReason: "writer_disabled",
           checkedAt: new Date().toISOString(),
         };
       }
