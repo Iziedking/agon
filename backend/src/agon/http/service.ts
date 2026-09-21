@@ -613,6 +613,10 @@ function internalError(error: unknown): Result<never, AgonServiceError> {
   return { ok: false, error: { code: "internal", message: "Agon service request failed" } };
 }
 
+function jsonSafeTransactionArgs(args: readonly unknown[]): unknown[] {
+  return args.map((value) => (typeof value === "bigint" ? value.toString() : value));
+}
+
 function facilitatorVerificationView(evidence: StoredX402FacilitatorVerification): X402FacilitatorVerificationView {
   return {
     receiptId: evidence.receiptId,
@@ -1364,7 +1368,7 @@ export class PostgresAgonMarketService implements AgonMarketService {
     if (evaluation.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the Arena evaluation owner can prepare this transaction" } };
     try {
       const plan = buildAgonArenaRequestPlan(evaluation);
-      return { ok: true, value: { intentId, chainId: plan.chainId.toString(), to: plan.to, functionName: plan.functionName, args: plan.args, data: plan.data, executionEnabled: false, nextAction: "review_and_submit_with_wallet" } };
+      return { ok: true, value: { intentId, chainId: plan.chainId.toString(), to: plan.to, functionName: plan.functionName, args: jsonSafeTransactionArgs(plan.args), data: plan.data, executionEnabled: false, nextAction: "review_and_submit_with_wallet" } };
     } catch (error) {
       return { ok: false, error: { code: "execution_not_ready", message: error instanceof Error ? error.message : "Arena request transaction is not ready" } };
     }
@@ -1389,7 +1393,7 @@ export class PostgresAgonMarketService implements AgonMarketService {
     if (evaluation.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the Arena evaluation owner can prepare evidence" } };
     try {
       const plan = buildAgonArenaEvidencePlan(evaluation);
-      return { ok: true, value: { intentId, chainId: plan.chainId.toString(), to: plan.to, functionName: plan.functionName, args: plan.args, data: plan.data, executionEnabled: false, nextAction: "review_and_submit_with_wallet" } };
+      return { ok: true, value: { intentId, chainId: plan.chainId.toString(), to: plan.to, functionName: plan.functionName, args: jsonSafeTransactionArgs(plan.args), data: plan.data, executionEnabled: false, nextAction: "review_and_submit_with_wallet" } };
     } catch (error) {
       return { ok: false, error: { code: "execution_not_ready", message: error instanceof Error ? error.message : "Arena evidence transaction is not ready" } };
     }

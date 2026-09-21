@@ -820,19 +820,21 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
     return result.ok ? context.json(result.value, 201) : serviceErrorResponse(context, result.error);
   });
 
-  app.get("/arena/evaluations/:intentId", options.requireAuth, async (context) => {
+  const requireArenaAuth = options.requireArenaAuth ?? options.requireAuth;
+
+  app.get("/arena/evaluations/:intentId", requireArenaAuth, async (context) => {
     if (!options.service.getAgonArenaEvaluation) return serviceErrorResponse(context, { code: "arena_disabled", message: "Agon Arena evaluation reads are not configured" });
     const result = await options.service.getAgonArenaEvaluation(context.get("address"), context.req.param("intentId"));
     return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
   });
 
-  app.get("/arena/evaluations/:intentId/request-transaction", options.requireAuth, async (context) => {
+  app.get("/arena/evaluations/:intentId/request-transaction", requireArenaAuth, async (context) => {
     if (!options.service.getAgonArenaRequestTransaction) return serviceErrorResponse(context, { code: "arena_disabled", message: "Agon Arena request planning is not configured" });
     const result = await options.service.getAgonArenaRequestTransaction(context.get("address"), context.req.param("intentId"));
     return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
   });
 
-  app.post("/arena/evaluations/:intentId/requested", options.requireAuth, async (context) => {
+  app.post("/arena/evaluations/:intentId/requested", requireArenaAuth, async (context) => {
     const body = await parseJson(context);
     if (isApiError(body)) return context.json(body, 400);
     const parsed = agonArenaEvaluationSubmittedSchema.safeParse(body);
@@ -842,7 +844,7 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
     return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
   });
 
-  app.post("/arena/evaluations/:intentId/started", options.requireAuth, async (context) => {
+  app.post("/arena/evaluations/:intentId/started", requireArenaAuth, async (context) => {
     const body = await parseJson(context);
     if (isApiError(body)) return context.json(body, 400);
     const parsed = agonArenaEvaluationStartedSchema.safeParse(body);
@@ -852,13 +854,13 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
     return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
   });
 
-  app.get("/arena/evaluations/:intentId/evidence-transaction", options.requireAuth, async (context) => {
+  app.get("/arena/evaluations/:intentId/evidence-transaction", requireArenaAuth, async (context) => {
     if (!options.service.getAgonArenaEvidenceTransaction) return serviceErrorResponse(context, { code: "arena_disabled", message: "Agon Arena evidence planning is not configured" });
     const result = await options.service.getAgonArenaEvidenceTransaction(context.get("address"), context.req.param("intentId"));
     return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
   });
 
-  app.post("/arena/evaluations/:intentId/evidence-submitted", options.requireAuth, async (context) => {
+  app.post("/arena/evaluations/:intentId/evidence-submitted", requireArenaAuth, async (context) => {
     const body = await parseJson(context);
     if (isApiError(body)) return context.json(body, 400);
     const parsed = agonArenaEvidenceSubmittedSchema.safeParse(body);
@@ -868,7 +870,7 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
     return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
   });
 
-  app.post("/arena/evaluations/:intentId/reconcile", options.requireAuth, async (context) => {
+  app.post("/arena/evaluations/:intentId/reconcile", requireArenaAuth, async (context) => {
     if (!options.service.reconcileAgonArenaEvaluation) return serviceErrorResponse(context, { code: "arena_disabled", message: "Agon Arena finality reconciliation is not configured" });
     const result = await options.service.reconcileAgonArenaEvaluation(context.get("address"), context.req.param("intentId"));
     return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
