@@ -38,6 +38,7 @@ import { createAgonJobEscrowTransactionAdapter } from "../agon/execution/agon-jo
 import { createViemAgonProtocolFinalityReader, type AgonProtocolFinalityClient } from "../agon/execution/protocol-finality.ts";
 import { readAgonArenaEvaluatorReadiness, type AgonArenaRoleReadClient } from "../agon/execution/arena-readiness.ts";
 import { createViemAgonArenaEvaluator, type AgonArenaEvaluatorClient, type AgonArenaEvaluatorWallet } from "../agon/execution/arena-evaluator.ts";
+import { authorizeArenaCircleExecution } from "../agon/execution/arena-circle-auth.ts";
 import { PostgresPlaygroundRunStore, RedisPlaygroundRateLimiter } from "../agon/playground-store.ts";
 import { createHttpPlaygroundProviderRunner } from "../agon/playground-provider.ts";
 import {
@@ -1063,9 +1064,9 @@ app.post("/auth/passkey/enroll/finish", requireAuth, async (c) => {
 
 // ----- Circle wallet execute (server-signed contract calls) -----
 
-// The four ArcRun contracts + USDC are the only addresses /wallet/execute will
-// sign for. This blocks the endpoint from being weaponized into a generic
-// signing oracle.
+// ArcRun contracts, explicitly configured Agon contracts, and USDC are the
+// only addresses /wallet/execute will sign for. Each Agon path adds its own
+// prepared-intent authorization below, so this is not a generic signing oracle.
 const WRITE_ALLOWLIST = new Set<string>(
   [
     config.contracts.ContestEngine,
@@ -1079,6 +1080,9 @@ const WRITE_ALLOWLIST = new Set<string>(
       ? [
           config.agon.deployment.contracts.AgonProfileRegistry,
           config.agon.deployment.contracts.AgonServiceRegistry,
+          ...(config.agon.deployment.contracts.AgonArena
+            ? [config.agon.deployment.contracts.AgonArena]
+            : []),
           // Email-login users create their ERC-8004 identity through the
           // same Circle signing boundary before binding it to Agon.
           config.agon.deployment.external.IdentityRegistry.address,
@@ -1093,6 +1097,12 @@ const AGON_WRITE_ADDRESSES = new Set(
         config.agon.deployment.contracts.AgonProfileRegistry.toLowerCase(),
         config.agon.deployment.contracts.AgonServiceRegistry.toLowerCase(),
       ]
+    : [],
+);
+
+const AGON_ARENA_WRITE_ADDRESSES = new Set(
+  config.agon.deployment?.contracts.AgonArena
+    ? [config.agon.deployment.contracts.AgonArena.toLowerCase()]
     : [],
 );
 
@@ -1168,6 +1178,19 @@ app.post("/wallet/execute", requireAgonScope("wallet:execute"), async (c) => {
       const status = authorization.error.code === "capability_unavailable" ? 503 : 400;
       return c.json({ error: authorization.error.message }, status);
     }
+  }
+
+  if (AGON_ARENA_WRITE_ADDRESSES.has(body.contractAddress.toLowerCase())) {
+    if (!body.refId) return c.json({ error: "prepared Arena evaluation reference is required" }, 400);
+    const evaluation = await agonRepository.getAgonArenaEvaluation(body.refId);
+    const authorization = authorizeArenaCircleExecution({
+      evaluation,
+      operator,
+      contractAddress: body.contractAddress,
+      abiFunctionSignature: body.abiFunctionSignature,
+      abiParameters: body.abiParameters,
+    });
+    if (!authorization.ok) return c.json({ error: authorization.message }, 400);
   }
 
   // Enforce the 6-agent profile cap for Circle wallet users at the

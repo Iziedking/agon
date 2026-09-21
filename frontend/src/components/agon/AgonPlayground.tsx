@@ -162,6 +162,7 @@ function ArcPlayground() {
         abi: agonArenaAbi,
         functionName: "requestEvaluation",
         args: [intent.validationRequestHash, BigInt(intent.listing.listingId), intent.capabilityHash, intent.evaluatorVersionHash, intent.taskCommitment, BigInt(Math.floor(new Date(intent.expiresAt).getTime() / 1000))],
+        refId: intent.intentId,
       });
       const receipt = await confirmTx(hash);
       const id = arenaEvaluationIdFromReceipt(receipt, intent.arenaContract, intent.validationRequestHash);
@@ -198,6 +199,7 @@ function ArcPlayground() {
         abi: agonArenaAbi,
         functionName: "submitEvidence",
         args: [BigInt(evaluation.evaluationId), evaluation.evidenceRoot],
+        refId: evaluation.intentId,
       });
       await confirmTx(hash);
       const submitted = await markAgonArenaEvidenceSubmitted(evaluation.intentId, hash);

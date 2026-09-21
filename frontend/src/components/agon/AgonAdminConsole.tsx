@@ -263,14 +263,15 @@ function AgonArenaEvaluationPanel({ listing }: { listing: AgonListing | null }) 
         address: requestTransaction.to,
         abi: agonArenaAbi,
         functionName: "requestEvaluation",
-        args: [
-          evaluation.validationRequestHash,
-          BigInt(evaluation.listing.listingId),
-          evaluation.capabilityHash,
-          evaluation.evaluatorVersionHash,
-          evaluation.taskCommitment,
-          BigInt(Math.floor(new Date(evaluation.expiresAt).getTime() / 1000)),
-        ],
+          args: [
+            evaluation.validationRequestHash,
+            BigInt(evaluation.listing.listingId),
+            evaluation.capabilityHash,
+            evaluation.evaluatorVersionHash,
+            evaluation.taskCommitment,
+            BigInt(Math.floor(new Date(evaluation.expiresAt).getTime() / 1000)),
+          ],
+        refId: evaluation.intentId,
       });
       const receipt = await confirmTx(hash);
       const onchainId = arenaEvaluationIdFromReceipt(receipt, evaluation.arenaContract, evaluation.validationRequestHash);
@@ -293,6 +294,7 @@ function AgonArenaEvaluationPanel({ listing }: { listing: AgonListing | null }) 
         abi: agonArenaAbi,
         functionName: "submitEvidence",
         args: [BigInt(evaluation.evaluationId), evaluation.evidenceRoot],
+        refId: evaluation.intentId,
       });
       await confirmTx(hash);
       const next = await markAgonArenaEvidenceSubmitted(evaluation.intentId, hash);
