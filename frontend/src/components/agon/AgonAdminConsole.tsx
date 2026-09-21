@@ -146,6 +146,7 @@ export function AgonAdminConsole({ adminToken }: { adminToken: string }) {
 
 function AgonStatusSummary({ health, address, signerRoute, authenticated, listingCount }: { health: AgonHealth | null; address: string | null; signerRoute: string; authenticated: boolean; listingCount: number }) {
   const capabilities = health?.capabilities;
+  const arenaExecutionReady = capabilities?.arenaEvaluatorReadiness?.executionEnabled === true;
   const walletLabel = !address
     ? "CONNECT"
     : signerRoute === "circle_developer_controlled"
@@ -155,13 +156,13 @@ function AgonStatusSummary({ health, address, signerRoute, authenticated, listin
         : "SIGN IN";
   const cells = [
     { label: "API", value: health?.ok ? "ONLINE" : "READING", tone: health?.ok ? "var(--ok)" : "var(--ink-3)" },
-    { label: "ARC", value: capabilities?.protocolReadiness.chainId ? String(capabilities.protocolReadiness.chainId) : "UNKNOWN", tone: "var(--accent)" },
+    { label: "ARC", value: capabilities?.protocolReadiness?.chainId ? String(capabilities.protocolReadiness.chainId) : "UNKNOWN", tone: "var(--accent)" },
     { label: "LISTINGS", value: String(listingCount), tone: "var(--ink)" },
-    { label: "ARENA", value: capabilities?.arenaEvaluatorReadiness.executionEnabled ? "READY" : "ACTION NEEDED", tone: capabilities?.arenaEvaluatorReadiness.executionEnabled ? "var(--ok)" : "var(--warn)" },
+    { label: "ARENA", value: arenaExecutionReady ? "READY" : "ACTION NEEDED", tone: arenaExecutionReady ? "var(--ok)" : "var(--warn)" },
     { label: "X402", value: capabilities?.directX402 ? "READY" : "GATED", tone: capabilities?.directX402 ? "var(--ok)" : "var(--ink-3)" },
     { label: "WALLET", value: walletLabel, tone: !address ? "var(--warn)" : authenticated ? "var(--ok)" : "var(--warn)" },
   ];
-  return <section className="border border-[color:var(--hairline-strong)] bg-canvas-2 p-4"><div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">LIVE CONTROL STATUS</div><span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">refresh before a write</span></div><div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">{cells.map((cell) => <div key={cell.label} className="border border-[color:var(--hairline)] bg-canvas px-3 py-3"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-ink-3">{cell.label}</div><div className="mt-2 font-mono text-sm" style={{ color: cell.tone }}>{cell.value}</div></div>)}</div>{address && !authenticated ? <p className="mt-3 border-l-2 border-[color:var(--warn)] p-3 text-sm text-ink-2">Wallet connected. Sign in with your wallet before running provider verification or other operator actions.</p> : null}{capabilities?.arenaEvaluatorReadiness.executionEnabled ? null : <p className="mt-3 border-l-2 border-[color:var(--warn)] p-3 text-sm text-ink-2">Arena automation is not ready. Confirm the evaluator role, validator signer, and Arena execution flag before starting a provider review.</p>}</section>;
+  return <section className="border border-[color:var(--hairline-strong)] bg-canvas-2 p-4"><div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">LIVE CONTROL STATUS</div><span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">refresh before a write</span></div><div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">{cells.map((cell) => <div key={cell.label} className="border border-[color:var(--hairline)] bg-canvas px-3 py-3"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-ink-3">{cell.label}</div><div className="mt-2 font-mono text-sm" style={{ color: cell.tone }}>{cell.value}</div></div>)}</div>{address && !authenticated ? <p className="mt-3 border-l-2 border-[color:var(--warn)] p-3 text-sm text-ink-2">Wallet connected. Sign in with your wallet before running provider verification or other operator actions.</p> : null}{arenaExecutionReady ? null : <p className="mt-3 border-l-2 border-[color:var(--warn)] p-3 text-sm text-ink-2">Arena automation is not ready. Confirm the evaluator role, validator signer, and Arena execution flag before starting a provider review.</p>}</section>;
 }
 
 function AgonSelectedService({ listing }: { listing: AgonListing | null }) {
