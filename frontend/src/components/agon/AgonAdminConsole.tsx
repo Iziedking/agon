@@ -55,18 +55,24 @@ const ARENA_TASK_BY_LISTING_CATEGORY: Record<string, {
 };
 
 export function AgonAdminConsole({ adminToken }: { adminToken: string }) {
-  const { address } = useAccount();
+  const { address: connectedAddress } = useAccount();
   const { me } = useAuth();
+  const { signerAddress, signerRoute } = useArcWrite();
   const [health, setHealth] = useState<AgonHealth | null>(null);
   const [listings, setListings] = useState<AgonListing[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loginOpen, setLoginOpen] = useState(false);
 
   useEffect(() => {
-    setAgonAdminAuthorization(adminToken, address ?? null);
+    // The actor must be the wallet that will sign the exact provider call.
+    // Circle developer-controlled wallets do not appear in wagmi's account
+    // connector, so useArcWrite() is the source of truth for both injected
+    // and Circle sessions.
+    setAgonAdminAuthorization(adminToken, signerAddress ?? null);
     return () => setAgonAdminAuthorization(null, null);
-  }, [adminToken, address]);
+  }, [adminToken, signerAddress]);
 
   async function load() {
     setLoading(true);
@@ -101,11 +107,15 @@ export function AgonAdminConsole({ adminToken }: { adminToken: string }) {
           <h2 className="mt-2 font-stencil text-4xl uppercase leading-none sm:text-5xl">Run the market safely</h2>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-ink-2">Choose a service, run its proof, then prepare a hire or payment. Chain details stay available when you need to inspect them.</p>
         </div>
-        <div className="flex items-center gap-2"><ConnectButton /><button onClick={() => void load()} disabled={loading} className="border border-[color:var(--hairline-strong)] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:text-ink disabled:opacity-50">{loading ? "READING" : "REFRESH"}</button></div>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {me?.walletKind === "circle" && signerAddress ? <span className="border border-[color:var(--ok)] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-[color:var(--ok)]">CIRCLE WALLET {signerAddress.slice(0, 6)}...{signerAddress.slice(-4)}</span> : <ConnectButton />}
+          {!me ? <button onClick={() => setLoginOpen(true)} className="border border-accent px-3 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-accent hover:bg-accent/10">SIGN IN / USE CIRCLE</button> : null}
+          <button onClick={() => void load()} disabled={loading} className="border border-[color:var(--hairline-strong)] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2 hover:text-ink disabled:opacity-50">{loading ? "READING" : "REFRESH"}</button>
+        </div>
       </header>
 
       {error ? <p className="border-l-2 border-[color:var(--err)] p-3 font-mono text-xs text-[color:var(--err)]">{error}</p> : null}
-      <AgonStatusSummary health={health} address={address ?? null} authenticated={Boolean(me)} listingCount={listings.length} />
+      <AgonStatusSummary health={health} address={signerAddress ?? connectedAddress ?? null} signerRoute={signerRoute} authenticated={Boolean(me)} listingCount={listings.length} />
 
       <section>
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3"><div><div className="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">01 / CHOOSE A SERVICE</div><h3 className="mt-2 font-stencil text-3xl uppercase leading-none">What are you working on?</h3></div><p className="max-w-md text-sm leading-5 text-ink-2">Every action below uses the selected listing and its immutable version.</p></div>
@@ -129,19 +139,27 @@ export function AgonAdminConsole({ adminToken }: { adminToken: string }) {
         <summary className="cursor-pointer list-none px-5 py-4 font-mono text-[11px] uppercase tracking-[0.14em] text-ink-2">Advanced controls and audit tools</summary>
         <div className="grid gap-6 border-t border-[color:var(--hairline)] p-5"><AgonReadiness health={health} /><AgonEscrowPreparation listing={selected} /><AgonSyndicatePrizeIntentPanel /><ProtocolActions /><AgonJobInspector /></div>
       </details>
+      <LoginModal open={loginOpen} onClose={() => setLoginOpen(false)} />
     </div>
   );
 }
 
-function AgonStatusSummary({ health, address, authenticated, listingCount }: { health: AgonHealth | null; address: string | null; authenticated: boolean; listingCount: number }) {
+function AgonStatusSummary({ health, address, signerRoute, authenticated, listingCount }: { health: AgonHealth | null; address: string | null; signerRoute: string; authenticated: boolean; listingCount: number }) {
   const capabilities = health?.capabilities;
+  const walletLabel = !address
+    ? "CONNECT"
+    : signerRoute === "circle_developer_controlled"
+      ? "CIRCLE ACTIVE"
+      : authenticated
+        ? "SIWE READY"
+        : "SIGN IN";
   const cells = [
     { label: "API", value: health?.ok ? "ONLINE" : "READING", tone: health?.ok ? "var(--ok)" : "var(--ink-3)" },
     { label: "ARC", value: capabilities?.protocolReadiness.chainId ? String(capabilities.protocolReadiness.chainId) : "UNKNOWN", tone: "var(--accent)" },
     { label: "LISTINGS", value: String(listingCount), tone: "var(--ink)" },
     { label: "ARENA", value: capabilities?.arenaEvaluatorReadiness.executionEnabled ? "READY" : "ACTION NEEDED", tone: capabilities?.arenaEvaluatorReadiness.executionEnabled ? "var(--ok)" : "var(--warn)" },
     { label: "X402", value: capabilities?.directX402 ? "READY" : "GATED", tone: capabilities?.directX402 ? "var(--ok)" : "var(--ink-3)" },
-    { label: "WALLET", value: !address ? "CONNECT" : authenticated ? "SIWE READY" : "SIGN IN", tone: !address ? "var(--warn)" : authenticated ? "var(--ok)" : "var(--warn)" },
+    { label: "WALLET", value: walletLabel, tone: !address ? "var(--warn)" : authenticated ? "var(--ok)" : "var(--warn)" },
   ];
   return <section className="border border-[color:var(--hairline-strong)] bg-canvas-2 p-4"><div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">LIVE CONTROL STATUS</div><span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">refresh before a write</span></div><div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">{cells.map((cell) => <div key={cell.label} className="border border-[color:var(--hairline)] bg-canvas px-3 py-3"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-ink-3">{cell.label}</div><div className="mt-2 font-mono text-sm" style={{ color: cell.tone }}>{cell.value}</div></div>)}</div>{address && !authenticated ? <p className="mt-3 border-l-2 border-[color:var(--warn)] p-3 text-sm text-ink-2">Wallet connected. Sign in with your wallet before running provider verification or other operator actions.</p> : null}{capabilities?.arenaEvaluatorReadiness.executionEnabled ? null : <p className="mt-3 border-l-2 border-[color:var(--warn)] p-3 text-sm text-ink-2">Arena automation is not ready. Confirm the evaluator role, validator signer, and Arena execution flag before starting a provider review.</p>}</section>;
 }
