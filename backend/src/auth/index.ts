@@ -12,6 +12,7 @@ import { z } from "zod";
 import { createWalletClient, http, parseAbi } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { config } from "../config/index.js";
+import { withActiveAgonServiceRegistry } from "../config/deployments.ts";
 import { publicClient, arcTestnet } from "../chain/arc.js";
 import { usdcMinimalAbi } from "../chain/abi.js";
 import { pool, query } from "../db/pool.js";
@@ -38,6 +39,12 @@ import { createAgonJobEscrowTransactionAdapter } from "../agon/execution/agon-jo
 import { createViemAgonProtocolFinalityReader, type AgonProtocolFinalityClient } from "../agon/execution/protocol-finality.ts";
 import { readAgonArenaEvaluatorReadiness, type AgonArenaRoleReadClient } from "../agon/execution/arena-readiness.ts";
 import { createViemAgonArenaEvaluator, type AgonArenaEvaluatorClient, type AgonArenaEvaluatorWallet } from "../agon/execution/arena-evaluator.ts";
+import {
+  createViemAgonListingVerifier,
+  readAgonListingVerifierReadiness,
+  type AgonListingVerifierReadClient,
+  type AgonListingVerifierWallet,
+} from "../agon/execution/listing-verifier.ts";
 import { authorizeArenaCircleExecution } from "../agon/execution/arena-circle-auth.ts";
 import { PostgresPlaygroundRunStore, RedisPlaygroundRateLimiter } from "../agon/playground-store.ts";
 import { createHttpPlaygroundProviderRunner } from "../agon/playground-provider.ts";
@@ -338,18 +345,21 @@ app.post("/auth/cli/device/token", async (c) => {
 const agonRepository = new PostgresAgonRepository(pool);
 const agonProviderDraftStore = createPostgresProviderDraftStore(pool);
 const agonOperations = new PostgresAgonOperationStore(pool);
+const agonActiveDeployment = config.agon.deployment
+  ? withActiveAgonServiceRegistry(config.agon.deployment)
+  : null;
 const agonReadiness = new CachedAgonReadiness(
   {
     enabled: config.agon.writesEnabled,
     configuredChainId: config.chainId,
-    deployment: config.agon.deployment,
+    deployment: agonActiveDeployment,
     client: publicClient,
   },
   config.agon.readinessCacheMs,
 );
-const agonWriter = config.agon.deployment
+const agonWriter = agonActiveDeployment
   ? new ViemAgonWriteAdapter({
-      deployment: config.agon.deployment,
+      deployment: agonActiveDeployment,
       client: publicClient,
       readiness: agonReadiness,
       operations: agonOperations,
@@ -426,7 +436,7 @@ const agonCertificationEndpointQaRunner = createManifestDerivedAgonEndpointQaRun
 });
 const configuredJobEscrowV2 = config.agon.deployment?.contracts.AgonJobEscrowV2;
 const configuredJobEscrow = configuredJobEscrowV2 ?? config.agon.deployment?.contracts.AgonJobEscrow;
-const configuredServiceRegistry = config.agon.deployment?.contracts.AgonServiceRegistry;
+const configuredServiceRegistry = agonActiveDeployment?.contracts.AgonServiceRegistry;
 const configuredArena = config.agon.deployment?.contracts.AgonArena;
 
 function resolveConfiguredJobEscrowVersion(): AgonJobEscrowContractVersion | null {
@@ -521,6 +531,25 @@ const arenaEvaluatorAdapter = configuredArena
         : undefined,
     })
   : undefined;
+const listingVerifierAdapter = config.agon.deployment?.contracts.AgonServiceRegistryV2 && arenaEvaluatorSigner
+  ? createViemAgonListingVerifier({
+      enabled: config.agon.writesEnabled && config.agon.x402.validation.enabled && signerMatchesArenaEvaluator,
+      registryAddress: config.agon.deployment.contracts.AgonServiceRegistryV2,
+      verifierAddress: arenaEvaluatorSigner.address,
+      client: publicClient as unknown as AgonListingVerifierReadClient,
+      wallet: arenaEvaluatorWallet
+        ? {
+            writeContract: (input) => arenaEvaluatorWallet.writeContract({
+              address: input.address,
+              abi: input.abi as never,
+              functionName: input.functionName,
+              args: input.args,
+              account: arenaEvaluatorSigner,
+            }),
+          } as AgonListingVerifierWallet
+        : undefined,
+    })
+  : undefined;
 
 function explainJobEscrowExecutionReadiness(): string | null {
   if (!configuredJobEscrow) return "job_escrow_not_configured";
@@ -531,6 +560,7 @@ function explainJobEscrowExecutionReadiness(): string | null {
 
 const agonService = new PostgresAgonMarketService(agonRepository, {
   writer: agonWriter,
+  activeServiceRegistryAddress: configuredServiceRegistry,
   x402ExecutionEnabled: config.agon.x402.executionEnabled,
   x402ExecutionPolicy,
   x402SettlementAdapter,
@@ -574,6 +604,15 @@ const agonService = new PostgresAgonMarketService(agonRepository, {
       })
     : undefined,
   arenaEvaluatorAdapter,
+  listingVerifierAdapter,
+  listingVerifierReadiness: configuredServiceRegistry
+    ? () => readAgonListingVerifierReadiness({
+        enabled: config.agon.x402.validation.enabled,
+        client: publicClient as unknown as AgonListingVerifierReadClient,
+        registryAddress: configuredServiceRegistry,
+        verifierAddress: arenaEvaluatorSigner?.address,
+      })
+    : undefined,
   validationRegistryAddress: config.agon.deployment?.external.ValidationRegistry?.address,
   playgroundStore: agonPlaygroundStore,
   agonSyndicateRegistryAddress: config.agon.deployment?.contracts.AgonSyndicateRegistry,
@@ -1080,6 +1119,9 @@ const WRITE_ALLOWLIST = new Set<string>(
       ? [
           config.agon.deployment.contracts.AgonProfileRegistry,
           config.agon.deployment.contracts.AgonServiceRegistry,
+          ...(config.agon.deployment.contracts.AgonServiceRegistryV2
+            ? [config.agon.deployment.contracts.AgonServiceRegistryV2]
+            : []),
           ...(config.agon.deployment.contracts.AgonArena
             ? [config.agon.deployment.contracts.AgonArena]
             : []),
@@ -1095,7 +1137,7 @@ const AGON_WRITE_ADDRESSES = new Set(
   config.agon.deployment
     ? [
         config.agon.deployment.contracts.AgonProfileRegistry.toLowerCase(),
-        config.agon.deployment.contracts.AgonServiceRegistry.toLowerCase(),
+        configuredServiceRegistry!.toLowerCase(),
       ]
     : [],
 );

@@ -78,6 +78,26 @@ function ArcPlayground() {
     }).catch((cause) => setError(cause instanceof Error ? cause.message : "The Playground is unavailable."));
   }, []);
 
+  useEffect(() => {
+    const pending = Object.entries(evaluations).filter(([, evaluation]) =>
+      evaluation.state === "request_submitted"
+      || evaluation.state === "evidence_submitted"
+      || (evaluation.state === "verified" && ["pending", "submitted", "unknown"].includes(evaluation.marketplaceVerification.state)),
+    );
+    if (pending.length === 0) return;
+    const timer = window.setInterval(() => {
+      for (const [runId, evaluation] of pending) {
+        void reconcileAgonArenaEvaluation(evaluation.intentId)
+          .then((next) => {
+            setEvaluations((current) => ({ ...current, [runId]: next }));
+            if (next.marketplaceVerification.state === "confirmed") setNotice("AGON verification is published to the market.");
+          })
+          .catch(() => undefined);
+      }
+    }, 8_000);
+    return () => window.clearInterval(timer);
+  }, [evaluations]);
+
   const selectedCategory = categories.find((item) => item.slug === category) ?? null;
   const selectedTask = selectedCategory?.tasks.find((task) => task.id === taskId) ?? selectedCategory?.tasks[0] ?? null;
   const selectedListings = listingIds
@@ -182,7 +202,7 @@ function ArcPlayground() {
     try {
       const next = await reconcileAgonArenaEvaluation(evaluation.intentId);
       setEvaluations((current) => ({ ...current, [run.runId]: next }));
-      if (next.state === "verified") setNotice("AGON verification is complete.");
+      if (next.marketplaceVerification.state === "confirmed") setNotice("AGON verification is published to the market.");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The verification status could not be refreshed.");
     }
@@ -205,7 +225,7 @@ function ArcPlayground() {
       const submitted = await markAgonArenaEvidenceSubmitted(evaluation.intentId, hash);
       const next = await reconcileAgonArenaEvaluation(submitted.intentId);
       setEvaluations((current) => ({ ...current, [run.runId]: next }));
-      setNotice(next.state === "verified" ? "AGON verification is complete." : "Evidence confirmed. AGON is finalizing the result.");
+      setNotice(next.marketplaceVerification.state === "confirmed" ? "AGON verification is published to the market." : "Evidence confirmed. AGON is finalizing the result.");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The Arena evidence transaction failed.");
     }
@@ -339,6 +359,8 @@ function VerificationRequest({ run, listing, signerAddress, evaluation, isPendin
           ? "SUBMIT TEST EVIDENCE"
           : action === "complete"
             ? evaluation.state === "verified" ? "VERIFIED" : "REVIEW RESULT"
+            : evaluation.state === "verified"
+              ? "PUBLISHING TO MARKET"
             : "CHECK VERIFICATION";
   const onAction = !evaluation ? onRequest : action === "submit_evidence" ? onEvidence : onRefresh;
   return (
@@ -348,10 +370,11 @@ function VerificationRequest({ run, listing, signerAddress, evaluation, isPendin
       <p className="mt-4 font-mono text-[11px] leading-5 text-ink-2">
         Submit this exact test result for independent review. The badge appears only after AGON confirms the evidence and score onchain.
       </p>
-      <button type="button" disabled={isPending || !signerAddress || !run.passed || evaluation?.state === "verified"} onClick={onAction} className="mt-5 w-full bg-accent px-3 py-3 font-mono text-[11px] uppercase tracking-[.12em] text-accent-ink disabled:opacity-50">
+      <button type="button" disabled={isPending || !signerAddress || !run.passed || evaluation?.marketplaceVerification.state === "confirmed"} onClick={onAction} className="mt-5 w-full bg-accent px-3 py-3 font-mono text-[11px] uppercase tracking-[.12em] text-accent-ink disabled:opacity-50">
         {buttonLabel}
       </button>
-      {evaluation ? <p className="mt-3 font-mono text-[10px] uppercase leading-5 tracking-[.1em] text-ink-2">ARENA {evaluation.evaluationId ?? "PREPARING"} / {evaluation.state.replace(/_/g, " ")}</p> : null}
+      {evaluation ? <p className="mt-3 font-mono text-[10px] uppercase leading-5 tracking-[.1em] text-ink-2">ARENA {evaluation.evaluationId ?? "PREPARING"} / {evaluation.verificationStatus.replace(/_/g, " ")}</p> : null}
+      {evaluation?.marketplaceVerification.error ? <p className="mt-3 font-mono text-[10px] leading-5 text-warn">{evaluation.marketplaceVerification.error}</p> : null}
       <p className="mt-4 font-mono text-[9px] uppercase leading-5 tracking-[.1em] text-ink-3">{presentListing(listing).name} / VERSION {listing.version}</p>
     </BracketedCell>
   );

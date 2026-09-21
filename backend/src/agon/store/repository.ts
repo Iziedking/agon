@@ -227,7 +227,14 @@ export type AgonArenaEvaluationProjection = AgonArenaEvaluationInput & {
   createdAt?: Date;
 };
 
-export type StoredAgonArenaEvaluation = AgonArenaEvaluation;
+export type AgonMarketplaceVerificationState = "not_started" | "pending" | "submitted" | "confirmed" | "failed" | "unknown";
+
+export type StoredAgonArenaEvaluation = AgonArenaEvaluation & {
+  marketplaceVerificationState: AgonMarketplaceVerificationState;
+  marketplaceVerificationTransactionHash: `0x${string}` | null;
+  marketplaceVerificationError: string | null;
+  marketplaceVerifiedAt: Date | null;
+};
 
 export type AgonSyndicateContributionProjection = AgonSyndicateContributionInput;
 export type StoredAgonSyndicateContribution = AgonSyndicateContribution;
@@ -261,6 +268,7 @@ export type ListingSearch = {
   cursor: ListingCursor | null;
   category: bigint | null;
   agentId: bigint | null;
+  serviceRegistry: string | null;
 };
 
 export type ValidatedListingVersion = ListingKey & {
@@ -525,6 +533,10 @@ type AgonArenaEvaluationRow = QueryResultRow & {
   request_transaction_hash: `0x${string}` | null;
   start_transaction_hash: `0x${string}` | null;
   evidence_transaction_hash: `0x${string}` | null;
+  marketplace_verification_state: AgonMarketplaceVerificationState;
+  marketplace_verification_transaction_hash: `0x${string}` | null;
+  marketplace_verification_error: string | null;
+  marketplace_verified_at: Date | null;
   created_at: Date;
   updated_at: Date;
 };
@@ -957,6 +969,10 @@ function mapAgonArenaEvaluation(row: AgonArenaEvaluationRow): StoredAgonArenaEva
     requestTransactionHash: row.request_transaction_hash,
     startTransactionHash: row.start_transaction_hash,
     evidenceTransactionHash: row.evidence_transaction_hash,
+    marketplaceVerificationState: row.marketplace_verification_state,
+    marketplaceVerificationTransactionHash: row.marketplace_verification_transaction_hash,
+    marketplaceVerificationError: row.marketplace_verification_error,
+    marketplaceVerifiedAt: row.marketplace_verified_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -1122,7 +1138,9 @@ const AGON_ARENA_EVALUATION_COLUMNS = `
   service_registry_address, listing_id, agent_id, listing_version, category,
   manifest_hash, capability_hash, evaluator_version_hash, task_commitment,
   validation_request_hash, evidence_root, playground_run_id, expires_at, state,
-  evaluation_id, request_transaction_hash, start_transaction_hash, evidence_transaction_hash, created_at, updated_at`;
+  evaluation_id, request_transaction_hash, start_transaction_hash, evidence_transaction_hash,
+  marketplace_verification_state, marketplace_verification_transaction_hash,
+  marketplace_verification_error, marketplace_verified_at, created_at, updated_at`;
 
 const AGON_CERTIFICATION_COLUMNS = `
   job_id, chain_id, service_registry_address, listing_id, agent_id, listing_version,
@@ -1531,6 +1549,69 @@ export class PostgresAgonRepository {
     );
     if (!updated.rows[0]) throw new AgonStoreInvariantError("Arena evaluation not found");
     return mapAgonArenaEvaluation(updated.rows[0]);
+  }
+
+  async recordAgonArenaMarketplaceVerification(input: {
+    intentId: string;
+    state: AgonMarketplaceVerificationState;
+    transactionHash?: `0x${string}` | null;
+    error?: string | null;
+  }): Promise<StoredAgonArenaEvaluation> {
+    if (!/^[0-9a-f-]{36}$/i.test(input.intentId)) throw new AgonStoreInvariantError("Arena evaluation intent id must be a UUID");
+    const current = await this.getAgonArenaEvaluation(input.intentId);
+    if (!current) throw new AgonStoreInvariantError("Arena evaluation not found");
+    if (current.state !== "verified") throw new AgonStoreInvariantError("marketplace verification requires a verified Arena evaluation");
+    if (current.marketplaceVerificationState === "confirmed" && input.state !== "confirmed") return current;
+    const transactionHash = input.transactionHash === undefined
+      ? current.marketplaceVerificationTransactionHash
+      : input.transactionHash === null ? null : normalizeHash(input.transactionHash);
+    const error = input.error === undefined ? current.marketplaceVerificationError : input.error?.slice(0, 500) ?? null;
+    const updated = await this.pool.query<AgonArenaEvaluationRow>(
+      `update agon_arena_evaluations
+          set marketplace_verification_state = $2,
+              marketplace_verification_transaction_hash = $3,
+              marketplace_verification_error = $4,
+              marketplace_verified_at = case when $2 = 'confirmed' then coalesce(marketplace_verified_at, now()) else marketplace_verified_at end,
+              updated_at = now()
+        where intent_id = $1
+          and state = 'verified'
+          and (marketplace_verification_state <> 'confirmed' or $2 = 'confirmed')
+        returning ${AGON_ARENA_EVALUATION_COLUMNS}`,
+      [input.intentId, input.state, transactionHash, error],
+    );
+    if (!updated.rows[0]) {
+      const latest = await this.getAgonArenaEvaluation(input.intentId);
+      if (latest?.marketplaceVerificationState === "confirmed") return latest;
+      throw new AgonStoreInvariantError("Arena evaluation is not eligible for marketplace verification");
+    }
+    return mapAgonArenaEvaluation(updated.rows[0]);
+  }
+
+  async claimAgonArenaMarketplaceVerification(input: {
+    intentId: string;
+    retryBefore: Date;
+  }): Promise<StoredAgonArenaEvaluation | null> {
+    if (!/^[0-9a-f-]{36}$/i.test(input.intentId)) throw new AgonStoreInvariantError("Arena evaluation intent id must be a UUID");
+    if (!Number.isFinite(input.retryBefore.getTime())) throw new AgonStoreInvariantError("marketplace verification retry time is invalid");
+    const claimed = await this.pool.query<AgonArenaEvaluationRow>(
+      `update agon_arena_evaluations
+          set marketplace_verification_state = 'pending',
+              marketplace_verification_error = null,
+              updated_at = now()
+        where intent_id = $1
+          and state = 'verified'
+          and marketplace_verification_state <> 'confirmed'
+          and (
+            marketplace_verification_state in ('not_started', 'failed')
+            or (
+              marketplace_verification_state in ('pending', 'submitted', 'unknown')
+              and updated_at <= $2
+            )
+          )
+        returning ${AGON_ARENA_EVALUATION_COLUMNS}`,
+      [input.intentId, input.retryBefore],
+    );
+    return claimed.rows[0] ? mapAgonArenaEvaluation(claimed.rows[0]) : null;
   }
 
   async getAgonSyndicateContribution(intentId: string): Promise<StoredAgonSyndicateContribution | null> {
@@ -2474,6 +2555,9 @@ export class PostgresAgonRepository {
     }
     if (search.agentId !== null) {
       clauses.push(`agent_id = ${parameter(requirePositive(search.agentId, "agent id"))}`);
+    }
+    if (search.serviceRegistry !== null) {
+      clauses.push(`service_registry_address = ${parameter(normalizeAddress(search.serviceRegistry))}`);
     }
 
     const limit = parameter(search.limit + 1);

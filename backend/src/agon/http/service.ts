@@ -106,6 +106,7 @@ import { buildAgonPrizeClaimPlan, buildAgonSyndicateContributionPlan, prizeClaim
 import type { AgonProtocolFinalityReader } from "../execution/protocol-finality.ts";
 import { AGON_ARENA_EVALUATOR_ROLE, type AgonArenaEvaluatorReadiness } from "../execution/arena-readiness.ts";
 import type { AgonArenaEvaluatorAdapter } from "../execution/arena-evaluator.ts";
+import { AgonListingVerificationError, type AgonListingVerifierAdapter, type AgonListingVerifierReadiness } from "../execution/listing-verifier.ts";
 import type { X402AgentSpendExecutor } from "../execution/x402-agent-executor.ts";
 import type { AgonJobEscrowTransactionAdapter } from "../execution/agon-job-escrow-adapter.ts";
 import type { ProviderDraftInput } from "../mcp/contract.ts";
@@ -145,6 +146,8 @@ export type AgonWriteAdapter = {
 
 export type PostgresAgonMarketServiceOptions = {
   writer?: AgonWriteAdapter;
+  /** Active catalog registry. Older registry rows remain available by exact reference for reconciliation. */
+  activeServiceRegistryAddress?: `0x${string}`;
   identityReads?: boolean;
   endpointQa?: boolean | (() => Promise<boolean>);
   directX402?: boolean;
@@ -187,6 +190,8 @@ export type PostgresAgonMarketServiceOptions = {
   arenaEvaluatorReadiness?: () => Promise<AgonArenaEvaluatorReadiness> | AgonArenaEvaluatorReadiness;
   /** Guarded evaluator writer. Provider actions remain wallet-signed by the provider. */
   arenaEvaluatorAdapter?: AgonArenaEvaluatorAdapter;
+  listingVerifierAdapter?: AgonListingVerifierAdapter;
+  listingVerifierReadiness?: () => Promise<AgonListingVerifierReadiness>;
   validationRegistryAddress?: `0x${string}`;
   playgroundStore?: PlaygroundRunStore;
   agonSyndicateRegistryAddress?: `0x${string}`;
@@ -458,8 +463,11 @@ function jobEscrowIntentView(intent: StoredAgonJobEscrowIntent, executionEnabled
 }
 
 function arenaEvaluationView(evaluation: StoredAgonArenaEvaluation): AgonArenaEvaluationView {
-  const terminal = ["verified", "rejected", "expired", "revoked"].includes(evaluation.state);
-  const verificationStatus: AgonArenaEvaluationView["verificationStatus"] = terminal
+  const terminal = ["rejected", "expired", "revoked"].includes(evaluation.state)
+    || (evaluation.state === "verified" && evaluation.marketplaceVerificationState === "confirmed");
+  const verificationStatus: AgonArenaEvaluationView["verificationStatus"] = evaluation.state === "verified" && evaluation.marketplaceVerificationState !== "confirmed"
+    ? "publishing_to_market"
+    : terminal
     ? evaluation.state as "verified" | "rejected" | "expired" | "revoked"
     : evaluation.state === "prepared"
       ? "prepared"
@@ -468,7 +476,9 @@ function arenaEvaluationView(evaluation: StoredAgonArenaEvaluation): AgonArenaEv
         : evaluation.state === "evidence_submitted"
           ? "evidence_submitted"
           : "chain_reconciliation_required";
-  const nextAction: AgonArenaEvaluationView["nextAction"] = terminal
+  const nextAction: AgonArenaEvaluationView["nextAction"] = evaluation.state === "verified" && evaluation.marketplaceVerificationState !== "confirmed"
+    ? "reconcile_marketplace"
+    : terminal
     ? "none"
     : evaluation.state === "prepared"
     ? "prepare_request_transaction"
@@ -508,6 +518,12 @@ function arenaEvaluationView(evaluation: StoredAgonArenaEvaluation): AgonArenaEv
     requestTransactionHash: evaluation.requestTransactionHash,
     startTransactionHash: evaluation.startTransactionHash,
     evidenceTransactionHash: evaluation.evidenceTransactionHash,
+    marketplaceVerification: {
+      state: evaluation.marketplaceVerificationState,
+      transactionHash: evaluation.marketplaceVerificationTransactionHash,
+      error: evaluation.marketplaceVerificationError,
+      verifiedAt: evaluation.marketplaceVerifiedAt?.toISOString() ?? null,
+    },
     executionEnabled: false,
     verificationStatus,
     nextAction,
@@ -803,6 +819,7 @@ export class PostgresAgonMarketService implements AgonMarketService {
         cursor: decodeCursor(query.cursor),
         category: query.category ? parsePositive(query.category, "category") : null,
         agentId: query.agentId ? parsePositive(query.agentId, "agent id") : null,
+        serviceRegistry: this.options.activeServiceRegistryAddress ?? null,
       });
       const hasMore = rows.length > query.limit;
       const pageRows = rows.slice(0, query.limit);
@@ -1483,7 +1500,57 @@ export class PostgresAgonMarketService implements AgonMarketService {
       }
       const state = (["request_submitted", "evidence_ready", "evidence_submitted", "verified", "rejected", "expired", "revoked"] as const)[chain.state];
       if (!state) return { ok: false, error: { code: "reconciliation_invalid", message: "Agon Arena returned an unknown state" } };
-      return { ok: true, value: arenaEvaluationView(await this.repository.reconcileAgonArenaEvaluation({ intentId, state })) };
+      let stored = await this.repository.reconcileAgonArenaEvaluation({ intentId, state });
+      if (state === "verified" && stored.marketplaceVerificationState !== "confirmed") {
+        const verifier = this.options.listingVerifierAdapter;
+        if (!verifier?.enabled && stored.marketplaceVerificationState === "not_started") {
+          stored = await this.repository.recordAgonArenaMarketplaceVerification({
+            intentId,
+            state: "failed",
+            error: "Automatic market publication is unavailable until the version-scoped registry is configured.",
+          });
+        } else if (verifier?.enabled) {
+          const previousState = stored.marketplaceVerificationState;
+          const previousTransactionHash = stored.marketplaceVerificationTransactionHash;
+          const claimed = await this.repository.claimAgonArenaMarketplaceVerification({
+            intentId,
+            retryBefore: new Date(Date.now() - 120_000),
+          });
+          if (!claimed) return { ok: true, value: arenaEvaluationView(stored) };
+          stored = claimed;
+          try {
+            const result = await verifier.verify({
+              listingId: stored.listingId,
+              agentId: stored.agentId,
+              listingVersion: stored.listingVersion,
+              manifestHash: stored.manifestHash,
+              priorTransactionHash: previousState === "submitted" || previousState === "unknown"
+                ? previousTransactionHash ?? undefined
+                : undefined,
+              onSubmitted: async (transactionHash) => {
+                stored = await this.repository.recordAgonArenaMarketplaceVerification({ intentId, state: "submitted", transactionHash, error: null });
+              },
+            });
+            stored = await this.repository.recordAgonArenaMarketplaceVerification({
+              intentId,
+              state: "confirmed",
+              transactionHash: result.transactionHash ?? stored.marketplaceVerificationTransactionHash,
+              error: null,
+            });
+          } catch (error) {
+            const unknown = error instanceof AgonListingVerificationError && error.code === "unknown_outcome";
+            stored = await this.repository.recordAgonArenaMarketplaceVerification({
+              intentId,
+              state: unknown ? "unknown" : "failed",
+              transactionHash: error instanceof AgonListingVerificationError && error.transactionHash
+                ? error.transactionHash
+                : undefined,
+              error: error instanceof Error ? error.message : "marketplace verification failed",
+            });
+          }
+        }
+      }
+      return { ok: true, value: arenaEvaluationView(stored) };
     } catch (error) {
       if (error instanceof AgonStoreInvariantError) return { ok: false, error: { code: "conflict", message: error.message } };
       return { ok: false, error: { code: "reconciliation_unavailable", message: error instanceof Error ? error.message : "Agon Arena finality read failed" } };
@@ -2735,6 +2802,40 @@ export class PostgresAgonMarketService implements AgonMarketService {
         };
       }
     }
+    let listingVerifierReadiness: AgonCapabilities["listingVerifierReadiness"] = {
+      enabled: false,
+      registryAddress: null,
+      verifierAddress: null,
+      role: null,
+      assigned: false,
+      reason: "unconfigured",
+      executionEnabled: false,
+      executionReason: "writer_disabled",
+      checkedAt: null,
+    };
+    if (this.options.listingVerifierReadiness) {
+      try {
+        const result = await this.options.listingVerifierReadiness();
+        const executionEnabled = result.assigned && this.options.listingVerifierAdapter?.enabled === true;
+        listingVerifierReadiness = {
+          ...result,
+          executionEnabled,
+          executionReason: executionEnabled
+            ? "ready"
+            : result.reason === "scoped_verification_unsupported"
+              ? "scoped_verification_unsupported"
+              : result.assigned ? "writer_disabled" : "role_not_assigned",
+          checkedAt: new Date().toISOString(),
+        };
+      } catch {
+        listingVerifierReadiness = {
+          ...listingVerifierReadiness,
+          enabled: true,
+          reason: "read_failed",
+          checkedAt: new Date().toISOString(),
+        };
+      }
+    }
     let endpointQa = false;
     try {
       endpointQa = typeof this.options.endpointQa === "function"
@@ -2756,6 +2857,7 @@ export class PostgresAgonMarketService implements AgonMarketService {
       jobEscrowExecutionReason: this.options.jobEscrowTransactionAdapter?.enabled === true ? null : this.options.jobEscrowExecutionReason ?? "job_escrow_execution_disabled",
       arenaVerification: Boolean(this.options.agonArenaAddress),
       arenaEvaluatorReadiness,
+      listingVerifierReadiness,
       syndicateRegistry: Boolean(this.options.agonSyndicateRegistryAddress),
       prizeVault: Boolean(this.options.agonPrizeVaultAddress),
       protocolReadiness,

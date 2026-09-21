@@ -251,3 +251,43 @@ test("quarantines hash, provider, and version anchor mismatches", async () => {
   );
   assert.equal(audits.rows[0]?.count, "3");
 });
+
+test("a new listing version invalidates verification even for the legacy deployed contract", async () => {
+  const listingId = 20n;
+  const v2Hash = `0x${"99".repeat(32)}`;
+  await registerValidatedVersion(listingId, 1n);
+  await registerValidatedVersion(listingId, 2n, { manifestHash: v2Hash });
+  await projector.projectBatch({
+    streamName: "services",
+    chainId: CHAIN_ID,
+    contractAddress: SERVICE_REGISTRY,
+    toBlock: 200n,
+    toBlockHash: `0x${"90".repeat(32)}`,
+    events: [chainEvent(publishedEvent({ listingId, serviceKey: `0x${"20".repeat(32)}`, verification: "Verified" }), {
+      blockNumber: 200n,
+      blockHash: `0x${"90".repeat(32)}`,
+      txHash: `0x${"91".repeat(32)}`,
+    })],
+  });
+  assert.equal((await repository.getListing({ chainId: CHAIN_ID, serviceRegistry: SERVICE_REGISTRY, listingId }))?.verification, "Verified");
+
+  await projector.projectBatch({
+    streamName: "services",
+    chainId: CHAIN_ID,
+    contractAddress: SERVICE_REGISTRY,
+    toBlock: 201n,
+    toBlockHash: `0x${"92".repeat(32)}`,
+    events: [chainEvent({
+      name: "ListingVersionPublished",
+      args: { listingId, version: 2n, manifestHash: v2Hash, manifestUri: "ipfs://manifest-v2", paymentRail: "X402", providerSnapshot: PROVIDER },
+    }, {
+      blockNumber: 201n,
+      blockHash: `0x${"92".repeat(32)}`,
+      txHash: `0x${"93".repeat(32)}`,
+    })],
+  });
+
+  const listing = await repository.getListing({ chainId: CHAIN_ID, serviceRegistry: SERVICE_REGISTRY, listingId });
+  assert.equal(listing?.currentVersion, 2n);
+  assert.equal(listing?.verification, "Unverified");
+});

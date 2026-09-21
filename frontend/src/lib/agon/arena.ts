@@ -40,7 +40,7 @@ export function arenaPrimaryAction(evaluation: AgonArenaEvaluationView): AgonAre
     case "request_submitted": return "wait_for_evaluator";
     case "evidence_ready": return "submit_evidence";
     case "evidence_submitted": return "finalizing";
-    case "verified":
+    case "verified": return evaluation.marketplaceVerification.state === "confirmed" ? "complete" : "finalizing";
     case "rejected":
     case "expired":
     case "revoked": return "complete";
@@ -55,7 +55,7 @@ export function arenaProgressPercent(evaluation: AgonArenaEvaluationView | null)
     case "request_submitted": return 50;
     case "evidence_ready": return 70;
     case "evidence_submitted": return 85;
-    case "verified":
+    case "verified": return evaluation.marketplaceVerification.state === "confirmed" ? 100 : 95;
     case "rejected":
     case "expired":
     case "revoked": return 100;

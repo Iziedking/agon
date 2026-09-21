@@ -1,6 +1,7 @@
 import { keccak256, stringToHex } from "viem";
 import { publicClient } from "../chain/arc.js";
 import { config } from "../config/index.js";
+import { activeAgonServiceRegistry } from "../config/deployments.ts";
 import { canonicalManifestHash, normalizeManifestV2 } from "./core/manifest.js";
 
 const listingAbi = [{
@@ -30,7 +31,7 @@ export async function verifyAgonListing(listingId: bigint): Promise<AgonVerifica
   const deployment = config.agon.deployment;
   if (!deployment) throw new Error("Agon deployment is not configured");
   try {
-    const listing = await publicClient.readContract({ address: deployment.contracts.AgonServiceRegistry, abi: listingAbi, functionName: "getListing", args: [listingId] });
+    const listing = await publicClient.readContract({ address: activeAgonServiceRegistry(deployment), abi: listingAbi, functionName: "getListing", args: [listingId] });
     const agentId = listing[1];
     const owner = await publicClient.readContract({ address: deployment.external.IdentityRegistry.address, abi: identityAbi, functionName: "ownerOf", args: [agentId] });
     checks.ownership = { passed: owner.toLowerCase() === listing[8].toLowerCase(), detail: `identity owner ${owner}; provider snapshot ${listing[8]}` };

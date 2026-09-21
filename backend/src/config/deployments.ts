@@ -17,6 +17,7 @@ const schema = z.object({
   contracts: z.object({
     AgonProfileRegistry: z.string(),
     AgonServiceRegistry: z.string(),
+    AgonServiceRegistryV2: address.optional(),
     AgonJobEscrow: address.optional(),
     AgonJobEscrowV2: address.optional(),
     AgonArena: address.optional(),
@@ -35,6 +36,7 @@ export type AgonDeployment = z.infer<typeof schema> & {
   contracts: {
     AgonProfileRegistry: `0x${string}`;
     AgonServiceRegistry: `0x${string}`;
+    AgonServiceRegistryV2?: `0x${string}`;
     AgonJobEscrow?: `0x${string}`;
     AgonJobEscrowV2?: `0x${string}`;
     AgonArena?: `0x${string}`;
@@ -98,4 +100,23 @@ export function loadAgonDeployment(file: string): AgonDeploymentLoad {
       path,
     };
   }
+}
+
+/** The marketplace uses V2 when its separate deployment is recorded. */
+export function activeAgonServiceRegistry(deployment: AgonDeployment): `0x${string}` {
+  return deployment.contracts.AgonServiceRegistryV2 ?? deployment.contracts.AgonServiceRegistry;
+}
+
+/**
+ * Adapters that operate on marketplace listings receive the active registry
+ * under the long-standing field name. The canonical receipt still preserves
+ * the immutable V1 address beside the optional V2 address.
+ */
+export function withActiveAgonServiceRegistry(deployment: AgonDeployment): AgonDeployment {
+  const active = activeAgonServiceRegistry(deployment);
+  if (active === deployment.contracts.AgonServiceRegistry) return deployment;
+  return {
+    ...deployment,
+    contracts: { ...deployment.contracts, AgonServiceRegistry: active },
+  };
 }

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { PostgresAgonMarketService } from "../../src/agon/http/service.ts";
+import { AgonListingVerificationError } from "../../src/agon/execution/listing-verifier.ts";
 import type { StoredAgonArenaEvaluation } from "../../src/agon/store/repository.ts";
 import type { PlaygroundRun } from "../../src/agon/playground.ts";
 
@@ -38,6 +39,10 @@ function evaluation(state: StoredAgonArenaEvaluation["state"]): StoredAgonArenaE
     requestTransactionHash: hash("1"),
     startTransactionHash: null,
     evidenceTransactionHash: state === "evidence_submitted" ? hash("2") : null,
+    marketplaceVerificationState: "not_started",
+    marketplaceVerificationTransactionHash: null,
+    marketplaceVerificationError: null,
+    marketplaceVerifiedAt: null,
     createdAt: new Date("2026-01-01T00:00:00.000Z"),
     updatedAt: new Date("2026-01-01T00:00:00.000Z"),
   };
@@ -100,6 +105,9 @@ test("reconciliation scores submitted evidence from the pinned playground result
   const service = new PostgresAgonMarketService({
     async getAgonArenaEvaluation() { return current; },
     async reconcileAgonArenaEvaluation(input: { state: StoredAgonArenaEvaluation["state"] }) { return { ...current, state: input.state }; },
+    async recordAgonArenaMarketplaceVerification(input: { state: StoredAgonArenaEvaluation["marketplaceVerificationState"]; error?: string | null }) {
+      return { ...current, state: "verified" as const, marketplaceVerificationState: input.state, marketplaceVerificationError: input.error ?? null };
+    },
   } as never, {
     protocolFinalityReader: { enabled: true, async inspectArenaEvaluation() { return chain(state); } } as never,
     playgroundStore: { async getRun() { return { state: "completed", result: run }; } } as never,
@@ -113,5 +121,135 @@ test("reconciliation scores submitted evidence from the pinned playground result
   const result = await service.reconcileAgonArenaEvaluation(actor, current.intentId);
   assert.equal(result.ok, true);
   assert.deepEqual(scored, { evaluationId: "9", score: 96, validationResponseHash: hash("8") });
-  if (result.ok) assert.equal(result.value.state, "verified");
+  if (result.ok) {
+    assert.equal(result.value.state, "verified");
+    assert.equal(result.value.marketplaceVerification.state, "failed");
+    assert.match(result.value.marketplaceVerification.error ?? "", /version-scoped registry/);
+  }
+});
+
+test("verified Arena evidence is automatically published to the marketplace", async () => {
+  const current = evaluation("evidence_submitted");
+  let stored = current;
+  let verifiedScope: unknown = null;
+  const repository = {
+    async getAgonArenaEvaluation() { return stored; },
+    async reconcileAgonArenaEvaluation(input: { state: StoredAgonArenaEvaluation["state"] }) {
+      stored = { ...stored, state: input.state };
+      return stored;
+    },
+    async claimAgonArenaMarketplaceVerification() {
+      stored = { ...stored, marketplaceVerificationState: "pending" as const };
+      return stored;
+    },
+    async recordAgonArenaMarketplaceVerification(input: { state: StoredAgonArenaEvaluation["marketplaceVerificationState"]; transactionHash?: `0x${string}` | null; error?: string | null }) {
+      stored = {
+        ...stored,
+        marketplaceVerificationState: input.state,
+        marketplaceVerificationTransactionHash: input.transactionHash === undefined ? stored.marketplaceVerificationTransactionHash : input.transactionHash,
+        marketplaceVerificationError: input.error === undefined ? stored.marketplaceVerificationError : input.error,
+        marketplaceVerifiedAt: input.state === "confirmed" ? new Date("2026-01-02T00:00:00.000Z") : stored.marketplaceVerifiedAt,
+      };
+      return stored;
+    },
+  };
+  const service = new PostgresAgonMarketService(repository as never, {
+    protocolFinalityReader: { enabled: true, async inspectArenaEvaluation() { return chain(3); } } as never,
+    listingVerifierAdapter: {
+      enabled: true,
+      async verify(input) {
+        verifiedScope = { listingId: input.listingId, agentId: input.agentId, listingVersion: input.listingVersion, manifestHash: input.manifestHash };
+        await input.onSubmitted?.(hash("9"));
+        return { status: "confirmed" as const, transactionHash: hash("9") };
+      },
+    },
+  });
+
+  const result = await service.reconcileAgonArenaEvaluation(actor, current.intentId);
+  assert.equal(result.ok, true);
+  assert.deepEqual(verifiedScope, { listingId: "7", agentId: "42", listingVersion: "3", manifestHash: hash("a") });
+  if (result.ok) {
+    assert.equal(result.value.verificationStatus, "verified");
+    assert.equal(result.value.marketplaceVerification.state, "confirmed");
+    assert.equal(result.value.marketplaceVerification.transactionHash, hash("9"));
+  }
+});
+
+test("unknown marketplace outcomes stay retryable and never appear verified", async () => {
+  const current = evaluation("verified");
+  let stored = current;
+  const repository = {
+    async getAgonArenaEvaluation() { return stored; },
+    async reconcileAgonArenaEvaluation() { return stored; },
+    async claimAgonArenaMarketplaceVerification() {
+      stored = { ...stored, marketplaceVerificationState: "pending" as const };
+      return stored;
+    },
+    async recordAgonArenaMarketplaceVerification(input: { state: StoredAgonArenaEvaluation["marketplaceVerificationState"]; transactionHash?: `0x${string}` | null; error?: string | null }) {
+      stored = {
+        ...stored,
+        marketplaceVerificationState: input.state,
+        marketplaceVerificationTransactionHash: input.transactionHash === undefined ? stored.marketplaceVerificationTransactionHash : input.transactionHash,
+        marketplaceVerificationError: input.error === undefined ? stored.marketplaceVerificationError : input.error,
+      };
+      return stored;
+    },
+  };
+  const service = new PostgresAgonMarketService(repository as never, {
+    protocolFinalityReader: { enabled: true, async inspectArenaEvaluation() { return chain(3); } } as never,
+    listingVerifierAdapter: {
+      enabled: true,
+      async verify(input) {
+        await input.onSubmitted?.(hash("9"));
+        throw new AgonListingVerificationError("unknown_outcome", "receipt timed out", hash("9"));
+      },
+    },
+  });
+
+  const result = await service.reconcileAgonArenaEvaluation(actor, current.intentId);
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.value.verificationStatus, "publishing_to_market");
+    assert.equal(result.value.marketplaceVerification.state, "unknown");
+    assert.equal(result.value.marketplaceVerification.transactionHash, hash("9"));
+    assert.equal(result.value.nextAction, "reconcile_marketplace");
+  }
+});
+
+test("concurrent reconciliation does not submit a second marketplace transaction", async () => {
+  const current = evaluation("verified");
+  let stored = current;
+  let claimed = false;
+  let writes = 0;
+  const repository = {
+    async getAgonArenaEvaluation() { return stored; },
+    async reconcileAgonArenaEvaluation() { return stored; },
+    async claimAgonArenaMarketplaceVerification() {
+      if (claimed) return null;
+      claimed = true;
+      stored = { ...stored, marketplaceVerificationState: "pending" as const };
+      return stored;
+    },
+    async recordAgonArenaMarketplaceVerification(input: { state: StoredAgonArenaEvaluation["marketplaceVerificationState"]; transactionHash?: `0x${string}` | null }) {
+      stored = { ...stored, marketplaceVerificationState: input.state, marketplaceVerificationTransactionHash: input.transactionHash ?? stored.marketplaceVerificationTransactionHash };
+      return stored;
+    },
+  };
+  const service = new PostgresAgonMarketService(repository as never, {
+    protocolFinalityReader: { enabled: true, async inspectArenaEvaluation() { return chain(3); } } as never,
+    listingVerifierAdapter: {
+      enabled: true,
+      async verify(input) {
+        writes += 1;
+        await input.onSubmitted?.(hash("9"));
+        return { status: "confirmed" as const, transactionHash: hash("9") };
+      },
+    },
+  });
+
+  await Promise.all([
+    service.reconcileAgonArenaEvaluation(actor, current.intentId),
+    service.reconcileAgonArenaEvaluation(actor, current.intentId),
+  ]);
+  assert.equal(writes, 1);
 });

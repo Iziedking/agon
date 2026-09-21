@@ -10,12 +10,13 @@ export const AGON_PROTOCOL_CONTRACTS = [
 ] as const;
 
 export type AgonProtocolContract = typeof AGON_PROTOCOL_CONTRACTS[number];
+export type AgonOptionalProtocolContract = AgonProtocolContract | "AgonServiceRegistryV2";
 
 export type AgonProtocolReadiness = {
   ready: boolean;
   chainId: number | null;
-  missingContracts: AgonProtocolContract[];
-  unverifiedContracts: AgonProtocolContract[];
+  missingContracts: AgonOptionalProtocolContract[];
+  unverifiedContracts: AgonOptionalProtocolContract[];
   externalRegistry: {
     identity: string | null;
     validation: string | null;
@@ -33,8 +34,11 @@ function validAddress(value: unknown): value is `0x${string}` {
  * both ERC-8004 registry links, and source-verification records are present.
  */
 export function inspectAgonProtocolReadiness(deployment: AgonDeployment | null): AgonProtocolReadiness {
-  const missingContracts = AGON_PROTOCOL_CONTRACTS.filter((name) => !validAddress(deployment?.contracts[name]));
-  const unverifiedContracts = AGON_PROTOCOL_CONTRACTS.filter((name) => !deployment?.sourceVerification?.[name]);
+  const requiredContracts: readonly AgonOptionalProtocolContract[] = deployment?.contracts.AgonServiceRegistryV2
+    ? [...AGON_PROTOCOL_CONTRACTS, "AgonServiceRegistryV2"]
+    : AGON_PROTOCOL_CONTRACTS;
+  const missingContracts = requiredContracts.filter((name) => !validAddress(deployment?.contracts[name]));
+  const unverifiedContracts = requiredContracts.filter((name) => !deployment?.sourceVerification?.[name]);
   const identity = deployment?.external.IdentityRegistry;
   const validation = deployment?.external.ValidationRegistry;
   const reasons: string[] = [];

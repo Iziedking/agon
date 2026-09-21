@@ -77,7 +77,20 @@ test("persists exact Arena evidence once and records user submission markers ide
   const submitted = await repository.markAgonArenaEvidenceSubmitted({ intentId: created.intentId, transactionHash: evidenceTx });
   assert.equal(submitted.state, "evidence_submitted");
   assert.equal((await repository.markAgonArenaEvidenceSubmitted({ intentId: created.intentId, transactionHash: evidenceTx })).evidenceTransactionHash, evidenceTx);
-  assert.equal((await repository.reconcileAgonArenaEvaluation({ intentId: created.intentId, state: "verified" })).state, "verified");
+  const verified = await repository.reconcileAgonArenaEvaluation({ intentId: created.intentId, state: "verified" });
+  assert.equal(verified.state, "verified");
+  assert.equal(verified.marketplaceVerificationState, "not_started");
+  const claimed = await repository.claimAgonArenaMarketplaceVerification({ intentId: created.intentId, retryBefore: new Date(0) });
+  assert.equal(claimed?.marketplaceVerificationState, "pending");
+  assert.equal(await repository.claimAgonArenaMarketplaceVerification({ intentId: created.intentId, retryBefore: new Date(0) }), null);
+  const marketTx = hash("7");
+  const submittedToMarket = await repository.recordAgonArenaMarketplaceVerification({ intentId: created.intentId, state: "submitted", transactionHash: marketTx });
+  assert.equal(submittedToMarket.marketplaceVerificationState, "submitted");
+  assert.equal(submittedToMarket.marketplaceVerificationTransactionHash, marketTx);
+  const confirmedOnMarket = await repository.recordAgonArenaMarketplaceVerification({ intentId: created.intentId, state: "confirmed", error: null });
+  assert.equal(confirmedOnMarket.marketplaceVerificationState, "confirmed");
+  assert.ok(confirmedOnMarket.marketplaceVerifiedAt);
+  assert.equal((await repository.recordAgonArenaMarketplaceVerification({ intentId: created.intentId, state: "unknown", error: "late timeout" })).marketplaceVerificationState, "confirmed");
   assert.equal((await repository.reconcileAgonArenaEvaluation({ intentId: created.intentId, state: "revoked" })).state, "revoked");
 });
 

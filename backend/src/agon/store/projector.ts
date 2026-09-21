@@ -359,6 +359,7 @@ async function projectListingVersion(
     manifestUri: event.args.manifestUri,
     paymentRail: event.args.paymentRail,
     providerSnapshot: event.args.providerSnapshot,
+    verification: "Unverified",
     status: mismatch ? "Suspended" : current.chainStatus,
     quarantineReason: mismatch,
     sourceBlockNumber: chainEvent.blockNumber,

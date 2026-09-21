@@ -1,0 +1,131 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.24;
+
+import { Test } from "forge-std/Test.sol";
+import { ERC721 } from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import { AgonProfileRegistry } from "../src/AgonProfileRegistry.sol";
+import { AgonServiceRegistryV2 } from "../src/AgonServiceRegistryV2.sol";
+
+contract AgonServiceIdentityV2 is ERC721 {
+    constructor() ERC721("External Agent", "AGENT") { }
+
+    function mint(address owner, uint256 id) external {
+        _mint(owner, id);
+    }
+}
+
+contract AgonServiceRegistryV2Test is Test {
+    AgonServiceIdentityV2 internal identity;
+    AgonProfileRegistry internal profiles;
+    AgonServiceRegistryV2 internal services;
+    address internal admin = makeAddr("admin");
+    address internal provider = makeAddr("provider");
+    address internal stranger = makeAddr("stranger");
+    bytes32 internal serviceKey = keccak256("secure-review");
+    bytes32 internal manifestV1 = keccak256("manifest-v1");
+
+    function setUp() public {
+        identity = new AgonServiceIdentityV2();
+        profiles = new AgonProfileRegistry(admin, address(identity));
+        services = new AgonServiceRegistryV2(admin, address(profiles), admin);
+        identity.mint(provider, 42);
+        vm.prank(provider);
+        profiles.bindProfile(42, "ipfs://profile");
+    }
+
+    function _publish() internal returns (uint256) {
+        vm.prank(provider);
+        return
+            services.publish(
+                42, serviceKey, manifestV1, "ipfs://manifest-v1", 1, AgonServiceRegistryV2.PaymentRail.X402
+            );
+    }
+
+    function test_reportsVersionScopedVerificationSupport() public view {
+        assertTrue(services.verificationScopeSupported());
+        assertTrue(services.hasRole(services.VERIFIER_ROLE(), admin));
+    }
+
+    function test_constructorRequiresEveryAuthorityAddress() public {
+        vm.expectRevert(AgonServiceRegistryV2.InvalidAddress.selector);
+        new AgonServiceRegistryV2(address(0), address(profiles), admin);
+        vm.expectRevert(AgonServiceRegistryV2.InvalidAddress.selector);
+        new AgonServiceRegistryV2(admin, address(profiles), address(0));
+    }
+
+    function test_verifiesOnlyTheExactCurrentVersionAndHash() public {
+        uint256 id = _publish();
+
+        vm.expectEmit(true, true, false, true, address(services));
+        emit AgonServiceRegistryV2.ListingVerificationChanged(id, admin, AgonServiceRegistryV2.Verification.Verified);
+        vm.prank(admin);
+        services.setVerificationForVersion(id, 1, manifestV1, AgonServiceRegistryV2.Verification.Verified);
+
+        assertEq(uint8(services.getListing(id).verification), uint8(AgonServiceRegistryV2.Verification.Verified));
+    }
+
+    function test_refusesStaleVersionOrManifestScope() public {
+        uint256 id = _publish();
+
+        vm.startPrank(admin);
+        vm.expectRevert(AgonServiceRegistryV2.VerificationScopeChanged.selector);
+        services.setVerificationForVersion(id, 2, manifestV1, AgonServiceRegistryV2.Verification.Verified);
+        vm.expectRevert(AgonServiceRegistryV2.VerificationScopeChanged.selector);
+        services.setVerificationForVersion(
+            id, 1, keccak256("wrong-manifest"), AgonServiceRegistryV2.Verification.Verified
+        );
+        vm.stopPrank();
+    }
+
+    function test_refusesPromotionAfterProviderSuspendsListing() public {
+        uint256 id = _publish();
+        vm.prank(provider);
+        services.setStatus(id, AgonServiceRegistryV2.ListingStatus.Suspended);
+
+        vm.prank(admin);
+        vm.expectRevert(AgonServiceRegistryV2.VerificationScopeChanged.selector);
+        services.setVerificationForVersion(id, 1, manifestV1, AgonServiceRegistryV2.Verification.Verified);
+    }
+
+    function test_newVersionAtomicallyInvalidatesPreviousVerification() public {
+        uint256 id = _publish();
+        vm.prank(admin);
+        services.setVerificationForVersion(id, 1, manifestV1, AgonServiceRegistryV2.Verification.Verified);
+
+        bytes32 manifestV2 = keccak256("manifest-v2");
+        vm.expectEmit(true, true, false, true, address(services));
+        emit AgonServiceRegistryV2.ListingVerificationChanged(
+            id, provider, AgonServiceRegistryV2.Verification.Unverified
+        );
+        vm.prank(provider);
+        services.publishVersion(id, manifestV2, "ipfs://manifest-v2", AgonServiceRegistryV2.PaymentRail.X402);
+
+        AgonServiceRegistryV2.Listing memory listing = services.getListing(id);
+        assertEq(listing.version, 2);
+        assertEq(listing.manifestHash, manifestV2);
+        assertEq(uint8(listing.verification), uint8(AgonServiceRegistryV2.Verification.Unverified));
+
+        vm.prank(admin);
+        vm.expectRevert(AgonServiceRegistryV2.VerificationScopeChanged.selector);
+        services.setVerificationForVersion(id, 1, manifestV1, AgonServiceRegistryV2.Verification.Verified);
+    }
+
+    function test_unscopedSetterCannotPromoteVerification() public {
+        uint256 id = _publish();
+        vm.startPrank(admin);
+        vm.expectRevert(AgonServiceRegistryV2.ScopedVerificationRequired.selector);
+        services.setVerification(id, AgonServiceRegistryV2.Verification.Pending);
+        vm.expectRevert(AgonServiceRegistryV2.ScopedVerificationRequired.selector);
+        services.setVerification(id, AgonServiceRegistryV2.Verification.Verified);
+        services.setVerification(id, AgonServiceRegistryV2.Verification.Revoked);
+        vm.stopPrank();
+        assertEq(uint8(services.getListing(id).verification), uint8(AgonServiceRegistryV2.Verification.Revoked));
+    }
+
+    function test_onlyVerifierCanUseScopedSetter() public {
+        uint256 id = _publish();
+        vm.prank(stranger);
+        vm.expectRevert();
+        services.setVerificationForVersion(id, 1, manifestV1, AgonServiceRegistryV2.Verification.Verified);
+    }
+}

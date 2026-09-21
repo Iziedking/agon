@@ -3,6 +3,7 @@ import { parseAbi } from "viem";
 
 import { publicClient } from "../chain/arc.js";
 import { config } from "../config/index.js";
+import { activeAgonServiceRegistry } from "../config/deployments.ts";
 import { pool } from "../db/pool.js";
 import { AgonProjector, type AgonChainEvent, type AgonProjectableEvent } from "./store/projector.ts";
 import { PostgresAgonRepository } from "./store/repository.ts";
@@ -31,7 +32,9 @@ type DecodedAgonLog = Log<bigint, number, false> & {
 
 const chainId = BigInt(config.chainId);
 const profileRegistry = config.agon.deployment?.contracts.AgonProfileRegistry;
-const serviceRegistry = config.agon.deployment?.contracts.AgonServiceRegistry;
+const serviceRegistry = config.agon.deployment
+  ? activeAgonServiceRegistry(config.agon.deployment)
+  : undefined;
 const identityRegistry = config.agon.deployment?.external.IdentityRegistry.address;
 const repository = new PostgresAgonRepository(pool);
 const projector = new AgonProjector(repository);

@@ -9,6 +9,7 @@ import { createAgonTestDatabase, type AgonTestDatabase } from "./database-test-h
 
 const CHAIN_ID = 50_420_02n;
 const SERVICE_REGISTRY = "0x3333333333333333333333333333333333333333";
+const LEGACY_SERVICE_REGISTRY = "0x2222222222222222222222222222222222222222";
 const PROVIDER = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const OBSERVED_AT = new Date("2026-08-17T12:00:00.000Z");
 
@@ -19,7 +20,9 @@ let service: PostgresAgonMarketService;
 before(async () => {
   database = await createAgonTestDatabase("service");
   repository = new PostgresAgonRepository(database.pool);
-  service = new PostgresAgonMarketService(repository);
+  service = new PostgresAgonMarketService(repository, {
+    activeServiceRegistryAddress: SERVICE_REGISTRY,
+  });
 
   await repository.withTransaction(async (tx) => {
     for (const listingId of [1n, 2n, 3n]) {
@@ -46,6 +49,26 @@ before(async () => {
       };
       await tx.upsertListing(listing);
     }
+    await tx.upsertListing({
+      chainId: CHAIN_ID,
+      serviceRegistry: LEGACY_SERVICE_REGISTRY,
+      listingId: 99n,
+      agentId: 99n,
+      serviceKey: `0x${"99".repeat(32)}`,
+      category: 9n,
+      currentVersion: 1n,
+      manifestHash: `0x${"98".repeat(32)}`,
+      manifestUri: "ipfs://legacy-manifest",
+      paymentRail: "X402",
+      providerSnapshot: PROVIDER,
+      status: "Listed",
+      verification: "Verified",
+      quarantineReason: null,
+      sourceBlockNumber: 99n,
+      sourceTxHash: `0x${"97".repeat(32)}`,
+      sourceLogIndex: 0,
+      observedAt: OBSERVED_AT,
+    });
   });
 
   await database.pool.query(
@@ -120,6 +143,19 @@ test("keeps direct x402 declared when no endpoint evidence exists", async () => 
   assert.equal(result.value.endpointQa.status, "not_checked");
   assert.equal(result.value.endpointQa.endpointStatus, null);
   assert.equal(result.value.endpointQa.attempts, 0);
+});
+
+test("catalog lists only the active service registry after a registry migration", async () => {
+  const activeCatalog = new PostgresAgonMarketService(repository, {
+    activeServiceRegistryAddress: SERVICE_REGISTRY,
+  });
+  const result = await activeCatalog.listListings({ limit: 20, cursor: null, category: null, agentId: null });
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.deepEqual(result.value.items.map((item) => item.listingId), ["3", "2", "1"]);
+
+  const historical = await activeCatalog.getListing(`${CHAIN_ID}:${LEGACY_SERVICE_REGISTRY}:99`);
+  assert.equal(historical.ok, true);
 });
 
 test("refuses new jobs when the deployed escrow interface cannot accept generated calldata", async () => {

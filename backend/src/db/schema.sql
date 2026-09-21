@@ -1749,6 +1749,10 @@ create table if not exists agon_arena_evaluations (
   request_transaction_hash     text check (request_transaction_hash is null or request_transaction_hash ~ '^0x[0-9a-f]{64}$'),
   start_transaction_hash       text check (start_transaction_hash is null or start_transaction_hash ~ '^0x[0-9a-f]{64}$'),
   evidence_transaction_hash    text check (evidence_transaction_hash is null or evidence_transaction_hash ~ '^0x[0-9a-f]{64}$'),
+  marketplace_verification_state text not null default 'not_started' check (marketplace_verification_state in ('not_started','pending','submitted','confirmed','failed','unknown')),
+  marketplace_verification_transaction_hash text check (marketplace_verification_transaction_hash is null or marketplace_verification_transaction_hash ~ '^0x[0-9a-f]{64}$'),
+  marketplace_verification_error text,
+  marketplace_verified_at      timestamptz,
   created_at                   timestamptz not null default now(),
   updated_at                   timestamptz not null default now(),
   unique (actor_address, idempotency_key),
@@ -1757,6 +1761,17 @@ create table if not exists agon_arena_evaluations (
 );
 alter table agon_arena_evaluations
   add column if not exists start_transaction_hash text;
+alter table agon_arena_evaluations
+  add column if not exists marketplace_verification_state text not null default 'not_started';
+alter table agon_arena_evaluations
+  add column if not exists marketplace_verification_transaction_hash text;
+alter table agon_arena_evaluations
+  add column if not exists marketplace_verification_error text;
+alter table agon_arena_evaluations
+  add column if not exists marketplace_verified_at timestamptz;
+alter table agon_arena_evaluations drop constraint if exists agon_arena_evaluations_marketplace_verification_state_check;
+alter table agon_arena_evaluations add constraint agon_arena_evaluations_marketplace_verification_state_check
+  check (marketplace_verification_state in ('not_started','pending','submitted','confirmed','failed','unknown'));
 alter table agon_arena_evaluations drop constraint if exists agon_arena_evaluations_state_check;
 alter table agon_arena_evaluations add constraint agon_arena_evaluations_state_check
   check (state in ('prepared','request_submitted','evidence_ready','evidence_submitted','verified','rejected','expired','revoked','unknown'));

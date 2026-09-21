@@ -5,6 +5,8 @@ import { PostgresAgonMarketService } from "../../src/agon/http/service.ts";
 
 const ARENA = "0x1111111111111111111111111111111111111111" as `0x${string}`;
 const EVALUATOR = "0x2222222222222222222222222222222222222222" as `0x${string}`;
+const REGISTRY = "0x3333333333333333333333333333333333333333" as `0x${string}`;
+const VERIFIER_ROLE = `0x${"44".repeat(32)}` as `0x${string}`;
 
 test("capabilities expose read-only Arena evaluator readiness", async () => {
   const service = new PostgresAgonMarketService({} as never, {
@@ -14,6 +16,14 @@ test("capabilities expose read-only Arena evaluator readiness", async () => {
       arenaAddress: ARENA,
       evaluatorAddress: EVALUATOR,
       role: AGON_ARENA_EVALUATOR_ROLE,
+      assigned: true,
+      reason: "assigned" as const,
+    }),
+    listingVerifierReadiness: async () => ({
+      enabled: true,
+      registryAddress: REGISTRY,
+      verifierAddress: EVALUATOR,
+      role: VERIFIER_ROLE,
       assigned: true,
       reason: "assigned" as const,
     }),
@@ -27,6 +37,10 @@ test("capabilities expose read-only Arena evaluator readiness", async () => {
   assert.equal(capabilities.arenaEvaluatorReadiness.executionReason, "writer_disabled");
   assert.equal(capabilities.arenaEvaluatorReadiness.arenaAddress, ARENA);
   assert.ok(capabilities.arenaEvaluatorReadiness.checkedAt);
+  assert.equal(capabilities.listingVerifierReadiness.assigned, true);
+  assert.equal(capabilities.listingVerifierReadiness.executionEnabled, false);
+  assert.equal(capabilities.listingVerifierReadiness.executionReason, "writer_disabled");
+  assert.equal(capabilities.listingVerifierReadiness.registryAddress, REGISTRY);
 });
 
 test("capabilities fail closed when evaluator readiness is not wired", async () => {
@@ -36,4 +50,6 @@ test("capabilities fail closed when evaluator readiness is not wired", async () 
   assert.equal(capabilities.arenaEvaluatorReadiness.assigned, false);
   assert.equal(capabilities.arenaEvaluatorReadiness.reason, "unconfigured");
   assert.equal(capabilities.arenaEvaluatorReadiness.checkedAt, null);
+  assert.equal(capabilities.listingVerifierReadiness.enabled, false);
+  assert.equal(capabilities.listingVerifierReadiness.reason, "unconfigured");
 });

@@ -273,6 +273,12 @@ function arenaEvaluation(state: AgonArenaEvaluationView["state"]): AgonArenaEval
     requestTransactionHash: null,
     startTransactionHash: null,
     evidenceTransactionHash: null,
+    marketplaceVerification: {
+      state: state === "verified" ? "confirmed" : "not_started",
+      transactionHash: null,
+      error: null,
+      verifiedAt: state === "verified" ? "2026-01-01T00:00:00.000Z" : null,
+    },
     executionEnabled: false,
     verificationStatus: state === "verified" ? "verified" : "prepared",
     nextAction: "none",

@@ -2,6 +2,7 @@ import { parseAbi } from "viem";
 
 import { publicClient } from "../chain/arc.js";
 import { config } from "../config/index.js";
+import { activeAgonServiceRegistry } from "../config/deployments.ts";
 import { query } from "../db/pool.js";
 import { coordinatorWallet, openMission } from "./contestOps.js";
 import { settleContestToCompletion, resolveChallengeToCompletion } from "./autopilot.js";
@@ -34,7 +35,8 @@ const agonVerificationAbi = parseAbi([
   "function hasRole(bytes32 role,address account) view returns (bool)",
   "function grantRole(bytes32 role,address account)",
   "function revokeRole(bytes32 role,address account)",
-  "function setVerification(uint256 listingId,uint8 verification)",
+  "function getListing(uint256 id) view returns ((uint256 listingId,uint256 agentId,bytes32 serviceKey,bytes32 manifestHash,string manifestURI,uint256 category,uint8 paymentRail,uint256 version,address providerSnapshot,uint8 status,uint8 verification,uint64 createdAt,uint64 updatedAt))",
+  "function setVerificationForVersion(uint256 listingId,uint256 expectedVersion,bytes32 expectedManifestHash,uint8 verification)",
 ]);
 
 const agonArenaRoleAbi = parseAbi([
@@ -45,7 +47,9 @@ const agonArenaRoleAbi = parseAbi([
   "function revokeRole(bytes32 role,address account)",
 ]);
 
-const AGON_SERVICE_REGISTRY = config.agon.deployment?.contracts.AgonServiceRegistry;
+const AGON_SERVICE_REGISTRY = config.agon.deployment
+  ? activeAgonServiceRegistry(config.agon.deployment)
+  : undefined;
 const AGON_ARENA = config.agon.deployment?.contracts.AgonArena;
 const AGON_VERIFIED = 2;
 
@@ -93,7 +97,13 @@ async function agonVerifyListing(params: Record<string, unknown> | null): Promis
   const role = await publicClient.readContract({ address: AGON_SERVICE_REGISTRY, abi: agonVerificationAbi, functionName: "VERIFIER_ROLE" });
   const allowed = await publicClient.readContract({ address: AGON_SERVICE_REGISTRY, abi: agonVerificationAbi, functionName: "hasRole", args: [role, walletAddress] });
   if (!allowed) throw new Error(`coordinator wallet ${walletAddress} is not a verifier; refusing verification`);
-  const hash = await wallet.writeContract({ address: AGON_SERVICE_REGISTRY, abi: agonVerificationAbi, functionName: "setVerification", args: [listingId, AGON_VERIFIED] } as never);
+  const listing = await publicClient.readContract({ address: AGON_SERVICE_REGISTRY, abi: agonVerificationAbi, functionName: "getListing", args: [listingId] });
+  const hash = await wallet.writeContract({
+    address: AGON_SERVICE_REGISTRY,
+    abi: agonVerificationAbi,
+    functionName: "setVerificationForVersion",
+    args: [listingId, listing.version, listing.manifestHash, AGON_VERIFIED],
+  } as never);
   await publicClient.waitForTransactionReceipt({ hash, timeout: RECEIPT_TIMEOUT_MS });
   return `listing ${listingId} verified: ${hash}`;
 }

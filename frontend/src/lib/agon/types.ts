@@ -31,6 +31,17 @@ export type AgonCapabilities = {
     executionReason: "ready" | "role_not_assigned" | "writer_disabled";
     checkedAt: string | null;
   };
+  listingVerifierReadiness: {
+    enabled: boolean;
+    registryAddress: `0x${string}` | null;
+    verifierAddress: `0x${string}` | null;
+    role: `0x${string}` | null;
+    assigned: boolean;
+    reason: "assigned" | "verifier_not_configured" | "role_not_assigned" | "scoped_verification_unsupported" | "read_failed" | "disabled" | "unconfigured";
+    executionEnabled: boolean;
+    executionReason: "ready" | "role_not_assigned" | "scoped_verification_unsupported" | "writer_disabled";
+    checkedAt: string | null;
+  };
   syndicateRegistry: boolean;
   prizeVault: boolean;
   protocolReadiness: {
@@ -681,9 +692,15 @@ export type AgonArenaEvaluationView = {
   requestTransactionHash: `0x${string}` | null;
   startTransactionHash: `0x${string}` | null;
   evidenceTransactionHash: `0x${string}` | null;
+  marketplaceVerification: {
+    state: "not_started" | "pending" | "submitted" | "confirmed" | "failed" | "unknown";
+    transactionHash: `0x${string}` | null;
+    error: string | null;
+    verifiedAt: string | null;
+  };
   executionEnabled: false;
-  verificationStatus: "prepared" | "user_submitted" | "evidence_submitted" | "verified" | "rejected" | "expired" | "revoked" | "chain_reconciliation_required";
-  nextAction: "prepare_request_transaction" | "record_request_submission" | "record_start_submission" | "prepare_evidence_transaction" | "record_evidence_submission" | "reconcile_chain" | "none";
+  verificationStatus: "prepared" | "user_submitted" | "evidence_submitted" | "publishing_to_market" | "verified" | "rejected" | "expired" | "revoked" | "chain_reconciliation_required";
+  nextAction: "prepare_request_transaction" | "record_request_submission" | "record_start_submission" | "prepare_evidence_transaction" | "record_evidence_submission" | "reconcile_chain" | "reconcile_marketplace" | "none";
   createdAt: string;
   updatedAt: string;
 };

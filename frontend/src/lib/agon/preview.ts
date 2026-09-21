@@ -209,6 +209,17 @@ export const AGON_PREVIEW_CAPABILITIES: AgonCapabilities = {
     executionReason: "writer_disabled",
     checkedAt: null,
   },
+  listingVerifierReadiness: {
+    enabled: false,
+    registryAddress: null,
+    verifierAddress: null,
+    role: null,
+    assigned: false,
+    reason: "unconfigured",
+    executionEnabled: false,
+    executionReason: "writer_disabled",
+    checkedAt: null,
+  },
   syndicateRegistry: false,
   prizeVault: false,
   protocolReadiness: {
