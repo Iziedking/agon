@@ -42,7 +42,9 @@ const ARENA_TASK_BY_LISTING_CATEGORY: Record<string, {
   taskId: string;
 }> = {
   "1": { category: "research", taskId: "arc-live-fact" },
-  "3": { category: "analysis", taskId: "risk-snapshot" },
+  // Live provider adapters currently expose the adversarial analysis contract.
+  // Keep the operator category as Analysis while selecting the provider-supported task.
+  "3": { category: "analysis", taskId: "evidence-under-pressure" },
   "5": { category: "execution", taskId: "transaction-safety" },
   "7": { category: "development", taskId: "selector-guard" },
   "8": { category: "verification", taskId: "manifest-anchor" },
