@@ -27,6 +27,14 @@ test("capabilities expose read-only Arena evaluator readiness", async () => {
       assigned: true,
       reason: "assigned" as const,
     }),
+    certificationLifecycle: {
+      enabled: true,
+      checkIntervalSeconds: 21_600,
+      warningRetrySeconds: 900,
+      failureThreshold: 3,
+      endpointQaRequired: true,
+      operatorAlertsConfigured: true,
+    },
   });
 
   const capabilities = await service.getCapabilities();
@@ -41,6 +49,14 @@ test("capabilities expose read-only Arena evaluator readiness", async () => {
   assert.equal(capabilities.listingVerifierReadiness.executionEnabled, false);
   assert.equal(capabilities.listingVerifierReadiness.executionReason, "writer_disabled");
   assert.equal(capabilities.listingVerifierReadiness.registryAddress, REGISTRY);
+  assert.deepEqual(capabilities.certificationLifecycle, {
+    enabled: true,
+    checkIntervalSeconds: 21_600,
+    warningRetrySeconds: 900,
+    failureThreshold: 3,
+    endpointQaRequired: true,
+    operatorAlertsConfigured: true,
+  });
 });
 
 test("capabilities fail closed when evaluator readiness is not wired", async () => {
@@ -52,4 +68,5 @@ test("capabilities fail closed when evaluator readiness is not wired", async () 
   assert.equal(capabilities.arenaEvaluatorReadiness.checkedAt, null);
   assert.equal(capabilities.listingVerifierReadiness.enabled, false);
   assert.equal(capabilities.listingVerifierReadiness.reason, "unconfigured");
+  assert.equal(capabilities.certificationLifecycle.enabled, false);
 });

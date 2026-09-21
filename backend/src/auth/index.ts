@@ -53,6 +53,7 @@ import {
   createManifestDerivedPlaygroundProviderRunner,
 } from "../agon/manifest-derived-provider.ts";
 import { agonCertificationWorkerLoop } from "../agon/certification-worker.ts";
+import { alertAgonCertificationOperator } from "../agon/execution/certification-alerts.ts";
 import { isAgonCertificationSchemaReady } from "../agon/certification-readiness.ts";
 import { PostgresAgonOperationStore } from "../agon/write/repository.js";
 import { CachedAgonReadiness } from "../agon/write/readiness.js";
@@ -571,6 +572,14 @@ const agonService = new PostgresAgonMarketService(agonRepository, {
   endpointQa: config.agon.certification.workerEnabled
     ? () => isAgonCertificationSchemaReady(pool)
     : false,
+  certificationLifecycle: {
+    enabled: config.agon.certification.workerEnabled,
+    checkIntervalSeconds: config.agon.certification.checkIntervalMs / 1000,
+    warningRetrySeconds: config.agon.certification.warningRetryMs / 1000,
+    failureThreshold: config.agon.certification.failureThreshold,
+    endpointQaRequired: config.agon.certification.endpointQaRequired,
+    operatorAlertsConfigured: Boolean(config.agon.certification.alertOperatorAddress),
+  },
   x402AgentSpendExecutor,
   escrowReadAdapter: agonEscrowReadAdapter,
   escrowPoolContract: config.contracts.PrizeEscrow,
@@ -650,6 +659,13 @@ if (config.agon.certification.workerEnabled) {
     playgroundStore: agonPlaygroundStore,
     providerRunner: agonCertificationProviderRunner,
     endpointQaRunner: agonCertificationEndpointQaRunner,
+    listingVerifier: listingVerifierAdapter,
+    alert: alertAgonCertificationOperator,
+    checkIntervalMs: config.agon.certification.checkIntervalMs,
+    warningRetryMs: config.agon.certification.warningRetryMs,
+    failureThreshold: config.agon.certification.failureThreshold,
+    requireEndpointQa: config.agon.certification.endpointQaRequired,
+    alertOperator: config.agon.certification.alertOperatorAddress,
   }).catch((error) => {
     console.error("[agon-certification] worker stopped:", error instanceof Error ? error.message : error);
   });

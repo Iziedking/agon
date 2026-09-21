@@ -105,6 +105,11 @@ const envSchema = z.object({
   // remains safe with this off; enabling it permits bounded calls to the same
   // allowlisted providers used by Playground and never enables Arena writes.
   AGON_CERTIFICATION_WORKER_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
+  AGON_CERTIFICATION_CHECK_INTERVAL_SECONDS: z.coerce.number().int().min(300).max(604800).default(21600),
+  AGON_CERTIFICATION_WARNING_RETRY_SECONDS: z.coerce.number().int().min(60).max(86400).default(900),
+  AGON_CERTIFICATION_FAILURE_THRESHOLD: z.coerce.number().int().min(1).max(10).default(3),
+  AGON_CERTIFICATION_ENDPOINT_QA_REQUIRED: z.enum(["true", "false"]).default("true").transform((value) => value === "true"),
+  AGON_CERTIFICATION_ALERT_OPERATOR_ADDRESS: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
 
   // Auth service
   JWT_SECRET: z.string().default("dev-insecure-secret-change-me"),
@@ -741,6 +746,11 @@ export const config = {
     },
     certification: {
       workerEnabled: env.AGON_CERTIFICATION_WORKER_ENABLED,
+      checkIntervalMs: env.AGON_CERTIFICATION_CHECK_INTERVAL_SECONDS * 1000,
+      warningRetryMs: env.AGON_CERTIFICATION_WARNING_RETRY_SECONDS * 1000,
+      failureThreshold: env.AGON_CERTIFICATION_FAILURE_THRESHOLD,
+      endpointQaRequired: env.AGON_CERTIFICATION_ENDPOINT_QA_REQUIRED,
+      alertOperatorAddress: env.AGON_CERTIFICATION_ALERT_OPERATOR_ADDRESS?.toLowerCase(),
     },
   },
   adminToken: env.ADMIN_TOKEN,

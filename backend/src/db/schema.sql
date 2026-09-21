@@ -1443,6 +1443,48 @@ create index if not exists agon_certification_jobs_due_idx
 create index if not exists agon_certification_jobs_listing_idx
   on agon_certification_jobs(chain_id, service_registry_address, listing_id, listing_version);
 
+-- Continuous certification state is attached to the immutable listing-version
+-- job. Every actual check is also appended below, so the summary can be rebuilt
+-- and a provider cannot erase a default by retrying.
+alter table agon_certification_jobs add column if not exists lifecycle_status text not null default 'pending';
+alter table agon_certification_jobs drop constraint if exists agon_certification_jobs_lifecycle_status_check;
+alter table agon_certification_jobs add constraint agon_certification_jobs_lifecycle_status_check
+  check (lifecycle_status in ('pending','healthy','warning','suspended'));
+alter table agon_certification_jobs add column if not exists consecutive_failures integer not null default 0;
+alter table agon_certification_jobs add column if not exists check_sequence integer not null default 0;
+alter table agon_certification_jobs add column if not exists last_checked_at timestamptz;
+alter table agon_certification_jobs add column if not exists last_passed_at timestamptz;
+alter table agon_certification_jobs add column if not exists last_failed_at timestamptz;
+alter table agon_certification_jobs add column if not exists verification_action text;
+alter table agon_certification_jobs add column if not exists verification_action_state text not null default 'idle';
+alter table agon_certification_jobs add column if not exists verification_transaction_hash text;
+alter table agon_certification_jobs add column if not exists verification_error text;
+alter table agon_certification_jobs drop constraint if exists agon_certification_jobs_verification_action_check;
+alter table agon_certification_jobs add constraint agon_certification_jobs_verification_action_check
+  check (verification_action is null or verification_action in ('approve','suspend'));
+alter table agon_certification_jobs drop constraint if exists agon_certification_jobs_verification_action_state_check;
+alter table agon_certification_jobs add constraint agon_certification_jobs_verification_action_state_check
+  check (verification_action_state in ('idle','pending','submitted','confirmed','unknown','failed'));
+alter table agon_certification_jobs drop constraint if exists agon_certification_jobs_verification_transaction_hash_check;
+alter table agon_certification_jobs add constraint agon_certification_jobs_verification_transaction_hash_check
+  check (verification_transaction_hash is null or verification_transaction_hash ~ '^0x[0-9a-f]{64}$');
+
+create table if not exists agon_certification_checks (
+  check_id                   uuid primary key,
+  job_id                     uuid not null references agon_certification_jobs(job_id),
+  sequence                   integer not null check (sequence > 0),
+  outcome                    text not null check (outcome in ('passed','failed')),
+  reason_codes               text[] not null default '{}',
+  playground_run_id          uuid references agon_playground_runs(run_id),
+  endpoint_qa_evidence_hash  text check (endpoint_qa_evidence_hash is null or endpoint_qa_evidence_hash ~ '^0x[0-9a-f]{64}$'),
+  checked_at                 timestamptz not null,
+  next_check_at              timestamptz not null,
+  created_at                 timestamptz not null default now(),
+  unique (job_id, sequence)
+);
+create index if not exists agon_certification_checks_job_idx
+  on agon_certification_checks(job_id, sequence desc);
+
 -- Additive upgrade for installations created before run leases existed.
 alter table agon_playground_runs
   add column if not exists lease_expires_at timestamptz;

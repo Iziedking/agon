@@ -150,6 +150,7 @@ export type PostgresAgonMarketServiceOptions = {
   activeServiceRegistryAddress?: `0x${string}`;
   identityReads?: boolean;
   endpointQa?: boolean | (() => Promise<boolean>);
+  certificationLifecycle?: AgonCapabilities["certificationLifecycle"];
   directX402?: boolean;
   x402ExecutionEnabled?: boolean;
   x402ExecutionPolicy?: import("../execution/x402-policy.ts").X402ExecutionPolicy;
@@ -2850,6 +2851,14 @@ export class PostgresAgonMarketService implements AgonMarketService {
       listingReads: true,
       listingWrites: writesReady,
       endpointQa,
+      certificationLifecycle: this.options.certificationLifecycle ?? {
+        enabled: false,
+        checkIntervalSeconds: 0,
+        warningRetrySeconds: 0,
+        failureThreshold: 0,
+        endpointQaRequired: false,
+        operatorAlertsConfigured: false,
+      },
       directX402: this.options.directX402 ?? this.options.x402ExecutionEnabled === true,
       escrow: Boolean(this.options.agonJobEscrowAddress),
       jobEscrowCalldataSupported: this.options.jobEscrowCalldataSupported === true,

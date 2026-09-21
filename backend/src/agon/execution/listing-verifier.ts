@@ -37,13 +37,14 @@ export type AgonListingVerificationRequest = {
 };
 
 export type AgonListingVerificationResult = {
-  status: "confirmed" | "already_verified";
+  status: "confirmed" | "already_verified" | "already_suspended";
   transactionHash: `0x${string}` | null;
 };
 
 export type AgonListingVerifierAdapter = {
   readonly enabled: boolean;
   verify(input: AgonListingVerificationRequest): Promise<AgonListingVerificationResult>;
+  suspend(input: AgonListingVerificationRequest): Promise<AgonListingVerificationResult>;
 };
 
 export type AgonListingVerifierReadiness = {
@@ -222,6 +223,49 @@ export function createViemAgonListingVerifier(input: {
       }
       assertExactScope(after, expected);
       if (after.verification !== 2) throw new AgonListingVerificationError("postcondition_failed", "ServiceRegistry did not confirm the verified state");
+      return { status: "confirmed", transactionHash };
+    },
+    async suspend(request) {
+      if (!enabled || !input.client || !input.wallet) throw new AgonListingVerificationError("disabled", "automatic marketplace verification is disabled");
+      const expected = {
+        listingId: positiveId(request.listingId, "listing id"),
+        agentId: positiveId(request.agentId, "agent id"),
+        version: positiveId(request.listingVersion, "listing version"),
+        manifestHash: bytes32(request.manifestHash, "manifest hash"),
+      };
+      const before = listingSnapshot(await input.client.readContract({ address: registryAddress, abi: listingVerifierAbi, functionName: "getListing", args: [expected.listingId] }));
+      assertExactScope(before, expected);
+      if (before.verification === 4) return { status: "already_suspended", transactionHash: null };
+      if (before.verification === 5) throw new AgonListingVerificationError("scope_mismatch", "ServiceRegistry listing is revoked");
+
+      let transactionHash = request.priorTransactionHash;
+      if (!transactionHash) {
+        try {
+          transactionHash = await input.wallet.writeContract({
+            address: registryAddress,
+            abi: listingVerifierAbi,
+            functionName: "setVerificationForVersion",
+            args: [expected.listingId, expected.version, expected.manifestHash, 4],
+          });
+        } catch (error) {
+          throw new AgonListingVerificationError("unknown_outcome", `marketplace suspension submission is unknown: ${error instanceof Error ? error.message : "submission failed"}`);
+        }
+        try {
+          await request.onSubmitted?.(transactionHash);
+        } catch (error) {
+          throw new AgonListingVerificationError("unknown_outcome", `marketplace suspension could not be recorded: ${error instanceof Error ? error.message : "persistence failed"}`, transactionHash);
+        }
+      }
+      let receipt: { status: "success" | "reverted" };
+      try {
+        receipt = await input.client.waitForTransactionReceipt({ hash: transactionHash, timeout: receiptTimeoutMs });
+      } catch (error) {
+        throw new AgonListingVerificationError("unknown_outcome", `marketplace suspension receipt is unknown: ${error instanceof Error ? error.message : "receipt lookup failed"}`, transactionHash);
+      }
+      if (receipt.status !== "success") throw new AgonListingVerificationError("reverted", "marketplace suspension transaction reverted", transactionHash);
+      const after = listingSnapshot(await input.client.readContract({ address: registryAddress, abi: listingVerifierAbi, functionName: "getListing", args: [expected.listingId] }));
+      assertExactScope(after, expected);
+      if (after.verification !== 4) throw new AgonListingVerificationError("postcondition_failed", "ServiceRegistry did not confirm the suspended state");
       return { status: "confirmed", transactionHash };
     },
   };

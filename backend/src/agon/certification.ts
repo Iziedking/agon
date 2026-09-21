@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { PaymentRail, ListingStatus } from "./store/repository.ts";
+import type { AgonLifecycleStatus } from "./certification-lifecycle.ts";
 
 export type AgonCertificationState = "scheduled" | "running" | "completed" | "failed" | "blocked";
 
@@ -35,6 +36,16 @@ export type AgonCertificationJob = {
   validationRequestHash: `0x${string}` | null;
   evaluatorVersionHash: `0x${string}` | null;
   providerHost: string | null;
+  lifecycleStatus: AgonLifecycleStatus;
+  consecutiveFailures: number;
+  checkSequence: number;
+  lastCheckedAt: Date | null;
+  lastPassedAt: Date | null;
+  lastFailedAt: Date | null;
+  verificationAction: "approve" | "suspend" | null;
+  verificationActionState: "idle" | "pending" | "submitted" | "confirmed" | "unknown" | "failed";
+  verificationTransactionHash: `0x${string}` | null;
+  verificationError: string | null;
   createdAt: Date;
   startedAt: Date | null;
   completedAt: Date | null;
@@ -80,7 +91,11 @@ const CATEGORY_SLUGS: Readonly<Record<string, string>> = {
 };
 
 const CERTIFIABLE_TASKS: Readonly<Record<string, string>> = {
+  research: "arc-live-fact",
   analysis: "evidence-under-pressure",
+  execution: "transaction-safety",
+  development: "selector-guard",
+  verification: "manifest-anchor",
 };
 
 function canonicalAddress(value: string, label: string): string {
@@ -157,6 +172,16 @@ export function buildAgonCertificationJob(input: AgonCertificationScheduleInput)
     validationRequestHash: null,
     evaluatorVersionHash: null,
     providerHost: null,
+    lifecycleStatus: "pending",
+    consecutiveFailures: 0,
+    checkSequence: 0,
+    lastCheckedAt: null,
+    lastPassedAt: null,
+    lastFailedAt: null,
+    verificationAction: null,
+    verificationActionState: "idle",
+    verificationTransactionHash: null,
+    verificationError: null,
     createdAt: now,
     startedAt: null,
     completedAt: null,

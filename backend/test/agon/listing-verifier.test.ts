@@ -118,6 +118,26 @@ test("listing verifier preserves the transaction hash when durable submission re
   );
 });
 
+test("listing verifier suspends the exact version after repeated lifecycle defaults", async () => {
+  let current = listing({ verification: 2 });
+  let target: unknown = null;
+  const adapter = createViemAgonListingVerifier({
+    enabled: true,
+    registryAddress: registry,
+    verifierAddress: verifier,
+    client: {
+      async readContract(input) { return input.functionName === "verificationScopeSupported" ? true : current; },
+      async waitForTransactionReceipt() { current = listing({ verification: 4 }); return { status: "success" as const }; },
+    },
+    wallet: {
+      async writeContract(input) { target = input.args[3]; return txHash; },
+    },
+  });
+  assert.deepEqual(await adapter.suspend(request), { status: "confirmed", transactionHash: txHash });
+  assert.equal(target, 4);
+  assert.deepEqual(await adapter.suspend(request), { status: "already_suspended", transactionHash: null });
+});
+
 test("listing verifier refuses stale versions, hashes, agents, and non-listed services", async () => {
   for (const value of [
     listing({ version: 4n }),

@@ -7,6 +7,7 @@ import { InMemoryPlaygroundRunStore } from "../../src/agon/playground-store.ts";
 import type { PlaygroundProviderRunner } from "../../src/agon/playground-provider.ts";
 import type { PlaygroundRun } from "../../src/agon/playground.ts";
 import type { AgonEndpointQaRunner } from "../../src/agon/endpoint-qa.ts";
+import { evaluateAgonLifecycle, type AgonLifecycleCheckResult, type AgonLifecycleTransition } from "../../src/agon/certification-lifecycle.ts";
 
 const NOW = new Date("2026-09-01T12:00:00.000Z");
 
@@ -40,6 +41,7 @@ class FakeCertificationRepository {
   deferred: string | null = null;
   failed: { code: string; retryAt: Date | null } | null = null;
   endpointQa: { passed: boolean; evidenceHash: `0x${string}`; evidence: unknown } | null = null;
+  checks: AgonLifecycleCheckResult[] = [];
 
   constructor(value: AgonCertificationJob) {
     this.current = value;
@@ -71,12 +73,44 @@ class FakeCertificationRepository {
     this.current = this.current ? { ...this.current, state: retryAt ? "scheduled" : "failed" } : null;
   }
 
+  async getAgonCertification(): Promise<AgonCertificationJob | null> { return this.current; }
+
+  async finalizeAgonCertificationLifecycle(_jobId: string, check: AgonLifecycleCheckResult): Promise<AgonLifecycleTransition> {
+    this.checks.push(check);
+    const current = this.current!;
+    const transition = evaluateAgonLifecycle({
+      previousStatus: current.lifecycleStatus,
+      previousConsecutiveFailures: current.consecutiveFailures,
+      passed: check.passed,
+      failureThreshold: check.failureThreshold,
+    });
+    this.current = {
+      ...current,
+      state: "scheduled",
+      lifecycleStatus: transition.status,
+      consecutiveFailures: transition.consecutiveFailures,
+      checkSequence: current.checkSequence + 1,
+      lastCheckedAt: check.checkedAt,
+      lastPassedAt: check.passed ? check.checkedAt : current.lastPassedAt,
+      lastFailedAt: check.passed ? current.lastFailedAt : check.checkedAt,
+      nextAttemptAt: check.nextCheckAt,
+      verificationAction: transition.actions.includes("suspend") ? "suspend" : transition.actions.includes("approve") || transition.actions.includes("recover") ? "approve" : current.verificationAction,
+      verificationActionState: transition.actions.some((action) => action === "suspend" || action === "approve" || action === "recover") ? "pending" : current.verificationActionState,
+    };
+    return transition;
+  }
+
+  async recordAgonCertificationVerificationAction(input: { action: "approve" | "suspend"; state: "submitted" | "confirmed" | "unknown" | "failed"; transactionHash?: `0x${string}` | null; error?: string | null }): Promise<void> {
+    if (!this.current) return;
+    this.current = { ...this.current, verificationAction: input.action, verificationActionState: input.state, verificationTransactionHash: input.transactionHash ?? this.current.verificationTransactionHash, verificationError: input.error ?? null };
+  }
+
   async recordAgonEndpointQa(input: { listingId: bigint; agentId: bigint; passed: boolean; evidenceHash: `0x${string}`; evidence: unknown }): Promise<void> {
     this.endpointQa = input;
   }
 }
 
-function runner(options: { supported?: boolean; fail?: boolean } = {}): PlaygroundProviderRunner {
+function runner(options: { supported?: boolean; fail?: boolean; passed?: boolean } = {}): PlaygroundProviderRunner {
   return {
     scopes: () => options.supported === false ? [] : ["5042002:0x2144c156b0a4581da2d046c2e41ac41c6c3938cb:2@3"],
     supports: () => options.supported !== false,
@@ -85,8 +119,8 @@ function runner(options: { supported?: boolean; fail?: boolean } = {}): Playgrou
       return {
         agent: { id: `erc8004:${provider.agentId}:${provider.serviceKey}`, name: "Nock", version: provider.listingVersion, capabilities: ["analysis"] },
         output: { writesPerformed: false, ignoredInstructions: true, decision: "review", observations: ["observed"], untrustedClaims: [] },
-        passed: true,
-        score: 100,
+        passed: options.passed ?? true,
+        score: options.passed === false ? 20 : 100,
         chainId: null,
         blockNumber: null,
         providerHost: "nock.lat",
@@ -104,10 +138,11 @@ test("certification worker runs the real provider seam and stores Playground evi
     now: () => NOW,
   });
   assert.equal(result, "completed");
-  assert.equal(repository.completed?.provenance.execution, "listed_provider");
-  assert.equal(repository.completed?.provenance.externalWrites, false);
-  assert.equal(repository.completed?.score, 100);
-  assert.equal(repository.current?.state, "completed");
+  assert.equal(repository.current?.state, "scheduled");
+  assert.equal(repository.current?.lifecycleStatus, "healthy");
+  assert.equal(repository.checks.length, 1);
+  assert.equal(repository.checks[0]?.passed, true);
+  assert.match(repository.checks[0]?.playgroundRunId ?? "", /^[0-9a-f-]{36}$/);
 });
 
 test("certification worker records x402 endpoint QA separately from the Playground run", async () => {
@@ -131,7 +166,80 @@ test("certification worker records x402 endpoint QA separately from the Playgrou
   assert.equal(result, "completed");
   assert.equal(repository.endpointQa?.passed, true);
   assert.equal(repository.endpointQa?.evidenceHash, `0x${"33".repeat(32)}`);
-  assert.equal(repository.completed?.provenance.externalWrites, false);
+  assert.equal(repository.checks[0]?.endpointQaEvidenceHash, `0x${"33".repeat(32)}`);
+});
+
+test("a passing lifecycle check automatically approves the exact listing version", async () => {
+  const repository = new FakeCertificationRepository(job());
+  const approved: string[] = [];
+  const result = await runAgonCertificationOnce({
+    repository,
+    playgroundStore: new InMemoryPlaygroundRunStore(),
+    providerRunner: runner(),
+    listingVerifier: {
+      enabled: true,
+      async verify(input) {
+        approved.push(`${input.listingId}@${input.listingVersion}:${input.manifestHash}`);
+        await input.onSubmitted?.(`0x${"55".repeat(32)}`);
+        return { status: "confirmed", transactionHash: `0x${"55".repeat(32)}` };
+      },
+      async suspend() { throw new Error("not expected"); },
+    },
+    now: () => NOW,
+  });
+  assert.equal(result, "completed");
+  assert.deepEqual(approved, [`2@3:0x${"22".repeat(32)}`]);
+  assert.equal(repository.current?.verificationActionState, "confirmed");
+  assert.equal(repository.current?.verificationTransactionHash, `0x${"55".repeat(32)}`);
+});
+
+test("the failure threshold suspends the exact listing version and alerts the operator", async () => {
+  const repository = new FakeCertificationRepository(job({
+    lifecycleStatus: "warning",
+    consecutiveFailures: 2,
+    verificationAction: "approve",
+    verificationActionState: "confirmed",
+  }));
+  const suspended: string[] = [];
+  const alerts: string[] = [];
+  await runAgonCertificationOnce({
+    repository,
+    playgroundStore: new InMemoryPlaygroundRunStore(),
+    providerRunner: runner({ passed: false }),
+    failureThreshold: 3,
+    listingVerifier: {
+      enabled: true,
+      async verify() { throw new Error("not expected"); },
+      async suspend(input) { suspended.push(`${input.listingId}@${input.listingVersion}`); return { status: "confirmed", transactionHash: null }; },
+    },
+    alert: async (input) => { alerts.push(`${input.status}:${input.consecutiveFailures}`); },
+    now: () => NOW,
+  });
+  assert.deepEqual(suspended, ["2@3"]);
+  assert.deepEqual(alerts, ["suspended:3"]);
+  assert.equal(repository.current?.lifecycleStatus, "suspended");
+  assert.equal(repository.current?.verificationActionState, "confirmed");
+});
+
+test("a failed operator alert cannot roll back a completed lifecycle check", async () => {
+  const repository = new FakeCertificationRepository(job());
+  const originalError = console.error;
+  console.error = () => undefined;
+  try {
+    const result = await runAgonCertificationOnce({
+      repository,
+      playgroundStore: new InMemoryPlaygroundRunStore(),
+      providerRunner: runner({ passed: false }),
+      alert: async () => { throw new Error("telegram unavailable"); },
+      now: () => NOW,
+    });
+    assert.equal(result, "completed");
+    assert.equal(repository.current?.state, "scheduled");
+    assert.equal(repository.current?.lifecycleStatus, "warning");
+    assert.equal(repository.failed, null);
+  } finally {
+    console.error = originalError;
+  }
 });
 
 test("certification worker defers when the provider is not allowlisted", async () => {
@@ -158,8 +266,9 @@ test("certification worker retries provider failures and then stops after max at
     now: () => NOW,
   });
   assert.equal(result, "failed");
-  assert.deepEqual(repository.failed, { code: "certification_worker_error", retryAt: null });
-  assert.equal(repository.current?.state, "failed");
+  assert.equal(repository.failed, null);
+  assert.equal(repository.current?.state, "scheduled");
+  assert.equal(repository.current?.lifecycleStatus, "warning");
 });
 
 test("certification worker backfills existing versions before processing the queue", async () => {
@@ -175,5 +284,5 @@ test("certification worker backfills existing versions before processing the que
     { once: true },
   );
   assert.equal(repository.backfillCalls, 2);
-  assert.equal(repository.current?.state, "completed");
+  assert.equal(repository.current?.state, "scheduled");
 });

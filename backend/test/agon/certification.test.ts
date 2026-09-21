@@ -41,7 +41,7 @@ test("certification scope is canonical and analysis listings are scheduled", () 
 test("unsupported and unsafe listing states are blocked without a runnable task", () => {
   assert.deepEqual(
     certificationDecision({ category: 7n, listingStatus: "Listed", quarantineReason: null }),
-    { category: "development", taskId: null, state: "blocked", blockedReason: "category_not_supported" },
+    { category: "development", taskId: "selector-guard", state: "scheduled", blockedReason: null },
   );
   assert.deepEqual(
     certificationDecision({ category: 3n, listingStatus: "Suspended", quarantineReason: null }),

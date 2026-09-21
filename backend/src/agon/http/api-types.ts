@@ -24,6 +24,14 @@ export type AgonCapabilities = {
   listingReads: boolean;
   listingWrites: boolean;
   endpointQa: boolean;
+  certificationLifecycle: {
+    enabled: boolean;
+    checkIntervalSeconds: number;
+    warningRetrySeconds: number;
+    failureThreshold: number;
+    endpointQaRequired: boolean;
+    operatorAlertsConfigured: boolean;
+  };
   directX402: boolean;
   escrow: boolean;
   jobEscrowCalldataSupported: boolean;

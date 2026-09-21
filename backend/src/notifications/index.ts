@@ -18,7 +18,8 @@ export type NotificationKind =
   | "training_done"
   | "mystery_win"
   | "custom_request"
-  | "arena_review_escalation";
+  | "arena_review_escalation"
+  | "agon_service_lifecycle";
 
 export interface NotifyInput {
   kind: NotificationKind;

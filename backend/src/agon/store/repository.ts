@@ -18,6 +18,7 @@ import {
 import type { AgonJobEscrowAction, AgonJobEscrowJob } from "../execution/agon-job-escrow.ts";
 import type { AgonArenaEvaluation, AgonArenaEvaluationInput, AgonArenaEvaluationState } from "../execution/arena-verification.ts";
 import { buildAgonCertificationJob, type AgonCertificationJob, type AgonCertificationScheduleInput } from "../certification.ts";
+import { evaluateAgonLifecycle, type AgonLifecycleCheckResult, type AgonLifecycleTransition } from "../certification-lifecycle.ts";
 import type { PlaygroundRun } from "../playground.ts";
 import type {
   AgonPrizeClaim,
@@ -572,6 +573,16 @@ type AgonCertificationRow = QueryResultRow & {
   validation_request_hash: string | null;
   evaluator_version_hash: string | null;
   provider_host: string | null;
+  lifecycle_status: AgonCertificationJob["lifecycleStatus"];
+  consecutive_failures: number;
+  check_sequence: number;
+  last_checked_at: Date | null;
+  last_passed_at: Date | null;
+  last_failed_at: Date | null;
+  verification_action: AgonCertificationJob["verificationAction"];
+  verification_action_state: AgonCertificationJob["verificationActionState"];
+  verification_transaction_hash: string | null;
+  verification_error: string | null;
   created_at: Date;
   started_at: Date | null;
   completed_at: Date | null;
@@ -1010,6 +1021,16 @@ function mapAgonCertification(row: AgonCertificationRow): AgonCertificationJob {
     validationRequestHash: row.validation_request_hash as `0x${string}` | null,
     evaluatorVersionHash: row.evaluator_version_hash as `0x${string}` | null,
     providerHost: row.provider_host,
+    lifecycleStatus: row.lifecycle_status,
+    consecutiveFailures: row.consecutive_failures,
+    checkSequence: row.check_sequence,
+    lastCheckedAt: row.last_checked_at,
+    lastPassedAt: row.last_passed_at,
+    lastFailedAt: row.last_failed_at,
+    verificationAction: row.verification_action,
+    verificationActionState: row.verification_action_state,
+    verificationTransactionHash: row.verification_transaction_hash as `0x${string}` | null,
+    verificationError: row.verification_error,
     createdAt: row.created_at,
     startedAt: row.started_at,
     completedAt: row.completed_at,
@@ -1148,7 +1169,10 @@ const AGON_CERTIFICATION_COLUMNS = `
   provider_snapshot, state, attempts, max_attempts, next_attempt_at, lease_expires_at,
   blocked_reason, last_error_code, playground_run_id, passed, score, evidence_root,
   response_hash, task_commitment, validation_request_hash, evaluator_version_hash,
-  provider_host, created_at, started_at, completed_at, updated_at`;
+  provider_host, lifecycle_status, consecutive_failures, check_sequence,
+  last_checked_at, last_passed_at, last_failed_at,
+  verification_action, verification_action_state, verification_transaction_hash, verification_error,
+  created_at, started_at, completed_at, updated_at`;
 
 const AGON_SYNDICATE_CONTRIBUTION_COLUMNS = `
   intent_id, actor_address, idempotency_key, registry_contract_address,
@@ -1317,6 +1341,32 @@ export class PostgresAgonRepository {
       ],
     );
     if (updated.rowCount !== 1) throw new AgonStoreInvariantError("certification job was not running");
+  }
+
+  async finalizeAgonCertificationLifecycle(jobId: string, check: AgonLifecycleCheckResult): Promise<AgonLifecycleTransition> {
+    return this.withTransaction((repository) => repository.finalizeAgonCertificationLifecycle(jobId, check));
+  }
+
+  async recordAgonCertificationVerificationAction(input: {
+    jobId: string;
+    action: "approve" | "suspend";
+    state: "submitted" | "confirmed" | "unknown" | "failed";
+    transactionHash?: `0x${string}` | null;
+    error?: string | null;
+  }): Promise<void> {
+    const transactionHash = input.transactionHash === undefined ? undefined : input.transactionHash === null ? null : normalizeHash(input.transactionHash);
+    const updated = await this.pool.query(
+      `update agon_certification_jobs
+          set verification_action_state = $3,
+              verification_transaction_hash = coalesce($4, verification_transaction_hash),
+              verification_error = $5,
+              updated_at = now()
+        where job_id = $1 and verification_action = $2
+          and verification_action_state in ('pending','submitted','unknown','failed','confirmed')
+          and (verification_action_state <> 'confirmed' or $3 = 'confirmed')`,
+      [input.jobId, input.action, input.state, transactionHash, input.error?.slice(0, 500) ?? null],
+    );
+    if (updated.rowCount !== 1) throw new AgonStoreInvariantError("certification verification action is not pending");
   }
 
   async recordAgonEndpointQa(input: {
@@ -2773,6 +2823,76 @@ export class AgonTransactionRepository {
       [now, new Date(now.getTime() + 60_000), row.job_id],
     );
     return updated.rows[0] ? mapAgonCertification(updated.rows[0]) : null;
+  }
+
+  async finalizeAgonCertificationLifecycle(jobId: string, check: AgonLifecycleCheckResult): Promise<AgonLifecycleTransition> {
+    if (!/^[0-9a-f-]{36}$/i.test(check.checkId)) throw new AgonStoreInvariantError("certification check id must be a UUID");
+    if (!Number.isFinite(check.checkedAt.getTime()) || !Number.isFinite(check.nextCheckAt.getTime()) || check.nextCheckAt <= check.checkedAt) {
+      throw new AgonStoreInvariantError("certification lifecycle schedule is invalid");
+    }
+    const current = await this.client.query<AgonCertificationRow>(
+      `select ${AGON_CERTIFICATION_COLUMNS} from agon_certification_jobs where job_id = $1 for update`,
+      [jobId],
+    );
+    const row = current.rows[0];
+    if (!row || row.state !== "running") throw new AgonStoreInvariantError("certification job was not running");
+    const transition = evaluateAgonLifecycle({
+      previousStatus: row.lifecycle_status,
+      previousConsecutiveFailures: row.consecutive_failures,
+      passed: check.passed,
+      failureThreshold: check.failureThreshold,
+    });
+    const requestedAction: "approve" | "suspend" | null = transition.actions.includes("suspend")
+      ? "suspend"
+      : transition.actions.includes("approve") || transition.actions.includes("recover") ? "approve" : null;
+    const actionPending = requestedAction !== null
+      && (row.verification_action !== requestedAction || row.verification_action_state !== "confirmed");
+    const sequence = row.check_sequence + 1;
+    await this.client.query(
+      `insert into agon_certification_checks (
+         check_id, job_id, sequence, outcome, reason_codes, playground_run_id,
+         endpoint_qa_evidence_hash, checked_at, next_check_at
+       ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [
+        check.checkId,
+        jobId,
+        sequence,
+        check.passed ? "passed" : "failed",
+        check.reasons.map((reason) => reason.slice(0, 80)),
+        check.playgroundRunId,
+        check.endpointQaEvidenceHash,
+        check.checkedAt,
+        check.nextCheckAt,
+      ],
+    );
+    await this.client.query(
+      `update agon_certification_jobs
+          set state = 'scheduled', attempts = 0, lease_expires_at = null,
+              next_attempt_at = $2, lifecycle_status = $3, consecutive_failures = $4,
+              check_sequence = $5, last_checked_at = $6,
+              last_passed_at = case when $7 then $6 else last_passed_at end,
+              last_failed_at = case when $7 then last_failed_at else $6 end,
+              completed_at = $6, last_error_code = case when $7 then null else $8 end,
+              playground_run_id = $9, passed = $7, score = $10, evidence_root = $11,
+              response_hash = $12, task_commitment = $13, validation_request_hash = $14,
+              evaluator_version_hash = $15, provider_host = $16,
+              verification_action = case when $17::text is null then verification_action else $17 end,
+              verification_action_state = case when $18 then 'pending' else verification_action_state end,
+              verification_transaction_hash = case when $18 then null else verification_transaction_hash end,
+              verification_error = case when $18 then null else verification_error end,
+              updated_at = $6
+        where job_id = $1 and state = 'running'`,
+      [
+        jobId, check.nextCheckAt, transition.status, transition.consecutiveFailures,
+        sequence, check.checkedAt, check.passed, check.reasons[0] ?? null,
+        check.playgroundRunId, check.score, check.evidenceRoot, check.responseHash,
+        check.taskCommitment, check.validationRequestHash, check.evaluatorVersionHash,
+        check.providerHost,
+        requestedAction,
+        actionPending,
+      ],
+    );
+    return transition;
   }
 
   async upsertListing(listing: ListingProjection): Promise<void> {

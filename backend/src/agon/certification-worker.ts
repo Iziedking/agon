@@ -17,12 +17,23 @@ import {
   type AgonEndpointQaRunner,
 } from "./endpoint-qa.ts";
 import { certificationBackoffMs, type AgonCertificationJob } from "./certification.ts";
+import { nextAgonLifecycleCheck, type AgonLifecycleCheckResult, type AgonLifecycleTransition } from "./certification-lifecycle.ts";
+import { AgonListingVerificationError, type AgonListingVerifierAdapter } from "./execution/listing-verifier.ts";
 
 export type CertificationWorkerRepository = {
+  getAgonCertification(jobId: string): Promise<AgonCertificationJob | null>;
   backfillAgonCertifications?: (limit?: number, now?: Date) => Promise<number>;
   claimAgonCertification(now?: Date): Promise<AgonCertificationJob | null>;
   deferAgonCertification(jobId: string, nextAttemptAt: Date, reason: string): Promise<void>;
   completeAgonCertification(jobId: string, result: PlaygroundRun): Promise<void>;
+  finalizeAgonCertificationLifecycle(jobId: string, check: AgonLifecycleCheckResult): Promise<AgonLifecycleTransition>;
+  recordAgonCertificationVerificationAction(input: {
+    jobId: string;
+    action: "approve" | "suspend";
+    state: "submitted" | "confirmed" | "unknown" | "failed";
+    transactionHash?: `0x${string}` | null;
+    error?: string | null;
+  }): Promise<void>;
   recordAgonEndpointQa?: (input: {
     listingId: bigint;
     agentId: bigint;
@@ -40,9 +51,34 @@ export type CertificationWorkerOptions = {
   endpointQaRunner?: AgonEndpointQaRunner;
   now?: () => Date;
   providerRetryMs?: number;
+  checkIntervalMs?: number;
+  warningRetryMs?: number;
+  failureThreshold?: number;
+  requireEndpointQa?: boolean;
+  alertOperator?: string;
+  listingVerifier?: AgonListingVerifierAdapter;
+  alert?: (input: {
+    operator: string;
+    listingReference: string;
+    listingVersion: string;
+    status: "warning" | "suspended" | "recovered";
+    reasons: readonly string[];
+    consecutiveFailures: number;
+  }) => Promise<void>;
 };
 
 export type CertificationWorkerResult = "idle" | "completed" | "deferred" | "failed";
+
+type CertificationAlert = Parameters<NonNullable<CertificationWorkerOptions["alert"]>>[0];
+
+async function sendCertificationAlert(options: CertificationWorkerOptions, input: CertificationAlert): Promise<void> {
+  if (!options.alert) return;
+  try {
+    await options.alert(input);
+  } catch (error) {
+    console.error("agon certification alert failed", error);
+  }
+}
 
 function nextRetryAt(job: AgonCertificationJob, now: Date): Date | null {
   return job.attempts < job.maxAttempts
@@ -51,10 +87,17 @@ function nextRetryAt(job: AgonCertificationJob, now: Date): Date | null {
 }
 
 function assertCertificationJob(job: AgonCertificationJob): asserts job is AgonCertificationJob & {
-  category: "analysis";
-  taskId: "evidence-under-pressure";
+  category: PlaygroundCategory;
+  taskId: string;
 } {
-  if (job.category !== "analysis" || job.taskId !== "evidence-under-pressure") {
+  const supported: Readonly<Record<string, string>> = {
+    research: "arc-live-fact",
+    analysis: "evidence-under-pressure",
+    execution: "transaction-safety",
+    development: "selector-guard",
+    verification: "manifest-anchor",
+  };
+  if (supported[job.category] !== job.taskId) {
     throw new PlaygroundProviderError("provider_task_unsupported", "This certification task is not available.");
   }
 }
@@ -79,6 +122,7 @@ export async function runAgonCertificationOnce(options: CertificationWorkerOptio
   if (!Number.isFinite(now.getTime())) throw new Error("certification worker time is invalid");
   const job = await options.repository.claimAgonCertification(now);
   if (!job) return "idle";
+  let lifecycleFinalized = false;
 
   try {
     assertCertificationJob(job);
@@ -105,12 +149,13 @@ export async function runAgonCertificationOnce(options: CertificationWorkerOptio
       {
         actorAddress: job.providerSnapshot,
         requestId: randomUUID(),
-        idempotencyKey: `certification-${job.jobId}`,
+        idempotencyKey: `certification-${job.jobId}-${job.checkSequence + 1}`,
         scope: { listingReference: job.listingReference, listingVersion: job.listingVersion },
         store: options.playgroundStore,
         execute: (task, input) => options.providerRunner.run({ provider, task, taskInput: input }),
       },
     );
+    let endpointQa: { passed: boolean; evidenceHash: `0x${string}`; evidence: unknown } | null = null;
     if (options.endpointQaRunner?.supports(provider) && options.repository.recordAgonEndpointQa) {
       let qa;
       try {
@@ -137,12 +182,147 @@ export async function runAgonCertificationOnce(options: CertificationWorkerOptio
         evidenceHash: qa.evidenceHash,
         evidence: qa.evidence,
       });
+      endpointQa = qa;
     }
-    await options.repository.completeAgonCertification(job.jobId, result);
+    const reasons: string[] = [];
+    if (!result.passed) reasons.push("playground_task_failed");
+    if (endpointQa && !endpointQa.passed) reasons.push("endpoint_qa_failed");
+    if (options.requireEndpointQa && !endpointQa) reasons.push("endpoint_qa_unavailable");
+    const passed = reasons.length === 0;
+    const nextCheckAt = nextAgonLifecycleCheck({
+      now,
+      passed,
+      checkIntervalMs: options.checkIntervalMs ?? 6 * 60 * 60_000,
+      warningRetryMs: options.warningRetryMs ?? 15 * 60_000,
+    });
+    const transition = await options.repository.finalizeAgonCertificationLifecycle(job.jobId, {
+      checkId: randomUUID(),
+      passed,
+      reasons,
+      playgroundRunId: result.runId,
+      score: result.score,
+      evidenceRoot: result.evidence.evidenceRoot,
+      responseHash: result.evidence.responseHash,
+      taskCommitment: result.evidence.taskCommitment,
+      validationRequestHash: result.evidence.validationRequestHash,
+      evaluatorVersionHash: result.evidence.evaluatorVersionHash,
+      providerHost: result.provenance.providerHost,
+      endpointQaEvidenceHash: endpointQa?.evidenceHash ?? null,
+      checkedAt: now,
+      nextCheckAt,
+      failureThreshold: options.failureThreshold ?? 3,
+    });
+    lifecycleFinalized = true;
+    const persisted = await options.repository.getAgonCertification(job.jobId);
+    const action = persisted?.verificationAction;
+    const shouldWrite = action && persisted.verificationActionState !== "confirmed" && options.listingVerifier?.enabled;
+    try {
+      if (shouldWrite && action) {
+        const request = {
+          listingId: job.listingId,
+          agentId: job.agentId,
+          listingVersion: job.listingVersion,
+          manifestHash: job.manifestHash,
+          priorTransactionHash: persisted?.verificationTransactionHash ?? undefined,
+          onSubmitted: async (transactionHash: `0x${string}`) => options.repository.recordAgonCertificationVerificationAction({
+            jobId: job.jobId,
+            action,
+            state: "submitted",
+            transactionHash,
+          }),
+        };
+        const result = action === "approve"
+          ? await options.listingVerifier!.verify(request)
+          : await options.listingVerifier!.suspend(request);
+        await options.repository.recordAgonCertificationVerificationAction({
+          jobId: job.jobId,
+          action,
+          state: "confirmed",
+          transactionHash: result.transactionHash,
+        });
+      }
+    } catch (error) {
+      if (action) {
+        const transactionHash = error instanceof AgonListingVerificationError ? error.transactionHash : null;
+        await options.repository.recordAgonCertificationVerificationAction({
+          jobId: job.jobId,
+          action,
+          state: transactionHash || error instanceof AgonListingVerificationError && error.code === "unknown_outcome" ? "unknown" : "failed",
+          transactionHash,
+          error: error instanceof Error ? error.message : "marketplace state write failed",
+        });
+      }
+      await sendCertificationAlert(options, {
+        operator: options.alertOperator ?? job.providerSnapshot,
+        listingReference: job.listingReference,
+        listingVersion: job.listingVersion,
+        status: transition.status === "suspended" ? "suspended" : "warning",
+        reasons: [`marketplace_state_write_failed:${error instanceof Error ? error.message : "unknown"}`],
+        consecutiveFailures: transition.consecutiveFailures,
+      });
+    }
+    if (transition.actions.includes("alert")) {
+      await sendCertificationAlert(options, {
+        operator: options.alertOperator ?? job.providerSnapshot,
+        listingReference: job.listingReference,
+        listingVersion: job.listingVersion,
+        status: transition.status === "suspended" ? "suspended" : "warning",
+        reasons,
+        consecutiveFailures: transition.consecutiveFailures,
+      });
+    } else if (transition.actions.includes("recover")) {
+      await sendCertificationAlert(options, {
+        operator: options.alertOperator ?? job.providerSnapshot,
+        listingReference: job.listingReference,
+        listingVersion: job.listingVersion,
+        status: "recovered",
+        reasons: [],
+        consecutiveFailures: 0,
+      });
+    }
     return "completed";
   } catch (error) {
+    if (lifecycleFinalized) {
+      console.error("agon certification post-check action failed", error);
+      return "completed";
+    }
     const errorCode = error instanceof PlaygroundProviderError ? error.code : "certification_worker_error";
-    await options.repository.failAgonCertification(job.jobId, errorCode, nextRetryAt(job, now));
+    const retryAt = nextRetryAt(job, now);
+    if (retryAt) {
+      await options.repository.failAgonCertification(job.jobId, errorCode, retryAt);
+    } else {
+      const nextCheckAt = nextAgonLifecycleCheck({
+        now,
+        passed: false,
+        checkIntervalMs: options.checkIntervalMs ?? 6 * 60 * 60_000,
+        warningRetryMs: options.warningRetryMs ?? 15 * 60_000,
+      });
+      const transition = await options.repository.finalizeAgonCertificationLifecycle(job.jobId, {
+        checkId: randomUUID(),
+        passed: false,
+        reasons: [errorCode],
+        playgroundRunId: null,
+        score: null,
+        evidenceRoot: null,
+        responseHash: null,
+        taskCommitment: null,
+        validationRequestHash: null,
+        evaluatorVersionHash: null,
+        providerHost: null,
+        endpointQaEvidenceHash: null,
+        checkedAt: now,
+        nextCheckAt,
+        failureThreshold: options.failureThreshold ?? 3,
+      });
+      await sendCertificationAlert(options, {
+        operator: options.alertOperator ?? job.providerSnapshot,
+        listingReference: job.listingReference,
+        listingVersion: job.listingVersion,
+        status: transition.status === "suspended" ? "suspended" : "warning",
+        reasons: [errorCode],
+        consecutiveFailures: transition.consecutiveFailures,
+      });
+    }
     return "failed";
   }
 }
