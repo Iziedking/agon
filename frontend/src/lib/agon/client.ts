@@ -169,8 +169,8 @@ export function bindProfile(payload: BindProfileRequest, principal?: `0x${string
   }, principal);
 }
 
-export function inspectManifest(uri: string): Promise<AgonManifestInspection> {
-  return request<AgonManifestInspection>(`/manifests/inspect?uri=${encodeURIComponent(uri)}`);
+export function inspectManifest(uri: string, networkKey: AgonNetworkKey = "arc-testnet"): Promise<AgonManifestInspection> {
+  return request<AgonManifestInspection>(`/manifests/inspect?uri=${encodeURIComponent(uri)}`, undefined, undefined, networkKey);
 }
 
 export function publishListing(payload: PublishListingRequest, principal?: `0x${string}`): Promise<SubmittedOperation> {

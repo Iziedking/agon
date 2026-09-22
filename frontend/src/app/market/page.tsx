@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AgonAuthAction } from "@/components/agon/AgonAuthAction";
 import { ListingCard } from "@/components/agon/ListingCard";
@@ -9,8 +9,8 @@ import { BracketedCell } from "@/components/redesign/BracketedCell";
 import { CornerMarkers } from "@/components/redesign/CornerMarkers";
 import { Footer } from "@/components/redesign/Footer";
 import { TagButton } from "@/components/redesign/TagButton";
-import { AGON_CATEGORIES, listingMatchesQuery } from "@/lib/agon/catalog";
-import { AGON_PREVIEW_MODE, listListings } from "@/lib/agon/client";
+import { AGON_CATEGORIES, listingSearchMatch } from "@/lib/agon/catalog";
+import { AGON_PREVIEW_MODE, inspectManifest, listListings } from "@/lib/agon/client";
 import type { AgonListing } from "@/lib/agon/types";
 import { useAgonNetwork } from "@/hooks/useAgonNetwork";
 
@@ -33,10 +33,17 @@ function ArcMarketPage() {
   const [query, setQuery] = useState("");
   const [view, setView] = useState<MarketView>("all");
   const [reloadKey, setReloadKey] = useState(0);
+  const [searchDetailsState, setSearchDetailsState] = useState<"idle" | "loading" | "ready">("idle");
+  const inspectedListingIds = useRef(new Set<string>());
+
+  useEffect(() => {
+    setQuery(new URLSearchParams(window.location.search).get("q")?.trim() ?? "");
+  }, []);
 
   const loadFirstPage = useCallback(async () => {
     setItems(null);
     setError(null);
+    inspectedListingIds.current = new Set();
     try {
       const page = await listListings({ limit: PAGE_SIZE, category: selectedCategory || null, network: networkKey });
       setItems(page.items);
@@ -51,10 +58,41 @@ function ArcMarketPage() {
     void loadFirstPage();
   }, [loadFirstPage, reloadKey]);
 
-  const filteredItems = useMemo(() => (items ?? []).filter((item) => {
-    if (!listingMatchesQuery(item, query)) return false;
-    if (item.status !== "Listed" || item.risk.quarantineReason) return false;
-    return view === "all" || item.verification.status === "Verified";
+  useEffect(() => {
+    if (!items || !query.trim()) {
+      setSearchDetailsState("idle");
+      return;
+    }
+    const candidates = items.filter((item) => item.manifest.body === undefined && !inspectedListingIds.current.has(item.id));
+    if (candidates.length === 0) {
+      setSearchDetailsState("ready");
+      return;
+    }
+
+    let active = true;
+    for (const candidate of candidates) inspectedListingIds.current.add(candidate.id);
+    setSearchDetailsState("loading");
+    void Promise.all(candidates.map(async (candidate) => {
+      try {
+        const inspection = await inspectManifest(candidate.manifest.uri, networkKey);
+        if (!inspection.validation.ok || inspection.manifestHash.toLowerCase() !== candidate.manifest.hash.toLowerCase()) return null;
+        return { id: candidate.id, body: inspection.body };
+      } catch {
+        return null;
+      }
+    })).then((resolved) => {
+      if (!active) return;
+      const details = new Map(resolved.filter((detail): detail is { id: string; body: unknown } => detail !== null).map((detail) => [detail.id, detail.body]));
+      if (details.size > 0) setItems((current) => current?.map((item) => details.has(item.id) ? { ...item, manifest: { ...item.manifest, body: details.get(item.id) } } : item) ?? current);
+      setSearchDetailsState("ready");
+    });
+    return () => { active = false; };
+  }, [items, networkKey, query]);
+
+  const filteredItems = useMemo(() => (items ?? []).flatMap((item) => {
+    const searchMatch = listingSearchMatch(item, query);
+    if (!searchMatch.matches || item.status !== "Listed" || item.risk.quarantineReason || (view === "tested" && item.verification.status !== "Verified")) return [];
+    return [{ item, matchedTerms: searchMatch.matchedTerms }];
   }), [items, query, view]);
 
   async function loadNextPage() {
@@ -138,7 +176,7 @@ function ArcMarketPage() {
             </div>
             <div className="mt-5 max-w-[720px]">
               <Field label="SEARCH" hint="Name, skill, or result">
-                <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="What do you need an agent to do?" className={INPUT_CLASS} />
+                <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Try NFT research, CRM support, or image generation" className={INPUT_CLASS} />
               </Field>
             </div>
           </div>
@@ -162,10 +200,12 @@ function ArcMarketPage() {
 
           {items === null ? (
             <MarketLoading />
+          ) : searchDetailsState === "loading" ? (
+            <MarketSearchLoading query={query} />
           ) : filteredItems.length === 0 && !error ? (
             <BracketedCell className="py-14">
               <div className="font-stencil text-[30px] uppercase text-ink">NO SERVICES FOUND</div>
-              <p className="mt-3 max-w-[58ch] font-mono text-[12px] leading-relaxed text-ink-2">Try another search or category. You can also list the first service for this need.</p>
+              <p className="mt-3 max-w-[58ch] font-mono text-[12px] leading-relaxed text-ink-2">No listed service matches these terms yet. Try a different outcome or browse the current catalog.</p>
               <div className="mt-6 flex flex-wrap gap-3">
                 <TagButton variant="ghost" onClick={resetFilters}>CLEAR FILTERS</TagButton>
                 <AgonAuthAction href="/market/new">LIST YOUR AGENT</AgonAuthAction>
@@ -173,7 +213,7 @@ function ArcMarketPage() {
             </BracketedCell>
           ) : (
             <div className="grid gap-3 lg:grid-cols-2">
-              {filteredItems.map((listing) => <ListingCard key={listing.id} listing={listing} />)}
+              {filteredItems.map(({ item, matchedTerms }) => <ListingCard key={item.id} listing={item} searchMatchTerms={matchedTerms} />)}
             </div>
           )}
 
@@ -224,4 +264,8 @@ function MarketLoading() {
       {["one", "two", "three", "four"].map((key) => <div key={key} className="min-h-[210px] border border-[color:var(--hairline)] bg-canvas-2 p-5"><div className="flex gap-5"><div className="h-[88px] w-[88px] animate-pulse bg-canvas-3" /><div className="min-w-0 flex-1"><div className="h-3 w-24 animate-pulse bg-canvas-3" /><div className="mt-4 h-6 w-2/3 animate-pulse bg-canvas-3" /><div className="mt-3 h-3 w-full animate-pulse bg-canvas-3" /></div></div><div className="mt-5 h-px w-full bg-[color:var(--hairline)]" /></div>)}
     </div>
   );
+}
+
+function MarketSearchLoading({ query }: { query: string }) {
+  return <BracketedCell className="py-14"><div role="status"><div className="font-stencil text-[30px] uppercase text-ink">CHECKING SERVICE DETAILS</div><p className="mt-3 max-w-[58ch] font-mono text-[12px] leading-relaxed text-ink-2">AGON is checking current service terms for “{query}”.</p></div></BracketedCell>;
 }

@@ -6,6 +6,7 @@ import { canonicalManifestHash, canonicalizeManifest } from "./canonical.ts";
 import {
   AGON_CATEGORIES,
   categoryById,
+  listingSearchMatch,
   listingMatchesQuery,
   presentListing,
 } from "./catalog.ts";
@@ -193,6 +194,24 @@ test("presents indexed manifest details and honest fallbacks", () => {
   assert.equal(listingMatchesQuery(richListing, "solidity"), true);
   assert.equal(listingMatchesQuery(richListing, "agent 42"), true);
   assert.equal(listingMatchesQuery(richListing, "translation"), false);
+});
+
+test("matches declared NFT and mint terms through the marketplace intent vocabulary", () => {
+  const nockMintListing = {
+    ...listing,
+    manifest: {
+      ...listing.manifest,
+      body: {
+        name: "Nock Mint Intelligence",
+        description: "Scores public NFT mints from chain evidence and returns a bounded recommendation.",
+        tags: ["nft", "mint", "analysis"],
+      },
+    },
+  };
+
+  assert.deepEqual(listingSearchMatch(nockMintListing, "nft"), { matches: true, matchedTerms: ["nft"] });
+  assert.deepEqual(listingSearchMatch(nockMintListing, "mint"), { matches: true, matchedTerms: ["mint"] });
+  assert.equal(listingMatchesQuery(nockMintListing, "nft analysis"), true);
 });
 
 test("builds the browser manifest from user-facing service fields", () => {

@@ -8,6 +8,7 @@ import { AgonNetworkSelector } from "@/components/redesign/AgonNetworkSelector";
 import { ThemeToggle } from "@/components/redesign/ThemeToggle";
 import { useAgonNetwork } from "@/hooks/useAgonNetwork";
 import { AgonHomeSurface } from "@/components/agon/AgonHomeSurface";
+import { useAuth } from "@/hooks/useAuth";
 
 const STARTUP_STORAGE_KEY = "agon-startup-seen-v1";
 const STARTUP_HOLD_MS = 3000;
@@ -15,6 +16,7 @@ const STARTUP_EXIT_MS = 680;
 
 export function AgonLandingPage() {
   const { network } = useAgonNetwork();
+  const { me } = useAuth();
   const [startupPhase, setStartupPhase] = useState<"visible" | "exiting" | "hidden">("visible");
   const [startupReady, setStartupReady] = useState(false);
 
@@ -72,13 +74,13 @@ export function AgonLandingPage() {
       <header className="shrink-0 border-b border-[color:var(--hairline)]">
         <div className="mx-auto flex h-16 max-w-[1280px] items-center justify-between gap-2 px-3 sm:gap-4 sm:px-6">
           <a href="/" aria-label="Agon home" className="inline-flex min-w-0 shrink-0 items-center text-ink"><AgonMark /></a>
-          <nav aria-label="Primary" className="hidden items-center gap-6 lg:flex">
+          {me ? <nav aria-label="Primary" className="hidden items-center gap-6 lg:flex">
             <a href="/market" className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-2 hover:text-ink">Find services</a>
             <a href="#how-it-works" className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-2 hover:text-ink">How it works</a>
             <a href="/market/new" className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-2 hover:text-ink">List a service</a>
             <a href="/docs" className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-2 hover:text-ink">Learn</a>
             <a href="/support" className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-2 hover:text-ink">Help</a>
-          </nav>
+          </nav> : null}
           <div className="flex shrink-0 items-center gap-1 sm:gap-2"><AgonNetworkSelector /><ThemeToggle /><TagButton href="/login" size="sm" variant="ghost" className="max-[359px]:px-2">SIGN IN</TagButton></div>
         </div>
       </header>
@@ -91,7 +93,7 @@ export function AgonLandingPage() {
         <div className="mx-auto grid max-w-[1280px] gap-4 px-3 py-4 font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3 sm:grid-cols-3 sm:gap-5 sm:px-6 sm:py-6">
           <div><div className="text-accent">AGON</div><div className="mt-2">AGENT SERVICES / PAY PER USE</div><div className="mt-1">PRICED IN USDC</div></div>
           <div><div className="text-accent">CHECK BEFORE YOU HIRE</div><div className="mt-2">PRICE / AVAILABILITY / TESTED VERSION</div><div className="mt-1">PAYMENT AND DELIVERY RECORDS</div></div>
-          <div><div className="text-accent">START HERE</div><div className="mt-2 flex flex-wrap gap-x-4 gap-y-2"><a href="/market" className="hover:text-ink">FIND SERVICES</a><a href="/market/new" className="hover:text-ink">LIST A SERVICE</a><a href="/docs" className="hover:text-ink">LEARN</a><a href="/support" className="hover:text-ink">HELP</a></div><div className="mt-4">{network.brand} {network.environment} · AGON.SURF</div></div>
+          <div><div className="text-accent">{me ? "START HERE" : "OPEN ACCESS"}</div>{me ? <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2"><a href="/market" className="hover:text-ink">FIND SERVICES</a><a href="/market/new" className="hover:text-ink">LIST A SERVICE</a><a href="/docs" className="hover:text-ink">LEARN</a><a href="/support" className="hover:text-ink">HELP</a></div> : <div className="mt-2 max-w-[28ch] leading-relaxed">Explore services before you sign in. Connect only when you need to save, list, or authorize work.</div>}<div className="mt-4">{network.brand} {network.environment} · AGON.SURF</div></div>
         </div>
       </footer>
       <style jsx global>{`

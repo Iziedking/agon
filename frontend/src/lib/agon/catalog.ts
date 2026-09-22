@@ -34,6 +34,24 @@ export type ListingPresentation = {
   hasIndexedManifest: boolean;
 };
 
+export type ListingSearchMatch = {
+  matches: boolean;
+  matchedTerms: string[];
+};
+
+const INTENT_ALIASES: Record<string, readonly string[]> = {
+  nft: ["nft", "nfts", "non-fungible", "nonfungible", "collectible", "collectibles", "mint", "minting"],
+  nfts: ["nft", "nfts", "non-fungible", "nonfungible", "collectible", "collectibles", "mint", "minting"],
+  mint: ["nft", "nfts", "non-fungible", "nonfungible", "collectible", "collectibles", "mint", "minting"],
+  minting: ["nft", "nfts", "non-fungible", "nonfungible", "collectible", "collectibles", "mint", "minting"],
+  contract: ["contract", "contracts", "smart-contract", "smart contract", "solidity", "evm"],
+  contracts: ["contract", "contracts", "smart-contract", "smart contract", "solidity", "evm"],
+  security: ["security", "audit", "audits", "review", "reviews", "vulnerability", "vulnerabilities"],
+  audit: ["security", "audit", "audits", "review", "reviews", "vulnerability", "vulnerabilities"],
+  research: ["research", "analysis", "analyze", "analyse", "analytics", "insight", "insights"],
+  analysis: ["research", "analysis", "analyze", "analyse", "analytics", "insight", "insights"],
+};
+
 function record(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -86,20 +104,45 @@ export function presentListing(listing: AgonListing): ListingPresentation {
   };
 }
 
-export function listingMatchesQuery(listing: AgonListing, query: string): boolean {
-  const normalized = query.trim().toLowerCase();
-  if (!normalized) return true;
+function normalizedSearchText(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function searchableTerms(listing: AgonListing): string[] {
   const service = presentListing(listing);
-  const corpus = [
+  return [
     service.name,
     service.description,
     service.category.label,
     service.category.slug,
-    service.tags.join(" "),
+    ...service.tags,
     `agent ${listing.agentId}`,
     `agent #${listing.agentId}`,
     listing.manifest.uri,
-  ].join(" ").toLowerCase();
-  return normalized.split(/\s+/).every((term) => corpus.includes(term));
+  ].map(normalizedSearchText).filter(Boolean);
+}
+
+export function listingSearchMatch(listing: AgonListing, query: string): ListingSearchMatch {
+  const requestedTerms = normalizedSearchText(query).split(/\s+/).filter(Boolean);
+  if (requestedTerms.length === 0) return { matches: true, matchedTerms: [] };
+
+  const corpus = searchableTerms(listing).join(" ");
+  const matchedTerms = requestedTerms.map((term) => {
+    const candidates = [
+      term,
+      ...(INTENT_ALIASES[term] ?? []).filter((candidate) => normalizedSearchText(candidate) !== term),
+    ];
+    const matched = candidates.find((candidate) => corpus.includes(normalizedSearchText(candidate)));
+    return matched ?? null;
+  });
+
+  return {
+    matches: matchedTerms.every(Boolean),
+    matchedTerms: [...new Set(matchedTerms.filter((term): term is string => term !== null))],
+  };
+}
+
+export function listingMatchesQuery(listing: AgonListing, query: string): boolean {
+  return listingSearchMatch(listing, query).matches;
 }
 

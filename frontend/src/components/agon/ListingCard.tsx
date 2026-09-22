@@ -7,13 +7,15 @@ import { BracketedCell } from "@/components/redesign/BracketedCell";
 import { inspectManifest } from "@/lib/agon/client";
 import { presentListing } from "@/lib/agon/catalog";
 import type { AgonListing } from "@/lib/agon/types";
+import { useAgonNetwork } from "@/hooks/useAgonNetwork";
 import { VerificationBadge } from "./VerificationBadge";
 
 function priceLabel(amountUSDC: string | null) {
   return amountUSDC ? `${amountUSDC} USDC / use` : "Price in service file";
 }
 
-export function ListingCard({ listing }: { listing: AgonListing }) {
+export function ListingCard({ listing, searchMatchTerms = [] }: { listing: AgonListing; searchMatchTerms?: string[] }) {
+  const { networkKey } = useAgonNetwork();
   const [manifestBody, setManifestBody] = useState(listing.manifest.body);
   const [metadataState, setMetadataState] = useState<"idle" | "loading" | "ready" | "mismatch" | "error">(listing.manifest.body === undefined ? "idle" : "ready");
   const hydratedListing = useMemo(() => ({ ...listing, manifest: { ...listing.manifest, body: manifestBody } }), [listing, manifestBody]);
@@ -30,7 +32,7 @@ export function ListingCard({ listing }: { listing: AgonListing }) {
     }
     let active = true;
     setMetadataState("loading");
-    void inspectManifest(listing.manifest.uri)
+    void inspectManifest(listing.manifest.uri, networkKey)
       .then((inspection) => {
         if (!active) return;
         if (!inspection.validation.ok) {
@@ -50,7 +52,7 @@ export function ListingCard({ listing }: { listing: AgonListing }) {
       })
       .catch(() => { if (active) setMetadataState("error"); });
     return () => { active = false; };
-  }, [listing.id, listing.manifest.body, listing.manifest.hash, listing.manifest.uri]);
+  }, [listing.id, listing.manifest.body, listing.manifest.hash, listing.manifest.uri, networkKey]);
 
   return (
     <article className="min-w-0">
@@ -71,6 +73,8 @@ export function ListingCard({ listing }: { listing: AgonListing }) {
           <div className="mt-4 flex flex-wrap gap-1.5">
             {service.tags.slice(0, 3).map((tag) => <span key={tag} className="bg-canvas-3 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.1em] text-ink-3">{tag}</span>)}
           </div>
+
+          {searchMatchTerms.length > 0 ? <p className="mt-3 font-mono text-[8px] uppercase tracking-[0.11em] text-accent">MATCHES: {searchMatchTerms.join(" / ")}</p> : null}
 
           <div className="mt-4 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-4 border-t border-[color:var(--hairline)] pt-3">
             <div className="min-w-0">
