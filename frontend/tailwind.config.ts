@@ -159,6 +159,24 @@ const config: Config = {
           "0%": { opacity: "0", transform: "translateY(8px)" },
           "100%": { opacity: "1", transform: "translateY(0)" },
         },
+        "agon-atmosphere": {
+          "0%, 100%": { opacity: "0.48", transform: "translate3d(-2%, -1%, 0) scale(1)" },
+          "50%": { opacity: "0.76", transform: "translate3d(2%, 1%, 0) scale(1.04)" },
+        },
+        "agon-route-trace": {
+          "0%": { strokeDashoffset: "720" },
+          "100%": { strokeDashoffset: "0" },
+        },
+        "agon-beacon": {
+          "0%, 100%": { opacity: "0.28", transform: "scale(1)" },
+          "50%": { opacity: "0.95", transform: "scale(1.8)" },
+        },
+        "agon-signal-sweep": {
+          "0%": { opacity: "0", transform: "translateY(-180%)" },
+          "16%": { opacity: "0.72" },
+          "62%": { opacity: "0.18" },
+          "100%": { opacity: "0", transform: "translateY(680%)" },
+        },
       },
       animation: {
         "pulse-live": "pulse-live 1.5s var(--ease-in-out) infinite",
@@ -166,6 +184,10 @@ const config: Config = {
         "rank-slide": "rank-slide var(--duration-slow) var(--ease-out)",
         "settle-sweep": "settle-sweep var(--duration-reveal) var(--ease-out) forwards",
         "stagger-in": "stagger-in 240ms var(--ease-out) forwards",
+        "agon-atmosphere": "agon-atmosphere 18s var(--ease-in-out) infinite",
+        "agon-route-trace": "agon-route-trace 13s linear infinite",
+        "agon-beacon": "agon-beacon 4.6s var(--ease-in-out) infinite",
+        "agon-signal-sweep": "agon-signal-sweep 10s var(--ease-in-out) infinite",
       },
     },
   },

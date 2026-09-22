@@ -24,6 +24,7 @@ export function AgonAccessGate({ children }: { children: ReactNode }) {
   const isLanding = pathname === "/";
   const isProtocolDocument = pathname.startsWith("/.well-known/");
   const isPublicMarket = pathname === "/market" || (pathname.startsWith("/market/") && (pathname !== "/market/new" || networkKey !== "arc-testnet"));
+  const isMcpGuide = pathname === "/market/new";
   const isPublicDocs = isPublicMarketplaceDocsRoute(pathname);
   const isPublicPlayground = pathname === "/agon/playground";
   const isPublicOperator = pathname === "/operators" || pathname.startsWith("/operators/");
@@ -32,7 +33,7 @@ export function AgonAccessGate({ children }: { children: ReactNode }) {
   const isAdminRoute = pathname === "/admin" || pathname.startsWith("/admin/");
   const isSupportRoute = pathname === "/support" || pathname.startsWith("/support/");
   const isLegacyRoute = isLegacyArcRunRoute(pathname);
-  const isPublicDiscovery = isLanding || isLogin || isProtocolDocument || isPublicMarket || isPublicDocs || isPublicPlayground || isPublicOperator || isAdminRoute || isSupportRoute;
+  const isPublicDiscovery = isLanding || isLogin || isProtocolDocument || isPublicMarket || isMcpGuide || isPublicDocs || isPublicPlayground || isPublicOperator || isAdminRoute || isSupportRoute;
   const shouldGate = IS_AGON_DEPLOYMENT && !isPublicDiscovery;
 
   useEffect(() => {

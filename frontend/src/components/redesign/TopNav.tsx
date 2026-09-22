@@ -14,6 +14,7 @@ import { AgonMark } from "@/components/redesign/AgonMark";
 import { NotificationBell } from "@/components/redesign/NotificationBell";
 import { LiveMissionBanner } from "@/components/redesign/LiveMissionBanner";
 import { ThemeToggle } from "@/components/redesign/ThemeToggle";
+import { AgonHelpButton } from "@/components/agon/AgonHelpButton";
 import { AgonNetworkSelector } from "@/components/redesign/AgonNetworkSelector";
 import { IS_AGON_DEPLOYMENT } from "@/lib/product";
 import { useDisconnect } from "wagmi";
@@ -47,9 +48,8 @@ const LEGACY_ROUTES = [
 const AGON_ROUTES = [
   { href: "/market", label: "FIND SERVICES", exact: true },
   { href: "/agon/playground", label: "TEST SERVICES", exact: true },
-  { href: "/market/new", label: "LIST A SERVICE", exact: true },
+  { href: "/market/new", label: "MCP GUIDE", exact: true },
   { href: "/docs", label: "LEARN", exact: false },
-  { href: "/support", label: "HELP", exact: false },
 ];
 
 export function TopNav({ hideSignOut = false }: { hideSignOut?: boolean } = {}) {
@@ -60,15 +60,13 @@ export function TopNav({ hideSignOut = false }: { hideSignOut?: boolean } = {}) 
   const { networkKey } = useAgonNetwork();
   const routes = isAgon ? AGON_ROUTES : LEGACY_ROUTES;
   const [open, setOpen] = useState(false);
-  // The marketplace is public. Keep its route links visible before sign-in so
-  // discovery does not look like a gated dashboard. Legacy arena routes remain
-  // session-only. `settling` covers the brief auth-resolving window so a
-  // returning user does not flash the signed-out legacy nav before their
-  // session loads.
+  // AGON discovery remains public through direct links and page actions. The
+  // workspace menu is reserved for a signed-in account so a first visit stays
+  // focused on the market rather than on product administration.
   const { isSignedIn, settling } = useOperatorAddress();
   const { signOut } = useAuth();
   const { disconnect } = useDisconnect();
-  const showRoutes = !isLogin && (isAgon || isSignedIn);
+  const showRoutes = !isLogin && isSignedIn;
 
   // Close the drawer on route change so users don't see a stale open state
   // after navigating.
@@ -77,6 +75,7 @@ export function TopNav({ hideSignOut = false }: { hideSignOut?: boolean } = {}) 
   }, [pathname]);
 
   return (
+    <>
     <header className="sticky top-0 z-20 border-b border-[color:var(--hairline)] bg-canvas" onKeyDown={(event) => { if (event.key === "Escape" && open) { setOpen(false); event.currentTarget.querySelector<HTMLButtonElement>('[aria-controls="agon-mobile-menu"]')?.focus(); } }}>
       <div className="mx-auto flex h-16 max-w-[1600px] items-center justify-between gap-2 px-3 sm:gap-3 sm:px-6">
         <Link href="/" className="inline-flex min-w-0 shrink-0 items-center text-ink" aria-label="Agon home">
@@ -187,5 +186,7 @@ export function TopNav({ hideSignOut = false }: { hideSignOut?: boolean } = {}) 
 
       {isAgon ? null : <LiveMissionBanner />}
     </header>
+    {isAgon ? <AgonHelpButton /> : null}
+    </>
   );
 }

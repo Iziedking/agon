@@ -1,5 +1,7 @@
 "use client";
 
+import type { CSSProperties, PointerEvent } from "react";
+
 import { TagButton } from "@/components/redesign/TagButton";
 
 type AgonHomeNetwork = {
@@ -34,13 +36,32 @@ const PROOF_POINTS = [
   ["DELIVERY RECORD", "Keep payment and work evidence as separate records."],
 ] as const;
 
+const HERO_SIGNAL_ORIGIN = {
+  "--agon-signal-x": "67%",
+  "--agon-signal-y": "42%",
+} as CSSProperties;
+
 export function AgonHomeSurface({ network }: AgonHomeSurfaceProps) {
   const marketHref = `/market?network=${network.key}`;
 
+  function moveSignal(event: PointerEvent<HTMLElement>) {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const x = ((event.clientX - bounds.left) / bounds.width) * 100;
+    const y = ((event.clientY - bounds.top) / bounds.height) * 100;
+    event.currentTarget.style.setProperty("--agon-signal-x", `${Math.min(100, Math.max(0, x))}%`);
+    event.currentTarget.style.setProperty("--agon-signal-y", `${Math.min(100, Math.max(0, y))}%`);
+  }
+
+  function resetSignal(event: PointerEvent<HTMLElement>) {
+    event.currentTarget.style.setProperty("--agon-signal-x", "67%");
+    event.currentTarget.style.setProperty("--agon-signal-y", "42%");
+  }
+
   return (
-    <div className="mx-auto max-w-[1280px] px-4 pb-16 pt-8 sm:px-6 sm:pb-24 sm:pt-12">
-      <section className="grid border-y border-[color:var(--hairline-strong)] lg:grid-cols-[minmax(0,1.15fr)_minmax(340px,.85fr)]">
-        <div className="flex min-h-[560px] flex-col justify-between py-10 pr-0 lg:border-r lg:border-[color:var(--hairline-strong)] lg:pr-12">
+    <div className="mx-auto max-w-[1536px] px-4 pb-16 pt-8 sm:px-6 sm:pb-24 sm:pt-12">
+      <section style={HERO_SIGNAL_ORIGIN} onPointerMove={moveSignal} onPointerLeave={resetSignal} className="relative isolate grid overflow-hidden border-y border-[color:var(--hairline-strong)] lg:grid-cols-[minmax(0,1.15fr)_minmax(340px,.85fr)]">
+        <AgonDiscoveryAtmosphere />
+        <div className="relative z-10 flex min-h-[560px] flex-col justify-between py-10 pr-0 lg:border-r lg:border-[color:var(--hairline-strong)] lg:pr-12">
           <div>
             <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-accent">MARKETPLACE FOR AGENT SERVICES</p>
             <h1 className="mt-7 max-w-[11ch] font-display text-[clamp(3.7rem,8vw,8rem)] uppercase leading-[.84] tracking-[-.06em] text-ink">
@@ -59,7 +80,7 @@ export function AgonHomeSurface({ network }: AgonHomeSurfaceProps) {
           </div>
         </div>
 
-        <div className="flex flex-col justify-between py-10 lg:pl-12">
+        <div className="relative z-10 flex flex-col justify-between py-10 lg:pl-12">
           <div>
             <div className="flex items-center justify-between gap-4 border-b border-[color:var(--hairline)] pb-4 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">
               <span>START WITH THE RESULT</span>
@@ -139,10 +160,35 @@ export function AgonHomeSurface({ network }: AgonHomeSurfaceProps) {
         </div>
         <div>
           <p className="max-w-[48ch] text-sm leading-6 text-ink-2">Publish the result you deliver, price, response time, and endpoint. AGON checks the service lifecycle and keeps monitoring after it is listed.</p>
-          <div className="mt-7 flex flex-wrap gap-3"><TagButton href={`/market/new?network=${network.key}`}>LIST A SERVICE</TagButton><TagButton href="/docs/list-agents" variant="ghost">READ THE GUIDE</TagButton></div>
+          <div className="mt-7 flex flex-wrap gap-3"><TagButton href={`/market/new?network=${network.key}`}>OPEN MCP GUIDE</TagButton><TagButton href="/market" variant="ghost">BROWSE SERVICES</TagButton></div>
           <a href="/support" className="mt-6 inline-flex min-h-11 items-center font-mono text-[10px] uppercase tracking-[0.14em] text-ink-3 hover:text-accent">NEED HELP? OPEN THE HELP CENTER →</a>
         </div>
       </section>
+    </div>
+  );
+}
+
+function AgonDiscoveryAtmosphere() {
+  return (
+    <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
+      <div className="absolute -inset-[16%] opacity-70 motion-safe:animate-agon-atmosphere motion-reduce:animate-none" style={{ backgroundImage: "radial-gradient(34rem circle at var(--agon-signal-x) var(--agon-signal-y), color-mix(in srgb, var(--accent) 20%, transparent), transparent 62%), radial-gradient(28rem circle at 86% 8%, color-mix(in srgb, var(--syn-mint) 12%, transparent), transparent 66%)" }} />
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,color-mix(in_srgb,var(--hairline)_68%,transparent)_1px,transparent_1px),linear-gradient(to_bottom,color-mix(in_srgb,var(--hairline)_54%,transparent)_1px,transparent_1px)] [background-size:7rem_7rem] opacity-35" />
+      <svg viewBox="0 0 1440 620" preserveAspectRatio="none" className="absolute inset-0 h-full w-full opacity-80">
+        <defs>
+          <linearGradient id="agon-route-glow" x1="0" x2="1" y1="0" y2="0"><stop stopColor="var(--accent)" stopOpacity="0" /><stop offset="0.36" stopColor="var(--accent)" stopOpacity="0.8" /><stop offset="0.72" stopColor="var(--syn-mint)" stopOpacity="0.45" /><stop offset="1" stopColor="var(--syn-mint)" stopOpacity="0" /></linearGradient>
+        </defs>
+        <path d="M-40 410 C 220 330, 302 510, 536 396 S 870 138, 1100 252 S 1330 362, 1490 142" fill="none" stroke="var(--hairline-strong)" strokeWidth="1" />
+        <path d="M-40 410 C 220 330, 302 510, 536 396 S 870 138, 1100 252 S 1330 362, 1490 142" fill="none" stroke="url(#agon-route-glow)" strokeWidth="2" strokeDasharray="180 540" className="motion-safe:animate-agon-route-trace motion-reduce:animate-none" />
+        <path d="M180 -20 C 302 168, 488 176, 642 286 S 970 534, 1272 468" fill="none" stroke="var(--hairline)" strokeWidth="1" />
+        <path d="M180 -20 C 302 168, 488 176, 642 286 S 970 534, 1272 468" fill="none" stroke="url(#agon-route-glow)" strokeWidth="2" strokeDasharray="110 610" className="motion-safe:animate-agon-route-trace motion-reduce:animate-none [animation-delay:-4.2s]" />
+        <g fill="var(--canvas)" stroke="var(--accent)" strokeWidth="1.5">
+          <rect x="524" y="386" width="11" height="11" className="origin-center motion-safe:animate-agon-beacon motion-reduce:animate-none" />
+          <rect x="1093" y="246" width="11" height="11" className="origin-center motion-safe:animate-agon-beacon motion-reduce:animate-none [animation-delay:-1.5s]" />
+          <rect x="636" y="280" width="11" height="11" className="origin-center motion-safe:animate-agon-beacon motion-reduce:animate-none [animation-delay:-3.1s]" />
+        </g>
+      </svg>
+      <div className="absolute inset-x-[12%] top-[14%] h-px bg-[linear-gradient(90deg,transparent,var(--accent),transparent)] opacity-60 motion-safe:animate-agon-signal-sweep motion-reduce:animate-none" />
+      <div className="absolute inset-0 bg-[linear-gradient(90deg,var(--canvas)_0%,transparent_42%,transparent_72%,var(--canvas)_100%)] opacity-85" />
     </div>
   );
 }
