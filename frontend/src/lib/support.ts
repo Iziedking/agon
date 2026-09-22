@@ -39,7 +39,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return payload;
 }
 
-export function createSupportTicket(input: { requesterName: string; requesterEmail: string; subject: string; message: string }) {
+export function createSupportTicket(input: { requesterEmail: string; subject: string; message: string }) {
   return request<{ ticketId: string; reference: string; accessToken: string }>("/support/tickets", {
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input),
   });

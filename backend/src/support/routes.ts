@@ -35,7 +35,7 @@ const staffCreateSchema = z.object({
   role: z.enum(STAFF_ROLES).default("support"),
 });
 const ticketCreateSchema = z.object({
-  requesterName: z.string().trim().min(2).max(80),
+  requesterName: z.string().trim().min(2).max(80).optional(),
   requesterEmail: EMAIL,
   subject: z.string().trim().min(4).max(140),
   message: z.string().trim().min(2).max(4_000),
@@ -147,22 +147,23 @@ export function createSupportRoutes() {
 
   app.post("/support/tickets", async (c) => {
     const parsed = ticketCreateSchema.safeParse(await c.req.json().catch(() => null));
-    if (!parsed.success) return c.json({ error: "name, email, subject, and message are required" }, 400);
+    if (!parsed.success) return c.json({ error: "email, subject, and message are required" }, 400);
     const allowed = await consumeRateLimit(`ticket:${normalizeSupportEmail(parsed.data.requesterEmail)}:${requestIp(c)}`, 10, 60);
     if (!allowed) return c.json({ error: "too many support requests; try again later" }, 429);
     const ticketId = randomUUID();
     const accessToken = newOpaqueToken();
     const reference = ticketReference();
+    const requesterName = parsed.data.requesterName ?? "Customer";
     await query(
       `insert into agon_support_tickets
          (ticket_id, reference, requester_name, requester_email, access_token_hash, subject, category, status, priority)
        values ($1, $2, $3, $4, $5, $6, 'general', 'ai_triage', 'normal')`,
-      [ticketId, reference, parsed.data.requesterName, normalizeSupportEmail(parsed.data.requesterEmail), hashOpaqueToken(accessToken), parsed.data.subject],
+      [ticketId, reference, requesterName, normalizeSupportEmail(parsed.data.requesterEmail), hashOpaqueToken(accessToken), parsed.data.subject],
     );
     await query(
       `insert into agon_support_messages (message_id, ticket_id, author_type, author_name, body, visibility)
        values ($1, $2, 'user', $3, $4, 'public')`,
-      [randomUUID(), ticketId, parsed.data.requesterName, redactSupportMessage(parsed.data.message)],
+      [randomUUID(), ticketId, "You", redactSupportMessage(parsed.data.message)],
     );
     await query(`insert into agon_support_ticket_events (event_id, ticket_id, event_type, detail) values ($1,$2,'created',$3::jsonb)`, [randomUUID(), ticketId, JSON.stringify({ source: "support-chat" })]);
     await appendAssistant(ticketId, parsed.data.message);
@@ -190,7 +191,7 @@ export function createSupportRoutes() {
     await query(
       `insert into agon_support_messages (message_id, ticket_id, author_type, author_name, body, visibility)
        values ($1, $2, 'user', $3, $4, 'public')`,
-      [randomUUID(), c.req.param("ticketId"), ticket.requester_name, redactSupportMessage(parsed.data.message)],
+      [randomUUID(), c.req.param("ticketId"), "You", redactSupportMessage(parsed.data.message)],
     );
     await query(
       `update agon_support_tickets set status = case when status in ('waiting_user','resolved') then 'open' else status end,

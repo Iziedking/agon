@@ -38,7 +38,7 @@ export function SupportChat() {
     setBusy(true); setError("");
     try {
       const created = await createSupportTicket({
-        requesterName: String(form.get("name") ?? ""), requesterEmail: String(form.get("email") ?? ""),
+        requesterEmail: String(form.get("email") ?? ""),
         subject: String(form.get("subject") ?? ""), message: String(form.get("message") ?? ""),
       });
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify(created)); setAccess(created); await load(created);
@@ -56,13 +56,10 @@ export function SupportChat() {
 
   if (!access) return (
     <form action={start} className="grid gap-5 border border-[color:var(--hairline-strong)] bg-canvas-2 p-6 md:p-8">
-      <div className="grid gap-5 md:grid-cols-2">
-        <label className="grid gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2">Your name<input required name="name" minLength={2} maxLength={80} className="min-h-12 border border-[color:var(--hairline-strong)] bg-canvas px-4 font-sans text-sm normal-case tracking-normal text-ink outline-none focus:border-accent" /></label>
-        <label className="grid gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2">Email<input required name="email" type="email" maxLength={254} className="min-h-12 border border-[color:var(--hairline-strong)] bg-canvas px-4 font-sans text-sm normal-case tracking-normal text-ink outline-none focus:border-accent" /></label>
-      </div>
+      <label className="grid gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2">Email<input required name="email" type="email" maxLength={254} autoComplete="email" className="min-h-12 border border-[color:var(--hairline-strong)] bg-canvas px-4 font-sans text-sm normal-case tracking-normal text-ink outline-none focus:border-accent" /></label>
       <label className="grid gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2">What do you need help with?<input required name="subject" minLength={4} maxLength={140} className="min-h-12 border border-[color:var(--hairline-strong)] bg-canvas px-4 font-sans text-sm normal-case tracking-normal text-ink outline-none focus:border-accent" /></label>
       <label className="grid gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-2">Tell us what happened<textarea required name="message" minLength={2} maxLength={4000} rows={6} className="border border-[color:var(--hairline-strong)] bg-canvas p-4 font-sans text-sm normal-case tracking-normal text-ink outline-none focus:border-accent" /></label>
-      <p className="font-mono text-[11px] leading-relaxed text-ink-3">Never send a password, private key, seed phrase, admin token, or wallet signature.</p>
+      <p className="font-mono text-[11px] leading-relaxed text-ink-3">For your safety, never share passwords, wallet recovery phrases, private keys, or signatures.</p>
       {error ? <p role="alert" className="font-mono text-xs text-danger">{error}</p> : null}
       <button disabled={busy} className="min-h-12 bg-accent px-6 font-mono text-xs uppercase tracking-[0.14em] text-canvas disabled:opacity-50">{busy ? "Opening support..." : "Start conversation"}</button>
     </form>

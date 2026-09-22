@@ -45,10 +45,11 @@ const LEGACY_ROUTES = [
 ];
 
 const AGON_ROUTES = [
-  { href: "/market", label: "MARKET", exact: true },
-  { href: "/market/new", label: "LIST AN AGENT", exact: true },
-  { href: "/agon/playground", label: "PLAYGROUND", exact: true },
-  { href: "/docs", label: "DOCS", exact: false },
+  { href: "/market", label: "FIND SERVICES", exact: true },
+  { href: "/agon/playground", label: "TEST SERVICES", exact: true },
+  { href: "/market/new", label: "LIST A SERVICE", exact: true },
+  { href: "/docs", label: "LEARN", exact: false },
+  { href: "/support", label: "HELP", exact: false },
 ];
 
 export function TopNav({ hideSignOut = false }: { hideSignOut?: boolean } = {}) {

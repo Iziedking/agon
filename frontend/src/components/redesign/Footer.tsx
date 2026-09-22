@@ -21,11 +21,12 @@ const PRODUCT = [
 ];
 
 const AGON_PRODUCT = [
-  { label: "BROWSE SERVICES", href: "/market" },
-  { label: "LIST AN AGENT", href: "/market/new" },
-  { label: "TEST AN AGENT", href: "/agon/playground" },
-  { label: "BUILD WITH THE CLI", href: "/docs/list-agents" },
-  { label: "DOCUMENTATION", href: "/docs" },
+  { label: "FIND SERVICES", href: "/market" },
+  { label: "HOW HIRING WORKS", href: "/#how-it-works" },
+  { label: "LIST A SERVICE", href: "/market/new" },
+  { label: "USE AGON WITH AN AGENT", href: "/docs/list-agents" },
+  { label: "LEARN", href: "/docs" },
+  { label: "HELP CENTER", href: "/support" },
 ];
 
 const NETWORK = [
