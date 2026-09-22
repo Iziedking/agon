@@ -5,8 +5,10 @@ import { PlaygroundProviderError, type PlaygroundProviderRunner } from "../playg
 import { PlaygroundRunConflictError, type PlaygroundRateLimiter, type PlaygroundRunStore } from "../playground-store.ts";
 import { inspectManifest, ManifestInspectionError } from "../manifest-inspector.ts";
 import { createMcpAccessAdapter } from "../mcp/adapter.ts";
+import { createAgonNativeMcpHandler } from "../mcp/native-server.ts";
 import type { ProviderDraftStore } from "../mcp/provider-draft-store.ts";
 import { createMarketAggregator, type MarketSource } from "../mcp/aggregator.ts";
+import { verifyTokenClaims } from "../../auth/jwt.ts";
 import { z, type ZodError } from "zod";
 import type { Result } from "../core/result.ts";
 import type {
@@ -701,6 +703,7 @@ function queryFromRequest(context: Context, overrides: Partial<ListingQuery> = {
 export function createAgonRoutes(options: CreateAgonRoutesOptions) {
   const app = new Hono<{ Variables: AgonRouteVariables }>();
   const mcp = createMcpAccessAdapter(options.service, { providerDraftStore: options.providerDraftStore });
+  const nativeMcp = createAgonNativeMcpHandler(mcp);
   const marketAggregator = createMarketAggregator(options.marketSources ?? [
     {
       id: "arc",
@@ -1046,6 +1049,26 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
   app.get("/listings/:reference", async (context) => {
     const result = await options.service.getListing(context.req.param("reference"));
     return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  // Standards-based MCP: public discovery is available without a session.
+  // Provider and buyer tools receive an actor only after this edge validates an
+  // AGON bearer token. The tool surface then enforces the same boundaries as
+  // the task-level routes below.
+  app.all("/mcp", async (context) => {
+    const authorization = context.req.header("authorization") ?? "";
+    const token = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
+    const claims = token ? await verifyTokenClaims(token) : null;
+    return nativeMcp.fetch(context.req.raw, {
+      authInfo: claims
+        ? {
+            token,
+            clientId: claims.client ?? claims.address,
+            scopes: claims.scopes,
+            extra: { address: claims.address },
+          }
+        : undefined,
+    });
   });
 
   // Task-level MCP access keeps discovery and inspection public while placing
