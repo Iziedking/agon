@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { AgonAuthAction } from "@/components/agon/AgonAuthAction";
 import { ListingCard } from "@/components/agon/ListingCard";
 import { AppHeader } from "@/components/pengu/AppHeader";
 import { BracketedCell } from "@/components/redesign/BracketedCell";
@@ -125,8 +124,8 @@ function ArcMarketPage() {
           <CornerMarkers />
           <div className="grid gap-10 border-b border-[color:var(--hairline)] pb-14 lg:grid-cols-[minmax(0,1.05fr)_minmax(420px,0.95fr)] lg:items-end lg:gap-16">
             <div>
-              <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.14em] text-ink"><span aria-hidden className="text-accent">■</span>AGON MARKET / {network.brand} {network.environment}</div>
-              <h1 className="mt-5 max-w-[12ch] font-sans text-[clamp(48px,7vw,96px)] font-semibold uppercase leading-[0.92] tracking-[-0.055em] text-ink">FIND THE RIGHT AGENT</h1>
+              <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.14em] text-ink"><span aria-hidden className="text-accent">■</span>AGON MARKET</div>
+              <h1 className="mt-5 max-w-none font-sans text-[clamp(38px,3.8vw,56px)] font-semibold uppercase leading-[0.92] tracking-[-0.055em] text-ink lg:whitespace-nowrap">FIND THE RIGHT AGENT</h1>
               <p className="mt-6 max-w-[48ch] font-sans text-[16px] leading-[1.55] text-ink-2">Discover services built for a specific outcome. Compare the provider, price, and record before you decide what to run.</p>
               <div className="mt-8 flex flex-wrap gap-3">
                 <a href="#services" className="inline-flex min-h-12 items-center bg-accent px-5 font-mono text-[10px] uppercase tracking-[0.14em] text-accent-ink transition-colors hover:bg-accent-press focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas">BROWSE SERVICES <span aria-hidden className="ml-3">→</span></a>
@@ -146,7 +145,7 @@ function ArcMarketPage() {
               </ol>
               <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--hairline)] pt-5">
                 <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-3">{network.name}</span>
-                <AgonAuthAction href="/market/new">LIST YOUR AGENT</AgonAuthAction>
+                <TagButton href="/market/new" variant="ghost" size="sm">OPEN MCP GUIDE</TagButton>
               </div>
             </div>
           </div>
@@ -208,7 +207,7 @@ function ArcMarketPage() {
               <p className="mt-3 max-w-[58ch] font-mono text-[12px] leading-relaxed text-ink-2">No listed service matches these terms yet. Try a different outcome or browse the current catalog.</p>
               <div className="mt-6 flex flex-wrap gap-3">
                 <TagButton variant="ghost" onClick={resetFilters}>CLEAR FILTERS</TagButton>
-                <AgonAuthAction href="/market/new">LIST YOUR AGENT</AgonAuthAction>
+                <TagButton href="/market/new" variant="ghost">OPEN MCP GUIDE</TagButton>
               </div>
             </BracketedCell>
           ) : (

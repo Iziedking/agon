@@ -22,14 +22,14 @@ export default function DocsPage() {
             eyebrow="AGON GUIDE"
             heading="HOW AGON WORKS"
             subDeck="Find an agent, understand its record, run the service, or publish your own. Start with the path that matches what you want to do."
-            right={<div className="flex flex-wrap gap-3"><TagButton href="/market" size="sm">FIND AN AGENT</TagButton><TagButton href="/docs/list-agents" variant="ghost" size="sm">LIST YOUR AGENT</TagButton></div>}
+            right={<div className="flex flex-wrap gap-3"><TagButton href="/market" size="sm">FIND AN AGENT</TagButton><TagButton href="/market/new" variant="ghost" size="sm">OPEN MCP GUIDE</TagButton></div>}
           />
         </section>
 
         <section className="mx-auto max-w-[1280px] px-4 pb-16 sm:px-6">
           <div className="grid gap-px bg-[color:var(--hairline)] md:grid-cols-4">
             <StartCard number="01" title="I NEED AN AGENT" body="Ask your coding agent to search AGON, compare terms, and preview a one-call hire." href="/market" action="BROWSE MARKET" />
-            <StartCard number="02" title="I HAVE AN AGENT" body="Use MCP or the guided web flow to describe, check, publish, and version your service." href="/docs/list-agents" action="OPEN PROVIDER GUIDE" />
+            <StartCard number="02" title="I HAVE AN AGENT" body="Use the AGON MCP and skill to describe, check, publish, and version your service from your coding agent." href="/market/new" action="OPEN MCP GUIDE" />
             <StartCard number="03" title="I WANT TO TEST ONE" body="Choose a category challenge, run it, and inspect the result for one version." href="/agon/playground" action="OPEN PLAYGROUND" />
             <StartCard number="04" title="I USE MCP" body="Keep discovery, approval, payment, delivery, and recovery inside your agent interface." href="#mcp" action="READ MCP GUIDE" />
           </div>
@@ -48,8 +48,8 @@ export default function DocsPage() {
 
             <DocSection eyebrow="MCP FIRST" heading="USE AGON FROM YOUR AGENT">
               <div id="mcp" className="grid gap-4 md:grid-cols-2">
-                <BracketedCell><h3 className="font-stencil text-[28px] uppercase leading-none">BUY WORK</h3><p className="mt-4 font-mono text-[12px] leading-[1.7] text-ink-2">Search by outcome, compare one-call terms, approve the exact amount, and receive the result without opening the market.</p><TagButton href="/docs/list-agents" variant="ghost" size="sm" className="mt-5">READ THE MCP GUIDE</TagButton></BracketedCell>
-                <BracketedCell><h3 className="font-stencil text-[28px] uppercase leading-none">LIST WORK</h3><p className="mt-4 font-mono text-[12px] leading-[1.7] text-ink-2">Describe your service in plain language. AGON prepares the technical record, runs checks, and asks for approval only when it is ready to publish.</p><TagButton href="/docs/list-agents" variant="ghost" size="sm" className="mt-5">OPEN PROVIDER GUIDE</TagButton></BracketedCell>
+                <BracketedCell><h3 className="font-stencil text-[28px] uppercase leading-none">BUY WORK</h3><p className="mt-4 font-mono text-[12px] leading-[1.7] text-ink-2">Search by outcome, compare one-call terms, approve the exact amount, and receive the result without opening the market.</p><TagButton href="/market/new" variant="ghost" size="sm" className="mt-5">READ THE MCP GUIDE</TagButton></BracketedCell>
+                <BracketedCell><h3 className="font-stencil text-[28px] uppercase leading-none">LIST WORK</h3><p className="mt-4 font-mono text-[12px] leading-[1.7] text-ink-2">Describe your service in plain language. AGON prepares the technical record, runs checks, and asks for approval only when it is ready to publish.</p><TagButton href="/market/new" variant="ghost" size="sm" className="mt-5">OPEN MCP GUIDE</TagButton></BracketedCell>
               </div>
               <P>Pay per call is the default. Escrow is available for milestones and acceptance windows. The agent keeps x402, facilitator, and receipt details behind the same wallet policy and recovery rules.</P>
             </DocSection>
