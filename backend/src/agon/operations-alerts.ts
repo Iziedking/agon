@@ -28,6 +28,7 @@ export type RaiseAgonOperationsAlert = {
   operator: string;
   fingerprint: string;
   source: AgonAlertSource;
+  scopeReference?: string;
   severity: AgonAlertSeverity;
   title: string;
   body?: string;
@@ -35,6 +36,22 @@ export type RaiseAgonOperationsAlert = {
   context?: Record<string, unknown>;
   resolved?: boolean;
 };
+
+export type AgonAlertSubscription = {
+  subscriptionId: string;
+  operatorAddress: string;
+  scopeType: "platform" | "service";
+  scopeReference: string | null;
+  source: "any" | AgonAlertSource;
+  minimumSeverity: AgonAlertSeverity;
+  inApp: boolean;
+  telegram: boolean;
+  enabled: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type UpsertAgonAlertSubscription = Omit<AgonAlertSubscription, "subscriptionId" | "createdAt" | "updatedAt">;
 
 export type AgonOperationsAlertSink = {
   raise(input: RaiseAgonOperationsAlert): Promise<AgonOperationsAlert>;
@@ -65,6 +82,20 @@ type AlertRow = {
   acknowledged_by: string | null;
   resolved_at: Date | null;
   notification_id: string | null;
+};
+
+type SubscriptionRow = {
+  subscription_id: string;
+  operator_address: string;
+  scope_type: "platform" | "service";
+  scope_reference: string | null;
+  source: "any" | AgonAlertSource;
+  minimum_severity: AgonAlertSeverity;
+  in_app: boolean;
+  telegram: boolean;
+  enabled: boolean;
+  created_at: Date;
+  updated_at: Date;
 };
 
 export type AgonAlertDelivery = {
@@ -104,6 +135,22 @@ function toAlert(row: AlertRow): AgonOperationsAlert {
     acknowledgedAt: row.acknowledged_at,
     acknowledgedBy: row.acknowledged_by,
     resolvedAt: row.resolved_at,
+  };
+}
+
+function toSubscription(row: SubscriptionRow): AgonAlertSubscription {
+  return {
+    subscriptionId: row.subscription_id,
+    operatorAddress: row.operator_address,
+    scopeType: row.scope_type,
+    scopeReference: row.scope_reference,
+    source: row.source,
+    minimumSeverity: row.minimum_severity,
+    inApp: row.in_app,
+    telegram: row.telegram,
+    enabled: row.enabled,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }
 
@@ -154,56 +201,100 @@ export class PostgresAgonOperationsAlertRepository {
         ],
       );
       let row = inserted.rows[0]!;
-      if (!row.notification_id) {
-        const notification = await client.query<{ id: string }>(
-          `insert into notifications (operator, kind, title, body, href, context)
-           values ($1,$2,$3,$4,$5,$6) returning id::text`,
-          [
-            operator,
-            input.source === "arena" ? "arena_review_escalation" : "agon_service_lifecycle",
-            row.title,
-            row.body,
-            row.href,
-            JSON.stringify({ ...row.context, operationsAlertId: row.alert_id, severity: row.severity }),
-          ],
-        );
-        const notificationId = notification.rows[0]!.id;
-        const updated = await client.query<AlertRow>(
-          "update agon_operations_alerts set notification_id = $2 where alert_id = $1 returning *",
-          [row.alert_id, notificationId],
-        );
-        row = updated.rows[0]!;
-        await client.query(
-          `insert into agon_alert_delivery_outbox
-             (delivery_id, alert_id, channel, status, attempts, max_attempts, next_attempt_at)
-           values ($1,$2,'telegram','pending',0,8,now())
-           on conflict (alert_id, channel) do nothing`,
-          [randomUUID(), row.alert_id],
-        );
-      } else {
-        await client.query(
-          `update notifications
-              set title = $2, body = $3, href = $4,
-                  context = $5
-            where id = $1`,
-          [
-            row.notification_id,
-            row.title,
-            row.body,
-            row.href,
-            JSON.stringify({ ...row.context, operationsAlertId: row.alert_id, severity: row.severity }),
-          ],
-        );
-        await client.query(
-          `update agon_alert_delivery_outbox
-              set status = 'pending', attempts = 0, next_attempt_at = now(),
-                  lease_expires_at = null, last_error = null, updated_at = now()
-            where alert_id = $1 and channel = 'telegram' and status = 'delivered'
-              and case delivered_severity when 'critical' then 3 when 'warning' then 2 else 1 end
-                  < case $2 when 'critical' then 3 when 'warning' then 2 else 1 end`,
-          [row.alert_id, row.severity],
-        );
+      const subscribed = await client.query<{ operator_address: string; in_app: boolean; telegram: boolean }>(
+        `select operator_address, bool_or(in_app) as in_app, bool_or(telegram) as telegram
+           from agon_alert_subscriptions
+          where enabled = true
+            and source in ('any', $1)
+            and case minimum_severity when 'critical' then 3 when 'warning' then 2 else 1 end
+                <= case $2 when 'critical' then 3 when 'warning' then 2 else 1 end
+            and (
+              scope_type = 'platform'
+              or (
+                scope_type = 'service' and scope_reference = $3
+                and exists (
+                  select 1 from agon_listings l
+                   where concat(l.chain_id::text, ':', l.service_registry_address, ':', l.listing_id::text) = agon_alert_subscriptions.scope_reference
+                     and l.provider_snapshot = agon_alert_subscriptions.operator_address
+                )
+              )
+            )
+          group by operator_address`,
+        [input.source, row.severity, input.scopeReference ?? null],
+      );
+      const recipients = new Map<string, { inApp: boolean; telegram: boolean }>();
+      recipients.set(operator, { inApp: true, telegram: true });
+      for (const recipient of subscribed.rows) {
+        const address = normalizeOperator(recipient.operator_address);
+        const previous = recipients.get(address);
+        recipients.set(address, {
+          inApp: recipient.in_app || previous?.inApp === true,
+          telegram: recipient.telegram || previous?.telegram === true,
+        });
       }
+      for (const [recipientOperator, channels] of recipients) {
+        const recipient = await client.query<{ notification_id: string | null }>(
+          `insert into agon_alert_recipients
+             (alert_id, recipient_operator, in_app, telegram)
+           values ($1,$2,$3,$4)
+           on conflict (alert_id, recipient_operator) do update set
+             in_app = agon_alert_recipients.in_app or excluded.in_app,
+             telegram = agon_alert_recipients.telegram or excluded.telegram,
+             updated_at = now()
+           returning notification_id::text`,
+          [row.alert_id, recipientOperator, channels.inApp, channels.telegram],
+        );
+        let notificationId = recipient.rows[0]?.notification_id ?? null;
+        if (channels.inApp && !notificationId) {
+          const notification = await client.query<{ id: string }>(
+            `insert into notifications (operator, kind, title, body, href, context)
+             values ($1,$2,$3,$4,$5,$6) returning id::text`,
+            [
+              recipientOperator,
+              input.source === "arena" ? "arena_review_escalation" : "agon_service_lifecycle",
+              row.title,
+              row.body,
+              row.href,
+              JSON.stringify({ ...row.context, operationsAlertId: row.alert_id, severity: row.severity }),
+            ],
+          );
+          notificationId = notification.rows[0]!.id;
+          await client.query(
+            "update agon_alert_recipients set notification_id = $3, updated_at = now() where alert_id = $1 and recipient_operator = $2",
+            [row.alert_id, recipientOperator, notificationId],
+          );
+        } else if (notificationId) {
+          await client.query(
+            `update notifications set title = $2, body = $3, href = $4, context = $5 where id = $1`,
+            [notificationId, row.title, row.body, row.href, JSON.stringify({ ...row.context, operationsAlertId: row.alert_id, severity: row.severity })],
+          );
+        }
+        if (recipientOperator === operator && notificationId && !row.notification_id) {
+          const updated = await client.query<AlertRow>(
+            "update agon_operations_alerts set notification_id = $2 where alert_id = $1 returning *",
+            [row.alert_id, notificationId],
+          );
+          row = updated.rows[0]!;
+        }
+        if (channels.telegram) {
+          await client.query(
+            `insert into agon_alert_delivery_outbox
+               (delivery_id, alert_id, recipient_operator, channel, status, attempts, max_attempts, next_attempt_at)
+             values ($1,$2,$3,'telegram','pending',0,8,now())
+             on conflict (alert_id, channel, recipient_operator) do nothing`,
+            [randomUUID(), row.alert_id, recipientOperator],
+          );
+        }
+      }
+      await client.query(
+        `update agon_alert_delivery_outbox
+            set status = 'pending', attempts = 0, next_attempt_at = now(),
+                lease_expires_at = null, last_error = null, updated_at = now()
+          where alert_id = $1 and channel = 'telegram' and status = 'delivered'
+            and case delivered_severity when 'critical' then 3 when 'warning' then 2 else 1 end
+                < case $2 when 'critical' then 3 when 'warning' then 2 else 1 end`,
+        [row.alert_id, row.severity],
+      );
       await client.query("commit");
       return toAlert(row);
     } catch (error) {
@@ -248,6 +339,63 @@ export class PostgresAgonOperationsAlertRepository {
     return result.rows.map(toAlert);
   }
 
+  async listSubscriptions(operatorAddress: string): Promise<AgonAlertSubscription[]> {
+    const result = await this.pool.query<SubscriptionRow>(
+      `select * from agon_alert_subscriptions where operator_address = $1 order by scope_type, scope_reference, source`,
+      [normalizeOperator(operatorAddress)],
+    );
+    return result.rows.map(toSubscription);
+  }
+
+  async upsertSubscription(input: UpsertAgonAlertSubscription): Promise<AgonAlertSubscription> {
+    const operatorAddress = normalizeOperator(input.operatorAddress);
+    const scopeReference = input.scopeType === "platform" ? null : input.scopeReference?.trim() || null;
+    if (input.scopeType === "service" && !scopeReference) throw new Error("service subscription requires a listing reference");
+    if (!input.inApp && !input.telegram) throw new Error("at least one alert channel is required");
+    const result = await this.pool.query<SubscriptionRow>(
+      `insert into agon_alert_subscriptions
+         (subscription_id, operator_address, scope_type, scope_reference, source, minimum_severity, in_app, telegram, enabled)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       on conflict (operator_address, scope_type, (coalesce(scope_reference, '')), source) do update set
+         minimum_severity = excluded.minimum_severity,
+         in_app = excluded.in_app,
+         telegram = excluded.telegram,
+         enabled = excluded.enabled,
+         updated_at = now()
+       returning *`,
+      [randomUUID(), operatorAddress, input.scopeType, scopeReference, input.source, input.minimumSeverity, input.inApp, input.telegram, input.enabled],
+    );
+    return toSubscription(result.rows[0]!);
+  }
+
+  async deleteSubscription(operatorAddress: string, subscriptionId: string): Promise<boolean> {
+    const result = await this.pool.query(
+      "delete from agon_alert_subscriptions where subscription_id = $1 and operator_address = $2",
+      [subscriptionId, normalizeOperator(operatorAddress)],
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async ownsListing(operatorAddress: string, listingReference: string): Promise<boolean> {
+    const result = await this.pool.query(
+      `select 1 from agon_listings
+        where concat(chain_id::text, ':', service_registry_address, ':', listing_id::text) = $1
+          and provider_snapshot = $2
+        limit 1`,
+      [listingReference.trim().toLowerCase(), normalizeOperator(operatorAddress)],
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async listOwnedListings(operatorAddress: string): Promise<string[]> {
+    const result = await this.pool.query<{ listing_reference: string }>(
+      `select concat(chain_id::text, ':', service_registry_address, ':', listing_id::text) as listing_reference
+         from agon_listings where provider_snapshot = $1 order by updated_at desc`,
+      [normalizeOperator(operatorAddress)],
+    );
+    return result.rows.map((row) => row.listing_reference);
+  }
+
   async claimDelivery(now = new Date()): Promise<AgonAlertDelivery | null> {
     const result = await this.pool.query<AgonAlertDelivery>(
       `with claimed as (
@@ -266,11 +414,11 @@ export class PostgresAgonOperationsAlertRepository {
           where d.delivery_id = claimed.delivery_id
           returning d.*
        )
-       select u.delivery_id, u.alert_id, a.operator, o.telegram_id as chat_id,
+       select u.delivery_id, u.alert_id, u.recipient_operator as operator, o.telegram_id as chat_id,
               a.title, a.body, a.href, a.severity, u.attempts, u.max_attempts
          from updated u
          join agon_operations_alerts a on a.alert_id = u.alert_id
-         left join operators o on lower(o.address) = a.operator`,
+         left join operators o on lower(o.address) = u.recipient_operator`,
       [now],
     );
     return result.rows[0] ?? null;
@@ -314,6 +462,14 @@ export class PostgresAgonOperationsAlertRepository {
               count(*) filter (where status = 'dead')::text as dead
          from agon_alert_delivery_outbox`,
     );
+    const subscribers = await this.pool.query<{ active: string; telegram: string; unlinked: string }>(
+      `select count(distinct s.operator_address)::text as active,
+              count(distinct s.operator_address) filter (where s.telegram)::text as telegram,
+              count(distinct s.operator_address) filter (where s.telegram and o.telegram_id is null)::text as unlinked
+         from agon_alert_subscriptions s
+         left join operators o on o.address = s.operator_address
+        where s.enabled = true`,
+    );
     const recipientExists = recipient.rows[0]?.exists === true;
     const telegramLinked = recipient.rows[0]?.telegram_linked === true;
     const reasons: string[] = [];
@@ -323,6 +479,7 @@ export class PostgresAgonOperationsAlertRepository {
     if (operator && recipientExists && !telegramLinked) reasons.push("telegram_not_linked");
     if (!input.telegramConfigured) reasons.push("telegram_bot_unconfigured");
     if (!input.workerEnabled) reasons.push("delivery_worker_disabled");
+    if (Number(subscribers.rows[0]?.unlinked ?? 0) > 0) reasons.push("subscriber_telegram_not_linked");
     return {
       enabled: input.enabled,
       ready: reasons.length === 0,
@@ -333,6 +490,9 @@ export class PostgresAgonOperationsAlertRepository {
       pendingDeliveries: Number(delivery.rows[0]?.pending ?? 0),
       retryingDeliveries: Number(delivery.rows[0]?.retrying ?? 0),
       deadDeliveries: Number(delivery.rows[0]?.dead ?? 0),
+      activeSubscribers: Number(subscribers.rows[0]?.active ?? 0),
+      telegramSubscribers: Number(subscribers.rows[0]?.telegram ?? 0),
+      unlinkedTelegramSubscribers: Number(subscribers.rows[0]?.unlinked ?? 0),
       reasons,
       checkedAt: new Date().toISOString(),
     };

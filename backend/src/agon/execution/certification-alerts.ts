@@ -21,6 +21,7 @@ export async function alertAgonCertificationOperator(
     operator: input.operator,
     fingerprint: recovered ? `${fingerprint}:recovered` : fingerprint,
     source: "certification",
+    scopeReference: input.listingReference,
     severity: recovered ? "info" : suspended ? "critical" : "warning",
     resolved: recovered,
     title: recovered

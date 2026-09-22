@@ -2403,6 +2403,45 @@ app.get("/admin/agon/alerts", async (c) => {
   });
 });
 
+app.post("/admin/agon/alert-subscriptions", async (c) => {
+  if (!config.adminToken) return c.json({ error: "admin disabled (set ADMIN_TOKEN)" }, 503);
+  if (!adminAuthed(c)) return c.json({ error: "unauthorized" }, 401);
+  let body: Record<string, unknown>;
+  try { body = await c.req.json<Record<string, unknown>>(); }
+  catch { return c.json({ error: "invalid JSON" }, 400); }
+  const operatorAddress = typeof body.operatorAddress === "string" ? body.operatorAddress.toLowerCase() : "";
+  const scopeType = body.scopeType;
+  const scopeReference = typeof body.scopeReference === "string" ? body.scopeReference.trim().toLowerCase() : null;
+  const source = body.source;
+  const minimumSeverity = body.minimumSeverity;
+  const inApp = body.inApp !== false;
+  const telegram = body.telegram === true;
+  const enabled = body.enabled !== false;
+  if (!/^0x[0-9a-f]{40}$/.test(operatorAddress)) return c.json({ error: "operatorAddress must be a wallet address" }, 400);
+  if (scopeType !== "platform" && scopeType !== "service") return c.json({ error: "invalid scopeType" }, 400);
+  if (scopeType === "service" && !scopeReference) return c.json({ error: "service scope requires scopeReference" }, 400);
+  if (!(["any", "certification", "arena"] as unknown[]).includes(source)) return c.json({ error: "invalid alert source" }, 400);
+  if (!(["info", "warning", "critical"] as unknown[]).includes(minimumSeverity)) return c.json({ error: "invalid minimum severity" }, 400);
+  if (!inApp && !telegram) return c.json({ error: "at least one alert channel is required" }, 400);
+  const recipient = await query<{ telegram_linked: boolean }>(
+    "select telegram_id is not null as telegram_linked from operators where address = $1",
+    [operatorAddress],
+  );
+  if ((recipient.rowCount ?? 0) === 0) return c.json({ error: "operator does not exist" }, 404);
+  if (telegram && recipient.rows[0]?.telegram_linked !== true) return c.json({ error: "operator must link Telegram first" }, 409);
+  const subscription = await agonOperationsAlerts.upsertSubscription({
+    operatorAddress,
+    scopeType,
+    scopeReference: scopeType === "platform" ? null : scopeReference,
+    source: source as "any" | "certification" | "arena",
+    minimumSeverity: minimumSeverity as "info" | "warning" | "critical",
+    inApp,
+    telegram,
+    enabled,
+  });
+  return c.json({ subscription });
+});
+
 app.post("/admin/agon/alerts/:alertId/acknowledge", async (c) => {
   if (!config.adminToken) return c.json({ error: "admin disabled (set ADMIN_TOKEN)" }, 503);
   if (!adminAuthed(c)) return c.json({ error: "unauthorized" }, 401);
@@ -4541,6 +4580,63 @@ app.post("/mystery/claim", requireAuth, async (c) => {
 
 /// Per-operator notification feed. Newest first, capped. `?unreadOnly=1`
 /// returns just the unread ones (used for the bell badge count).
+app.get("/agon/alert-subscriptions", requireAuth, async (c) => {
+  const operator = c.get("address").toLowerCase();
+  const [subscriptions, ownedListings, recipient] = await Promise.all([
+    agonOperationsAlerts.listSubscriptions(operator),
+    agonOperationsAlerts.listOwnedListings(operator),
+    query<{ telegram_linked: boolean }>(
+      "select telegram_id is not null as telegram_linked from operators where address = $1",
+      [operator],
+    ),
+  ]);
+  return c.json({
+    subscriptions,
+    ownedListings,
+    telegramLinked: recipient.rows[0]?.telegram_linked === true,
+  });
+});
+
+app.post("/agon/alert-subscriptions", requireAuth, async (c) => {
+  const operator = c.get("address").toLowerCase();
+  let body: Record<string, unknown>;
+  try { body = await c.req.json<Record<string, unknown>>(); }
+  catch { return c.json({ error: "invalid JSON" }, 400); }
+  const allowed = new Set(["listingReference", "source", "minimumSeverity", "inApp", "telegram", "enabled"]);
+  if (Object.keys(body).some((key) => !allowed.has(key))) return c.json({ error: "unknown subscription field" }, 400);
+  const listingReference = typeof body.listingReference === "string" ? body.listingReference.trim().toLowerCase() : "";
+  const source = body.source;
+  const minimumSeverity = body.minimumSeverity;
+  const inApp = body.inApp !== false;
+  const telegram = body.telegram === true;
+  const enabled = body.enabled !== false;
+  if (!listingReference) return c.json({ error: "listingReference is required" }, 400);
+  if (!(["any", "certification", "arena"] as unknown[]).includes(source)) return c.json({ error: "invalid alert source" }, 400);
+  if (!(["info", "warning", "critical"] as unknown[]).includes(minimumSeverity)) return c.json({ error: "invalid minimum severity" }, 400);
+  if (!inApp && !telegram) return c.json({ error: "at least one alert channel is required" }, 400);
+  if (!await agonOperationsAlerts.ownsListing(operator, listingReference)) return c.json({ error: "only the indexed service provider can subscribe to this listing" }, 403);
+  if (telegram) {
+    const linked = await query("select 1 from operators where address = $1 and telegram_id is not null", [operator]);
+    if ((linked.rowCount ?? 0) === 0) return c.json({ error: "link Telegram before enabling Telegram alerts" }, 409);
+  }
+  const subscription = await agonOperationsAlerts.upsertSubscription({
+    operatorAddress: operator,
+    scopeType: "service",
+    scopeReference: listingReference,
+    source: source as "any" | "certification" | "arena",
+    minimumSeverity: minimumSeverity as "info" | "warning" | "critical",
+    inApp,
+    telegram,
+    enabled,
+  });
+  return c.json({ subscription });
+});
+
+app.delete("/agon/alert-subscriptions/:subscriptionId", requireAuth, async (c) => {
+  const removed = await agonOperationsAlerts.deleteSubscription(c.get("address"), c.req.param("subscriptionId"));
+  return removed ? c.json({ ok: true }) : c.json({ error: "subscription not found" }, 404);
+});
+
 app.get("/notifications", requireAuth, async (c) => {
   const operator = c.get("address").toLowerCase();
   const unreadOnly = c.req.query("unreadOnly") === "1";
@@ -4552,7 +4648,8 @@ app.get("/notifications", requireAuth, async (c) => {
     `select n.id::text, n.kind, n.title, n.body, n.href, n.read, n.created_at,
             a.alert_id, a.severity, a.status as alert_status
        from notifications n
-       left join agon_operations_alerts a on a.notification_id = n.id
+       left join agon_alert_recipients ar on ar.notification_id = n.id
+       left join agon_operations_alerts a on a.alert_id = ar.alert_id
       where n.operator = $1 ${unreadOnly ? "and n.read = false" : ""}
       order by n.created_at desc
       limit 20`,
@@ -4607,13 +4704,21 @@ app.post("/notifications/clear", requireAuth, async (c) => {
   if (ids.length > 0) {
     await query(
       `delete from notifications n where operator = $1 and id = any($2::bigint[])
-        and not exists (select 1 from agon_operations_alerts a where a.notification_id = n.id and a.severity = 'critical' and a.status = 'open')`,
+        and not exists (
+          select 1 from agon_alert_recipients ar
+          join agon_operations_alerts a on a.alert_id = ar.alert_id
+          where ar.notification_id = n.id and a.severity = 'critical' and a.status = 'open'
+        )`,
       [operator, ids],
     );
   } else {
     await query(
       `delete from notifications n where operator = $1
-        and not exists (select 1 from agon_operations_alerts a where a.notification_id = n.id and a.severity = 'critical' and a.status = 'open')`,
+        and not exists (
+          select 1 from agon_alert_recipients ar
+          join agon_operations_alerts a on a.alert_id = ar.alert_id
+          where ar.notification_id = n.id and a.severity = 'critical' and a.status = 'open'
+        )`,
       [operator],
     );
   }

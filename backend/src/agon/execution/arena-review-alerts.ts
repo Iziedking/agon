@@ -12,6 +12,7 @@ export async function alertAgonArenaOperator(input: {
     operator: input.operator,
     fingerprint: `arena:${input.intentId}`,
     source: "arena",
+    scopeReference: input.listingReference,
     severity: "critical",
     title: "Agon Arena review needs operator attention",
     body: `Evaluation ${input.intentId} was held for review: ${input.reasons.join(", ") || "policy review"}.`,

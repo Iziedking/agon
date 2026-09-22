@@ -42,6 +42,9 @@ export type AgonCapabilities = {
     pendingDeliveries: number;
     retryingDeliveries: number;
     deadDeliveries: number;
+    activeSubscribers: number;
+    telegramSubscribers: number;
+    unlinkedTelegramSubscribers: number;
     reasons: string[];
     checkedAt: string | null;
   };

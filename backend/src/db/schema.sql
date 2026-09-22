@@ -898,9 +898,43 @@ create unique index if not exists agon_operations_alerts_open_fingerprint_idx
 create index if not exists agon_operations_alerts_inbox_idx
   on agon_operations_alerts(status, severity, last_seen_at desc);
 
+create table if not exists agon_alert_subscriptions (
+  subscription_id    uuid primary key,
+  operator_address   text not null references operators(address) on delete cascade,
+  scope_type         text not null check (scope_type in ('platform','service')),
+  scope_reference    text,
+  source             text not null default 'any' check (source in ('any','certification','arena')),
+  minimum_severity   text not null default 'warning' check (minimum_severity in ('info','warning','critical')),
+  in_app             boolean not null default true,
+  telegram           boolean not null default false,
+  enabled            boolean not null default true,
+  created_at         timestamptz not null default now(),
+  updated_at         timestamptz not null default now(),
+  check ((scope_type = 'platform' and scope_reference is null) or (scope_type = 'service' and scope_reference is not null)),
+  check (in_app or telegram)
+);
+create unique index if not exists agon_alert_subscriptions_scope_idx
+  on agon_alert_subscriptions(operator_address, scope_type, coalesce(scope_reference, ''), source);
+create index if not exists agon_alert_subscriptions_match_idx
+  on agon_alert_subscriptions(enabled, source, scope_type, scope_reference);
+
+create table if not exists agon_alert_recipients (
+  alert_id            uuid not null references agon_operations_alerts(alert_id) on delete cascade,
+  recipient_operator  text not null references operators(address) on delete cascade,
+  notification_id     bigint references notifications(id) on delete set null,
+  in_app               boolean not null default true,
+  telegram             boolean not null default false,
+  created_at           timestamptz not null default now(),
+  updated_at           timestamptz not null default now(),
+  primary key (alert_id, recipient_operator)
+);
+create unique index if not exists agon_alert_recipients_notification_idx
+  on agon_alert_recipients(notification_id) where notification_id is not null;
+
 create table if not exists agon_alert_delivery_outbox (
   delivery_id         uuid primary key,
   alert_id            uuid not null references agon_operations_alerts(alert_id) on delete cascade,
+  recipient_operator  text not null references operators(address) on delete cascade,
   channel             text not null check (channel = 'telegram'),
   status              text not null default 'pending' check (status in ('pending','processing','retry','delivered','dead')),
   attempts            integer not null default 0 check (attempts >= 0),
@@ -912,9 +946,30 @@ create table if not exists agon_alert_delivery_outbox (
   last_error          text,
   delivered_at        timestamptz,
   created_at          timestamptz not null default now(),
-  updated_at          timestamptz not null default now(),
-  unique (alert_id, channel)
+  updated_at          timestamptz not null default now()
 );
+alter table agon_alert_delivery_outbox add column if not exists recipient_operator text;
+update agon_alert_delivery_outbox d
+   set recipient_operator = a.operator
+  from agon_operations_alerts a
+ where d.alert_id = a.alert_id and d.recipient_operator is null;
+alter table agon_alert_delivery_outbox alter column recipient_operator set not null;
+alter table agon_alert_delivery_outbox drop constraint if exists agon_alert_delivery_outbox_alert_id_channel_key;
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+     where conname = 'agon_alert_delivery_outbox_recipient_operator_fk'
+       and conrelid = 'agon_alert_delivery_outbox'::regclass
+  ) then
+    alter table agon_alert_delivery_outbox
+      add constraint agon_alert_delivery_outbox_recipient_operator_fk
+      foreign key (recipient_operator) references operators(address) on delete cascade;
+  end if;
+end;
+$$;
+create unique index if not exists agon_alert_delivery_outbox_recipient_idx
+  on agon_alert_delivery_outbox(alert_id, channel, recipient_operator);
 create index if not exists agon_alert_delivery_outbox_due_idx
   on agon_alert_delivery_outbox(status, next_attempt_at) where status in ('pending','processing','retry');
 alter table agon_alert_delivery_outbox add column if not exists delivered_severity text;

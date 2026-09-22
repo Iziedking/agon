@@ -6,6 +6,7 @@ import { CornerMarkers } from "@/components/redesign/CornerMarkers";
 import { Footer } from "@/components/redesign/Footer";
 import { TagButton } from "@/components/redesign/TagButton";
 import { useOperatorAddress } from "@/hooks/useAuth";
+import { AgonAlertSubscriptionPanel } from "./AgonAlertSubscriptionPanel";
 
 type SurfaceView = "activity" | "provider" | "compare";
 
@@ -67,6 +68,7 @@ export function AgonAccountSurface({ view }: { view: SurfaceView }) {
               <TagButton href={content.href} className="mt-6">{content.action}</TagButton>
             </>}
           </BracketedCell>
+          {view === "provider" && isSignedIn ? <AgonAlertSubscriptionPanel /> : null}
         </section>
       </main>
       <Footer variant="agon" />

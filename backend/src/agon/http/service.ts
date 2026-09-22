@@ -2875,6 +2875,9 @@ export class PostgresAgonMarketService implements AgonMarketService {
       pendingDeliveries: 0,
       retryingDeliveries: 0,
       deadDeliveries: 0,
+      activeSubscribers: 0,
+      telegramSubscribers: 0,
+      unlinkedTelegramSubscribers: 0,
       reasons: ["readiness_unconfigured"],
       checkedAt: null,
     };

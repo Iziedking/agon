@@ -12,6 +12,7 @@ import { alertAgonCertificationOperator } from "../../src/agon/execution/certifi
 import { createAgonTestDatabase, type AgonTestDatabase } from "./database-test-helper.ts";
 
 const OPERATOR = `0x${"ab".repeat(20)}`;
+const SUBSCRIBER = `0x${"bc".repeat(20)}`;
 let database: AgonTestDatabase;
 let repository: PostgresAgonOperationsAlertRepository;
 
@@ -59,6 +60,59 @@ test("critical Arena incidents remain open until an authenticated acknowledgemen
   const acknowledged = await repository.acknowledge(critical.alertId, "admin-console");
   assert.equal(acknowledged?.status, "acknowledged");
   assert.ok(acknowledged?.acknowledgedAt);
+});
+
+test("fans one canonical service incident out to the default operator and subscribed provider", async () => {
+  await database.pool.query("insert into operators (address, telegram_id) values ($1, $2)", [SUBSCRIBER, "654321"]);
+  const listingReference = `5042002:0x${"33".repeat(20)}:7`;
+  await database.pool.query(
+    `insert into agon_listings
+       (chain_id, service_registry_address, listing_id, agent_id, service_key, category, current_version,
+        manifest_hash, manifest_uri, payment_rail, provider_snapshot, chain_status, status, verification,
+        source_block_number, source_tx_hash, source_log_index, created_at, updated_at)
+     values (5042002,$1,7,99,$2,3,1,$3,'https://example.com/manifest.json','X402',$4,'Listed','Listed','Verified',1,$5,0,now(),now())`,
+    [`0x${"33".repeat(20)}`, `0x${"44".repeat(32)}`, `0x${"55".repeat(32)}`, SUBSCRIBER, `0x${"66".repeat(32)}`],
+  );
+  assert.equal(await repository.ownsListing(SUBSCRIBER, listingReference), true);
+  assert.equal(await repository.ownsListing(OPERATOR, listingReference), false);
+  await repository.upsertSubscription({
+    operatorAddress: SUBSCRIBER,
+    scopeType: "service",
+    scopeReference: listingReference,
+    source: "certification",
+    minimumSeverity: "warning",
+    inApp: true,
+    telegram: true,
+    enabled: true,
+  });
+  const raised = await repository.raise({
+    operator: OPERATOR,
+    fingerprint: `certification:${listingReference}@1`,
+    source: "certification",
+    scopeReference: listingReference,
+    severity: "warning",
+    title: "Service check needs attention",
+  });
+  await repository.raise({
+    operator: OPERATOR,
+    fingerprint: raised.fingerprint,
+    source: "certification",
+    scopeReference: listingReference,
+    severity: "warning",
+    title: "Service check still needs attention",
+  });
+  const recipients = await database.pool.query(
+    "select recipient_operator, notification_id from agon_alert_recipients where alert_id = $1 order by recipient_operator",
+    [raised.alertId],
+  );
+  const deliveries = await database.pool.query(
+    "select recipient_operator from agon_alert_delivery_outbox where alert_id = $1 order by recipient_operator",
+    [raised.alertId],
+  );
+  assert.equal(recipients.rowCount, 2);
+  assert.equal(recipients.rows.every((row) => row.notification_id !== null), true);
+  assert.deepEqual(deliveries.rows.map((row) => row.recipient_operator), [OPERATOR, SUBSCRIBER].sort());
+  assert.equal((await repository.list()).find((alert) => alert.alertId === raised.alertId)?.occurrenceCount, 2);
 });
 
 test("a recovery resolves the active warning but still leaves a single informational audit record", async () => {
