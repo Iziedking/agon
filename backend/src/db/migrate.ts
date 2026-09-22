@@ -38,6 +38,13 @@ const AGON_TABLES = [
   "agon_arena_evaluations",
   "agon_syndicate_contributions",
   "agon_prize_claim_intents",
+  "agon_support_staff",
+  "agon_support_sessions",
+  "agon_support_tickets",
+  "agon_support_messages",
+  "agon_support_ticket_events",
+  "agon_support_rate_limits",
+  "agon_support_ai_usage",
   "agon_indexer_state",
 ] as const;
 

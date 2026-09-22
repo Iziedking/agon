@@ -119,6 +119,9 @@ const envSchema = z.object({
   JWT_SECRET: z.string().default("dev-insecure-secret-change-me"),
   ADMIN_TOKEN: z.string().optional(), // gates GET /admin/events; unset = read endpoint disabled
   SUPPORT_TOKEN: z.string().optional(), // read-only admin tier (Members/Events/Audit, no money actions)
+  AGON_SUPPORT_AI_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
+  AGON_SUPPORT_AI_DAILY_USD: z.coerce.number().min(0).max(100).default(2),
+  AGON_SUPPORT_AI_MODEL: z.string().optional(),
   AUTH_PORT: z.coerce.number().int().positive().default(8082),
   AUTH_DOMAIN: z.string().default("localhost:3003"),
   APP_URL: z.string().url().default("http://localhost:3003"),
@@ -765,6 +768,11 @@ export const config = {
   },
   adminToken: env.ADMIN_TOKEN,
   supportToken: env.SUPPORT_TOKEN,
+  support: {
+    aiEnabled: env.AGON_SUPPORT_AI_ENABLED,
+    aiDailyUsd: env.AGON_SUPPORT_AI_DAILY_USD,
+    aiModel: env.AGON_SUPPORT_AI_MODEL?.trim() || env.LLM_MODEL,
+  },
   syndicatePoolWeeklyUsdc: env.SYNDICATE_POOL_WEEKLY_USDC,
   syndicatePoolFeePct: env.SYNDICATE_POOL_FEE_PCT,
   auth: {

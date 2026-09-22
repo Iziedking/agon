@@ -1985,6 +1985,100 @@ create index if not exists agon_prize_claim_intents_actor_idx
 create index if not exists agon_prize_claim_intents_state_idx
   on agon_prize_claim_intents(state, updated_at desc);
 
+-- AGON support workspace. Staff credentials and sessions are isolated from
+-- wallet authentication and from the ADMIN_TOKEN operator console. The owner
+-- token provisions accounts; daily support work uses named, revocable staff
+-- sessions so every handoff and reply has an attributable audit trail.
+create table if not exists agon_support_staff (
+  staff_id                 uuid primary key,
+  email                    text not null unique check (email = lower(email) and char_length(email) between 3 and 254),
+  display_name             text not null check (char_length(display_name) between 2 and 80),
+  password_hash            text not null check (password_hash like 'scrypt$v1$%'),
+  role                     text not null check (role in ('support','technical')),
+  status                   text not null default 'active' check (status in ('active','disabled')),
+  must_change_password     boolean not null default true,
+  failed_login_attempts    integer not null default 0 check (failed_login_attempts >= 0),
+  locked_until             timestamptz,
+  last_login_at            timestamptz,
+  created_by               text not null,
+  created_at               timestamptz not null default now(),
+  updated_at               timestamptz not null default now()
+);
+create index if not exists agon_support_staff_status_idx on agon_support_staff(status, display_name);
+
+create table if not exists agon_support_sessions (
+  token_hash               text primary key check (token_hash ~ '^[0-9a-f]{64}$'),
+  staff_id                 uuid not null references agon_support_staff(staff_id) on delete cascade,
+  created_at               timestamptz not null default now(),
+  last_seen_at             timestamptz not null default now(),
+  expires_at               timestamptz not null,
+  revoked_at               timestamptz,
+  check (expires_at > created_at)
+);
+create index if not exists agon_support_sessions_staff_idx on agon_support_sessions(staff_id, expires_at desc);
+
+create table if not exists agon_support_tickets (
+  ticket_id                uuid primary key,
+  reference                text not null unique check (reference ~ '^AGN-[A-Z0-9-]{8,40}$'),
+  requester_name           text not null check (char_length(requester_name) between 2 and 80),
+  requester_email          text not null check (requester_email = lower(requester_email) and char_length(requester_email) between 3 and 254),
+  access_token_hash        text not null check (access_token_hash ~ '^[0-9a-f]{64}$'),
+  subject                  text not null check (char_length(subject) between 4 and 140),
+  category                 text not null default 'general' check (category in ('general','listing','hiring','payment','verification','wallet','security')),
+  status                   text not null default 'ai_triage' check (status in ('ai_triage','open','in_progress','waiting_user','resolved','closed')),
+  priority                 text not null default 'normal' check (priority in ('low','normal','high','urgent')),
+  assigned_staff_id        uuid references agon_support_staff(staff_id),
+  ai_enabled               boolean not null default true,
+  created_at               timestamptz not null default now(),
+  updated_at               timestamptz not null default now(),
+  last_message_at          timestamptz not null default now(),
+  resolved_at              timestamptz
+);
+create index if not exists agon_support_tickets_queue_idx on agon_support_tickets(status, priority, last_message_at desc);
+create index if not exists agon_support_tickets_assignee_idx on agon_support_tickets(assigned_staff_id, status, last_message_at desc);
+
+create table if not exists agon_support_messages (
+  message_id               uuid primary key,
+  ticket_id                uuid not null references agon_support_tickets(ticket_id) on delete cascade,
+  author_type              text not null check (author_type in ('user','assistant','staff','system')),
+  author_staff_id          uuid references agon_support_staff(staff_id),
+  author_name              text not null check (char_length(author_name) between 1 and 80),
+  body                     text not null check (char_length(body) between 1 and 4000),
+  visibility               text not null default 'public' check (visibility in ('public','internal')),
+  metadata                 jsonb not null default '{}'::jsonb check (jsonb_typeof(metadata) = 'object'),
+  created_at               timestamptz not null default now(),
+  check ((author_type = 'staff') = (author_staff_id is not null))
+);
+create index if not exists agon_support_messages_ticket_idx on agon_support_messages(ticket_id, created_at asc);
+
+create table if not exists agon_support_ticket_events (
+  event_id                 uuid primary key,
+  ticket_id                uuid not null references agon_support_tickets(ticket_id) on delete cascade,
+  staff_id                 uuid references agon_support_staff(staff_id),
+  event_type               text not null check (event_type in ('created','assigned','status_changed','priority_changed','staff_disabled')),
+  detail                   jsonb not null default '{}'::jsonb check (jsonb_typeof(detail) = 'object'),
+  created_at               timestamptz not null default now()
+);
+create index if not exists agon_support_ticket_events_ticket_idx on agon_support_ticket_events(ticket_id, created_at asc);
+
+create table if not exists agon_support_rate_limits (
+  limit_key                text primary key check (limit_key ~ '^[0-9a-f]{64}$'),
+  request_count            integer not null default 1 check (request_count > 0),
+  window_started_at        timestamptz not null default now(),
+  updated_at               timestamptz not null default now()
+);
+
+create table if not exists agon_support_ai_usage (
+  call_id                  uuid primary key,
+  ticket_id                uuid not null references agon_support_tickets(ticket_id) on delete cascade,
+  model                    text not null,
+  input_tokens             integer not null check (input_tokens >= 0),
+  output_tokens            integer not null check (output_tokens >= 0),
+  cost_usd                 numeric(12, 6) not null check (cost_usd >= 0),
+  created_at               timestamptz not null default now()
+);
+create index if not exists agon_support_ai_usage_day_idx on agon_support_ai_usage(created_at desc);
+
 create table if not exists agon_indexer_state (
   stream_name                 text not null check (char_length(stream_name) > 0),
   chain_id                    numeric(78, 0) not null check (chain_id > 0),

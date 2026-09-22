@@ -30,8 +30,9 @@ export function AgonAccessGate({ children }: { children: ReactNode }) {
   // Admin has its own in-memory ADMIN_TOKEN gate. It must reach the token
   // screen without entering the wallet/email session flow.
   const isAdminRoute = pathname === "/admin" || pathname.startsWith("/admin/");
+  const isSupportRoute = pathname === "/support" || pathname.startsWith("/support/");
   const isLegacyRoute = isLegacyArcRunRoute(pathname);
-  const isPublicDiscovery = isLanding || isLogin || isProtocolDocument || isPublicMarket || isPublicDocs || isPublicPlayground || isPublicOperator || isAdminRoute;
+  const isPublicDiscovery = isLanding || isLogin || isProtocolDocument || isPublicMarket || isPublicDocs || isPublicPlayground || isPublicOperator || isAdminRoute || isSupportRoute;
   const shouldGate = IS_AGON_DEPLOYMENT && !isPublicDiscovery;
 
   useEffect(() => {

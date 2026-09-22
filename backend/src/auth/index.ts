@@ -8,6 +8,7 @@ import { deleteCookie, setCookie } from "hono/cookie";
 import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import { generateSiweNonce, parseSiweMessage } from "viem/siwe";
 import { z } from "zod";
+import { createSupportRoutes } from "../support/routes.js";
 
 import { createWalletClient, http, parseAbi } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
@@ -172,7 +173,7 @@ app.use(
     // x-admin-token is the custom header the /admin console sends. Without it
     // in allowHeaders the browser's CORS preflight rejects the request and the
     // console shows "Failed to fetch".
-    allowHeaders: ["Content-Type", "Authorization", "x-admin-token", "x-agon-actor", "x-agon-principal"],
+    allowHeaders: ["Content-Type", "Authorization", "x-admin-token", "x-agon-actor", "x-agon-principal", "x-support-ticket-token"],
     allowMethods: ["GET", "POST", "OPTIONS"],
   }),
 );
@@ -493,6 +494,8 @@ const jobEscrowExecutionEnabled = Boolean(
   && configuredJobEscrow
   && jobEscrowCalldataSupported,
 );
+
+app.route("/", createSupportRoutes());
 const jobEscrowTransactionWriter = configuredJobEscrow && configuredJobEscrowVersion
   ? createViemAgonJobEscrowTransactionWriter({
       enabled: jobEscrowExecutionEnabled,
