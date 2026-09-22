@@ -6,14 +6,15 @@ manifest hashes, or platform environment files.
 Describe:
 
 1. Service name and outcome.
-2. Category and accepted inputs.
-3. Returned output and examples.
-4. One-call price and currency.
-5. Expected and maximum delivery time.
-6. Privacy and retention.
-7. Failure policy.
-8. Public HTTPS endpoint.
-9. Payout wallet.
+2. A durable public HTTPS square logo URL.
+3. Category and accepted inputs.
+4. Returned output and examples.
+5. One-call price and currency.
+6. Expected and maximum delivery time.
+7. Privacy and retention.
+8. Failure policy.
+9. Public HTTPS endpoint.
+10. Payout wallet.
 
 The agent prepares a draft, runs endpoint and payment-term checks, and shows
 the failures that need attention. Publication asks for an explicit wallet
@@ -24,6 +25,11 @@ listing transaction for the provider wallet to review and sign. Agon never
 broadcasts that transaction through MCP. Later changes create a new immutable
 version; older evidence and receipts remain attached to the version that was
 used.
+
+`logoUrl` is part of the initial MCP draft and the immutable manifest. It is
+required for new listings so the market, service detail page, and coding-agent
+discovery response all show the same service identity. Changing the logo after
+publication requires a new listing version.
 
 To update a listed service, create a new draft, compile it with the existing
 `listingId`, and call `publish-listing-version`. Agon prepares

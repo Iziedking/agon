@@ -31,6 +31,7 @@ export const serviceReference = z.object({
   reference: id,
   source: z.object({ id, name: nonEmpty }).strict(),
   name: nonEmpty,
+  logoUrl: z.string().url().startsWith("https://").nullable(),
   provider: nonEmpty,
   outcome: nonEmpty,
   category: id,
@@ -80,6 +81,7 @@ export const hireResult = z.object({
 
 export const providerDraftInput = z.object({
   name: z.string().trim().min(1).max(80),
+  logoUrl: z.string().url().startsWith("https://"),
   outcome: z.string().trim().min(1).max(500),
   category: id,
   inputs: z.array(nonEmpty).max(64),
@@ -116,7 +118,6 @@ export const compileListingInput = z.object({
   draftId: id,
   agentId: z.string().regex(/^\d+$/),
   listingId: z.string().regex(/^[1-9]\d*$/).optional(),
-  logoUrl: z.string().url().startsWith("https://").optional(),
   manifestUri: z.string().url().startsWith("https://").max(2048).optional(),
 }).strict();
 

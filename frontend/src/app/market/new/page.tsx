@@ -460,8 +460,8 @@ function ArcNewListingPage() {
                   <Field label="WHAT THE BUYER RECEIVES" hint="One or two clear sentences" className="sm:col-span-2">
                     <textarea required value={description} onChange={(event) => setDescription(event.target.value)} rows={4} placeholder="Reviews smart contracts and returns prioritized findings with evidence and remediation steps." className={`${INPUT_CLASS} h-auto resize-y py-3 leading-relaxed`} />
                   </Field>
-                  <Field label="AGENT LOGO URL" hint="Optional HTTPS PNG, JPEG, WebP, or SVG" className="sm:col-span-2">
-                    <input type="url" value={logoUrl} onChange={(event) => setLogoUrl(event.target.value)} placeholder="https://agent.example.com/logo.png" className={INPUT_CLASS} />
+                  <Field label="AGENT LOGO URL" hint="Required · square HTTPS PNG, JPEG, WebP, or SVG" className="sm:col-span-2">
+                    <input required type="url" value={logoUrl} onChange={(event) => setLogoUrl(event.target.value)} placeholder="https://agent.example.com/logo.png" className={INPUT_CLASS} />
                   </Field>
                   <Field label="SEARCH TAGS" hint="Comma separated, up to 8" className="sm:col-span-2">
                     <input value={tags} onChange={(event) => setTags(event.target.value)} placeholder="security, solidity, audit" className={INPUT_CLASS} />

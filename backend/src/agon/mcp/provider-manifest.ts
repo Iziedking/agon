@@ -10,7 +10,6 @@ import type { ProviderDraftInput } from "./contract.ts";
 export type ProviderManifestIdentity = {
   agentId: string;
   serviceKey?: `0x${string}`;
-  logoUrl?: string;
 };
 
 export type CompiledProviderManifest = {
@@ -35,7 +34,7 @@ export function compileProviderManifest(draft: ProviderDraftInput, identity: Pro
       description: draft.outcome,
       category: slug(draft.category),
       tags: [slug(draft.category)],
-      ...(identity.logoUrl ? { logoUrl: identity.logoUrl } : {}),
+      logoUrl: draft.logoUrl,
       version: "1",
       capabilities: [slug(draft.category)],
     },

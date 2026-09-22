@@ -11,7 +11,7 @@ export type ServiceDraft = {
   version?: number;
   name: string;
   description: string;
-  logoUrl?: string;
+  logoUrl: string;
   categoryId: string;
   serviceKey: string;
   endpoint: string;
@@ -32,7 +32,7 @@ export type AgonServiceManifestV2 = {
     description: string;
     category: string;
     tags: string[];
-    logoUrl?: string;
+    logoUrl: string;
     version: string;
     capabilities: string[];
   };
@@ -85,9 +85,8 @@ export function validateServiceDraft(draft: ServiceDraft): DraftIssue[] {
   }
   if (!draft.name.trim()) issues.push({ field: "name", message: "Give the service a clear name." });
   if (!draft.description.trim()) issues.push({ field: "description", message: "Explain the result a buyer receives." });
-  if (draft.logoUrl?.trim() && !isPublicHttps(draft.logoUrl.trim())) {
-    issues.push({ field: "logoUrl", message: "Logo URL must be a public HTTPS image URL." });
-  }
+  if (!draft.logoUrl.trim()) issues.push({ field: "logoUrl", message: "Add the agent's public logo so buyers can recognize it in the market." });
+  else if (!isPublicHttps(draft.logoUrl.trim())) issues.push({ field: "logoUrl", message: "Logo URL must be a public HTTPS image URL." });
   if (categoryById(draft.categoryId).slug === "other") {
     issues.push({ field: "categoryId", message: "Choose one of the marketplace categories." });
   }
@@ -120,7 +119,7 @@ export function buildServiceManifest(draft: ServiceDraft) {
       name: draft.name.trim(),
       version: String(draft.version ?? 1),
       description: draft.description.trim(),
-      ...(draft.logoUrl?.trim() ? { logoUrl: draft.logoUrl.trim() } : {}),
+      logoUrl: draft.logoUrl.trim(),
       category: category.slug,
       tags: parseTags(draft.tags),
       capabilities: [category.slug, ...parseTags(draft.tags)].filter((tag, index, values) => values.indexOf(tag) === index),
@@ -159,7 +158,7 @@ export function validateServiceManifestV2(input: unknown): DraftIssue[] {
   if (!service || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(service.category ?? "")) issues.push({ field: "categoryId", message: "Manifest service category must be a lowercase slug." });
   if (!Array.isArray(service?.tags) || service.tags.length > 16 || service.tags.some((tag) => typeof tag !== "string" || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(tag)) || new Set(service.tags).size !== service.tags.length) issues.push({ field: "tags", message: "Manifest service tags must be unique lowercase slugs." });
   if (!service || !Array.isArray(service.capabilities) || service.capabilities.some((capability) => !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(capability))) issues.push({ field: "tags", message: "Manifest capabilities must be lowercase slugs." });
-  if (service?.logoUrl && !isPublicHttps(service.logoUrl)) issues.push({ field: "logoUrl", message: "Manifest logo URL must be a public HTTPS image URL." });
+  if (!service?.logoUrl || !isPublicHttps(service.logoUrl)) issues.push({ field: "logoUrl", message: "Manifest service logo must use a public HTTPS image URL." });
   if (!service?.version?.trim()) issues.push({ field: "name", message: "Manifest service version is required." });
   if (!invocation?.endpoint || !isPublicHttps(invocation.endpoint)) issues.push({ field: "endpoint", message: "Manifest endpoint must be a public HTTPS URL." });
   const schemas = [invocation?.requestSchema, invocation?.responseSchema];

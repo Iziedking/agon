@@ -25,7 +25,7 @@ export type AgonServiceManifestV2 = {
     description: string;
     category: string;
     tags: string[];
-    logoUrl?: string;
+    logoUrl: string;
     version: string;
     capabilities: string[];
   };
@@ -83,7 +83,7 @@ export const AGON_SERVICE_MANIFEST_V2_JSON_SCHEMA = {
     service: {
       type: "object",
       additionalProperties: false,
-      required: ["name", "description", "category", "tags", "version", "capabilities"],
+      required: ["name", "description", "category", "tags", "logoUrl", "version", "capabilities"],
       properties: {
         name: { type: "string", minLength: 1, maxLength: 80 },
         description: { type: "string", minLength: 1, maxLength: 500 },
@@ -200,7 +200,7 @@ function normalize(input: Record<string, unknown>): AgonServiceManifestV2 {
       description: String(service.description).trim(),
       category: String(service.category).trim().toLowerCase(),
       tags: (service.tags as unknown[]).map((tag) => String(tag).trim().toLowerCase()),
-      ...(service.logoUrl === undefined ? {} : { logoUrl: String(service.logoUrl).trim() }),
+      logoUrl: String(service.logoUrl).trim(),
       version: String(service.version).trim(),
       capabilities: (service.capabilities as unknown[]).map((capability) => String(capability).trim().toLowerCase()),
     },
@@ -247,7 +247,7 @@ export function normalizeManifestV2(input: unknown): ManifestV2Validation {
   if (!isRecord(service) || typeof service.name !== "string" || service.name.trim().length < 1 || service.name.trim().length > 80 || typeof service.description !== "string" || service.description.trim().length < 1 || service.description.trim().length > 500 || !isSlug(service.category) || !Array.isArray(service.tags) || service.tags.length > 16 || service.tags.some((tag) => !isSlug(tag)) || new Set(service.tags).size !== service.tags.length || typeof service.version !== "string" || !service.version.trim() || service.version.trim().length > 32 || !Array.isArray(service.capabilities) || service.capabilities.length > 32 || service.capabilities.some((capability) => !isSlug(capability))) {
     return { ok: false, code: "invalid_service", message: "service metadata must include a name, version, category, tags, and capabilities" };
   }
-  if (service.logoUrl !== undefined && (typeof service.logoUrl !== "string" || !safePublicHttps(service.logoUrl))) return { ok: false, code: "invalid_logo", message: "service.logoUrl must use public HTTPS" };
+  if (typeof service.logoUrl !== "string" || !safePublicHttps(service.logoUrl)) return { ok: false, code: "invalid_logo", message: "service.logoUrl is required and must use public HTTPS" };
   const privacy = isRecord(invocation) && invocation.privacy;
   if (!isRecord(invocation) || invocation.endpoint === undefined || typeof invocation.endpoint !== "string" || !safePublicHttps(invocation.endpoint) || invocation.method !== "POST" || !safeSchema(invocation.requestSchema) || !safeSchema(invocation.responseSchema) || !boundedPositiveInteger(invocation.timeoutMs, 100) || Number(invocation.timeoutMs) > 120_000 || !boundedPositiveInteger(invocation.maxResponseBytes, 1024) || Number(invocation.maxResponseBytes) > 1_048_576 || !["required", "supported", "none"].includes(String(invocation.idempotency)) || !["none", "review_required"].includes(String(invocation.sideEffects)) || !isRecord(privacy) || !["none", "declared"].includes(String(privacy.retention)) || typeof privacy.sendsToThirdParties !== "boolean" || typeof privacy.description !== "string" || !privacy.description.trim()) {
     return { ok: false, code: "invalid_invocation", message: "invocation must declare a bounded public HTTPS POST contract and privacy policy" };

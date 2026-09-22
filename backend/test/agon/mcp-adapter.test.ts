@@ -5,7 +5,7 @@ import { createMcpAccessAdapter } from "../../src/agon/mcp/adapter.ts";
 const listing = {
   id: "5042002:0x1111111111111111111111111111111111111111:3",
   chainId: "5042002", serviceRegistry: "0x1111111111111111111111111111111111111111", listingId: "3", agentId: "42", serviceKey: `0x${"a".repeat(64)}`, category: "3", version: "1",
-  manifest: { hash: `0x${"b".repeat(64)}`, uri: "https://provider.example/manifest.json", body: { service: { name: "CRM helper", description: "Enrich a bounded CRM list", tags: ["crm"] }, invocation: { endpoint: "https://provider.example/execute", timeoutMs: 30_000, privacy: { description: "Deletes input after delivery" } }, pricing: { amountUSDC: "0.04" } } },
+  manifest: { hash: `0x${"b".repeat(64)}`, uri: "https://provider.example/manifest.json", body: { service: { name: "CRM helper", description: "Enrich a bounded CRM list", logoUrl: "https://provider.example/logo.png", tags: ["crm"] }, invocation: { endpoint: "https://provider.example/execute", timeoutMs: 30_000, privacy: { description: "Deletes input after delivery" } }, pricing: { amountUSDC: "0.04" } } },
   providerSnapshot: `0x${"c".repeat(64)}`, status: "Listed", verification: { status: "Verified", scope: { agentId: "42", listingId: "3", version: "1", category: "3" } }, risk: { unverified: false, warning: null, quarantineReason: null }, endpointQa: { status: "passed", checkedAt: new Date().toISOString(), endpointStatus: 200, evidenceHash: `0x${"d".repeat(64)}`, reason: "ok", attempts: 1, passedAttempts: 1, successRate: 100, endpointUrl: "https://provider.example/execute" }, payment: { rail: "X402", directX402: true, escrowEligible: false }, provenance: { sourceBlockNumber: "1", sourceTxHash: `0x${"e".repeat(64)}`, sourceLogIndex: 1 },
 } as const;
 
@@ -58,7 +58,7 @@ test("MCP provider draft returns a stable draft and pre-publication checks", asy
     async getListing() { return { ok: false, error: { code: "not_found", message: "unused" } }; },
     async prepareX402Call() { return { ok: false, error: { code: "unused", message: "unused" } }; },
   });
-  const draft = { name: "CRM helper", outcome: "Enrich a bounded CRM list", category: "crm", inputs: ["records"], outputs: ["enriched records"], priceUSDC: "0.04", expectedLatencyMs: 90_000, privacy: "Deletes input after delivery", failurePolicy: "Retry delivery without another charge when safe", endpoint: "https://provider.example/execute" };
+  const draft = { name: "CRM helper", logoUrl: "https://provider.example/logo.png", outcome: "Enrich a bounded CRM list", category: "crm", inputs: ["records"], outputs: ["enriched records"], priceUSDC: "0.04", expectedLatencyMs: 90_000, privacy: "Deletes input after delivery", failurePolicy: "Retry delivery without another charge when safe", endpoint: "https://provider.example/execute" };
   const checked = await adapter.checkListing(draft);
   assert.equal(checked.ok, true);
   if (checked.ok) {

@@ -32,6 +32,7 @@ Create a JSON object with these exact fields:
 - Use one of the slugs printed by `categories`; the CLI also accepts its label or protocol ID.
 - Use a lowercase hyphenated stable service key.
 - Use a public HTTPS service endpoint.
+- Use a durable public HTTPS logo URL. The logo is required, is pinned into the immutable service manifest, and should be a square PNG, JPEG, WebP, or SVG that remains readable at 88px.
 - Use no more than eight search tags.
 - Use up to six USDC decimal places. The first CLI release prepares direct x402 only.
 - Make `manifestUri` an HTTPS or IPFS URI for the exact generated manifest.

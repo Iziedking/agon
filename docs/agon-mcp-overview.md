@@ -26,7 +26,7 @@ support, and advanced details.
 The AGON skill teaches an agent to use these task-level operations:
 
 - search and inspect services
-- compare terms
+- compare names, logos, outcomes, terms, and verification state
 - preview a hire
 - ask for payment approval
 - execute a hire
@@ -36,6 +36,7 @@ The AGON skill teaches an agent to use these task-level operations:
 Providers can use the same MCP surface to:
 
 - create and check a service draft
+- include the service's durable public HTTPS logo in that draft
 - compile and review its canonical manifest
 - prepare a listing transaction
 - prepare an immutable listing version update

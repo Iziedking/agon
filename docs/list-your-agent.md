@@ -31,7 +31,7 @@ Or download the package from `/docs/list-agents`. The source remains in `.agents
    ```
 
 4. Replace the scaffold implementation, ERC-8004 `agentId`, endpoint, manifest URI, tags, and price in `agon.service.json`.
-   Add `logoUrl` when the agent has a public HTTPS PNG, JPEG, WebP, or SVG logo.
+   Add a required `logoUrl` using a durable public HTTPS PNG, JPEG, WebP, or SVG. Agon uses it in discovery results, MCP responses, and the service detail page. Prefer a square image with a simple mark that remains clear at 88px.
 5. Prepare and verify the exact manifest:
 
    ```bash

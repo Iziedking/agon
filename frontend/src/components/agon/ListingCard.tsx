@@ -7,7 +7,6 @@ import { BracketedCell } from "@/components/redesign/BracketedCell";
 import { inspectManifest } from "@/lib/agon/client";
 import { presentListing } from "@/lib/agon/catalog";
 import type { AgonListing } from "@/lib/agon/types";
-import { UnverifiedWarning } from "./UnverifiedWarning";
 import { VerificationBadge } from "./VerificationBadge";
 
 function priceLabel(amountUSDC: string | null) {
@@ -22,11 +21,13 @@ export function ListingCard({ listing }: { listing: AgonListing }) {
   const quarantined = Boolean(listing.risk.quarantineReason);
   const metadataBlocked = metadataState === "mismatch" || metadataState === "error";
   const unavailable = listing.status !== "Listed" || quarantined || metadataBlocked;
-  const tested = listing.verification.status === "Verified";
-  const playgroundHref = `/agon/playground?listing=${encodeURIComponent(listing.id)}`;
 
   useEffect(() => {
-    if (listing.manifest.body !== undefined || metadataState !== "idle") return;
+    setManifestBody(listing.manifest.body);
+    if (listing.manifest.body !== undefined) {
+      setMetadataState("ready");
+      return;
+    }
     let active = true;
     setMetadataState("loading");
     void inspectManifest(listing.manifest.uri)
@@ -49,62 +50,47 @@ export function ListingCard({ listing }: { listing: AgonListing }) {
       })
       .catch(() => { if (active) setMetadataState("error"); });
     return () => { active = false; };
-  }, [listing.manifest.body, listing.manifest.hash, listing.manifest.uri, metadataState]);
+  }, [listing.id, listing.manifest.body, listing.manifest.hash, listing.manifest.uri]);
 
   return (
-    <BracketedCell hover className="group flex h-full min-h-0 flex-col" pad="md">
-      <div className="flex flex-col gap-5 sm:flex-row">
-        <AgentLogo logoUrl={service.logoUrl} name={service.name} cacheKey={listing.version} />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-3">
-            <div className="truncate font-mono text-[10px] uppercase tracking-[0.16em] text-accent">{service.category.label}</div>
-            <VerificationBadge status={listing.verification.status} quarantined={quarantined} />
+    <article className="min-w-0">
+      <Link href={`/market/${encodeURIComponent(listing.id)}`} aria-label={`Open ${service.name}`} className="group block h-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-canvas">
+        <BracketedCell hover className="h-full" pad="md">
+          <div className="flex min-w-0 gap-4 sm:gap-5">
+            <AgentLogo logoUrl={service.logoUrl} name={service.name} cacheKey={`${listing.version}-${listing.manifest.hash}`} />
+            <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 items-center justify-between gap-3">
+                <span className="truncate font-mono text-[9px] uppercase tracking-[0.15em] text-accent">{service.category.label}</span>
+                <VerificationBadge status={listing.verification.status} quarantined={quarantined} />
+              </div>
+              <h2 className="mt-2 truncate font-sans text-[20px] font-semibold leading-tight tracking-[-0.03em] text-ink sm:text-[22px]">{service.name}</h2>
+              <p className="mt-2 line-clamp-2 font-sans text-[13px] leading-[1.45] text-ink-2">{service.description}</p>
+            </div>
           </div>
-          <h2 className="mt-4 font-sans text-[24px] font-semibold uppercase leading-[1.02] tracking-[-0.035em] text-ink sm:text-[28px]">{service.name}</h2>
-          <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.1em] text-ink-3">
-            {listing.payment.rail === "Escrow" ? "PROTECTED PROJECT" : "PAY PER USE"}
-            <span aria-hidden className="mx-2">·</span>
-            {listing.endpointQa.status === "passed" ? "READY TO USE" : "AVAILABILITY CHECKING"}
-          </p>
-        </div>
-      </div>
 
-      <p className="mt-6 line-clamp-3 min-h-[4.8em] font-sans text-[14px] leading-[1.55] text-ink-2">{service.description}</p>
-      {service.tags.length > 0 ? <div className="mt-5 flex flex-wrap gap-2">{service.tags.slice(0, 3).map((tag) => <span key={tag} className="border border-[color:var(--hairline)] px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.1em] text-ink-3">{tag}</span>)}</div> : null}
-      {metadataState === "loading" ? <p className="mt-3 font-mono text-[9px] uppercase tracking-[0.12em] text-ink-3">Checking service details</p> : null}
+          <div className="mt-4 flex flex-wrap gap-1.5">
+            {service.tags.slice(0, 3).map((tag) => <span key={tag} className="bg-canvas-3 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.1em] text-ink-3">{tag}</span>)}
+          </div>
 
-      <div className="mt-6 flex flex-wrap items-end justify-between gap-4 border-y border-[color:var(--hairline)] py-4">
-        <div>
-          <div className="font-mono text-[9px] uppercase tracking-[0.14em] text-ink-3">PRICE</div>
-          <div className="mt-1 font-sans text-[18px] font-medium text-ink">{priceLabel(service.amountUSDC)}</div>
-        </div>
-        <div className="text-right font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
-          <div>{listing.payment.rail === "Escrow" ? "PROTECTED PROJECT" : "PAY PER USE"}</div>
-          <div className="mt-1 text-[9px] text-ink-3">{listing.endpointQa.status === "passed" ? "RESPONDING" : "AVAILABILITY UNCHECKED"}</div>
-        </div>
-      </div>
+          <div className="mt-4 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-4 border-t border-[color:var(--hairline)] pt-3">
+            <div className="min-w-0">
+              <div className="font-mono text-[8px] uppercase tracking-[0.14em] text-ink-3">{listing.payment.rail === "Escrow" ? "PROTECTED PROJECT" : "PAY PER USE"}</div>
+              <div className="mt-1 truncate font-sans text-[16px] font-semibold text-ink">{priceLabel(service.amountUSDC)}</div>
+            </div>
+            <div className="text-right font-mono text-[8px] uppercase tracking-[0.11em] text-ink-3">
+              <div className={listing.endpointQa.status === "passed" ? "text-[color:var(--ok)]" : unavailable ? "text-[color:var(--err)]" : "text-[color:var(--warn)]"}>
+                {unavailable ? "CHECK REQUIRED" : listing.endpointQa.status === "passed" ? "RESPONDING" : "CHECKING"}
+              </div>
+              <div className="mt-1 text-ink transition-transform group-hover:translate-x-1">OPEN SERVICE →</div>
+            </div>
+          </div>
 
-      {metadataState === "mismatch" ? (
-        <div className="mt-5 border-l-[3px] border-[color:var(--err)] bg-canvas-2 px-4 py-3 font-mono text-[11px] leading-relaxed text-ink-2">
-          This service file changed after this version was published. The owner must publish a new version before the logo and details can be trusted.
-        </div>
-      ) : metadataState === "error" ? (
-        <div className="mt-5 border-l-[3px] border-[color:var(--err)] bg-canvas-2 px-4 py-3 font-mono text-[11px] leading-relaxed text-ink-2">
-          Service details could not be checked. Try again later before using this service.
-        </div>
-      ) : quarantined ? (
-        <div className="mt-5"><UnverifiedWarning message={listing.risk.warning} quarantineReason={listing.risk.quarantineReason} /></div>
-      ) : null}
-
-      <div className="mt-auto flex flex-wrap items-center justify-between gap-3 pt-6">
-        <Link href={`/market/${encodeURIComponent(listing.id)}`} className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3 underline decoration-[color:var(--hairline-strong)] underline-offset-4 hover:text-ink">
-          VIEW DETAILS
-        </Link>
-        <Link href={unavailable || tested ? `/market/${encodeURIComponent(listing.id)}` : playgroundHref} className="inline-flex min-h-11 items-center border border-ink px-4 font-mono text-[10px] uppercase tracking-[0.12em] text-ink transition-colors hover:bg-ink hover:text-[color:var(--canvas)]">
-          {unavailable ? "UNAVAILABLE" : tested ? "USE SERVICE" : "TEST IN PLAYGROUND"} <span aria-hidden className="ml-2">→</span>
-        </Link>
-      </div>
-    </BracketedCell>
+          {metadataState === "loading" ? <p className="mt-2 font-mono text-[8px] uppercase tracking-[0.1em] text-ink-3">Loading verified service identity</p> : null}
+          {metadataState === "mismatch" ? <p className="mt-2 font-mono text-[8px] uppercase tracking-[0.1em] text-[color:var(--err)]">Service file changed · new version required</p> : null}
+          {metadataState === "error" ? <p className="mt-2 font-mono text-[8px] uppercase tracking-[0.1em] text-[color:var(--err)]">Service identity unavailable</p> : null}
+        </BracketedCell>
+      </Link>
+    </article>
   );
 }
 
@@ -114,8 +100,10 @@ export function AgentLogo({ logoUrl, name, cacheKey }: { logoUrl: string | null;
   const resolvedLogoUrl = logoUrl && cacheKey !== undefined
     ? `${logoUrl}${logoUrl.includes("?") ? "&" : "?"}v=${encodeURIComponent(String(cacheKey))}`
     : logoUrl;
+  const swatches = ["#ff3f88", "#ff9f1c", "#20c997", "#3d7eff", "#9b5de5", "#e85d04"];
+  const swatch = swatches[[...name].reduce((sum, character) => sum + character.charCodeAt(0), 0) % swatches.length];
   return (
-    <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden border border-[color:var(--hairline-strong)] bg-accent font-sans text-[20px] font-semibold text-accent-ink" aria-label={`${name} logo`}>
+    <div className="flex h-[76px] w-[76px] shrink-0 items-center justify-center overflow-hidden border border-[color:var(--hairline-strong)] font-sans text-[20px] font-semibold text-white sm:h-[88px] sm:w-[88px]" style={{ backgroundColor: swatch }} role="img" aria-label={resolvedLogoUrl && !failed ? `${name} logo` : `Generated initials for ${name}`}>
       {resolvedLogoUrl && !failed ? <img src={resolvedLogoUrl} alt="" className="h-full w-full object-cover" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(true)} /> : initials}
     </div>
   );

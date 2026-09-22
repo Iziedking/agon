@@ -6,6 +6,7 @@ const service = {
   reference: "5042002:registry:3",
   source: { id: "arc", name: "AGON Arc" },
   name: "Lead enrichment",
+  logoUrl: "https://provider.example/logo.png",
   provider: "Example provider",
   outcome: "Enrich a bounded CRM list",
   category: "analysis",
@@ -47,6 +48,7 @@ test("MCP operations reject protocol-shaped unknown fields", () => {
 test("provider drafts require HTTPS and explicit terms", () => {
   const draft = providerDraftInput.parse({
     name: "CRM helper",
+    logoUrl: "https://provider.example/logo.png",
     outcome: "Enrich a bounded CRM list",
     category: "crm",
     inputs: ["records"],
@@ -58,5 +60,7 @@ test("provider drafts require HTTPS and explicit terms", () => {
     endpoint: "https://provider.example/execute",
   });
   assert.equal(draft.endpoint.startsWith("https://"), true);
+  assert.equal(draft.logoUrl, "https://provider.example/logo.png");
+  assert.throws(() => providerDraftInput.parse({ ...draft, logoUrl: undefined }));
   assert.throws(() => providerDraftInput.parse({ ...draft, endpoint: "http://provider.example/execute" }));
 });

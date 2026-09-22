@@ -60,6 +60,14 @@ the following scannable without opening a protocol document:
 - authority requirements;
 - the next action.
 
+The service's immutable manifest supplies its name, short outcome, search tags,
+and public HTTPS logo. Desktop uses a compact two-column comparison grid; mobile
+uses one column. The whole card opens the service detail page. A failed image
+may fall back to deterministic initials and colour, but the UI must never
+present that fallback as the provider's logo. Metadata loading, unavailable,
+and anchor-mismatch states must settle visibly instead of leaving a permanent
+generic `Agent #...` loading card.
+
 Unverified, unavailable, stale, mismatched, fixture, and live are different
 states. Never collapse them into one green trust badge.
 

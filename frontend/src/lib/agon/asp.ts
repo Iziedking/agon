@@ -40,7 +40,7 @@ export type AspConfig = {
   manifestUri: string;
   name: string;
   description: string;
-  logoUrl?: string;
+  logoUrl: string;
   category: string;
   endpoint: string;
   tags: string[];
@@ -207,7 +207,7 @@ function parseConfig(input: unknown): { config: AspConfig; category: AgonCategor
     manifestUri: cleanString(source.manifestUri),
     name: cleanString(source.name),
     description: cleanString(source.description),
-    logoUrl: cleanString(source.logoUrl) || undefined,
+    logoUrl: cleanString(source.logoUrl),
     category: cleanString(source.category),
     endpoint: cleanString(source.endpoint),
     tags,
@@ -377,7 +377,7 @@ function manifestIssues(input: unknown): AspIssue[] {
       agentId: "1",
       name: cleanString(manifest.name),
       description: cleanString(manifest.description),
-      logoUrl: cleanString(manifest.logoUrl) || undefined,
+      logoUrl: cleanString(manifest.logoUrl),
       categoryId: category.id,
       serviceKey: "manifest-check",
       endpoint: cleanString(manifest.endpoint),

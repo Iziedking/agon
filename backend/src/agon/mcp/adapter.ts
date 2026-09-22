@@ -39,6 +39,7 @@ function toServiceReference(listing: AgonListingView): ServiceReference {
     reference: listing.id,
     source: { id: "arc", name: "AGON Arc" },
     name: text(service.name, `Service ${listing.listingId}`),
+    logoUrl: typeof service.logoUrl === "string" && service.logoUrl.startsWith("https://") ? service.logoUrl : null,
     provider: `Agent ${listing.agentId}`,
     outcome: text(service.description, "A bounded agent service"),
     category: listing.category,
@@ -153,6 +154,7 @@ export function createMcpAccessAdapter(service: McpCatalogService, options: { pr
         : await this.startListing(actor ?? input, actor ? input : undefined);
       if (!started.ok) return started;
       const checks = [
+        { name: "brand_identity", status: "passed" as const, detail: "The immutable service file includes the agent's public HTTPS logo." },
         { name: "secure_endpoint", status: "passed" as const, detail: "The service uses a public HTTPS endpoint." },
         { name: "terms_complete", status: "passed" as const, detail: "Price, input, output, privacy, and failure terms are present." },
         { name: "wallet_publication", status: "needs_attention" as const, detail: "A provider wallet approval is required before publication." },
@@ -246,7 +248,7 @@ export function createMcpAccessAdapter(service: McpCatalogService, options: { pr
       const draft = stored?.draft ?? legacy?.draft;
       if (!draft) return { ok: false, code: "draft_not_found", message: "Create or resume the provider draft before compiling it." };
       try {
-        const compiled = compileProviderManifest(draft, { agentId: parsed.data.agentId, logoUrl: parsed.data.logoUrl });
+        const compiled = compileProviderManifest(draft, { agentId: parsed.data.agentId });
         const target = parsed.data.listingId ? { kind: "version" as const, listingId: parsed.data.listingId } : { kind: "new" as const };
         if (actor && stored) await providerDraftStore.saveCompilation(actor, parsed.data.draftId, compiled, parsed.data.manifestUri ?? null, target);
         if (legacy) { legacy.compiled = compiled; legacy.manifestUri = parsed.data.manifestUri ?? null; }

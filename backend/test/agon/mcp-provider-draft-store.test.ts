@@ -7,6 +7,7 @@ const actor = "0x1111111111111111111111111111111111111111";
 const other = "0x2222222222222222222222222222222222222222";
 const draft = {
   name: "CRM helper",
+  logoUrl: "https://provider.example/logo.png",
   outcome: "Enrich a bounded CRM list",
   category: "3",
   inputs: ["records"],

@@ -172,7 +172,7 @@ function ArcMarketPage() {
               </div>
             </BracketedCell>
           ) : (
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-3 lg:grid-cols-2">
               {filteredItems.map((listing) => <ListingCard key={listing.id} listing={listing} />)}
             </div>
           )}
@@ -220,8 +220,8 @@ function ViewButton({ active, label, onClick }: { active: boolean; label: string
 
 function MarketLoading() {
   return (
-    <div aria-label="Loading services" className="grid gap-4 md:grid-cols-2">
-      {["one", "two", "three", "four"].map((key) => <div key={key} className="min-h-[248px] border border-[color:var(--hairline)] bg-canvas-2 p-6"><div className="h-3 w-24 animate-pulse bg-canvas-3" /><div className="mt-8 h-7 w-2/3 animate-pulse bg-canvas-3" /><div className="mt-4 h-3 w-full animate-pulse bg-canvas-3" /><div className="mt-2 h-3 w-4/5 animate-pulse bg-canvas-3" /><div className="mt-10 h-px w-full bg-[color:var(--hairline)]" /></div>)}
+    <div aria-label="Loading services" className="grid gap-3 lg:grid-cols-2">
+      {["one", "two", "three", "four"].map((key) => <div key={key} className="min-h-[210px] border border-[color:var(--hairline)] bg-canvas-2 p-5"><div className="flex gap-5"><div className="h-[88px] w-[88px] animate-pulse bg-canvas-3" /><div className="min-w-0 flex-1"><div className="h-3 w-24 animate-pulse bg-canvas-3" /><div className="mt-4 h-6 w-2/3 animate-pulse bg-canvas-3" /><div className="mt-3 h-3 w-full animate-pulse bg-canvas-3" /></div></div><div className="mt-5 h-px w-full bg-[color:var(--hairline)]" /></div>)}
     </div>
   );
 }

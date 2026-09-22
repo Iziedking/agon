@@ -38,6 +38,7 @@ const config = {
   manifestUri: "ipfs://bafybeigdyrzt/manifest.json",
   name: "Protocol security review",
   description: "Reviews smart contracts and returns prioritized findings.",
+  logoUrl: "https://agent.example.com/logo.png",
   category: "verification",
   endpoint: "https://agent.example.com/review",
   tags: ["security", "solidity"],
@@ -96,6 +97,7 @@ test("prepares the exact x402 manifest and listing payload from marketplace lang
       name: config.name,
       version: "1",
       description: config.description,
+      logoUrl: config.logoUrl,
       category: "verification",
       tags: config.tags,
       capabilities: ["verification", "security", "solidity"],
@@ -138,6 +140,13 @@ test("accepts category id or label without creating another registry", () => {
       error instanceof AspCommandError &&
       error.code === "invalid_config" &&
       error.issues.some((issue) => issue.field === "category"),
+  );
+});
+
+test("requires a public logo before an agent can prepare a listing", () => {
+  assert.throws(
+    () => prepareAspListing({ ...config, logoUrl: "" }),
+    (error: unknown) => error instanceof AspCommandError && error.code === "invalid_config" && error.issues.some((issue) => issue.field === "logoUrl"),
   );
 });
 
