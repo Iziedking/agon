@@ -21,6 +21,7 @@ const KIND_MARK: Record<string, string> = {
   mystery_win: "■",
   custom_request: "■",
   arena_review_escalation: "!",
+  agon_service_lifecycle: "!",
 };
 
 function timeAgo(iso: string): string {
@@ -145,7 +146,9 @@ function Row({ n, onRead, onNavigate }: { n: AppNotification; onRead: () => void
       <span aria-hidden className={`mt-0.5 ${n.read ? "text-ink-3" : "text-accent"}`}>{KIND_MARK[n.kind] ?? "■"}</span>
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-2">
-          <span className={`font-mono text-[12px] ${n.read ? "text-ink-2" : "text-ink"}`}>{n.title}</span>
+          <span className={`font-mono text-[12px] ${n.read ? "text-ink-2" : "text-ink"}`}>
+            {n.title}{n.severity ? <span className="ml-2 text-[9px] uppercase tracking-[0.12em] text-accent">{n.severity}</span> : null}
+          </span>
           <span className="flex-none font-mono text-[10px] text-ink-3">{timeAgo(n.createdAt)}</span>
         </div>
         {n.body ? <p className="mt-1 font-mono text-[11px] leading-[1.5] text-ink-2">{n.body}</p> : null}

@@ -868,6 +868,60 @@ create table if not exists notifications (
 create index if not exists notifications_operator_idx on notifications(operator, created_at desc);
 create index if not exists notifications_unread_idx on notifications(operator, read);
 
+-- AGON operational incidents are canonical records shared by the in-app feed
+-- and Telegram delivery. Identical open failures deduplicate by fingerprint;
+-- critical incidents remain open until an authenticated administrator records
+-- acknowledgement. Delivery state is deliberately separate from product state.
+create table if not exists agon_operations_alerts (
+  alert_id         uuid primary key,
+  operator         text not null check (operator ~ '^0x[0-9a-f]{40}$'),
+  fingerprint      text not null check (char_length(fingerprint) between 1 and 256),
+  source           text not null check (source in ('certification','arena')),
+  severity         text not null check (severity in ('info','warning','critical')),
+  status           text not null default 'open' check (status in ('open','acknowledged','resolved')),
+  title            text not null check (char_length(title) between 1 and 180),
+  body             text,
+  href             text,
+  context          jsonb not null default '{}',
+  occurrence_count integer not null default 1 check (occurrence_count > 0),
+  notification_id  bigint references notifications(id) on delete set null,
+  first_seen_at    timestamptz not null default now(),
+  last_seen_at     timestamptz not null default now(),
+  acknowledged_at  timestamptz,
+  acknowledged_by  text,
+  resolved_at      timestamptz,
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now()
+);
+create unique index if not exists agon_operations_alerts_open_fingerprint_idx
+  on agon_operations_alerts(operator, fingerprint) where status = 'open';
+create index if not exists agon_operations_alerts_inbox_idx
+  on agon_operations_alerts(status, severity, last_seen_at desc);
+
+create table if not exists agon_alert_delivery_outbox (
+  delivery_id         uuid primary key,
+  alert_id            uuid not null references agon_operations_alerts(alert_id) on delete cascade,
+  channel             text not null check (channel = 'telegram'),
+  status              text not null default 'pending' check (status in ('pending','processing','retry','delivered','dead')),
+  attempts            integer not null default 0 check (attempts >= 0),
+  max_attempts        integer not null default 8 check (max_attempts between 1 and 20),
+  next_attempt_at     timestamptz not null default now(),
+  lease_expires_at    timestamptz,
+  provider_message_id text,
+  delivered_severity  text check (delivered_severity is null or delivered_severity in ('info','warning','critical')),
+  last_error          text,
+  delivered_at        timestamptz,
+  created_at          timestamptz not null default now(),
+  updated_at          timestamptz not null default now(),
+  unique (alert_id, channel)
+);
+create index if not exists agon_alert_delivery_outbox_due_idx
+  on agon_alert_delivery_outbox(status, next_attempt_at) where status in ('pending','processing','retry');
+alter table agon_alert_delivery_outbox add column if not exists delivered_severity text;
+alter table agon_alert_delivery_outbox drop constraint if exists agon_alert_delivery_outbox_delivered_severity_check;
+alter table agon_alert_delivery_outbox add constraint agon_alert_delivery_outbox_delivered_severity_check
+  check (delivered_severity is null or delivered_severity in ('info','warning','critical'));
+
 -- Tier gates on contests and challenges. The contracts don't store a tier
 -- restriction, so the gate lives here: the host records it at creation, the
 -- entry UI blocks out-of-range agents, and the coordinator excludes any

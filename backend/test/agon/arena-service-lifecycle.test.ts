@@ -253,3 +253,23 @@ test("concurrent reconciliation does not submit a second marketplace transaction
   ]);
   assert.equal(writes, 1);
 });
+
+test("Arena reconciliation mismatch raises one operator escalation without changing verification state", async () => {
+  const current = evaluation("evidence_submitted");
+  const escalations: Array<{ intentId: string; reasons: readonly string[] }> = [];
+  const service = new PostgresAgonMarketService({
+    async getAgonArenaEvaluation() { return current; },
+  } as never, {
+    protocolFinalityReader: {
+      enabled: true,
+      async inspectArenaEvaluation() { return { ...chain(2), manifestHash: hash("9") }; },
+    } as never,
+    arenaEscalation: async (input) => { escalations.push({ intentId: input.intentId, reasons: input.reasons }); },
+  });
+
+  const result = await service.reconcileAgonArenaEvaluation(actor, current.intentId);
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.error.code, "reconciliation_invalid");
+  assert.deepEqual(escalations, [{ intentId: current.intentId, reasons: ["chain_manifest_hash_mismatch"] }]);
+  assert.equal(current.state, "evidence_submitted");
+});

@@ -110,6 +110,10 @@ const envSchema = z.object({
   AGON_CERTIFICATION_FAILURE_THRESHOLD: z.coerce.number().int().min(1).max(10).default(3),
   AGON_CERTIFICATION_ENDPOINT_QA_REQUIRED: z.enum(["true", "false"]).default("true").transform((value) => value === "true"),
   AGON_CERTIFICATION_ALERT_OPERATOR_ADDRESS: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
+  AGON_OPERATIONS_ALERTS_ENABLED: z.enum(["true", "false"]).default("true").transform((value) => value === "true"),
+  AGON_OPERATIONS_ALERT_WORKER_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
+  AGON_OPERATIONS_ALERT_OPERATOR_ADDRESS: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
+  AGON_OPERATIONS_ALERT_RETRY_BASE_SECONDS: z.coerce.number().int().min(5).max(3600).default(30),
 
   // Auth service
   JWT_SECRET: z.string().default("dev-insecure-secret-change-me"),
@@ -751,6 +755,12 @@ export const config = {
       failureThreshold: env.AGON_CERTIFICATION_FAILURE_THRESHOLD,
       endpointQaRequired: env.AGON_CERTIFICATION_ENDPOINT_QA_REQUIRED,
       alertOperatorAddress: env.AGON_CERTIFICATION_ALERT_OPERATOR_ADDRESS?.toLowerCase(),
+    },
+    operationsAlerts: {
+      enabled: env.AGON_OPERATIONS_ALERTS_ENABLED,
+      workerEnabled: env.AGON_OPERATIONS_ALERT_WORKER_ENABLED,
+      operatorAddress: (env.AGON_OPERATIONS_ALERT_OPERATOR_ADDRESS ?? env.AGON_CERTIFICATION_ALERT_OPERATOR_ADDRESS)?.toLowerCase(),
+      retryBaseMs: env.AGON_OPERATIONS_ALERT_RETRY_BASE_SECONDS * 1000,
     },
   },
   adminToken: env.ADMIN_TOKEN,

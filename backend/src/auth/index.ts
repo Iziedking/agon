@@ -54,6 +54,12 @@ import {
 } from "../agon/manifest-derived-provider.ts";
 import { agonCertificationWorkerLoop } from "../agon/certification-worker.ts";
 import { alertAgonCertificationOperator } from "../agon/execution/certification-alerts.ts";
+import { alertAgonArenaOperator } from "../agon/execution/arena-review-alerts.ts";
+import {
+  PostgresAgonOperationsAlertRepository,
+  agonOperationsAlertWorkerLoop,
+  createTelegramAlertSender,
+} from "../agon/operations-alerts.ts";
 import { isAgonCertificationSchemaReady } from "../agon/certification-readiness.ts";
 import { PostgresAgonOperationStore } from "../agon/write/repository.js";
 import { CachedAgonReadiness } from "../agon/write/readiness.js";
@@ -344,6 +350,7 @@ app.post("/auth/cli/device/token", async (c) => {
 });
 
 const agonRepository = new PostgresAgonRepository(pool);
+const agonOperationsAlerts = new PostgresAgonOperationsAlertRepository(pool);
 const agonProviderDraftStore = createPostgresProviderDraftStore(pool);
 const agonOperations = new PostgresAgonOperationStore(pool);
 const agonActiveDeployment = config.agon.deployment
@@ -578,8 +585,14 @@ const agonService = new PostgresAgonMarketService(agonRepository, {
     warningRetrySeconds: config.agon.certification.warningRetryMs / 1000,
     failureThreshold: config.agon.certification.failureThreshold,
     endpointQaRequired: config.agon.certification.endpointQaRequired,
-    operatorAlertsConfigured: Boolean(config.agon.certification.alertOperatorAddress),
+    operatorAlertsConfigured: Boolean(config.agon.operationsAlerts.operatorAddress),
   },
+  operationsAlertReadiness: () => agonOperationsAlerts.readiness({
+    operator: config.agon.operationsAlerts.operatorAddress,
+    enabled: config.agon.operationsAlerts.enabled,
+    workerEnabled: config.agon.operationsAlerts.workerEnabled,
+    telegramConfigured: Boolean(config.auth.telegram.botToken),
+  }),
   x402AgentSpendExecutor,
   escrowReadAdapter: agonEscrowReadAdapter,
   escrowPoolContract: config.contracts.PrizeEscrow,
@@ -613,6 +626,14 @@ const agonService = new PostgresAgonMarketService(agonRepository, {
       })
     : undefined,
   arenaEvaluatorAdapter,
+  arenaEscalation: config.agon.operationsAlerts.enabled && config.agon.operationsAlerts.operatorAddress
+    ? (input) => alertAgonArenaOperator({
+        operator: config.agon.operationsAlerts.operatorAddress!,
+        intentId: input.intentId,
+        listingReference: input.listingReference,
+        reasons: input.reasons,
+      }, agonOperationsAlerts)
+    : undefined,
   listingVerifierAdapter,
   listingVerifierReadiness: configuredServiceRegistry
     ? () => readAgonListingVerifierReadiness({
@@ -660,14 +681,30 @@ if (config.agon.certification.workerEnabled) {
     providerRunner: agonCertificationProviderRunner,
     endpointQaRunner: agonCertificationEndpointQaRunner,
     listingVerifier: listingVerifierAdapter,
-    alert: alertAgonCertificationOperator,
+    alert: config.agon.operationsAlerts.enabled
+      ? (input) => alertAgonCertificationOperator(input, agonOperationsAlerts)
+      : undefined,
     checkIntervalMs: config.agon.certification.checkIntervalMs,
     warningRetryMs: config.agon.certification.warningRetryMs,
     failureThreshold: config.agon.certification.failureThreshold,
     requireEndpointQa: config.agon.certification.endpointQaRequired,
-    alertOperator: config.agon.certification.alertOperatorAddress,
+    alertOperator: config.agon.operationsAlerts.operatorAddress,
   }).catch((error) => {
     console.error("[agon-certification] worker stopped:", error instanceof Error ? error.message : error);
+  });
+}
+
+if (config.agon.operationsAlerts.enabled && config.agon.operationsAlerts.workerEnabled) {
+  void agonOperationsAlertWorkerLoop({
+    repository: agonOperationsAlerts,
+    sendTelegram: createTelegramAlertSender({
+      botToken: config.auth.telegram.botToken,
+      appUrl: config.auth.appUrl,
+    }),
+    appUrl: config.auth.appUrl,
+    retryBaseMs: config.agon.operationsAlerts.retryBaseMs,
+  }).catch((error) => {
+    console.error("[agon-alerts] delivery worker stopped:", error instanceof Error ? error.message : error);
   });
 }
 
@@ -2349,6 +2386,36 @@ app.get("/admin/commands", async (c) => {
       updatedAt: r.updated_at,
     })),
   });
+});
+
+app.get("/admin/agon/alerts", async (c) => {
+  if (!config.adminToken) return c.json({ error: "admin disabled (set ADMIN_TOKEN)" }, 503);
+  if (!adminAuthed(c)) return c.json({ error: "unauthorized" }, 401);
+  const alerts = await agonOperationsAlerts.list(Number(c.req.query("limit") ?? 100));
+  return c.json({
+    alerts: alerts.map((alert) => ({
+      ...alert,
+      firstSeenAt: alert.firstSeenAt.toISOString(),
+      lastSeenAt: alert.lastSeenAt.toISOString(),
+      acknowledgedAt: alert.acknowledgedAt?.toISOString() ?? null,
+      resolvedAt: alert.resolvedAt?.toISOString() ?? null,
+    })),
+  });
+});
+
+app.post("/admin/agon/alerts/:alertId/acknowledge", async (c) => {
+  if (!config.adminToken) return c.json({ error: "admin disabled (set ADMIN_TOKEN)" }, 503);
+  if (!adminAuthed(c)) return c.json({ error: "unauthorized" }, 401);
+  const alert = await agonOperationsAlerts.acknowledge(c.req.param("alertId"), "admin-console");
+  if (!alert) return c.json({ error: "open alert not found" }, 404);
+  await logEvent({
+    level: "warn",
+    kind: "agon_alert_acknowledged",
+    message: `acknowledged ${alert.severity} AGON alert ${alert.alertId}`,
+    source: "auth",
+    context: { alertId: alert.alertId, fingerprint: alert.fingerprint, source: alert.source },
+  });
+  return c.json({ ok: true, alertId: alert.alertId, status: alert.status, acknowledgedAt: alert.acknowledgedAt });
 });
 
 app.get("/admin/agon/evidence/:listingId", async (c) => {
@@ -4480,11 +4547,14 @@ app.get("/notifications", requireAuth, async (c) => {
   const { rows } = await query<{
     id: string; kind: string; title: string; body: string | null;
     href: string | null; read: boolean; created_at: Date;
+    alert_id: string | null; severity: string | null; alert_status: string | null;
   }>(
-    `select id::text, kind, title, body, href, read, created_at
-       from notifications
-      where operator = $1 ${unreadOnly ? "and read = false" : ""}
-      order by created_at desc
+    `select n.id::text, n.kind, n.title, n.body, n.href, n.read, n.created_at,
+            a.alert_id, a.severity, a.status as alert_status
+       from notifications n
+       left join agon_operations_alerts a on a.notification_id = n.id
+      where n.operator = $1 ${unreadOnly ? "and n.read = false" : ""}
+      order by n.created_at desc
       limit 20`,
     [operator],
   );
@@ -4498,6 +4568,9 @@ app.get("/notifications", requireAuth, async (c) => {
       body: r.body,
       href: r.href,
       read: r.read,
+      alertId: r.alert_id,
+      severity: r.severity,
+      alertStatus: r.alert_status,
       createdAt: r.created_at,
     })),
   });
@@ -4533,11 +4606,16 @@ app.post("/notifications/clear", requireAuth, async (c) => {
   } catch { /* clear-all */ }
   if (ids.length > 0) {
     await query(
-      "delete from notifications where operator = $1 and id = any($2::bigint[])",
+      `delete from notifications n where operator = $1 and id = any($2::bigint[])
+        and not exists (select 1 from agon_operations_alerts a where a.notification_id = n.id and a.severity = 'critical' and a.status = 'open')`,
       [operator, ids],
     );
   } else {
-    await query("delete from notifications where operator = $1", [operator]);
+    await query(
+      `delete from notifications n where operator = $1
+        and not exists (select 1 from agon_operations_alerts a where a.notification_id = n.id and a.severity = 'critical' and a.status = 'open')`,
+      [operator],
+    );
   }
   return c.json({ ok: true });
 });

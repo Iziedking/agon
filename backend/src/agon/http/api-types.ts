@@ -32,6 +32,19 @@ export type AgonCapabilities = {
     endpointQaRequired: boolean;
     operatorAlertsConfigured: boolean;
   };
+  operationsAlerts: {
+    enabled: boolean;
+    ready: boolean;
+    recipientAddress: string | null;
+    recipientExists: boolean;
+    telegramLinked: boolean;
+    workerEnabled: boolean;
+    pendingDeliveries: number;
+    retryingDeliveries: number;
+    deadDeliveries: number;
+    reasons: string[];
+    checkedAt: string | null;
+  };
   directX402: boolean;
   escrow: boolean;
   jobEscrowCalldataSupported: boolean;

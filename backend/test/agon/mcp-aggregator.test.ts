@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createMarketAggregator } from "../../src/agon/mcp/aggregator.ts";
 
-const service = (name: string, source: string) => ({ reference: `${source}:${name}`, source: { id: source, name: source === "arc" ? "AGON Arc" : "Circle" }, name, provider: "Provider", outcome: "Enrich CRM records", category: "crm", priceUSDC: "0.04", expectedLatencyMs: 30_000, availability: "ready", verification: "verified", privacy: "Deletes input", accepts: ["records"], returns: ["enriched records"] });
+const service = (name: string, source: string) => ({ reference: `${source}:${name}`, source: { id: source, name: source === "arc" ? "AGON Arc" : "Circle" }, name, logoUrl: "https://cdn.example.com/agent-logo.png", provider: "Provider", outcome: "Enrich CRM records", category: "crm", priceUSDC: "0.04", expectedLatencyMs: 30_000, availability: "ready", verification: "verified", privacy: "Deletes input", accepts: ["records"], returns: ["enriched records"] });
 
 test("aggregator searches multiple marketplaces and preserves source identity", async () => {
   const aggregator = createMarketAggregator([
@@ -24,4 +24,3 @@ test("aggregator reports one source failure without hiding healthy sources", asy
   assert.equal(result.services.length, 1);
   assert.equal(result.sources.find((source) => source.id === "circle")?.status, "unavailable");
 });
-

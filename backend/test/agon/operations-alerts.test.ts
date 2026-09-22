@@ -1,0 +1,128 @@
+import assert from "node:assert/strict";
+import { after, before, test } from "node:test";
+
+import {
+  PostgresAgonOperationsAlertRepository,
+  deliverAgonOperationsAlertOnce,
+  type AgonAlertDelivery,
+  type AgonOperationsAlertDeliveryRepository,
+} from "../../src/agon/operations-alerts.ts";
+import { alertAgonArenaOperator } from "../../src/agon/execution/arena-review-alerts.ts";
+import { alertAgonCertificationOperator } from "../../src/agon/execution/certification-alerts.ts";
+import { createAgonTestDatabase, type AgonTestDatabase } from "./database-test-helper.ts";
+
+const OPERATOR = `0x${"ab".repeat(20)}`;
+let database: AgonTestDatabase;
+let repository: PostgresAgonOperationsAlertRepository;
+
+before(async () => {
+  database = await createAgonTestDatabase("operationsalerts");
+  repository = new PostgresAgonOperationsAlertRepository(database.pool);
+  await database.pool.query("insert into operators (address, telegram_id) values ($1, $2)", [OPERATOR, "123456"]);
+});
+
+after(async () => database.close());
+
+test("deduplicates repeated certification failures and keeps one shared notification and delivery", async () => {
+  const input = {
+    operator: OPERATOR,
+    listingReference: `5042002:0x${"11".repeat(20)}:2`,
+    listingVersion: "3",
+    status: "warning" as const,
+    reasons: ["endpoint_qa_failed"],
+    consecutiveFailures: 1,
+  };
+  await alertAgonCertificationOperator(input, repository);
+  await alertAgonCertificationOperator({ ...input, consecutiveFailures: 2 }, repository);
+
+  const alerts = await repository.list();
+  assert.equal(alerts.length, 1);
+  assert.equal(alerts[0]?.occurrenceCount, 2);
+  assert.equal(alerts[0]?.severity, "warning");
+  const notifications = await database.pool.query("select * from notifications where operator = $1", [OPERATOR]);
+  const deliveries = await database.pool.query("select * from agon_alert_delivery_outbox");
+  assert.equal(notifications.rowCount, 1);
+  assert.equal(deliveries.rowCount, 1);
+});
+
+test("critical Arena incidents remain open until an authenticated acknowledgement path records them", async () => {
+  await alertAgonArenaOperator({
+    operator: OPERATOR,
+    intentId: "00000000-0000-4000-8000-000000000901",
+    listingReference: `5042002:0x${"11".repeat(20)}:2`,
+    reasons: ["reconciliation_unknown"],
+  }, repository);
+  const critical = (await repository.list()).find((alert) => alert.source === "arena")!;
+  assert.equal(critical.severity, "critical");
+  assert.equal(critical.status, "open");
+  assert.equal(await repository.resolve(OPERATOR, critical.fingerprint), false);
+  const acknowledged = await repository.acknowledge(critical.alertId, "admin-console");
+  assert.equal(acknowledged?.status, "acknowledged");
+  assert.ok(acknowledged?.acknowledgedAt);
+});
+
+test("a recovery resolves the active warning but still leaves a single informational audit record", async () => {
+  const listingReference = `5042002:0x${"22".repeat(20)}:9`;
+  await alertAgonCertificationOperator({
+    operator: OPERATOR, listingReference, listingVersion: "1", status: "warning",
+    reasons: ["provider_timeout"], consecutiveFailures: 1,
+  }, repository);
+  await alertAgonCertificationOperator({
+    operator: OPERATOR, listingReference, listingVersion: "1", status: "recovered",
+    reasons: [], consecutiveFailures: 0,
+  }, repository);
+  const matching = (await repository.list()).filter((alert) => alert.fingerprint.includes(`${listingReference}@1`));
+  assert.equal(matching.filter((alert) => alert.status === "open").length, 0);
+  assert.equal(matching.filter((alert) => alert.status === "resolved").length, 2);
+});
+
+test("Telegram delivery retries from the durable outbox without changing incident state", async () => {
+  const delivery: AgonAlertDelivery = {
+    delivery_id: "00000000-0000-4000-8000-000000000902",
+    alert_id: "00000000-0000-4000-8000-000000000903",
+    operator: OPERATOR,
+    chat_id: "123456",
+    title: "Service check failed",
+    body: "The provider timed out.",
+    href: "/admin",
+    severity: "warning",
+    attempts: 0,
+    max_attempts: 8,
+  };
+  const deferred: Array<{ increment: boolean; error: string }> = [];
+  const fake: AgonOperationsAlertDeliveryRepository = {
+    claimDelivery: async () => delivery,
+    completeDelivery: async () => { throw new Error("not expected"); },
+    deferDelivery: async (_id, error, options) => { deferred.push({ increment: options.increment, error }); },
+  };
+  const result = await deliverAgonOperationsAlertOnce({
+    repository: fake,
+    sendTelegram: async () => { throw new Error("telegram unavailable"); },
+    appUrl: "https://agon.surf",
+    now: () => new Date("2026-09-22T12:00:00.000Z"),
+  });
+  assert.equal(result, "deferred");
+  assert.deepEqual(deferred, [{ increment: true, error: "telegram unavailable" }]);
+});
+
+test("health readiness verifies the configured operations recipient and Telegram link", async () => {
+  const ready = await repository.readiness({
+    operator: OPERATOR,
+    enabled: true,
+    workerEnabled: true,
+    telegramConfigured: true,
+  });
+  assert.equal(ready.ready, true);
+  assert.equal(ready.recipientExists, true);
+  assert.equal(ready.telegramLinked, true);
+  assert.deepEqual(ready.reasons, []);
+
+  const missing = await repository.readiness({
+    operator: `0x${"cd".repeat(20)}`,
+    enabled: true,
+    workerEnabled: true,
+    telegramConfigured: true,
+  });
+  assert.equal(missing.ready, false);
+  assert.deepEqual(missing.reasons, ["recipient_not_found"]);
+});

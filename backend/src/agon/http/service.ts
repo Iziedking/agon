@@ -151,6 +151,7 @@ export type PostgresAgonMarketServiceOptions = {
   identityReads?: boolean;
   endpointQa?: boolean | (() => Promise<boolean>);
   certificationLifecycle?: AgonCapabilities["certificationLifecycle"];
+  operationsAlertReadiness?: () => Promise<AgonCapabilities["operationsAlerts"]>;
   directX402?: boolean;
   x402ExecutionEnabled?: boolean;
   x402ExecutionPolicy?: import("../execution/x402-policy.ts").X402ExecutionPolicy;
@@ -191,6 +192,7 @@ export type PostgresAgonMarketServiceOptions = {
   arenaEvaluatorReadiness?: () => Promise<AgonArenaEvaluatorReadiness> | AgonArenaEvaluatorReadiness;
   /** Guarded evaluator writer. Provider actions remain wallet-signed by the provider. */
   arenaEvaluatorAdapter?: AgonArenaEvaluatorAdapter;
+  arenaEscalation?: (input: { intentId: string; listingReference: string; reasons: readonly string[] }) => Promise<void>;
   listingVerifierAdapter?: AgonListingVerifierAdapter;
   listingVerifierReadiness?: () => Promise<AgonListingVerifierReadiness>;
   validationRegistryAddress?: `0x${string}`;
@@ -1453,6 +1455,14 @@ export class PostgresAgonMarketService implements AgonMarketService {
     if (!evaluation) return { ok: false, error: { code: "not_found", message: "Agon Arena evaluation not found" } };
     if (evaluation.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the Arena evaluation owner can reconcile this evaluation" } };
     if (!evaluation.evaluationId) return { ok: false, error: { code: "conflict", message: "record the on-chain evaluation id before reconciliation" } };
+    const escalate = async (reasons: readonly string[]) => {
+      if (!this.options.arenaEscalation) return;
+      try {
+        await this.options.arenaEscalation({ intentId, listingReference: evaluation.listingReference, reasons });
+      } catch (error) {
+        console.error("agon arena escalation alert failed", error);
+      }
+    };
     try {
       let chain = await reader.inspectArenaEvaluation(evaluation.evaluationId);
       const matches = [
@@ -1470,8 +1480,12 @@ export class PostgresAgonMarketService implements AgonMarketService {
         [Math.floor(chain.expiresAt.getTime() / 1000) === Math.floor(evaluation.expiresAt.getTime() / 1000), "expiry"],
       ] as const;
       const mismatch = matches.find(([ok]) => !ok);
-      if (mismatch) return { ok: false, error: { code: "reconciliation_invalid", message: `Arena chain state does not match the prepared ${mismatch[1]}` } };
+      if (mismatch) {
+        await escalate([`chain_${mismatch[1].replace(/ /g, "_")}_mismatch`]);
+        return { ok: false, error: { code: "reconciliation_invalid", message: `Arena chain state does not match the prepared ${mismatch[1]}` } };
+      }
       if (chain.state >= 2 && chain.evidenceRoot !== evaluation.evidenceRoot.toLowerCase()) {
+        await escalate(["chain_evidence_root_mismatch"]);
         return { ok: false, error: { code: "reconciliation_invalid", message: "Arena chain evidence root does not match the playground evidence" } };
       }
       const evaluator = this.options.arenaEvaluatorAdapter;
@@ -1485,7 +1499,10 @@ export class PostgresAgonMarketService implements AgonMarketService {
       if (chain.state === 2 && evaluator?.enabled) {
         const storedRun = await this.options.playgroundStore?.getRun(evaluation.playgroundRunId);
         const run = storedRun?.state === "completed" ? storedRun.result : null;
-        if (!run?.evidence) return { ok: false, error: { code: "reconciliation_unavailable", message: "Arena score evidence is unavailable; operator review is required" } };
+        if (!run?.evidence) {
+          await escalate(["playground_score_evidence_unavailable"]);
+          return { ok: false, error: { code: "reconciliation_unavailable", message: "Arena score evidence is unavailable; operator review is required" } };
+        }
         await evaluator.scoreEvaluation({
           evaluationId: evaluation.evaluationId,
           score: run.score,
@@ -1493,9 +1510,11 @@ export class PostgresAgonMarketService implements AgonMarketService {
         });
         chain = await reader.inspectArenaEvaluation(evaluation.evaluationId);
         if (chain.state !== 3 && chain.state !== 4) {
+          await escalate(["score_confirmed_without_final_state"]);
           return { ok: false, error: { code: "reconciliation_unavailable", message: "Arena score transaction confirmed without a final contract state" } };
         }
         if (chain.score !== run.score || chain.validationResponseHash !== run.evidence.responseHash.toLowerCase()) {
+          await escalate(["final_score_evidence_mismatch"]);
           return { ok: false, error: { code: "reconciliation_invalid", message: "Arena final score does not match the pinned playground result" } };
         }
       }
@@ -1554,6 +1573,7 @@ export class PostgresAgonMarketService implements AgonMarketService {
       return { ok: true, value: arenaEvaluationView(stored) };
     } catch (error) {
       if (error instanceof AgonStoreInvariantError) return { ok: false, error: { code: "conflict", message: error.message } };
+      await escalate(["arena_reconciliation_failed", error instanceof Error ? error.message.slice(0, 120) : "unknown"]);
       return { ok: false, error: { code: "reconciliation_unavailable", message: error instanceof Error ? error.message : "Agon Arena finality read failed" } };
     }
   }
@@ -2845,6 +2865,26 @@ export class PostgresAgonMarketService implements AgonMarketService {
     } catch {
       endpointQa = false;
     }
+    let operationsAlerts: AgonCapabilities["operationsAlerts"] = {
+      enabled: false,
+      ready: false,
+      recipientAddress: null,
+      recipientExists: false,
+      telegramLinked: false,
+      workerEnabled: false,
+      pendingDeliveries: 0,
+      retryingDeliveries: 0,
+      deadDeliveries: 0,
+      reasons: ["readiness_unconfigured"],
+      checkedAt: null,
+    };
+    if (this.options.operationsAlertReadiness) {
+      try {
+        operationsAlerts = await this.options.operationsAlertReadiness();
+      } catch {
+        operationsAlerts = { ...operationsAlerts, enabled: true, reasons: ["readiness_check_failed"], checkedAt: new Date().toISOString() };
+      }
+    }
     return {
       identityReads: this.options.identityReads ?? false,
       profileWrites: writesReady,
@@ -2859,6 +2899,7 @@ export class PostgresAgonMarketService implements AgonMarketService {
         endpointQaRequired: false,
         operatorAlertsConfigured: false,
       },
+      operationsAlerts,
       directX402: this.options.directX402 ?? this.options.x402ExecutionEnabled === true,
       escrow: Boolean(this.options.agonJobEscrowAddress),
       jobEscrowCalldataSupported: this.options.jobEscrowCalldataSupported === true,

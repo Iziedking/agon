@@ -8,6 +8,7 @@ import { LoginModal } from "@/components/pengu/LoginModal";
 import { ProtocolActions } from "@/components/agon/ProtocolActions";
 import { X402CallIntentPanel } from "@/components/agon/X402CallIntentPanel";
 import { AgonSyndicatePrizeIntentPanel } from "@/components/agon/AgonSyndicatePrizeIntentPanel";
+import { AgonOperationsAlertsPanel } from "@/components/agon/AgonOperationsAlertsPanel";
 import { useAuth } from "@/hooks/useAuth";
 import { useArcWrite } from "@/hooks/useArcWrite";
 import { confirmTx } from "@/lib/arc";
@@ -116,6 +117,7 @@ export function AgonAdminConsole({ adminToken }: { adminToken: string }) {
 
       {error ? <p className="border-l-2 border-[color:var(--err)] p-3 font-mono text-xs text-[color:var(--err)]">{error}</p> : null}
       <AgonStatusSummary health={health} address={signerAddress ?? connectedAddress ?? null} signerRoute={signerRoute} authenticated={Boolean(me)} listingCount={listings.length} />
+      <AgonOperationsAlertsPanel adminToken={adminToken} />
 
       <section>
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3"><div><div className="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">01 / CHOOSE A SERVICE</div><h3 className="mt-2 font-stencil text-3xl uppercase leading-none">What are you working on?</h3></div><p className="max-w-md text-sm leading-5 text-ink-2">Every action below uses the selected listing and its immutable version.</p></div>
@@ -159,10 +161,11 @@ function AgonStatusSummary({ health, address, signerRoute, authenticated, listin
     { label: "ARC", value: capabilities?.protocolReadiness?.chainId ? String(capabilities.protocolReadiness.chainId) : "UNKNOWN", tone: "var(--accent)" },
     { label: "LISTINGS", value: String(listingCount), tone: "var(--ink)" },
     { label: "ARENA", value: arenaExecutionReady ? "READY" : "ACTION NEEDED", tone: arenaExecutionReady ? "var(--ok)" : "var(--warn)" },
+    { label: "ALERTS", value: capabilities?.operationsAlerts?.ready ? "READY" : "ACTION NEEDED", tone: capabilities?.operationsAlerts?.ready ? "var(--ok)" : "var(--warn)" },
     { label: "X402", value: capabilities?.directX402 ? "READY" : "GATED", tone: capabilities?.directX402 ? "var(--ok)" : "var(--ink-3)" },
     { label: "WALLET", value: walletLabel, tone: !address ? "var(--warn)" : authenticated ? "var(--ok)" : "var(--warn)" },
   ];
-  return <section className="border border-[color:var(--hairline-strong)] bg-canvas-2 p-4"><div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">LIVE CONTROL STATUS</div><span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">refresh before a write</span></div><div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">{cells.map((cell) => <div key={cell.label} className="border border-[color:var(--hairline)] bg-canvas px-3 py-3"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-ink-3">{cell.label}</div><div className="mt-2 font-mono text-sm" style={{ color: cell.tone }}>{cell.value}</div></div>)}</div>{address && !authenticated ? <p className="mt-3 border-l-2 border-[color:var(--warn)] p-3 text-sm text-ink-2">Wallet connected. Sign in with your wallet before running provider verification or other operator actions.</p> : null}{arenaExecutionReady ? null : <p className="mt-3 border-l-2 border-[color:var(--warn)] p-3 text-sm text-ink-2">Arena automation is not ready. Confirm the evaluator role, validator signer, and Arena execution flag before starting a provider review.</p>}</section>;
+  return <section className="border border-[color:var(--hairline-strong)] bg-canvas-2 p-4"><div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">LIVE CONTROL STATUS</div><span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">refresh before a write</span></div><div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-7">{cells.map((cell) => <div key={cell.label} className="border border-[color:var(--hairline)] bg-canvas px-3 py-3"><div className="font-mono text-[9px] uppercase tracking-[0.12em] text-ink-3">{cell.label}</div><div className="mt-2 font-mono text-sm" style={{ color: cell.tone }}>{cell.value}</div></div>)}</div>{address && !authenticated ? <p className="mt-3 border-l-2 border-[color:var(--warn)] p-3 text-sm text-ink-2">Wallet connected. Sign in with your wallet before running provider verification or other operator actions.</p> : null}{arenaExecutionReady ? null : <p className="mt-3 border-l-2 border-[color:var(--warn)] p-3 text-sm text-ink-2">Arena automation is not ready. Confirm the evaluator role, validator signer, and Arena execution flag before starting a provider review.</p>}</section>;
 }
 
 function AgonSelectedService({ listing }: { listing: AgonListing | null }) {

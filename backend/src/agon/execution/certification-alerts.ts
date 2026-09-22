@@ -1,4 +1,4 @@
-import { notify } from "../../notifications/index.ts";
+import type { AgonOperationsAlertSink } from "../operations-alerts.ts";
 
 export type AgonCertificationAlert = {
   operator: string;
@@ -9,11 +9,20 @@ export type AgonCertificationAlert = {
   consecutiveFailures: number;
 };
 
-export async function alertAgonCertificationOperator(input: AgonCertificationAlert): Promise<void> {
+export async function alertAgonCertificationOperator(
+  input: AgonCertificationAlert,
+  repository: AgonOperationsAlertSink,
+): Promise<void> {
   const suspended = input.status === "suspended";
   const recovered = input.status === "recovered";
-  await notify(input.operator, {
-    kind: "agon_service_lifecycle",
+  const fingerprint = `certification:${input.listingReference}@${input.listingVersion}`;
+  if (recovered) await repository.resolve(input.operator, fingerprint);
+  await repository.raise({
+    operator: input.operator,
+    fingerprint: recovered ? `${fingerprint}:recovered` : fingerprint,
+    source: "certification",
+    severity: recovered ? "info" : suspended ? "critical" : "warning",
+    resolved: recovered,
     title: recovered
       ? "Agon service recovered"
       : suspended ? "Agon service suspended after repeated checks" : "Agon service check needs attention",

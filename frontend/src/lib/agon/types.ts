@@ -20,6 +20,19 @@ export type AgonCapabilities = {
   jobEscrowExecution?: boolean;
   jobEscrowExecutionReason?: string | null;
   arenaVerification: boolean;
+  operationsAlerts: {
+    enabled: boolean;
+    ready: boolean;
+    recipientAddress: string | null;
+    recipientExists: boolean;
+    telegramLinked: boolean;
+    workerEnabled: boolean;
+    pendingDeliveries: number;
+    retryingDeliveries: number;
+    deadDeliveries: number;
+    reasons: string[];
+    checkedAt: string | null;
+  };
   arenaEvaluatorReadiness: {
     enabled: boolean;
     arenaAddress: `0x${string}` | null;

@@ -15,7 +15,8 @@ export type NotificationKind =
   | "training_done"
   | "mystery_win"
   | "custom_request"
-  | "arena_review_escalation";
+  | "arena_review_escalation"
+  | "agon_service_lifecycle";
 
 export interface AppNotification {
   id: number;
@@ -24,6 +25,9 @@ export interface AppNotification {
   body: string | null;
   href: string | null;
   read: boolean;
+  alertId?: string | null;
+  severity?: "info" | "warning" | "critical" | null;
+  alertStatus?: "open" | "acknowledged" | "resolved" | null;
   createdAt: string;
 }
 

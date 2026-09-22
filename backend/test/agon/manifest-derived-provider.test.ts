@@ -21,6 +21,7 @@ const manifest = {
   identity: { chainId: 5042002, agentId: baseProvider.agentId, serviceKey: baseProvider.serviceKey },
   service: {
     name: "Provider",
+    logoUrl: "https://provider.example/logo.png",
     description: "Returns a bounded analysis result.",
     category: "analysis",
     tags: ["analysis"],
