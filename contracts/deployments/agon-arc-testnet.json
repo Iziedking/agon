@@ -6,13 +6,17 @@
   "deployBlock": 57507744,
   "protocolDeployedAt": "2026-08-24T13:59:58Z",
   "protocolDeployBlock": 58645081,
+  "v2DeployedAt": "2026-09-23T16:52:04Z",
+  "v2DeployBlock": 63623534,
   "deployer": "0x0aeEF0Dd6b0754262d1a91e435565749Cdc365Ad",
   "admin": "0x0aeEF0Dd6b0754262d1a91e435565749Cdc365Ad",
   "contracts": {
     "AgonProfileRegistry": "0xE0c7A2545C2f4eE6d2bD797B6f2742c73E640574",
     "AgonServiceRegistry": "0x2144C156B0a4581da2D046C2E41AC41C6C3938CB",
+    "AgonServiceRegistryV2": "0xf017290A267A3CEb693544882464a188D9e4a516",
     "AgonJobEscrow": "0x6373E576AcFC9DE6cB182dA201d8e857D2A918aD",
     "AgonArena": "0x2c6196dB6491A3D3837f53Ce72B84778bc5E9d8F",
+    "AgonArenaV2": "0x05B81dF2F1615BBDEbd837991BAB199F65eCCB83",
     "AgonSyndicateRegistry": "0xD77312288E4019bD3Fc7a6C0234B9c84D09C1Ab4",
     "AgonPrizeVault": "0xd3a538fD48FA81CF102E5b5381B47e46eC176D3b"
   },
@@ -22,8 +26,10 @@
   "transactions": {
     "AgonProfileRegistry": "0xf90172c1e54fadfa695c09624970e421d097012b7e3e01693a32c9140d9dd6ad",
     "AgonServiceRegistry": "0x71430f9b2c019b74fa3f4e4139a48ad1f67daa5c2c3c2f8540caa8a6f749444e",
+    "AgonServiceRegistryV2": "0x1c1b68923441789f4252dfed8466254eeb8aaf2b92e93c5167020fac7023fda1",
     "AgonJobEscrow": "0xf935d8e86430512f6abbd20bd978bcc6f7215ccad6891bb72ec09b90fa334f62",
     "AgonArena": "0x36aa9ad8e65f56a8c07b2d4eceed89b0c55bf15696a94355ea3bd7a60f3e629e",
+    "AgonArenaV2": "0xebff278695d7887661f6b14fb821f0c6fceb021d032dfa9ed228d3f187d4253b",
     "AgonSyndicateRegistry": "0x1aa4701ad202d483b91b0c206620953b1c838a65d2797f79bde86ecbf23f389d",
     "AgonPrizeVault": "0xffa918a58623f699428ee962693133fc6ac86a8aef802d30893452dfe75f8e8b"
   },
@@ -46,6 +52,13 @@
       "verifiedAt": "2026-08-17T19:39:23.541815Z",
       "explorerUrl": "https://testnet.arcscan.app/address/0x2144C156B0a4581da2D046C2E41AC41C6C3938CB"
     },
+    "AgonServiceRegistryV2": {
+      "verifiedAt": "2026-09-23T17:21:30Z",
+      "explorerUrl": "https://repo.sourcify.dev/5042002/0xf017290A267A3CEb693544882464a188D9e4a516",
+      "creationMatch": "exact_match",
+      "runtimeMatch": "exact_match",
+      "matchId": "51571620"
+    },
     "AgonJobEscrow": {
       "verifiedAt": "2026-08-25T05:26:26.946Z",
       "explorerUrl": "https://testnet.arcscan.app/address/0x6373E576AcFC9DE6cB182dA201d8e857D2A918aD"
@@ -53,6 +66,13 @@
     "AgonArena": {
       "verifiedAt": "2026-08-25T05:26:26.946Z",
       "explorerUrl": "https://testnet.arcscan.app/address/0x2c6196dB6491A3D3837f53Ce72B84778bc5E9d8F"
+    },
+    "AgonArenaV2": {
+      "verifiedAt": "2026-09-23T17:22:48Z",
+      "explorerUrl": "https://repo.sourcify.dev/5042002/0x05B81dF2F1615BBDEbd837991BAB199F65eCCB83",
+      "creationMatch": "exact_match",
+      "runtimeMatch": "exact_match",
+      "matchId": "51571674"
     },
     "AgonSyndicateRegistry": {
       "verifiedAt": "2026-08-25T05:26:26.946Z",
