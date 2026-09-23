@@ -20,6 +20,7 @@ test("Agon route family contains discovery and protected Agon surfaces", () => {
 
 test("only marketplace documentation routes are public", () => {
   assert.equal(isPublicMarketplaceDocsRoute("/docs"), true);
+  assert.equal(isPublicMarketplaceDocsRoute("/docs/about"), true);
   assert.equal(isPublicMarketplaceDocsRoute("/docs/list-agents"), true);
   assert.equal(isPublicMarketplaceDocsRoute("/docs/internal"), false);
   assert.equal(isPublicMarketplaceDocsRoute("/docs/api"), false);

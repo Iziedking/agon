@@ -33,7 +33,7 @@ export type AgonArenaChainEvaluation = {
 
 export type AgonProtocolFinalityReader = {
   readonly enabled: boolean;
-  inspectArenaEvaluation(evaluationId: string): Promise<AgonArenaChainEvaluation>;
+  inspectArenaEvaluation(evaluationId: string, arenaAddress?: string): Promise<AgonArenaChainEvaluation>;
   confirmSyndicateContribution(input: {
     transactionHash: `0x${string}`;
     syndicateId: string;
@@ -129,10 +129,12 @@ function matchingLog(receipt: Awaited<ReturnType<AgonProtocolFinalityClient["get
 export function createViemAgonProtocolFinalityReader(options: {
   client?: AgonProtocolFinalityClient;
   arenaAddress: string;
+  legacyArenaAddresses?: readonly string[];
   syndicateRegistryAddress: string;
   prizeVaultAddress: string;
 }): AgonProtocolFinalityReader {
   const arena = address(options.arenaAddress, "Arena address");
+  const allowedArenas = new Set([arena, ...(options.legacyArenaAddresses ?? []).map((value) => address(value, "legacy Arena address"))]);
   const syndicate = address(options.syndicateRegistryAddress, "syndicate registry address");
   const prize = address(options.prizeVaultAddress, "prize vault address");
   const enabled = options.client !== undefined;
@@ -142,9 +144,11 @@ export function createViemAgonProtocolFinalityReader(options: {
   };
   return {
     enabled,
-    async inspectArenaEvaluation(evaluationId) {
+    async inspectArenaEvaluation(evaluationId, arenaAddress) {
       const id = positive(evaluationId, "evaluation id");
-      return arenaEvaluation(await client().readContract({ address: arena, abi: arenaAbi, functionName: "getEvaluation", args: [id] }));
+      const target = arenaAddress ? address(arenaAddress, "Arena address") : arena;
+      if (!allowedArenas.has(target)) throw new Error("Arena address is outside the deployment receipt");
+      return arenaEvaluation(await client().readContract({ address: target, abi: arenaAbi, functionName: "getEvaluation", args: [id] }));
     },
     async confirmSyndicateContribution(input) {
       const syndicateId = positive(input.syndicateId, "syndicate id");

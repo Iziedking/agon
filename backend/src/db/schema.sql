@@ -1454,6 +1454,22 @@ create table if not exists agon_mcp_provider_drafts (
 );
 create index if not exists agon_mcp_provider_drafts_actor_idx
   on agon_mcp_provider_drafts(actor_address, updated_at desc);
+-- Each public service file is stored under its agent, version, and content hash.
+-- A later edit creates a new URL; the bytes at an existing URL never change.
+create table if not exists agon_hosted_manifests (
+  chain_id       numeric(78, 0) not null check (chain_id > 0),
+  agent_id       numeric(78, 0) not null check (agent_id >= 0),
+  service_key    text not null check (service_key ~ '^0x[0-9a-f]{64}$'),
+  version        numeric(78, 0) not null check (version > 0),
+  manifest_hash  text not null check (manifest_hash ~ '^0x[0-9a-f]{64}$'),
+  actor_address  text not null check (actor_address ~ '^0x[0-9a-f]{40}$'),
+  canonical_json text not null,
+  byte_length    integer not null check (byte_length between 1 and 65536),
+  created_at     timestamptz not null default now(),
+  primary key (chain_id, agent_id, service_key, version, manifest_hash)
+);
+create index if not exists agon_hosted_manifests_actor_idx
+  on agon_hosted_manifests(actor_address, created_at desc);
 alter table agon_mcp_provider_drafts add column if not exists publication_kind text not null default 'new';
 alter table agon_mcp_provider_drafts add column if not exists listing_id text;
 alter table agon_mcp_provider_drafts add column if not exists tx_hash text;
@@ -1636,6 +1652,20 @@ alter table agon_x402_call_intents add column if not exists target_url text;
 alter table agon_x402_call_intents drop constraint if exists agon_x402_call_intents_target_url_check;
 alter table agon_x402_call_intents add constraint agon_x402_call_intents_target_url_check
   check (target_url is null or (target_url ~ '^https://' and char_length(target_url) <= 2048));
+
+-- MCP hire previews retain the exact terms shown to the buyer. The underlying
+-- x402 intent owns the money boundary; this snapshot supports restart-safe
+-- digest confirmation without rebuilding terms from a mutable service file.
+create table if not exists agon_mcp_hire_previews (
+  intent_id       uuid primary key references agon_x402_call_intents(intent_id),
+  actor_address   text not null check (actor_address ~ '^0x[0-9a-f]{40}$'),
+  terms_digest    text not null check (terms_digest ~ '^0x[0-9a-f]{64}$'),
+  terms           jsonb not null check (jsonb_typeof(terms) = 'object'),
+  expires_at      timestamptz not null,
+  created_at      timestamptz not null default now()
+);
+create index if not exists agon_mcp_hire_previews_actor_idx
+  on agon_mcp_hire_previews(actor_address, created_at desc);
 
 -- Durable Circle/x402 receipt boundary. This records evidence and opaque
 -- settlement references without storing raw EIP-3009 signatures or keys.

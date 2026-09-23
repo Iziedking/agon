@@ -1,5 +1,5 @@
 import { decodePaymentResponseHeader, encodePaymentSignatureHeader } from "@x402/core/http";
-import { getAddress, keccak256 } from "viem";
+import { getAddress, keccak256, stringToHex } from "viem";
 
 import { evaluateX402ExecutionPolicy, type X402ExecutionPolicy } from "./x402-policy.ts";
 import {
@@ -93,6 +93,7 @@ export function createX402ProviderExecutionAdapter(options: {
             serviceStatus: response.status,
             latencyMs: Date.now() - started,
             responseHash: keccak256(bytes),
+            paymentResponseHash: keccak256(stringToHex(paymentResponse)),
             deliveredAt: new Date().toISOString(),
             result,
           },

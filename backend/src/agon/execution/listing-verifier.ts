@@ -233,6 +233,13 @@ export function createViemAgonListingVerifier(input: {
         version: positiveId(request.listingVersion, "listing version"),
         manifestHash: bytes32(request.manifestHash, "manifest hash"),
       };
+      let scoped: unknown;
+      try {
+        scoped = await input.client.readContract({ address: registryAddress, abi: listingVerifierAbi, functionName: "verificationScopeSupported" });
+      } catch {
+        throw new AgonListingVerificationError("disabled", "ServiceRegistry does not support exact-version verification");
+      }
+      if (scoped !== true) throw new AgonListingVerificationError("disabled", "ServiceRegistry does not support exact-version verification");
       const before = listingSnapshot(await input.client.readContract({ address: registryAddress, abi: listingVerifierAbi, functionName: "getListing", args: [expected.listingId] }));
       assertExactScope(before, expected);
       if (before.verification === 4) return { status: "already_suspended", transactionHash: null };

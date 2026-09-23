@@ -60,3 +60,56 @@ test("native MCP refuses provider mutations without an authenticated AGON actor"
   assert.equal(response.status, 200);
   assert.match(await response.text(), /authentication_required/);
 });
+
+test("native MCP enforces CLI capabilities before listing or spend actions", async () => {
+  const access = createMcpAccessAdapter({
+    async listListings() { return { ok: true as const, value: { items: [], nextCursor: null } }; },
+    async getListing() { return { ok: false as const, error: { code: "not_found", message: "not found" } }; },
+    async prepareX402Call() { return { ok: false as const, error: { code: "disabled", message: "disabled" } }; },
+  });
+  const handler = createAgonNativeMcpHandler(access);
+  const address = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  const authInfo = (scopes: string[]) => ({ token: "verified", clientId: "agon-cli", scopes, extra: { address, client: "agon-cli" } });
+  const call = (name: string, args: Record<string, unknown>) => request({
+    jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args },
+  });
+
+  const deniedListing = await handler.fetch(call("start_listing", {}), { authInfo: authInfo(["agon:read"]) });
+  assert.match(await deniedListing.text(), /scope_required/);
+  const permittedListing = await handler.fetch(call("start_listing", {}), { authInfo: authInfo(["listing:prepare"]) });
+  assert.match(await permittedListing.text(), /invalid_request/);
+
+  const deniedSpend = await handler.fetch(call("authorize_hire", {
+    hireId: "hire-1", termsDigest: `0x${"a".repeat(64)}`, approval: "approve", idempotencyKey: "approval-1",
+  }), { authInfo: authInfo(["agon:read"]) });
+  assert.match(await deniedSpend.text(), /scope_required/);
+  const permittedSpend = await handler.fetch(call("authorize_hire", {
+    hireId: "hire-1", termsDigest: `0x${"a".repeat(64)}`, approval: "approve", idempotencyKey: "approval-1",
+  }), { authInfo: authInfo(["wallet:execute"]) });
+  assert.match(await permittedSpend.text(), /hire_not_found/);
+});
+
+test("native MCP accepts the per_call payment mode used by hire previews", async () => {
+  const address = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  const access = createMcpAccessAdapter({
+    async listListings() { return { ok: true as const, value: { items: [], nextCursor: null } }; },
+    async getListing() { return { ok: true as const, value: listing }; },
+    async prepareX402Call(_actor, _reference, input) {
+      return { ok: true as const, value: { intentId: "hire-preview", actor: address, idempotencyKey: input.idempotencyKey, listingReference: listing.id, listingVersion: "1", inputHash: `0x${"1".repeat(64)}`, maxAmountUSDC: "0.04", state: "prepared" as const, executionEnabled: false as const, nextAction: "execution_adapter_not_enabled" as const, createdAt: new Date().toISOString() } };
+    },
+  });
+  const handler = createAgonNativeMcpHandler(access);
+  const response = await handler.fetch(request({
+    jsonrpc: "2.0", id: 1, method: "tools/call",
+    params: { name: "preview_hire", arguments: { serviceReference: listing.id, input: { records: ["a"] }, paymentMode: "per_call" } },
+  }), { authInfo: { token: "verified", clientId: "agon-cli", scopes: ["agon:read"], extra: { address, client: "agon-cli" } } });
+  assert.equal(response.status, 200);
+  const body = await response.text();
+  assert.match(body, /termsDigest/);
+  assert.match(body, /per_call/);
+  const escrow = await handler.fetch(request({
+    jsonrpc: "2.0", id: 2, method: "tools/call",
+    params: { name: "preview_hire", arguments: { serviceReference: listing.id, input: { records: ["a"] }, paymentMode: "escrow" } },
+  }), { authInfo: { token: "verified", clientId: "agon-cli", scopes: ["agon:read"], extra: { address, client: "agon-cli" } } });
+  assert.match(await escrow.text(), /capability_unavailable/);
+});

@@ -146,7 +146,8 @@ export class PostgresPlaygroundRunStore implements PlaygroundRunStore {
     let run = mapRun(row);
     const replayed = row.run_id !== input.runId;
     if (replayed && !matchesStart(run, input)) throw new PlaygroundRunConflictError();
-    if (replayed && run.state === "running" && run.leaseExpiresAt.getTime() <= Date.now()) {
+    // PostgreSQL owns the durable lease clock; app and database hosts may differ.
+    if (replayed && run.state === "running") {
       const expired = await this.pool.query<PlaygroundRunRow>(
         `update agon_playground_runs
          set state = 'failed', error_code = 'worker_timeout', completed_at = now(), lease_expires_at = now()

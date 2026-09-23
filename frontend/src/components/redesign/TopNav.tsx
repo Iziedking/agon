@@ -49,7 +49,14 @@ const AGON_ROUTES = [
   { href: "/market", label: "FIND SERVICES", exact: true },
   { href: "/agon/playground", label: "TEST SERVICES", exact: true },
   { href: "/market/new", label: "MCP GUIDE", exact: true },
-  { href: "/docs", label: "LEARN", exact: false },
+  { href: "/docs", label: "LEARN", exact: true },
+  { href: "/docs/about", label: "ROADMAP", exact: true },
+];
+
+const PUBLIC_AGON_ROUTES = [
+  { href: "/market", label: "FIND SERVICES", exact: true },
+  { href: "/docs", label: "DOCS", exact: true },
+  { href: "/docs/about", label: "ROADMAP", exact: true },
 ];
 
 export function TopNav({ hideSignOut = false }: { hideSignOut?: boolean } = {}) {
@@ -58,15 +65,12 @@ export function TopNav({ hideSignOut = false }: { hideSignOut?: boolean } = {}) 
   const isLegacyRoute = isLegacyArcRunRoute(pathname);
   const isAgon = !isLegacyRoute && (IS_AGON_DEPLOYMENT || isAgonRoute(pathname));
   const { networkKey } = useAgonNetwork();
-  const routes = isAgon ? AGON_ROUTES : LEGACY_ROUTES;
-  const [open, setOpen] = useState(false);
-  // AGON discovery remains public through direct links and page actions. The
-  // workspace menu is reserved for a signed-in account so a first visit stays
-  // focused on the market rather than on product administration.
   const { isSignedIn, settling } = useOperatorAddress();
+  const routes = isAgon ? (isSignedIn ? AGON_ROUTES : PUBLIC_AGON_ROUTES) : LEGACY_ROUTES;
+  const [open, setOpen] = useState(false);
   const { signOut } = useAuth();
   const { disconnect } = useDisconnect();
-  const showRoutes = !isLogin && isSignedIn;
+  const showRoutes = !isLogin && (isAgon || isSignedIn);
 
   // Close the drawer on route change so users don't see a stale open state
   // after navigating.
@@ -123,7 +127,7 @@ export function TopNav({ hideSignOut = false }: { hideSignOut?: boolean } = {}) 
           {isAgon ? <AgonNetworkSelector /> : null}
           {isAgon && isSignedIn ? <details className="relative hidden xl:block" onKeyDown={(event) => { if (event.key === "Escape") event.currentTarget.open = false; }}><summary className="flex min-h-11 cursor-pointer items-center border border-[color:var(--hairline-strong)] px-3 font-mono text-[10px] uppercase">Account</summary><nav aria-label="Account" className="absolute right-0 top-full z-50 mt-2 grid w-56 border border-[color:var(--hairline-strong)] bg-canvas p-2"><Link className="min-h-11 p-3 text-sm" href={networkHref("/market/activity", networkKey)}>My activity</Link><Link className="min-h-11 p-3 text-sm" href={networkHref("/market/provider", networkKey)}>Provider dashboard</Link><button className="min-h-11 p-3 text-left text-sm" onClick={async () => { await signOut(); disconnect(); }}>Sign out</button></nav></details> : null}
           <div className={isAgon ? "hidden xl:block" : ""}>{!isLogin && (!isAgon || !isSignedIn) && (settling ? null : <LoginButton />)}</div>
-          <div className={isAgon ? "hidden xl:block" : ""}><ThemeToggle /></div>
+          {!isAgon ? <ThemeToggle /> : null}
           {!isLogin && (isAgon || isSignedIn) ? (
             <button
               type="button"
@@ -145,7 +149,7 @@ export function TopNav({ hideSignOut = false }: { hideSignOut?: boolean } = {}) 
             {/* The nav chip is hidden on phones, so this is where mobile users
                 see the selected network's payment-token state. */}
             {isSignedIn && !isAgon ? <WalletBalanceChip variant="row" /> : null}
-            {isAgon ? <div className="flex flex-wrap items-center gap-3 border-b border-[color:var(--hairline)] py-3">{!isSignedIn ? <LoginButton /> : <NotificationBell />}<ThemeToggle /></div> : null}
+            {isAgon ? <div className="flex flex-wrap items-center gap-3 border-b border-[color:var(--hairline)] py-3">{!isSignedIn ? <LoginButton /> : <NotificationBell />}</div> : null}
             {isAgon && isSignedIn ? <Link className="inline-flex min-h-11 items-center py-3 text-sm" href={networkHref("/market/activity", networkKey)}>My activity</Link> : null}
             {isAgon && isSignedIn ? <Link className="inline-flex min-h-11 items-center py-3 text-sm" href={networkHref("/market/provider", networkKey)}>Provider dashboard</Link> : null}
             {routes.map((r) => {

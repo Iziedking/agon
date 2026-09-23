@@ -68,6 +68,7 @@ test("records provider delivery evidence atomically and replays the same evidenc
   const retry = await repository.recordX402DeliveryEvidence(input);
   assert.equal(first.evidenceHash, retry.evidenceHash);
   assert.equal((await repository.getX402CallReceipt(intent.intentId))?.state, "service_delivered");
+  assert.equal((await repository.getX402CallReceipt(intent.intentId))?.paymentResponseHash, null);
   assert.equal((await repository.getLatestX402DeliveryEvidence(intent.intentId))?.latencyMs, 91);
   await assert.rejects(
     () => repository.recordX402DeliveryEvidence({ ...input, deliveryId: "00000000-0000-4000-8000-000000000034", latencyMs: 92 }),

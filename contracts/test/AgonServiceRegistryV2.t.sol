@@ -5,6 +5,7 @@ import { Test } from "forge-std/Test.sol";
 import { ERC721 } from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import { AgonProfileRegistry } from "../src/AgonProfileRegistry.sol";
 import { AgonServiceRegistryV2 } from "../src/AgonServiceRegistryV2.sol";
+import { AgonArenaV2 } from "../src/AgonArenaV2.sol";
 
 contract AgonServiceIdentityV2 is ERC721 {
     constructor() ERC721("External Agent", "AGENT") { }
@@ -110,16 +111,17 @@ contract AgonServiceRegistryV2Test is Test {
         services.setVerificationForVersion(id, 1, manifestV1, AgonServiceRegistryV2.Verification.Verified);
     }
 
-    function test_unscopedSetterCannotPromoteVerification() public {
+    function test_unscopedSetterCannotChangeAnyVerificationState() public {
         uint256 id = _publish();
         vm.startPrank(admin);
         vm.expectRevert(AgonServiceRegistryV2.ScopedVerificationRequired.selector);
         services.setVerification(id, AgonServiceRegistryV2.Verification.Pending);
         vm.expectRevert(AgonServiceRegistryV2.ScopedVerificationRequired.selector);
         services.setVerification(id, AgonServiceRegistryV2.Verification.Verified);
+        vm.expectRevert(AgonServiceRegistryV2.ScopedVerificationRequired.selector);
         services.setVerification(id, AgonServiceRegistryV2.Verification.Revoked);
         vm.stopPrank();
-        assertEq(uint8(services.getListing(id).verification), uint8(AgonServiceRegistryV2.Verification.Revoked));
+        assertEq(uint8(services.getListing(id).verification), uint8(AgonServiceRegistryV2.Verification.Unverified));
     }
 
     function test_onlyVerifierCanUseScopedSetter() public {
@@ -127,5 +129,24 @@ contract AgonServiceRegistryV2Test is Test {
         vm.prank(stranger);
         vm.expectRevert();
         services.setVerificationForVersion(id, 1, manifestV1, AgonServiceRegistryV2.Verification.Verified);
+    }
+
+    function test_newArenaReadsTheV2RegistryAndGrantsEvaluatorAtDeployment() public {
+        AgonArenaV2 arena = new AgonArenaV2(admin, address(profiles), address(services), address(identity), admin);
+        assertEq(address(arena.services()), address(services));
+        assertTrue(arena.hasRole(arena.EVALUATOR_ROLE(), admin));
+
+        uint256 id = _publish();
+        vm.prank(provider);
+        uint256 evaluationId = arena.requestEvaluation(
+            keccak256("request-v2"),
+            id,
+            keccak256("capability-v2"),
+            keccak256("evaluator-v2"),
+            keccak256("task-v2"),
+            uint64(block.timestamp + 1 hours)
+        );
+        assertEq(arena.getEvaluation(evaluationId).agentId, 42);
+        assertEq(arena.getEvaluation(evaluationId).listingVersion, 1);
     }
 }

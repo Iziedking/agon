@@ -156,6 +156,25 @@ test("listing verifier refuses stale versions, hashes, agents, and non-listed se
   }
 });
 
+test("listing verifier refuses suspension writes on a V1 registry", async () => {
+  let writes = 0;
+  const adapter = createViemAgonListingVerifier({
+    enabled: true,
+    registryAddress: registry,
+    verifierAddress: verifier,
+    client: {
+      async readContract(input) {
+        if (input.functionName === "verificationScopeSupported") throw new Error("function missing");
+        return listing({ verification: 2 });
+      },
+      async waitForTransactionReceipt() { throw new Error("not expected"); },
+    },
+    wallet: { async writeContract() { writes += 1; return txHash; } },
+  });
+  await assert.rejects(() => adapter.suspend(request), (error: unknown) => error instanceof AgonListingVerificationError && error.code === "disabled");
+  assert.equal(writes, 0);
+});
+
 test("listing verifier readiness requires the scoped VERIFIER_ROLE", async () => {
   const ready = await readAgonListingVerifierReadiness({
     enabled: true,

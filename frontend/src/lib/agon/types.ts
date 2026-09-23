@@ -42,9 +42,9 @@ export type AgonCapabilities = {
     evaluatorAddress: `0x${string}` | null;
     role: `0x${string}`;
     assigned: boolean;
-    reason: "assigned" | "evaluator_not_configured" | "role_not_assigned" | "read_failed" | "disabled" | "unconfigured";
+    reason: "assigned" | "evaluator_not_configured" | "role_not_assigned" | "service_registry_link_mismatch" | "read_failed" | "disabled" | "unconfigured";
     executionEnabled: boolean;
-    executionReason: "ready" | "role_not_assigned" | "writer_disabled";
+    executionReason: "ready" | "role_not_assigned" | "service_registry_link_mismatch" | "writer_disabled";
     checkedAt: string | null;
   };
   listingVerifierReadiness: {

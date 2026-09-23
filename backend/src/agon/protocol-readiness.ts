@@ -10,7 +10,7 @@ export const AGON_PROTOCOL_CONTRACTS = [
 ] as const;
 
 export type AgonProtocolContract = typeof AGON_PROTOCOL_CONTRACTS[number];
-export type AgonOptionalProtocolContract = AgonProtocolContract | "AgonServiceRegistryV2";
+export type AgonOptionalProtocolContract = AgonProtocolContract | "AgonServiceRegistryV2" | "AgonArenaV2";
 
 export type AgonProtocolReadiness = {
   ready: boolean;
@@ -35,7 +35,7 @@ function validAddress(value: unknown): value is `0x${string}` {
  */
 export function inspectAgonProtocolReadiness(deployment: AgonDeployment | null): AgonProtocolReadiness {
   const requiredContracts: readonly AgonOptionalProtocolContract[] = deployment?.contracts.AgonServiceRegistryV2
-    ? [...AGON_PROTOCOL_CONTRACTS, "AgonServiceRegistryV2"]
+    ? [...AGON_PROTOCOL_CONTRACTS, "AgonServiceRegistryV2", "AgonArenaV2"]
     : AGON_PROTOCOL_CONTRACTS;
   const missingContracts = requiredContracts.filter((name) => !validAddress(deployment?.contracts[name]));
   const unverifiedContracts = requiredContracts.filter((name) => !deployment?.sourceVerification?.[name]);

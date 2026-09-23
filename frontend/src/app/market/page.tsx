@@ -167,7 +167,7 @@ function ArcMarketPage() {
               </div>
               <div className="grid grid-cols-2 gap-2" aria-label="Service view">
                 <ViewButton active={view === "all"} label="ALL" onClick={() => setView("all")} />
-                <ViewButton active={view === "tested"} label="TESTED" onClick={() => setView("tested")} />
+                <ViewButton active={view === "tested"} label="MARKET VERIFIED" onClick={() => setView("tested")} />
               </div>
             </div>
             <div className="mt-5 flex gap-2 overflow-x-auto pb-1" aria-label="Service categories">

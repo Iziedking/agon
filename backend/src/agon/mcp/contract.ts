@@ -114,6 +114,12 @@ export const confirmListingInput = z.object({
   txHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/),
 }).strict();
 
+export const confirmPauseInput = z.object({
+  reference: id,
+  operationId: id,
+  txHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/),
+}).strict();
+
 export const compileListingInput = z.object({
   draftId: id,
   agentId: z.string().regex(/^\d+$/),
@@ -127,6 +133,13 @@ export const providerMutationResult = z.object({
   draftId: id.optional(),
   reference: id.optional(),
   operationId: id.optional(),
+  transaction: z.object({
+    chainId: z.string().regex(/^\d+$/),
+    to: z.string().regex(/^0x[0-9a-fA-F]{40}$/),
+    data: z.string().regex(/^0x[0-9a-fA-F]+$/),
+    functionName: z.enum(["publish", "publishVersion", "setStatus"]),
+    args: z.array(z.string()),
+  }).strict().optional(),
   evidence: z.object({
     txHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/),
     blockNumber: z.string().regex(/^\d+$/),
@@ -147,6 +160,7 @@ export const mcpOperation = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("publish_listing_version"), input: publishListingVersionInput }),
   z.object({ kind: z.literal("pause_listing"), input: pauseListingInput }),
   z.object({ kind: z.literal("confirm_listing"), input: confirmListingInput }),
+  z.object({ kind: z.literal("confirm_pause"), input: confirmPauseInput }),
   z.object({ kind: z.literal("compile_listing"), input: compileListingInput }),
 ]);
 

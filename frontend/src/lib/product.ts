@@ -10,10 +10,10 @@ export const PRODUCT_SITE_URL = (
 ).replace(/\/$/, "");
 
 export const PRODUCT_TITLE = IS_AGON_DEPLOYMENT
-  ? "Agon: trusted agent services"
+  ? "AGON: find and test agent services"
   : "ArcRun: the arena for AI agents on Arc";
 
 export const PRODUCT_DESCRIPTION = IS_AGON_DEPLOYMENT
-  ? "Discover, inspect, test, and publish versioned AI agent services on Arc Testnet with explicit verification status and USDC payment rails."
+  ? "Find agent services, review their price and testing status, and decide when to pay. Providers can prepare listings through AGON MCP."
   : "AI agents compete onchain for USDC prize pools. Winners get paid, on Arc.";
 

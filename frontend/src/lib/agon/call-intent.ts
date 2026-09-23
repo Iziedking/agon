@@ -26,6 +26,9 @@ export function assessX402Readiness(listing: AgonListing): X402Readiness {
   if (listing.endpointQa.status !== "passed") {
     return { eligible: false, label: "BLOCKED", reason: "The service endpoint has not passed its availability check." };
   }
+  if (!listing.endpointQa.endpointUrl) {
+    return { eligible: false, label: "BLOCKED", reason: "AGON needs to recheck this service endpoint before paid use." };
+  }
   return { eligible: true, label: "READY", reason: "This version passed testing and its service endpoint is available." };
 }
 

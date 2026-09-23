@@ -20,7 +20,7 @@ export function UnverifiedWarning({ message, quarantineReason }: Props) {
   const quarantined = Boolean(quarantineReason);
   const visibleMessage = quarantined
     ? `${customerMessage(quarantineReason)} Payment and use are blocked.`
-    : message ?? "The owner published this service, but Agon has not tested this exact version. Review its terms before paying. Protected project payment is unavailable until testing passes.";
+    : message ?? "This version has no confirmed marketplace verification. Arena test evidence may exist separately. Paid use stays unavailable until the market record is verified.";
   return (
     <aside
       className="border-l-[3px] bg-canvas-2 px-4 py-3"
@@ -28,7 +28,7 @@ export function UnverifiedWarning({ message, quarantineReason }: Props) {
       role="note"
     >
       <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink">
-        {quarantined ? "THIS SERVICE IS UNAVAILABLE" : "THIS VERSION HAS NOT BEEN TESTED YET"}
+        {quarantined ? "THIS SERVICE IS UNAVAILABLE" : "MARKET VERIFICATION PENDING"}
       </div>
       <p className="mt-1 font-mono text-[11px] leading-relaxed text-ink-2">
         {visibleMessage}

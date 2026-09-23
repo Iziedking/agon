@@ -3,7 +3,7 @@ import { getAddress, keccak256, stringToHex } from "viem";
 export const AGON_ARENA_EVALUATOR_ROLE = keccak256(stringToHex("EVALUATOR_ROLE"));
 
 export type AgonArenaRoleReadClient = {
-  readContract(input: { address: `0x${string}`; abi: readonly unknown[]; functionName: "hasRole"; args: readonly unknown[] }): Promise<unknown>;
+  readContract(input: { address: `0x${string}`; abi: readonly unknown[]; functionName: "hasRole" | "services"; args?: readonly unknown[] }): Promise<unknown>;
 };
 
 export type AgonArenaEvaluatorReadiness = {
@@ -12,10 +12,13 @@ export type AgonArenaEvaluatorReadiness = {
   evaluatorAddress: `0x${string}` | null;
   role: `0x${string}`;
   assigned: boolean;
-  reason: "assigned" | "evaluator_not_configured" | "role_not_assigned" | "read_failed" | "disabled";
+  reason: "assigned" | "evaluator_not_configured" | "role_not_assigned" | "service_registry_link_mismatch" | "read_failed" | "disabled";
 };
 
-const ABI = [{ type: "function", name: "hasRole", stateMutability: "view", inputs: [{ name: "role", type: "bytes32" }, { name: "account", type: "address" }], outputs: [{ name: "", type: "bool" }] }] as const;
+const ABI = [
+  { type: "function", name: "hasRole", stateMutability: "view", inputs: [{ name: "role", type: "bytes32" }, { name: "account", type: "address" }], outputs: [{ name: "", type: "bool" }] },
+  { type: "function", name: "services", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
+] as const;
 
 function address(value: string, label: string): `0x${string}` {
   try { return getAddress(value).toLowerCase() as `0x${string}`; } catch { throw new Error(`${label} must be a valid EVM address`); }
@@ -27,12 +30,19 @@ export async function readAgonArenaEvaluatorReadiness(input: {
   client?: AgonArenaRoleReadClient;
   arenaAddress: string;
   evaluatorAddress?: string;
+  expectedServiceRegistry?: string;
 }): Promise<AgonArenaEvaluatorReadiness> {
   const arenaAddress = address(input.arenaAddress, "Arena address");
   const evaluatorAddress = input.evaluatorAddress ? address(input.evaluatorAddress, "evaluator address") : null;
   if (!input.enabled || !input.client) return { enabled: false, arenaAddress, evaluatorAddress, role: AGON_ARENA_EVALUATOR_ROLE, assigned: false, reason: "disabled" };
   if (!evaluatorAddress) return { enabled: true, arenaAddress, evaluatorAddress: null, role: AGON_ARENA_EVALUATOR_ROLE, assigned: false, reason: "evaluator_not_configured" };
   try {
+    if (input.expectedServiceRegistry) {
+      const linked = await input.client.readContract({ address: arenaAddress, abi: ABI, functionName: "services" });
+      if (typeof linked !== "string" || address(linked, "Arena service registry") !== address(input.expectedServiceRegistry, "active service registry")) {
+        return { enabled: true, arenaAddress, evaluatorAddress, role: AGON_ARENA_EVALUATOR_ROLE, assigned: false, reason: "service_registry_link_mismatch" };
+      }
+    }
     const assigned = await input.client.readContract({ address: arenaAddress, abi: ABI, functionName: "hasRole", args: [AGON_ARENA_EVALUATOR_ROLE, evaluatorAddress] });
     if (assigned !== true && assigned !== false) throw new Error("invalid role result");
     return { enabled: true, arenaAddress, evaluatorAddress, role: AGON_ARENA_EVALUATOR_ROLE, assigned, reason: assigned ? "assigned" : "role_not_assigned" };

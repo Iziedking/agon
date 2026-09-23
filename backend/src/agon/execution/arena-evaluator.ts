@@ -17,8 +17,8 @@ export type AgonArenaEvaluatorWallet = {
 
 export type AgonArenaEvaluatorAdapter = {
   readonly enabled: boolean;
-  startEvaluation(evaluationId: string): Promise<`0x${string}` | null>;
-  scoreEvaluation(input: { evaluationId: string; score: number; validationResponseHash: `0x${string}` }): Promise<`0x${string}` | null>;
+  startEvaluation(evaluationId: string, arenaAddress?: string): Promise<`0x${string}` | null>;
+  scoreEvaluation(input: { evaluationId: string; score: number; validationResponseHash: `0x${string}`; arenaAddress?: string }): Promise<`0x${string}` | null>;
 };
 
 function positiveId(value: string): bigint {
@@ -42,22 +42,30 @@ function responseHash(value: string): `0x${string}` {
 export function createViemAgonArenaEvaluator(input: {
   enabled: boolean;
   arenaAddress: string;
+  legacyArenaAddresses?: readonly string[];
   client?: AgonArenaEvaluatorClient;
   wallet?: AgonArenaEvaluatorWallet;
   receiptTimeoutMs?: number;
 }): AgonArenaEvaluatorAdapter {
   const arenaAddress = getAddress(input.arenaAddress) as `0x${string}`;
+  const allowedArenas = new Set([arenaAddress.toLowerCase(), ...(input.legacyArenaAddresses ?? []).map((value) => getAddress(value).toLowerCase())]);
   const enabled = input.enabled && Boolean(input.client) && Boolean(input.wallet);
   const receiptTimeoutMs = input.receiptTimeoutMs ?? 60_000;
 
-  async function state(evaluationId: bigint): Promise<number> {
-    if (!input.client) throw new Error("Arena evaluator read client is unavailable");
-    return evaluationState(await input.client.readContract({ address: arenaAddress, abi: arenaEvaluatorAbi, functionName: "getEvaluation", args: [evaluationId] }));
+  function targetArena(value?: string): `0x${string}` {
+    const target = value ? getAddress(value) as `0x${string}` : arenaAddress;
+    if (!allowedArenas.has(target.toLowerCase())) throw new Error("Arena address is outside the deployment receipt");
+    return target;
   }
 
-  async function submit(functionName: "startEvaluation" | "scoreEvaluation", args: readonly unknown[]): Promise<`0x${string}`> {
+  async function state(evaluationId: bigint, target: `0x${string}`): Promise<number> {
+    if (!input.client) throw new Error("Arena evaluator read client is unavailable");
+    return evaluationState(await input.client.readContract({ address: target, abi: arenaEvaluatorAbi, functionName: "getEvaluation", args: [evaluationId] }));
+  }
+
+  async function submit(functionName: "startEvaluation" | "scoreEvaluation", args: readonly unknown[], target: `0x${string}`): Promise<`0x${string}`> {
     if (!enabled || !input.client || !input.wallet) throw new Error("Arena evaluator execution is disabled");
-    const hash = await input.wallet.writeContract({ address: arenaAddress, abi: arenaEvaluatorAbi, functionName, args });
+    const hash = await input.wallet.writeContract({ address: target, abi: arenaEvaluatorAbi, functionName, args });
     const receipt = await input.client.waitForTransactionReceipt({ hash, timeout: receiptTimeoutMs });
     if (receipt.status !== "success") throw new Error(`Arena ${functionName} transaction reverted`);
     return hash;
@@ -65,23 +73,25 @@ export function createViemAgonArenaEvaluator(input: {
 
   return {
     enabled,
-    async startEvaluation(evaluationId) {
+    async startEvaluation(evaluationId, selectedArena) {
       const id = positiveId(evaluationId);
-      const before = await state(id);
+      const target = targetArena(selectedArena);
+      const before = await state(id, target);
       if (before !== 0) return null;
-      const hash = await submit("startEvaluation", [id]);
-      if (await state(id) !== 1) throw new Error("Arena evaluation did not become active after start confirmation");
+      const hash = await submit("startEvaluation", [id], target);
+      if (await state(id, target) !== 1) throw new Error("Arena evaluation did not become active after start confirmation");
       return hash;
     },
     async scoreEvaluation(request) {
       const id = positiveId(request.evaluationId);
+      const target = targetArena(request.arenaAddress);
       if (!Number.isInteger(request.score) || request.score < 0 || request.score > 100) throw new Error("Arena score must be an integer from 0 to 100");
       const hashValue = responseHash(request.validationResponseHash);
-      const before = await state(id);
+      const before = await state(id, target);
       if (before >= 3) return null;
       if (before !== 2) throw new Error("Arena evidence is not ready to score");
-      const hash = await submit("scoreEvaluation", [id, request.score, hashValue]);
-      const after = await state(id);
+      const hash = await submit("scoreEvaluation", [id, request.score, hashValue], target);
+      const after = await state(id, target);
       if (after !== 3 && after !== 4) throw new Error("Arena evaluation did not reach a final score after confirmation");
       return hash;
     },

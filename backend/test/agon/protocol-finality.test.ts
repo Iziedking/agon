@@ -5,6 +5,7 @@ import { encodeAbiParameters, encodeEventTopics, parseAbiItem } from "viem";
 import { createViemAgonProtocolFinalityReader, type AgonProtocolFinalityClient } from "../../src/agon/execution/protocol-finality.ts";
 
 const ARENA = `0x${"11".repeat(20)}` as `0x${string}`;
+const LEGACY_ARENA = `0x${"55".repeat(20)}` as `0x${string}`;
 const SYNDICATE = `0x${"22".repeat(20)}` as `0x${string}`;
 const PRIZE = `0x${"33".repeat(20)}` as `0x${string}`;
 const ACTOR = `0x${"44".repeat(20)}` as `0x${string}`;
@@ -28,6 +29,34 @@ test("normalizes viem named Arena tuples for independent scope checks", async ()
   assert.equal(evaluation.listingId, "8");
   assert.equal(evaluation.state, 3);
   assert.equal(evaluation.score, 96);
+});
+
+test("Arena finality reads the stored deployment address and refuses unknown addresses", async () => {
+  const reads: string[] = [];
+  const client = {
+    readContract: async (input: { address: `0x${string}` }) => {
+      reads.push(input.address.toLowerCase());
+      return {
+        evaluationId: 7n, listingId: 8n, agentId: 9n, listingVersion: 2n, category: 7n,
+        participant: ACTOR, manifestHash: hash("1"), capabilityHash: hash("2"), evaluatorVersionHash: hash("3"),
+        taskCommitment: hash("4"), evidenceRoot: hash("5"), validationRequestHash: hash("6"),
+        validationResponseHash: hash("7"), score: 96, requestedAt: 1n, submittedAt: 2n, scoredAt: 3n,
+        expiresAt: 2_000_000_000n, state: 3,
+      };
+    },
+    getTransactionReceipt: async () => { throw new Error("not used"); },
+  } as AgonProtocolFinalityClient;
+  const reader = createViemAgonProtocolFinalityReader({
+    client,
+    arenaAddress: ARENA,
+    legacyArenaAddresses: [LEGACY_ARENA],
+    syndicateRegistryAddress: SYNDICATE,
+    prizeVaultAddress: PRIZE,
+  });
+  assert.equal((await reader.inspectArenaEvaluation("7", LEGACY_ARENA)).evaluationId, "7");
+  assert.deepEqual(reads, [LEGACY_ARENA.toLowerCase()]);
+  await assert.rejects(() => reader.inspectArenaEvaluation("7", ACTOR), /outside the deployment receipt/);
+  assert.equal(reads.length, 1);
 });
 
 test("confirms exact syndicate contribution using mapping and receipt evidence", async () => {

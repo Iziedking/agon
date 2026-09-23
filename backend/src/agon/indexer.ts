@@ -3,7 +3,7 @@ import { parseAbi } from "viem";
 
 import { publicClient } from "../chain/arc.js";
 import { config } from "../config/index.js";
-import { activeAgonServiceRegistry } from "../config/deployments.ts";
+import { activeAgonServiceIndexStartBlock, activeAgonServiceRegistry } from "../config/deployments.ts";
 import { pool } from "../db/pool.js";
 import { AgonProjector, type AgonChainEvent, type AgonProjectableEvent } from "./store/projector.ts";
 import { PostgresAgonRepository } from "./store/repository.ts";
@@ -261,19 +261,22 @@ export async function indexAgonOnce(head: bigint): Promise<{ profiles: number; s
     throw new Error("Agon deployment is required for Agon indexing");
   }
   const startBlock = config.agon.indexerStartBlock;
+  const serviceStartBlock = config.agon.deployment
+    ? activeAgonServiceIndexStartBlock(config.agon.deployment, startBlock)
+    : startBlock;
   const before = await Promise.all([
     repository.getIndexerCursor({ streamName: "agon-profile", chainId, contractAddress: profileRegistry }),
     repository.getIndexerCursor({ streamName: "agon-service", chainId, contractAddress: serviceRegistry }),
   ]);
   await runStream("agon-profile", profileRegistry, profileEvents, startBlock, head);
-  await runStream("agon-service", serviceRegistry, serviceEvents, startBlock, head);
+  await runStream("agon-service", serviceRegistry, serviceEvents, serviceStartBlock, head);
   const after = await Promise.all([
     repository.getIndexerCursor({ streamName: "agon-profile", chainId, contractAddress: profileRegistry }),
     repository.getIndexerCursor({ streamName: "agon-service", chainId, contractAddress: serviceRegistry }),
   ]);
   return {
     profiles: Number((after[0]?.lastBlock ?? before[0]?.lastBlock ?? startBlock) - (before[0]?.lastBlock ?? startBlock - 1n)),
-    services: Number((after[1]?.lastBlock ?? before[1]?.lastBlock ?? startBlock) - (before[1]?.lastBlock ?? startBlock - 1n)),
+    services: Number((after[1]?.lastBlock ?? before[1]?.lastBlock ?? serviceStartBlock) - (before[1]?.lastBlock ?? serviceStartBlock - 1n)),
   };
 }
 

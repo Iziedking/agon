@@ -78,6 +78,9 @@ function eligibilityError(listing: AgonListingView): X402IntentError | null {
   if (listing.endpointQa.status !== "passed") {
     return { code: "not_eligible", message: "endpoint verification must pass before a call can be prepared" };
   }
+  if (!listing.endpointQa.endpointUrl) {
+    return { code: "not_eligible", message: "the checked provider endpoint is missing; run endpoint verification again" };
+  }
   return null;
 }
 
@@ -99,6 +102,13 @@ export function prepareX402Call(
   }
   const endpoint = targetUrl(request.endpointUrl);
   if (!endpoint.ok) return endpoint;
+  const checkedEndpoint = targetUrl(listing.endpointQa.endpointUrl);
+  if (!checkedEndpoint.ok || !checkedEndpoint.value) {
+    return { ok: false, error: { code: "not_eligible", message: "the checked provider endpoint is invalid; run endpoint verification again" } };
+  }
+  if (endpoint.value && endpoint.value !== checkedEndpoint.value) {
+    return { ok: false, error: { code: "invalid_request", message: "endpointUrl must match the endpoint AGON checked for this listing" } };
+  }
   try {
     return {
       ok: true,
@@ -110,7 +120,7 @@ export function prepareX402Call(
         input: request.input,
         inputHash: inputHash(request.input),
         maxAmountUSDC: request.maxAmountUSDC,
-        targetUrl: endpoint.value,
+        targetUrl: checkedEndpoint.value,
       },
     };
   } catch (error) {

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { decodePaymentSignatureHeader, encodePaymentResponseHeader } from "@x402/core/http";
-import { keccak256 } from "viem";
+import { keccak256, stringToHex } from "viem";
 
 import { buildX402ExecutionApproval, X402_EXECUTION_APPROVAL_PHRASE } from "../../src/agon/execution/x402-execution-approval.ts";
 import { buildX402ExecutionPlan } from "../../src/agon/execution/x402-facilitator.ts";
@@ -53,6 +53,7 @@ function fixture() {
 
 test("replays the exact reviewed payment to the provider and returns bounded delivery evidence", async () => {
   let observed: { url: string; payload: ReturnType<typeof decodePaymentSignatureHeader>; body: unknown } | null = null;
+  const paymentResponse = encodePaymentResponseHeader({ success: true, transaction: `0x${"ef".repeat(32)}`, network: "eip155:5042002", payer: ACTOR, amount: "1000" });
   const adapter = createX402ProviderExecutionAdapter({
     enabled: true,
     policy: createX402ExecutionPolicy({ enabled: true, maxAmountBaseUnits: "1000" }),
@@ -61,7 +62,7 @@ test("replays the exact reviewed payment to the provider and returns bounded del
       observed = { url: String(url), payload: decodePaymentSignatureHeader(headers.get("payment-signature")!), body: JSON.parse(String(init?.body)) };
       return new Response(JSON.stringify({ verdict: "pass" }), {
         status: 200,
-        headers: { "content-type": "application/json", "payment-response": encodePaymentResponseHeader({ success: true, transaction: `0x${"ef".repeat(32)}`, network: "eip155:5042002", payer: ACTOR, amount: "1000" }) },
+        headers: { "content-type": "application/json", "payment-response": paymentResponse },
       });
     },
   });
@@ -74,6 +75,8 @@ test("replays the exact reviewed payment to the provider and returns bounded del
   assert.equal((observed?.payload.payload as { signature: string }).signature, `0x${"12".repeat(65)}`);
   assert.deepEqual(result.value.delivery?.result, { verdict: "pass" });
   assert.match(result.value.delivery?.responseHash ?? "", /^0x[0-9a-f]{64}$/);
+  assert.equal(result.value.delivery?.paymentResponseHash, keccak256(stringToHex(paymentResponse)));
+  assert.notEqual(result.value.delivery?.paymentResponseHash, result.value.delivery?.responseHash);
 });
 
 test("fails before the provider call when disabled or the resource URL drifts", async () => {

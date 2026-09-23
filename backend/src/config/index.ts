@@ -62,6 +62,7 @@ const envSchema = z.object({
   START_BLOCK: z.coerce.bigint().nonnegative().default(0n),
   DEPLOYMENTS_FILE: z.string().default("../contracts/deployments/arc-testnet.json"),
   AGON_DEPLOYMENTS_FILE: z.string().default("../contracts/deployments/agon-arc-testnet.json"),
+  AGON_PUBLIC_API_URL: z.string().url().optional(),
   AGON_INDEXER_START_BLOCK: z.coerce.bigint().nonnegative().optional(),
   AGON_WRITES_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
   AGON_READINESS_CACHE_MS: z.coerce.number().int().min(1_000).max(300_000).default(30_000),
@@ -712,6 +713,7 @@ export const config = {
   contracts: deployments.contracts,
   external: deployments.external,
   agon: {
+    publicApiUrl: env.AGON_PUBLIC_API_URL,
     writesEnabled: env.AGON_WRITES_ENABLED,
     jobEscrowReadsEnabled: env.AGON_JOB_ESCROW_READS_ENABLED,
     deployment: agonDeployment.deployment,

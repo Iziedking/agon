@@ -39,6 +39,7 @@ import type {
 } from "../../src/agon/http/api-types.ts";
 import type { Result } from "../../src/agon/core/result.ts";
 import { InMemoryPlaygroundRateLimiter, InMemoryPlaygroundRunStore } from "../../src/agon/playground-store.ts";
+import type { McpHireStore } from "../../src/agon/mcp/hire-store.ts";
 
 const ADDRESS = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const REGISTRY = "0x3333333333333333333333333333333333333333";
@@ -594,11 +595,18 @@ const testAuth: MiddlewareHandler<{ Variables: AgonRouteVariables }> = async (co
   await next();
 };
 
-function testApp(service: AgonMarketService, playground = false) {
+function testApp(
+  service: AgonMarketService,
+  playground = false,
+  verifyMcpToken: (token: string) => Promise<{ address: string; client: string | null; scopes: string[] } | null> = async () => null,
+  hireStore?: McpHireStore,
+) {
   const app = new Hono<{ Variables: AgonRouteVariables }>();
   app.route("/agon", createAgonRoutes({
     service,
+    verifyMcpToken,
     requireAuth: testAuth,
+    hireStore,
     playgroundStore: playground ? new InMemoryPlaygroundRunStore() : undefined,
     playgroundRateLimiter: playground ? new InMemoryPlaygroundRateLimiter() : undefined,
     playgroundProviderRunner: playground ? {
@@ -617,6 +625,76 @@ function testApp(service: AgonMarketService, playground = false) {
   }));
   return app;
 }
+
+test("REST MCP listing actions enforce prepare and write scopes before parsing input", async () => {
+  const app = new Hono<{ Variables: AgonRouteVariables }>();
+  const denied: string[] = [];
+  const prepare: MiddlewareHandler<{ Variables: AgonRouteVariables }> = async (context) => {
+    denied.push("listing:prepare");
+    return context.json({ error: "scope_required", scope: "listing:prepare" }, 403);
+  };
+  const write: MiddlewareHandler<{ Variables: AgonRouteVariables }> = async (context) => {
+    denied.push("listing:write");
+    return context.json({ error: "scope_required", scope: "listing:write" }, 403);
+  };
+  app.route("/agon", createAgonRoutes({
+    service: new FakeAgonService(),
+    verifyMcpToken: async () => null,
+    requireAuth: testAuth,
+    requireListingPrepareAuth: prepare,
+    requireListingWriteAuth: write,
+  }));
+  for (const path of ["start-listing", "check-listing", "compile-listing"]) {
+    const response = await app.request(`/agon/mcp/${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+    assert.equal(response.status, 403, path);
+    assert.equal((await response.json() as { scope: string }).scope, "listing:prepare");
+  }
+  const draft = await app.request("/agon/mcp/listing/draft-1");
+  assert.equal(draft.status, 403);
+  for (const path of ["publish-listing", "publish-listing-version", "pause-listing"]) {
+    const response = await app.request(`/agon/mcp/${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+    assert.equal(response.status, 403, path);
+    assert.equal((await response.json() as { scope: string }).scope, "listing:write");
+  }
+  assert.deepEqual(denied, ["listing:prepare", "listing:prepare", "listing:prepare", "listing:prepare", "listing:write", "listing:write", "listing:write"]);
+});
+
+test("MCP retry-or-report uses the authenticated hire owner", async () => {
+  const checkedActors: string[] = [];
+  const app = testApp(new FakeAgonService(), false, async () => null, {
+    async create() { throw new Error("unused"); },
+    async get(actor) { checkedActors.push(actor); return null; },
+  });
+  const response = await app.request("/agon/mcp/hire/hire-1/retry-or-report", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-test-address": ADDRESS.toUpperCase() },
+    body: JSON.stringify({ action: "report_problem" }),
+  });
+  assert.equal(response.status, 404);
+  assert.match(await response.text(), /hire_not_found/);
+  assert.deepEqual(checkedActors, [ADDRESS]);
+});
+
+test("MCP tools trust only verified bearer claims for an actor", async () => {
+  const seenTokens: string[] = [];
+  const app = testApp(new FakeAgonService(), false, async (token) => {
+    seenTokens.push(token);
+    return token === "valid-test-token" ? { address: ADDRESS, client: null, scopes: [] } : null;
+  });
+  const body = JSON.stringify({
+    jsonrpc: "2.0", id: 1, method: "tools/call",
+    params: { name: "get_hire_status", arguments: { hireId: "hire-1" } },
+  });
+  const headers = { "content-type": "application/json", accept: "application/json, text/event-stream" };
+  const invalid = await app.request("/agon/mcp", { method: "POST", headers: { ...headers, authorization: "Bearer invalid" }, body });
+  assert.equal(invalid.status, 200);
+  assert.match(await invalid.text(), /authentication_required/);
+
+  const valid = await app.request("/agon/mcp", { method: "POST", headers: { ...headers, authorization: "Bearer valid-test-token" }, body });
+  assert.equal(valid.status, 200);
+  assert.match(await valid.text(), /hire_not_found/);
+  assert.deepEqual(seenTokens, ["invalid", "valid-test-token"]);
+});
 
 test("returns public listings with explicit unverified payment risk", async () => {
   const app = testApp(new FakeAgonService());
@@ -1097,6 +1175,49 @@ test("keeps reconciliation mutation behind authentication and explicit confirmat
   const body = await response.json() as { executionEnabled: boolean; nextAction: string };
   assert.equal(body.executionEnabled, false);
   assert.equal(body.nextAction, "deliver_service");
+});
+
+test("recovery probe requires auth, one reference, and never reports automatic finality", async () => {
+  const service = new FakeAgonService();
+  let observedActor = "";
+  let calls = 0;
+  service.probeX402RecoveryCandidate = async (actor, intentId, request) => {
+    observedActor = actor;
+    calls += 1;
+    return {
+      ok: true,
+      value: {
+        receiptId: "00000000-0000-4000-8000-000000000002",
+        intentId,
+        state: "settlement_submitted" as const,
+        network: "eip155:5042002" as const,
+        status: "confirmed" as const,
+        transaction: request.transaction ?? null,
+        providerTransferId: request.providerTransferId ?? null,
+        payer: ADDRESS as `0x${string}`,
+        recipient: ADDRESS as `0x${string}`,
+        amountAtomicUnits: "1000",
+        correlation: "terms_only" as const,
+        mayAutoFinalize: false as const,
+        nextAction: "operator_review" as const,
+        checkedAt: new Date().toISOString(),
+      },
+    };
+  };
+  const app = testApp(service);
+  const url = "/agon/call-intents/00000000-0000-4000-8000-000000000001/recovery-probe";
+  const candidate = { providerTransferId: "11111111-1111-4111-8111-111111111111" };
+  assert.equal((await app.request(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(candidate) })).status, 401);
+  assert.equal((await app.request(url, { method: "POST", headers: { "content-type": "application/json", "x-test-address": ADDRESS }, body: JSON.stringify({}) })).status, 400);
+  assert.equal((await app.request(url, { method: "POST", headers: { "content-type": "application/json", "x-test-address": ADDRESS }, body: JSON.stringify({ ...candidate, transaction: `0x${"12".repeat(32)}` }) })).status, 400);
+  assert.equal(calls, 0);
+  const response = await app.request(url, { method: "POST", headers: { "content-type": "application/json", "x-test-address": ADDRESS }, body: JSON.stringify(candidate) });
+  assert.equal(response.status, 200);
+  assert.equal(observedActor, ADDRESS);
+  const body = await response.json() as { correlation: string; mayAutoFinalize: boolean; nextAction: string };
+  assert.equal(body.correlation, "terms_only");
+  assert.equal(body.mayAutoFinalize, false);
+  assert.equal(body.nextAction, "operator_review");
 });
 
 test("keeps machine-to-machine agent spends owner-scoped and explicitly confirmed", async () => {

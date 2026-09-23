@@ -93,6 +93,7 @@ export type X402SettlementResult =
           serviceStatus: number;
           latencyMs: number;
           responseHash: `0x${string}`;
+          paymentResponseHash: `0x${string}`;
           deliveredAt: string;
           result: unknown;
         };

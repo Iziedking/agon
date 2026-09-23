@@ -5,11 +5,13 @@ import {
   type AgonServiceManifestV2,
 } from "../core/manifest.ts";
 import { manifestV2ServiceKey } from "../invocation/manifest-v2.ts";
+import { inspectManifest, verifyHostedManifestHash, type ManifestInspection } from "../manifest-inspector.ts";
 import type { ProviderDraftInput } from "./contract.ts";
 
 export type ProviderManifestIdentity = {
   agentId: string;
   serviceKey?: `0x${string}`;
+  version?: string;
 };
 
 export type CompiledProviderManifest = {
@@ -35,7 +37,7 @@ export function compileProviderManifest(draft: ProviderDraftInput, identity: Pro
       category: slug(draft.category),
       tags: [slug(draft.category)],
       logoUrl: draft.logoUrl,
-      version: "1",
+      version: identity.version ?? "1",
       capabilities: [slug(draft.category)],
     },
     invocation: {
@@ -57,4 +59,13 @@ export function compileProviderManifest(draft: ProviderDraftInput, identity: Pro
   const manifestHash = canonicalManifestHash(normalized.value);
   const draftDigest = `0x${createHash("sha256").update(JSON.stringify(draft)).digest("hex")}` as `0x${string}`;
   return { body: normalized.value, manifestHash, serviceKey, draftDigest };
+}
+
+/** Check the exact public bytes before returning a transaction that anchors them. */
+export async function verifyHostedProviderManifest(
+  uri: string,
+  compiled: CompiledProviderManifest,
+  inspect: (uri: string) => Promise<ManifestInspection> = inspectManifest,
+): Promise<void> {
+  await verifyHostedManifestHash(uri, compiled.manifestHash, inspect);
 }

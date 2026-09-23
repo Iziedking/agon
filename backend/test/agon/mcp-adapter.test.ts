@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createMcpAccessAdapter } from "../../src/agon/mcp/adapter.ts";
+import { createMemoryMcpHireStore } from "../../src/agon/mcp/hire-store.ts";
 
 const listing = {
   id: "5042002:0x1111111111111111111111111111111111111111:3",
@@ -34,6 +35,19 @@ test("MCP preview binds terms to the provider price and input", async () => {
   }
 });
 
+test("MCP refuses escrow preview without creating an x402 intent", async () => {
+  let prepared = 0;
+  const adapter = createMcpAccessAdapter({
+    async listListings() { return { ok: true, value: { items: [], nextCursor: null } }; },
+    async getListing() { return { ok: true, value: listing }; },
+    async prepareX402Call() { prepared++; throw new Error("x402 must not run for escrow"); },
+  });
+  const result = await adapter.previewHire("buyer", { serviceReference: listing.id, input: {}, paymentMode: "escrow" });
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.code, "capability_unavailable");
+  assert.equal(prepared, 0);
+});
+
 test("MCP authorization and work status stay task-oriented", async () => {
   const adapter = createMcpAccessAdapter({
     async listListings() { return { ok: true, value: { items: [], nextCursor: null } }; },
@@ -50,6 +64,48 @@ test("MCP authorization and work status stay task-oriented", async () => {
   const work = await adapter.getWork("buyer", "intent-1");
   assert.equal(work.ok, true);
   if (work.ok) assert.equal(work.value.status, "working");
+  const retry = await adapter.retryOrReportWork("buyer", "intent-1", "retry_delivery");
+  assert.deepEqual(retry, { ok: false, code: "retry_unavailable", message: "Automatic delivery retry is not available. Check the settlement status before contacting support; do not pay again." });
+});
+
+test("MCP hire terms survive a fresh adapter and remain scoped to the buyer", async () => {
+  const buyer = "0x1111111111111111111111111111111111111111";
+  const other = "0x2222222222222222222222222222222222222222";
+  const hireStore = createMemoryMcpHireStore();
+  let currentTime = Date.now();
+  let approvals = 0;
+  const service = {
+    async listListings() { return { ok: true as const, value: { items: [], nextCursor: null } }; },
+    async getListing() { return { ok: true as const, value: listing }; },
+    async prepareX402Call(_actor: string, _reference: string, request: { idempotencyKey: string; maxAmountUSDC: string }) {
+      return { ok: true as const, value: { intentId: "intent-restart", actor: buyer, idempotencyKey: request.idempotencyKey, listingReference: listing.id, listingVersion: "1", inputHash: `0x${"1".repeat(64)}`, maxAmountUSDC: request.maxAmountUSDC, state: "prepared" as const, executionEnabled: false, nextAction: "execution_adapter_not_enabled" } };
+    },
+    async approveX402Call() { approvals++; return { ok: true as const, value: { state: "approved" } }; },
+    async getX402SettlementReadiness() { return { ok: true as const, value: { receiptId: "receipt-restart", intentId: "intent-restart", state: "approved", network: "eip155:5042002", settlementRef: null, providerTransferId: null, status: "not_ready" as const, reason: "awaiting settlement", executionEnabled: false, nextAction: "prepare_authorization", checkedAt: new Date().toISOString() } }; },
+  };
+  const preview = await createMcpAccessAdapter(service, { hireStore, now: () => currentTime }).previewHire(buyer, { serviceReference: listing.id, input: { records: ["a"] } });
+  assert.equal(preview.ok, true);
+  if (!preview.ok) return;
+  const resumed = createMcpAccessAdapter(service, { hireStore, now: () => currentTime });
+  const wrongBuyer = await resumed.authorizeHire(other, "intent-restart", { termsDigest: preview.value.terms.termsDigest, approval: "approve", idempotencyKey: "hire-restart-001" });
+  assert.equal(wrongBuyer.ok, false);
+  const approved = await resumed.authorizeHire(buyer, "intent-restart", { termsDigest: preview.value.terms.termsDigest, approval: "approve", idempotencyKey: "hire-restart-001" });
+  assert.equal(approved.ok, true);
+  assert.equal(approvals, 1);
+  const status = await resumed.getWork(buyer, "intent-restart");
+  assert.equal(status.ok, true);
+  if (status.ok) assert.equal(status.value.terms?.termsDigest, preview.value.terms.termsDigest);
+  const hidden = await resumed.getWork(other, "intent-restart");
+  assert.equal(hidden.ok, false);
+  const report = await resumed.retryOrReportWork(buyer, "intent-restart", "report_problem");
+  assert.equal(report.ok, true);
+  const privateReport = await resumed.retryOrReportWork(other, "intent-restart", "report_problem");
+  assert.equal(privateReport.ok, false);
+  currentTime += 10 * 60_000;
+  const expired = await resumed.authorizeHire(buyer, "intent-restart", { termsDigest: preview.value.terms.termsDigest, approval: "approve", idempotencyKey: "hire-restart-002" });
+  assert.equal(expired.ok, false);
+  if (!expired.ok) assert.equal(expired.code, "terms_expired");
+  assert.equal(approvals, 1);
 });
 
 test("MCP provider draft returns a stable draft and pre-publication checks", async () => {

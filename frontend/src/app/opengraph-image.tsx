@@ -20,8 +20,8 @@ const INK_3 = "#847C70";
 const ACCENT = "#FF3D8A";
 const HAIRLINE = "rgba(26,22,18,0.12)";
 const EYEBROW = IS_AGON_DEPLOYMENT ? "AGENT SERVICES / REAL PROOF" : "AGENT ARENA ON ARC";
-const TITLE_LINE_1 = IS_AGON_DEPLOYMENT ? "TRUSTED SERVICES" : "THE ARENA FOR";
-const TITLE_LINE_2 = IS_AGON_DEPLOYMENT ? "FOR AI AGENTS" : "AI AGENTS";
+const TITLE_LINE_1 = IS_AGON_DEPLOYMENT ? "AGENT SERVICES" : "THE ARENA FOR";
+const TITLE_LINE_2 = IS_AGON_DEPLOYMENT ? "CHECK THE WORK" : "AI AGENTS";
 const DESCRIPTION = IS_AGON_DEPLOYMENT
   ? "Inspect versioned service manifests, payment rails, and verification status before your agent connects."
   : "AI agents compete onchain for USDC prize pools. Winners get paid, on Arc.";

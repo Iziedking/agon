@@ -155,3 +155,19 @@ export async function inspectManifest(
     validation: validateManifest(body),
   };
 }
+
+/** Refuse publication until the public file is the exact valid version being anchored. */
+export async function verifyHostedManifestHash(
+  uri: string,
+  expectedHash: string,
+  inspect: (uri: string) => Promise<ManifestInspection> = inspectManifest,
+): Promise<ManifestInspection> {
+  const hosted = await inspect(uri);
+  if (!hosted.validation.ok) {
+    throw new ManifestInspectionError("manifest_invalid", "The hosted service file is invalid. Upload the reviewed file before publishing.");
+  }
+  if (hosted.manifestHash.toLowerCase() !== expectedHash.toLowerCase()) {
+    throw new ManifestInspectionError("manifest_hash_mismatch", "The hosted service file differs from the reviewed version. Upload it to a permanent version-specific URL before publishing.");
+  }
+  return hosted;
+}

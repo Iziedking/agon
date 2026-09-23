@@ -19,7 +19,7 @@ export const LEGACY_ARCRUN_ROUTE_PREFIXES = [
   "/bridge",
 ] as const;
 
-export const PUBLIC_MARKETPLACE_DOC_ROUTES = ["/docs", "/docs/list-agents"] as const;
+export const PUBLIC_MARKETPLACE_DOC_ROUTES = ["/docs", "/docs/about", "/docs/list-agents"] as const;
 
 export function isPublicMarketplaceDocsRoute(pathname: string): boolean {
   return PUBLIC_MARKETPLACE_DOC_ROUTES.includes(pathname as (typeof PUBLIC_MARKETPLACE_DOC_ROUTES)[number]);

@@ -14,6 +14,7 @@ const contractInterfaces = z.object({
 const schema = z.object({
   chainId: z.number().int().positive(),
   deployBlock: z.number().int().nonnegative().optional(),
+  v2DeployBlock: z.number().int().nonnegative().optional(),
   contracts: z.object({
     AgonProfileRegistry: z.string(),
     AgonServiceRegistry: z.string(),
@@ -21,6 +22,7 @@ const schema = z.object({
     AgonJobEscrow: address.optional(),
     AgonJobEscrowV2: address.optional(),
     AgonArena: address.optional(),
+    AgonArenaV2: address.optional(),
     AgonSyndicateRegistry: address.optional(),
     AgonPrizeVault: address.optional(),
   }),
@@ -30,6 +32,21 @@ const schema = z.object({
     ValidationRegistry: z.object({ address, chainId: z.number().int().positive() }).optional(),
   }),
   sourceVerification,
+}).superRefine((value, context) => {
+  if (Boolean(value.contracts.AgonServiceRegistryV2) !== Boolean(value.contracts.AgonArenaV2)) {
+    context.addIssue({
+      code: "custom",
+      path: ["contracts", value.contracts.AgonServiceRegistryV2 ? "AgonArenaV2" : "AgonServiceRegistryV2"],
+      message: "V2 service registry and Arena must be activated together",
+    });
+  }
+  if (value.contracts.AgonServiceRegistryV2 && value.v2DeployBlock === undefined) {
+    context.addIssue({ code: "custom", path: ["v2DeployBlock"], message: "V2 deployment block is required for indexer activation" });
+  }
+  if (value.contracts.AgonServiceRegistryV2 && value.deployBlock !== undefined && value.v2DeployBlock !== undefined
+    && value.v2DeployBlock < value.deployBlock) {
+    context.addIssue({ code: "custom", path: ["v2DeployBlock"], message: "V2 deployment block cannot precede V1" });
+  }
 });
 
 export type AgonDeployment = z.infer<typeof schema> & {
@@ -40,6 +57,7 @@ export type AgonDeployment = z.infer<typeof schema> & {
     AgonJobEscrow?: `0x${string}`;
     AgonJobEscrowV2?: `0x${string}`;
     AgonArena?: `0x${string}`;
+    AgonArenaV2?: `0x${string}`;
     AgonSyndicateRegistry?: `0x${string}`;
     AgonPrizeVault?: `0x${string}`;
   };
@@ -107,16 +125,26 @@ export function activeAgonServiceRegistry(deployment: AgonDeployment): `0x${stri
   return deployment.contracts.AgonServiceRegistryV2 ?? deployment.contracts.AgonServiceRegistry;
 }
 
+export function activeAgonArena(deployment: AgonDeployment): `0x${string}` | undefined {
+  return deployment.contracts.AgonArenaV2 ?? deployment.contracts.AgonArena;
+}
+
+export function activeAgonServiceIndexStartBlock(deployment: AgonDeployment, fallback: bigint): bigint {
+  return deployment.contracts.AgonServiceRegistryV2 && deployment.v2DeployBlock !== undefined
+    ? BigInt(deployment.v2DeployBlock)
+    : fallback;
+}
+
 /**
- * Adapters that operate on marketplace listings receive the active registry
- * under the long-standing field name. The canonical receipt still preserves
- * the immutable V1 address beside the optional V2 address.
+ * Runtime adapters receive active contracts under their long-standing names.
+ * The canonical receipt retains the immutable V1 addresses beside V2.
  */
-export function withActiveAgonServiceRegistry(deployment: AgonDeployment): AgonDeployment {
-  const active = activeAgonServiceRegistry(deployment);
-  if (active === deployment.contracts.AgonServiceRegistry) return deployment;
+export function withActiveAgonContracts(deployment: AgonDeployment): AgonDeployment {
+  const serviceRegistry = activeAgonServiceRegistry(deployment);
+  const arena = activeAgonArena(deployment);
+  if (serviceRegistry === deployment.contracts.AgonServiceRegistry && arena === deployment.contracts.AgonArena) return deployment;
   return {
     ...deployment,
-    contracts: { ...deployment.contracts, AgonServiceRegistry: active },
+    contracts: { ...deployment.contracts, AgonServiceRegistry: serviceRegistry, AgonArena: arena },
   };
 }

@@ -24,6 +24,7 @@ function listing(overrides: Partial<AgonListingView> = {}): AgonListingView {
     risk: { unverified: false, warning: null, quarantineReason: null },
     endpointQa: {
       status: "passed",
+      endpointUrl: "https://provider.example/execute",
       checkedAt: "2026-08-20T10:00:00.000Z",
       endpointStatus: 402,
       evidenceHash: HASH,
@@ -50,6 +51,18 @@ test("prepares a verified x402 call without enabling execution", () => {
   assert.equal(result.value.actor, ACTOR);
   assert.match(result.value.inputHash, /^0x[0-9a-f]{64}$/);
   assert.equal(result.value.maxAmountUSDC, "0.01");
+  assert.equal(result.value.targetUrl, "https://provider.example/execute");
+});
+
+test("refuses a payment destination different from the endpoint AGON checked", () => {
+  const wrong = prepareX402Call(ACTOR, listing(), {
+    idempotencyKey: "audit-endpoint-001", method: "POST", input: {}, maxAmountUSDC: "0.01", endpointUrl: "https://other.example/execute",
+  });
+  assert.deepEqual(wrong, { ok: false, error: { code: "invalid_request", message: "endpointUrl must match the endpoint AGON checked for this listing" } });
+  const missing = prepareX402Call(ACTOR, listing({ endpointQa: { ...listing().endpointQa, endpointUrl: undefined } }), {
+    idempotencyKey: "audit-endpoint-002", method: "POST", input: {}, maxAmountUSDC: "0.01",
+  });
+  assert.equal(missing.ok, false);
 });
 
 test("canonicalizes equivalent JSON input to the same hash", () => {

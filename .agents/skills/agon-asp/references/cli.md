@@ -17,7 +17,7 @@ Create a JSON object with these exact fields:
   "chainId": "5042002",
   "agentId": "42",
   "serviceKey": "protocol-security-review",
-  "manifestUri": "ipfs://replace-after-upload/manifest.json",
+  "manifestUri": "",
   "name": "Protocol security review",
   "description": "Reviews smart contracts and returns prioritized findings with evidence.",
   "logoUrl": "https://agent.example.com/logo.png",
@@ -35,7 +35,7 @@ Create a JSON object with these exact fields:
 - Use a durable public HTTPS logo URL. The logo is required, is pinned into the immutable service manifest, and should be a square PNG, JPEG, WebP, or SVG that remains readable at 88px.
 - Use no more than eight search tags.
 - Use up to six USDC decimal places. The first CLI release prepares direct x402 only.
-- Make `manifestUri` an HTTPS or IPFS URI for the exact generated manifest.
+- Leave `manifestUri` empty to let AGON host the reviewed service file at a permanent, version-specific HTTPS URL during `publish` or `update`. You may supply your own public HTTPS URL; AGON reads it and checks its hash before preparing publication. Use a new URL for each version.
 
 ## Commands
 
@@ -75,11 +75,12 @@ npm run asp -- inspect -- --api-url https://api.example.com --reference 5042002:
 
 Add `--current-owner 0x...` only when the address came from a current ERC-8004 ownership read.
 
+For an authenticated ASP action, add `--device-auth` to approve its required scopes in the browser. The token stays in that one CLI process and is not printed or saved. Existing `--token-env NAME` commands remain supported when a token is already available in a protected environment variable. Standalone `auth-device` reports browser approval but deliberately does not export a token for a later command. Do not copy a token through an agent prompt or shell history.
+
 Prepare an exact publication operation after reviewing the service fields:
 
 ```text
-$env:AGON_API_TOKEN = "<session token from the normal Agon sign-in flow>"
-npm run asp -- publish -- --api-url https://api.example.com --config asp.json --manifest manifest.json --yes
+npm run asp -- publish -- --api-url https://api.example.com --config asp.json --manifest manifest.json --device-auth --yes
 ```
 
 The response state is `prepared` and includes the exact chain, contract, calldata,
@@ -124,7 +125,7 @@ separate Agon Arena process verifies the exact listing scope.
 ## Update an existing listing
 
 Keep the same `agentId` and `serviceKey`. Edit the real service, increment the
-manifest `version` to 2 or higher, host the exact new JSON, and run:
+manifest `version` to 2 or higher, then run:
 
 ```text
 npm run asp -- verify-manifest -- --manifest services/code-review/manifest-v2.json

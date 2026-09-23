@@ -7,8 +7,9 @@ import { inspectManifest, ManifestInspectionError } from "../manifest-inspector.
 import { createMcpAccessAdapter } from "../mcp/adapter.ts";
 import { createAgonNativeMcpHandler } from "../mcp/native-server.ts";
 import type { ProviderDraftStore } from "../mcp/provider-draft-store.ts";
+import type { McpHireStore } from "../mcp/hire-store.ts";
+import { HostedManifestError, type HostedManifestStore } from "../hosted-manifest-store.ts";
 import { createMarketAggregator, type MarketSource } from "../mcp/aggregator.ts";
-import { verifyTokenClaims } from "../../auth/jwt.ts";
 import { z, type ZodError } from "zod";
 import type { Result } from "../core/result.ts";
 import type {
@@ -36,6 +37,8 @@ import type {
   X402SettlementReadinessView,
   X402ReconciliationReadinessView,
   X402ReconciliationRequest,
+  X402RecoveryProbeRequest,
+  X402RecoveryProbeView,
   X402AgentSpendRequest,
   X402DeliveryEvidenceRequest,
   X402SettlementRequest,
@@ -115,18 +118,18 @@ export type AgonMarketService = {
     draft: import("../mcp/contract.ts").ProviderDraftInput,
     compiled: import("../mcp/provider-manifest.ts").CompiledProviderManifest,
     manifestUri: string,
-  ): Promise<Result<{ operationId?: string; reference?: string }, AgonServiceError>>;
+  ): Promise<Result<SubmittedOperation, AgonServiceError>>;
   publishProviderDraftVersion?(
     actor: string,
     draft: import("../mcp/contract.ts").ProviderDraftInput,
     compiled: import("../mcp/provider-manifest.ts").CompiledProviderManifest,
     manifestUri: string,
     listingId: string,
-  ): Promise<Result<{ operationId?: string; reference?: string }, AgonServiceError>>;
+  ): Promise<Result<SubmittedOperation, AgonServiceError>>;
   pauseProviderListing?(
     actor: string,
     reference: string,
-  ): Promise<Result<{ reference: string; operationId?: string }, AgonServiceError>>;
+  ): Promise<Result<SubmittedOperation, AgonServiceError>>;
   publishListingVersion(
     actor: string,
     request: PublishListingVersionRequest,
@@ -185,6 +188,11 @@ export type AgonMarketService = {
     intentId: string,
     request: X402ReconciliationRequest,
   ): Promise<Result<import("./api-types.ts").X402ReconciliationView, AgonServiceError>>;
+  probeX402RecoveryCandidate?(
+    actor: string,
+    intentId: string,
+    request: X402RecoveryProbeRequest,
+  ): Promise<Result<X402RecoveryProbeView, AgonServiceError>>;
   executeX402AgentSpend?(
     actor: string,
     request: X402AgentSpendRequest,
@@ -362,9 +370,11 @@ export type AgonMarketService = {
 
 export type CreateAgonRoutesOptions = {
   service: AgonMarketService;
+  verifyMcpToken: (token: string) => Promise<{ address: string; client: string | null; scopes: string[] } | null>;
   /** Optional external marketplace adapters. Arc remains the default source. */
   marketSources?: MarketSource[];
   requireAuth: MiddlewareHandler<{ Variables: AgonRouteVariables }>;
+  requireListingPrepareAuth?: MiddlewareHandler<{ Variables: AgonRouteVariables }>;
   requireListingWriteAuth?: MiddlewareHandler<{ Variables: AgonRouteVariables }>;
   requireListingConfirmAuth?: MiddlewareHandler<{ Variables: AgonRouteVariables }>;
   requirePlaygroundAuth?: MiddlewareHandler<{ Variables: AgonRouteVariables }>;
@@ -374,6 +384,8 @@ export type CreateAgonRoutesOptions = {
   playgroundRateLimiter?: PlaygroundRateLimiter;
   playgroundProviderRunner?: PlaygroundProviderRunner;
   providerDraftStore?: ProviderDraftStore;
+  hostedManifestStore?: HostedManifestStore;
+  hireStore?: McpHireStore;
 };
 
 const positiveDecimal = z.string().regex(/^[1-9]\d*$/, "must be a positive decimal string");
@@ -446,6 +458,11 @@ const x402FacilitatorVerificationSchema = z.object({
 const x402ReconciliationSchema = z.object({
   confirmation: z.literal("RECONCILE_ARC_TESTNET_X402"),
 }).strict();
+
+const x402RecoveryProbeSchema = z.object({
+  transaction: z.string().regex(/^0x[0-9a-fA-F]{64}$/).optional(),
+  providerTransferId: z.string().uuid().optional(),
+}).strict().refine((value) => Boolean(value.transaction) !== Boolean(value.providerTransferId), "supply one payment reference");
 
 const mcpAuthorizeHireSchema = z.object({
   termsDigest: z.string().regex(/^0x[0-9a-fA-F]{64}$/),
@@ -702,7 +719,7 @@ function queryFromRequest(context: Context, overrides: Partial<ListingQuery> = {
 
 export function createAgonRoutes(options: CreateAgonRoutesOptions) {
   const app = new Hono<{ Variables: AgonRouteVariables }>();
-  const mcp = createMcpAccessAdapter(options.service, { providerDraftStore: options.providerDraftStore });
+  const mcp = createMcpAccessAdapter(options.service, { providerDraftStore: options.providerDraftStore, hostedManifestStore: options.hostedManifestStore, hireStore: options.hireStore });
   const nativeMcp = createAgonNativeMcpHandler(mcp);
   const marketAggregator = createMarketAggregator(options.marketSources ?? [
     {
@@ -716,6 +733,53 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
     },
   ]);
   const requirePrincipal = options.requirePrincipal ?? (async (_context, next) => { await next(); });
+
+  app.get("/manifests/:agentId/:serviceKey/:version/:file", async (context) => {
+    if (!options.hostedManifestStore) return context.json({ error: { code: "manifest_host_unavailable", message: "AGON service-file hosting is unavailable." } }, 503);
+    const name = context.req.param("file");
+    const match = name.match(/^(0x[0-9a-f]{64})\.json$/);
+    if (!match) return context.notFound();
+    try {
+      const file = await options.hostedManifestStore.get(context.req.param("agentId"), context.req.param("serviceKey"), context.req.param("version"), match[1]!);
+      if (!file) return context.notFound();
+      const headers = { "content-type": "application/json; charset=utf-8", "cache-control": "public, max-age=31536000, immutable", etag: `"${file.manifestHash}"` };
+      if (context.req.header("if-none-match") === headers.etag) return context.body(null, 304, headers);
+      return context.body(file.canonicalJson, 200, headers);
+    } catch {
+      return context.json({ error: { code: "manifest_unavailable", message: "The service file could not be read." } }, 503);
+    }
+  });
+
+  app.post("/manifests", options.requireListingWriteAuth ?? options.requireAuth, requirePrincipal, async (context) => {
+    if (!options.hostedManifestStore) return context.json({ error: { code: "manifest_host_unavailable", message: "AGON service-file hosting is unavailable." } }, 503);
+    const reader = context.req.raw.body?.getReader();
+    if (!reader) return context.json({ error: { code: "invalid_json", message: "A service file is required." } }, 400);
+    const chunks: Uint8Array[] = [];
+    let byteLength = 0;
+    try {
+      while (true) {
+        const part = await reader.read();
+        if (part.done) break;
+        byteLength += part.value.byteLength;
+        if (byteLength > 96 * 1024) {
+          await reader.cancel();
+          return context.json({ error: { code: "manifest_too_large", message: "The service-file request is too large." } }, 413);
+        }
+        chunks.push(part.value);
+      }
+      const parsed = z.object({ manifest: z.unknown(), expectedHash: bytes32 }).strict().safeParse(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+      if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
+      const file = await options.hostedManifestStore.put(context.get("address"), parsed.data.manifest, parsed.data.expectedHash);
+      return context.json({ manifestUri: file.uri, manifestHash: file.manifestHash, agentId: file.agentId, serviceKey: file.serviceKey, version: file.version }, 201);
+    } catch (error) {
+      if (error instanceof SyntaxError) return context.json({ error: { code: "invalid_json", message: "Request body must be valid JSON." } }, 400);
+      if (error instanceof HostedManifestError) {
+        const status = error.code === "manifest_owner_mismatch" ? 403 : error.code === "manifest_too_large" ? 413 : error.code === "manifest_quota_exceeded" ? 429 : error.code === "manifest_host_unavailable" || error.code === "manifest_owner_unavailable" ? 503 : 422;
+        return context.json({ error: { code: error.code, message: error.message } }, status);
+      }
+      return context.json({ error: { code: "manifest_unavailable", message: "The service file could not be hosted." } }, 503);
+    }
+  });
 
   async function consumePlaygroundLimit(context: Context<{ Variables: AgonRouteVariables }>, scope: "sample" | "evaluation") {
     if (!options.playgroundRateLimiter) return true;
@@ -1058,14 +1122,14 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
   app.all("/mcp", async (context) => {
     const authorization = context.req.header("authorization") ?? "";
     const token = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
-    const claims = token ? await verifyTokenClaims(token) : null;
+    const claims = token ? await options.verifyMcpToken(token) : null;
     return nativeMcp.fetch(context.req.raw, {
       authInfo: claims
         ? {
             token,
             clientId: claims.client ?? claims.address,
             scopes: claims.scopes,
-            extra: { address: claims.address },
+            extra: { address: claims.address, client: claims.client },
           }
         : undefined,
     });
@@ -1112,25 +1176,25 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
     if (isApiError(body)) return context.json(body, 400);
     const parsed = mcpRetryOrReportSchema.safeParse(body);
     if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
-    const result = await mcp.retryOrReportWork(context.req.param("hireId"), parsed.data.action);
+    const result = await mcp.retryOrReportWork(context.get("address"), context.req.param("hireId"), parsed.data.action);
     return result.ok ? context.json(result.value) : context.json({ error: { code: result.code, message: result.message } }, 404);
   });
 
-  app.post("/mcp/start-listing", options.requireAuth, async (context) => {
+  app.post("/mcp/start-listing", options.requireListingPrepareAuth ?? options.requireAuth, requirePrincipal, async (context) => {
     const body = await parseJson(context);
     if (isApiError(body)) return context.json(body, 400);
     const result = await mcp.startListing(context.get("address"), body);
     return result.ok ? context.json(result.value, 201) : context.json({ error: { code: result.code, message: result.message } }, 400);
   });
 
-  app.post("/mcp/check-listing", options.requireAuth, async (context) => {
+  app.post("/mcp/check-listing", options.requireListingPrepareAuth ?? options.requireAuth, requirePrincipal, async (context) => {
     const body = await parseJson(context);
     if (isApiError(body)) return context.json(body, 400);
     const result = await mcp.checkListing(context.get("address"), body);
     return result.ok ? context.json(result.value) : context.json({ error: { code: result.code, message: result.message } }, 400);
   });
 
-  app.post("/mcp/publish-listing", options.requireAuth, async (context) => {
+  app.post("/mcp/publish-listing", options.requireListingWriteAuth ?? options.requireAuth, requirePrincipal, async (context) => {
     const body = await parseJson(context);
     if (isApiError(body)) return context.json(body, 400);
     const parsed = mcpPublishListingSchema.safeParse(body);
@@ -1139,7 +1203,7 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
     return result.ok ? context.json(result.value) : context.json({ error: { code: result.code, message: result.message } }, 400);
   });
 
-  app.post("/mcp/publish-listing-version", options.requireAuth, async (context) => {
+  app.post("/mcp/publish-listing-version", options.requireListingWriteAuth ?? options.requireAuth, requirePrincipal, async (context) => {
     const body = await parseJson(context);
     if (isApiError(body)) return context.json(body, 400);
     const parsed = mcpPublishListingSchema.safeParse(body);
@@ -1148,7 +1212,7 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
     return result.ok ? context.json(result.value) : context.json({ error: { code: result.code, message: result.message } }, 400);
   });
 
-  app.post("/mcp/pause-listing", options.requireAuth, async (context) => {
+  app.post("/mcp/pause-listing", options.requireListingWriteAuth ?? options.requireAuth, requirePrincipal, async (context) => {
     const body = await parseJson(context);
     if (isApiError(body)) return context.json(body, 400);
     const parsed = mcpPauseListingSchema.safeParse(body);
@@ -1157,7 +1221,7 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
     return result.ok ? context.json(result.value) : context.json({ error: { code: result.code, message: result.message } }, 400);
   });
 
-  app.get("/mcp/listing/:draftId", options.requireAuth, async (context) => {
+  app.get("/mcp/listing/:draftId", options.requireListingPrepareAuth ?? options.requireAuth, requirePrincipal, async (context) => {
     const result = await mcp.getListingPublication(context.get("address"), context.req.param("draftId"));
     return result.ok ? context.json(result.value) : context.json({ error: { code: result.code, message: result.message } }, 404);
   });
@@ -1171,7 +1235,7 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
     return result.ok ? context.json(result.value) : context.json({ error: { code: result.code, message: result.message } }, 400);
   });
 
-  app.post("/mcp/compile-listing", options.requireAuth, async (context) => {
+  app.post("/mcp/compile-listing", options.requireListingPrepareAuth ?? options.requireAuth, requirePrincipal, async (context) => {
     const body = await parseJson(context);
     if (isApiError(body)) return context.json(body, 400);
     const parsed = mcpCompileListingSchema.safeParse(body);
@@ -1361,6 +1425,20 @@ export function createAgonRoutes(options: CreateAgonRoutesOptions) {
       context.get("address"),
       context.req.param("intentId"),
       parsed.data,
+    );
+    return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
+  });
+
+  app.post("/call-intents/:intentId/recovery-probe", options.requireAuth, async (context) => {
+    const body = await parseJson(context);
+    if (isApiError(body)) return context.json(body, 400);
+    const parsed = x402RecoveryProbeSchema.safeParse(body);
+    if (!parsed.success) return context.json(validationResponse(parsed.error), 400);
+    if (!options.service.probeX402RecoveryCandidate) {
+      return serviceErrorResponse(context, { code: "reconciliation_disabled", message: "payment recovery probe is not configured" });
+    }
+    const result = await options.service.probeX402RecoveryCandidate(
+      context.get("address"), context.req.param("intentId"), parsed.data as X402RecoveryProbeRequest,
     );
     return result.ok ? context.json(result.value) : serviceErrorResponse(context, result.error);
   });

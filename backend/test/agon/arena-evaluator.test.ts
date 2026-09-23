@@ -4,6 +4,7 @@ import test from "node:test";
 import { createViemAgonArenaEvaluator } from "../../src/agon/execution/arena-evaluator.ts";
 
 const arena = `0x${"11".repeat(20)}`;
+const legacyArena = `0x${"22".repeat(20)}`;
 const hash = (byte: string) => `0x${byte.repeat(64)}` as `0x${string}`;
 
 test("Arena evaluator starts and scores only after confirmed state transitions", async () => {
@@ -48,4 +49,24 @@ test("Arena evaluator fails closed for disabled, reverted, and invalid scoring p
   });
   await assert.rejects(() => reverted.startEvaluation("1"), /reverted/);
   await assert.rejects(() => reverted.scoreEvaluation({ evaluationId: "1", score: 101, validationResponseHash: hash("e") }), /integer/);
+});
+
+test("Arena evaluator binds old evaluations to their allowed Arena address", async () => {
+  let state = 0;
+  const reads: string[] = [];
+  const writes: string[] = [];
+  const adapter = createViemAgonArenaEvaluator({
+    enabled: true,
+    arenaAddress: arena,
+    legacyArenaAddresses: [legacyArena],
+    client: {
+      async readContract(input) { reads.push(input.address.toLowerCase()); return { state }; },
+      async waitForTransactionReceipt() { state = 1; return { status: "success" as const }; },
+    },
+    wallet: { async writeContract(input) { writes.push(input.address.toLowerCase()); return hash("f"); } },
+  });
+  assert.equal(await adapter.startEvaluation("7", legacyArena), hash("f"));
+  assert.deepEqual(reads, [legacyArena.toLowerCase(), legacyArena.toLowerCase()]);
+  assert.deepEqual(writes, [legacyArena.toLowerCase()]);
+  await assert.rejects(() => adapter.startEvaluation("7", `0x${"99".repeat(20)}`), /outside the deployment receipt/);
 });

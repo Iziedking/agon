@@ -60,9 +60,9 @@ export type AgonCapabilities = {
     evaluatorAddress: `0x${string}` | null;
     role: `0x${string}`;
     assigned: boolean;
-    reason: "assigned" | "evaluator_not_configured" | "role_not_assigned" | "read_failed" | "disabled" | "unconfigured";
+    reason: "assigned" | "evaluator_not_configured" | "role_not_assigned" | "service_registry_link_mismatch" | "read_failed" | "disabled" | "unconfigured";
     executionEnabled: boolean;
-    executionReason: "ready" | "role_not_assigned" | "writer_disabled";
+    executionReason: "ready" | "role_not_assigned" | "service_registry_link_mismatch" | "writer_disabled";
     checkedAt: string | null;
   };
   listingVerifierReadiness: {
@@ -360,12 +360,34 @@ export type X402ReconciliationReadinessView = {
   reason: string;
   lookupEnabled: boolean;
   executionEnabled: false;
-  nextAction: "complete_authorization" | "enable_receipt_lookup" | "record_provider_reference" | "reconcile_receipt" | "none";
+  nextAction: "complete_authorization" | "enable_receipt_lookup" | "operator_review" | "reconcile_receipt" | "none";
   checkedAt: string;
 };
 
 export type X402ReconciliationRequest = {
   confirmation: "RECONCILE_ARC_TESTNET_X402";
+};
+
+export type X402RecoveryProbeRequest = {
+  transaction?: `0x${string}`;
+  providerTransferId?: string;
+};
+
+export type X402RecoveryProbeView = {
+  receiptId: string;
+  intentId: string;
+  state: X402SettlementReadinessView["state"];
+  network: "eip155:5042002";
+  status: "confirmed" | "pending" | "failed";
+  transaction: `0x${string}` | null;
+  providerTransferId: string | null;
+  payer: `0x${string}`;
+  recipient: `0x${string}`;
+  amountAtomicUnits: string;
+  correlation: "terms_only";
+  mayAutoFinalize: false;
+  nextAction: "operator_review";
+  checkedAt: string;
 };
 
 export type X402AgentSpendRequest = {

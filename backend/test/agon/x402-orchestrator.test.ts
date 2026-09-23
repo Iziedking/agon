@@ -92,6 +92,23 @@ test("retries are idempotent after a durable submission marker", async () => {
   assert.equal(retry.receipt.settlementRef, TX);
 });
 
+test("a restart after the attempt marker does not report settlement success", async () => {
+  const { input, receipt } = inputAndReceipt();
+  const store = fakeStore(receipt);
+  await store.advanceX402CallReceipt(input.approval.intentId, {
+    type: "settlement_submitted",
+    settlementRef: `agon-x402:${input.approval.intentId}:${input.approval.approvalHash}`,
+  });
+  let calls = 0;
+  const orchestrator = createX402SettlementOrchestrator({ store, policy, adapter: {
+    settle: async () => { calls += 1; throw new Error("must not replay a possible payment"); },
+  } });
+  const resumed = await orchestrator.settle(input);
+  assert.equal(resumed.ok, false);
+  if (!resumed.ok) assert.equal(resumed.error.code, "reconciliation_required");
+  assert.equal(calls, 0);
+});
+
 test("ambiguous facilitator failure becomes unknown and blocks duplicate settlement", async () => {
   const { input, receipt } = inputAndReceipt();
   const store = fakeStore(receipt);

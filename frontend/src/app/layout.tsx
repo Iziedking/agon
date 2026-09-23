@@ -50,7 +50,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable} ${GeistPixelSquare.variable}`}>
       <head>
-        <ThemeScript />
+        <ThemeScript forceDark={IS_AGON_DEPLOYMENT} />
       </head>
       <body>
         {IS_AGON_DEPLOYMENT ? null : <BodyLines />}

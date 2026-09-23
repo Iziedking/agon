@@ -70,7 +70,7 @@ test("reports a missing provider reference separately from a disabled lookup", a
   if (!result.ok) return;
   assert.equal(result.value.lookupEnabled, true);
   assert.equal(result.value.status, "reference_required");
-  assert.equal(result.value.nextAction, "record_provider_reference");
+  assert.equal(result.value.nextAction, "operator_review");
 });
 
 test("does not expose reconciliation as an action for terminal receipts", async () => {

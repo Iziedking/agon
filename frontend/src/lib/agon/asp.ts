@@ -224,8 +224,8 @@ function parseConfig(input: unknown): { config: AspConfig; category: AgonCategor
   if (!tagsAreStrings) {
     issues.push({ field: "tags", message: "Use a JSON array of search-tag strings." });
   }
-  if (!/^(https:\/\/|ipfs:\/\/).+/i.test(config.manifestUri)) {
-    issues.push({ field: "manifestUri", message: "Manifest URI must use HTTPS or IPFS." });
+  if (config.manifestUri && !/^https:\/\/.+/i.test(config.manifestUri)) {
+    issues.push({ field: "manifestUri", message: "Use a public HTTPS URL for the exact version of the service file." });
   }
 
   const draftIssues = validateServiceDraft({
@@ -542,6 +542,28 @@ export async function fetchAspListing(
   return body as AgonListing;
 }
 
+async function hostAspManifest(apiUrl: string, token: string, manifest: unknown, expectedHash: string, fetchImpl: typeof fetch): Promise<string> {
+  let response: Response;
+  try {
+    response = await fetchImpl(`${apiUrl}/agon/manifests`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ manifest, expectedHash }),
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch {
+    throw new AspCommandError("network_unavailable", "AGON could not host the reviewed service file");
+  }
+  const body = await readJson(response);
+  if (!response.ok) throw apiFailure(response.status, body);
+  const hosted = object(body);
+  const uri = cleanString(hosted?.manifestUri);
+  if (cleanString(hosted?.manifestHash).toLowerCase() !== expectedHash.toLowerCase() || !/^https:\/\//.test(uri)) {
+    throw new AspCommandError("invalid_response", "AGON returned an invalid hosted service-file URL");
+  }
+  return uri;
+}
+
 export async function publishAspListing(options: PublishAspListingOptions): Promise<SubmittedOperation> {
   if (!options.confirmed) {
     throw new AspCommandError("confirmation_required", "Publication requires explicit --yes confirmation");
@@ -571,6 +593,8 @@ export async function publishAspListing(options: PublishAspListingOptions): Prom
     throw new AspCommandError("authentication_required", "Set the selected session-token environment variable");
   }
 
+  const manifestUri = options.prepared.request.manifestUri || await hostAspManifest(apiUrl, options.token, options.localManifest, options.prepared.manifestHash, fetchImpl);
+
   let response: Response;
   try {
     response = await fetchImpl(`${apiUrl}/agon/listings`, {
@@ -579,7 +603,7 @@ export async function publishAspListing(options: PublishAspListingOptions): Prom
         authorization: `Bearer ${options.token}`,
         "content-type": "application/json",
       },
-      body: JSON.stringify(options.prepared.request),
+      body: JSON.stringify({ ...options.prepared.request, manifestUri }),
       signal: AbortSignal.timeout(15_000),
     });
   } catch {
@@ -614,6 +638,7 @@ export async function publishAspListingVersion(options: PublishAspVersionOptions
   if (!options.token.trim()) {
     throw new AspCommandError("authentication_required", "Set the selected session-token environment variable");
   }
+  const manifestUri = options.prepared.request.manifestUri || await hostAspManifest(apiUrl, options.token, options.localManifest, options.prepared.manifestHash, fetchImpl);
   let response: Response;
   try {
     response = await fetchImpl(`${apiUrl}/agon/listings/${encodeURIComponent(options.prepared.listingId)}/versions`, {
@@ -622,7 +647,7 @@ export async function publishAspListingVersion(options: PublishAspVersionOptions
         authorization: `Bearer ${options.token}`,
         "content-type": "application/json",
       },
-      body: JSON.stringify(options.prepared.request),
+      body: JSON.stringify({ ...options.prepared.request, manifestUri }),
       signal: AbortSignal.timeout(15_000),
     });
   } catch {

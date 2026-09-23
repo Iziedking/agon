@@ -24,6 +24,6 @@ const SCRIPT = `
 })();
 `;
 
-export function ThemeScript() {
-  return <script dangerouslySetInnerHTML={{ __html: SCRIPT }} />;
+export function ThemeScript({ forceDark = false }: { forceDark?: boolean }) {
+  return <script dangerouslySetInnerHTML={{ __html: forceDark ? 'document.documentElement.classList.add("dark");' : SCRIPT }} />;
 }

@@ -35,7 +35,7 @@ const config = {
   chainId: "5042002",
   agentId: "42",
   serviceKey: "protocol-security-review",
-  manifestUri: "ipfs://bafybeigdyrzt/manifest.json",
+  manifestUri: "https://agent.example.com/manifests/service-v1.json",
   name: "Protocol security review",
   description: "Reviews smart contracts and returns prioritized findings.",
   logoUrl: "https://agent.example.com/logo.png",
@@ -147,6 +147,13 @@ test("requires a public logo before an agent can prepare a listing", () => {
   assert.throws(
     () => prepareAspListing({ ...config, logoUrl: "" }),
     (error: unknown) => error instanceof AspCommandError && error.code === "invalid_config" && error.issues.some((issue) => issue.field === "logoUrl"),
+  );
+});
+
+test("requires an inspectable HTTPS URL for the hosted service file", () => {
+  assert.throws(
+    () => prepareAspListing({ ...config, manifestUri: "ipfs://bafybeigdyrzt/manifest.json" }),
+    (error: unknown) => error instanceof AspCommandError && error.code === "invalid_config" && error.issues.some((issue) => issue.field === "manifestUri"),
   );
 });
 
@@ -319,6 +326,31 @@ test("publishes only after confirmation, local proof, capability, and environmen
   assert.deepEqual(JSON.parse(String(requests[1]?.init?.body)), prepared.request);
 });
 
+test("ASP hosts an exact service file before preparing a listing when no URL was supplied", async () => {
+  const prepared = prepareAspListing({ ...config, manifestUri: "" });
+  const hostedUri = `https://api.example.com/agon/manifests/42/${prepared.serviceKeyHash}/1/${prepared.manifestHash}.json`;
+  const requests: Array<{ url: string; init?: RequestInit }> = [];
+  const fetchImpl: typeof fetch = async (input, init) => {
+    requests.push({ url: String(input), init });
+    if (String(input).endsWith("/agon/health")) {
+      return new Response(JSON.stringify({ ok: true, service: "agon", capabilities: { listingWrites: true } }), { status: 200 });
+    }
+    if (String(input).endsWith("/agon/manifests")) {
+      assert.deepEqual(JSON.parse(String(init?.body)), { manifest: prepared.manifest, expectedHash: prepared.manifestHash });
+      return new Response(JSON.stringify({ manifestUri: hostedUri, manifestHash: prepared.manifestHash }), { status: 201 });
+    }
+    assert.equal(String(input), "https://api.example.com/agon/listings");
+    assert.equal(JSON.parse(String(init?.body)).manifestUri, hostedUri);
+    return new Response(JSON.stringify(preparedOperation), { status: 201 });
+  };
+  await publishAspListing({ apiUrl: "https://api.example.com", token: "test-session-token", confirmed: true, prepared, localManifest: prepared.manifest, fetchImpl });
+  assert.deepEqual(requests.map((request) => request.url), [
+    "https://api.example.com/agon/health",
+    "https://api.example.com/agon/manifests",
+    "https://api.example.com/agon/listings",
+  ]);
+});
+
 test("confirms a published transaction through the receipt-verification endpoint", async () => {
   const txHash = `0x${"77".repeat(32)}`;
   const fetchImpl: typeof fetch = async (input, init) => {
@@ -401,6 +433,28 @@ test("publishes an update only when writes are available and the operation is pu
     fetchImpl,
   });
   assert.equal(result.operationId, "op_123");
+});
+
+test("ASP hosts a distinct new version before preparing publishVersion", async () => {
+  const base = prepareAspListing(config).manifest;
+  const manifest = { ...base, service: { ...base.service, version: "2" } };
+  const prepared = prepareAspListingVersion({ ...config, manifestUri: "" }, manifest, "7");
+  const hostedUri = `https://api.example.com/agon/manifests/42/${prepared.manifest.identity.serviceKey}/2/${prepared.manifestHash}.json`;
+  const urls: string[] = [];
+  const fetchImpl: typeof fetch = async (input, init) => {
+    const url = String(input);
+    urls.push(url);
+    if (url.endsWith("/agon/health")) return new Response(JSON.stringify({ ok: true, service: "agon", capabilities: { listingWrites: true } }), { status: 200 });
+    if (url.endsWith("/agon/manifests")) {
+      assert.deepEqual(JSON.parse(String(init?.body)), { manifest, expectedHash: prepared.manifestHash });
+      return new Response(JSON.stringify({ manifestUri: hostedUri, manifestHash: prepared.manifestHash }), { status: 201 });
+    }
+    assert.equal(url, "https://api.example.com/agon/listings/7/versions");
+    assert.equal(JSON.parse(String(init?.body)).manifestUri, hostedUri);
+    return new Response(JSON.stringify({ ...preparedOperation, transaction: { ...preparedOperation.transaction, functionName: "publishVersion" } }), { status: 201 });
+  };
+  await publishAspListingVersion({ apiUrl: "https://api.example.com", token: "test-session-token", confirmed: true, prepared, localManifest: manifest, fetchImpl });
+  assert.deepEqual(urls, ["https://api.example.com/agon/health", "https://api.example.com/agon/manifests", "https://api.example.com/agon/listings/7/versions"]);
 });
 
 test("evaluates an exact listing version and requests scoped verification", async () => {

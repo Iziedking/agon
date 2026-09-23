@@ -1,5 +1,6 @@
 import { McpServer, createMcpHandler, fromJsonSchema, type AuthInfo } from "@modelcontextprotocol/server";
 
+import { canUseAgonScope } from "../../auth/scope-policy.ts";
 import { createMcpAccessAdapter } from "./adapter.ts";
 
 type AccessAdapter = ReturnType<typeof createMcpAccessAdapter>;
@@ -29,12 +30,12 @@ const referenceSchema = fromJsonSchema<{ reference: string }>({
   additionalProperties: false,
 });
 
-const hirePreviewSchema = fromJsonSchema<{ serviceReference: string; input: Record<string, unknown>; paymentMode?: "pay_per_call" | "escrow" }>({
+const hirePreviewSchema = fromJsonSchema<{ serviceReference: string; input: Record<string, unknown>; paymentMode?: "per_call" | "escrow" }>({
   type: "object",
   properties: {
     serviceReference: { type: "string", minLength: 1 },
     input: { type: "object", additionalProperties: true },
-    paymentMode: { type: "string", enum: ["pay_per_call", "escrow"] },
+    paymentMode: { type: "string", enum: ["per_call", "escrow"], description: "Only per_call is currently available. Escrow requests return a capability error." },
   },
   required: ["serviceReference", "input"],
   additionalProperties: false,
@@ -76,9 +77,17 @@ function actor(authInfo: AuthInfo | undefined): string | null {
   return typeof address === "string" && address ? address : null;
 }
 
-function requireActor(authInfo: AuthInfo | undefined): string | ReturnType<typeof failure> {
+function requireActor(authInfo: AuthInfo | undefined, scope: string): string | ReturnType<typeof failure> {
   const address = actor(authInfo);
-  return address ?? failure("authentication_required", "Connect AGON with an access token before preparing a hire or managing a listing.");
+  if (!address) return failure("authentication_required", "Connect AGON with an access token before preparing a hire or managing a listing.");
+  const client = authInfo?.extra?.client;
+  const claims = {
+    client: client === null ? null : typeof client === "string" ? client : "agon-cli",
+    scopes: authInfo?.scopes ?? [],
+  };
+  return canUseAgonScope(claims, scope)
+    ? address
+    : failure("scope_required", `This access token needs the ${scope} capability.`);
 }
 
 /**
@@ -107,7 +116,7 @@ export function createAgonNativeMcpHandler(access: AccessAdapter) {
       description: "Bind an exact service, input, price, and delivery terms before approval. This does not charge a wallet.",
       inputSchema: hirePreviewSchema,
     }, async (input) => {
-      const authenticatedActor = requireActor(context.authInfo);
+      const authenticatedActor = requireActor(context.authInfo, "agon:read");
       return typeof authenticatedActor === "string"
         ? adapterResult(await access.previewHire(authenticatedActor, input))
         : authenticatedActor;
@@ -118,7 +127,7 @@ export function createAgonNativeMcpHandler(access: AccessAdapter) {
       description: "Advance a previously previewed hire only after the user confirms its exact terms digest. Wallet execution remains subject to the configured AGON policy.",
       inputSchema: hireAuthorizationSchema,
     }, async ({ hireId, ...input }) => {
-      const authenticatedActor = requireActor(context.authInfo);
+      const authenticatedActor = requireActor(context.authInfo, "wallet:execute");
       return typeof authenticatedActor === "string"
         ? adapterResult(await access.authorizeHire(authenticatedActor, hireId, input))
         : authenticatedActor;
@@ -129,7 +138,7 @@ export function createAgonNativeMcpHandler(access: AccessAdapter) {
       description: "Read payment, delivery, and reconciliation status for a previously previewed AGON hire.",
       inputSchema: hireStatusSchema,
     }, async ({ hireId }) => {
-      const authenticatedActor = requireActor(context.authInfo);
+      const authenticatedActor = requireActor(context.authInfo, "agon:read");
       return typeof authenticatedActor === "string"
         ? adapterResult(await access.getWork(authenticatedActor, hireId))
         : authenticatedActor;
@@ -140,7 +149,7 @@ export function createAgonNativeMcpHandler(access: AccessAdapter) {
       description: "Create a provider listing draft from buyer-facing service terms. This never publishes or signs anything.",
       inputSchema: openObject,
     }, async (input) => {
-      const authenticatedActor = requireActor(context.authInfo);
+      const authenticatedActor = requireActor(context.authInfo, "listing:prepare");
       return typeof authenticatedActor === "string"
         ? adapterResult(await access.startListing(authenticatedActor, input))
         : authenticatedActor;
@@ -151,7 +160,7 @@ export function createAgonNativeMcpHandler(access: AccessAdapter) {
       description: "Run provider draft checks and identify the next safe action before a publication request is prepared.",
       inputSchema: openObject,
     }, async (input) => {
-      const authenticatedActor = requireActor(context.authInfo);
+      const authenticatedActor = requireActor(context.authInfo, "listing:prepare");
       return typeof authenticatedActor === "string"
         ? adapterResult(await access.checkListing(authenticatedActor, input))
         : authenticatedActor;
@@ -162,7 +171,7 @@ export function createAgonNativeMcpHandler(access: AccessAdapter) {
       description: "Create the immutable service record from a checked draft. This does not publish or sign anything.",
       inputSchema: openObject,
     }, async (input) => {
-      const authenticatedActor = requireActor(context.authInfo);
+      const authenticatedActor = requireActor(context.authInfo, "listing:prepare");
       return typeof authenticatedActor === "string"
         ? adapterResult(await access.compileListing(authenticatedActor, input))
         : authenticatedActor;
@@ -173,7 +182,7 @@ export function createAgonNativeMcpHandler(access: AccessAdapter) {
       description: "Prepare the exact provider wallet action needed to publish a compiled listing. The provider must review and sign it separately.",
       inputSchema: openObject,
     }, async (input) => {
-      const authenticatedActor = requireActor(context.authInfo);
+      const authenticatedActor = requireActor(context.authInfo, "listing:write");
       return typeof authenticatedActor === "string"
         ? adapterResult(await access.publishListing(authenticatedActor, input))
         : authenticatedActor;
@@ -184,7 +193,7 @@ export function createAgonNativeMcpHandler(access: AccessAdapter) {
       description: "Prepare publication for a checked draft that updates an existing service. The provider must review and sign it separately.",
       inputSchema: openObject,
     }, async (input) => {
-      const authenticatedActor = requireActor(context.authInfo);
+      const authenticatedActor = requireActor(context.authInfo, "listing:write");
       return typeof authenticatedActor === "string"
         ? adapterResult(await access.publishListingVersion(authenticatedActor, input))
         : authenticatedActor;
@@ -195,7 +204,7 @@ export function createAgonNativeMcpHandler(access: AccessAdapter) {
       description: "Prepare the provider wallet action to pause an existing service listing.",
       inputSchema: openObject,
     }, async (input) => {
-      const authenticatedActor = requireActor(context.authInfo);
+      const authenticatedActor = requireActor(context.authInfo, "listing:write");
       return typeof authenticatedActor === "string"
         ? adapterResult(await access.pauseListing(authenticatedActor, input))
         : authenticatedActor;
@@ -203,12 +212,23 @@ export function createAgonNativeMcpHandler(access: AccessAdapter) {
 
     server.registerTool("confirm_listing", {
       title: "Confirm a signed listing action",
-      description: "Verify the transaction receipt for a provider-approved listing, version, or pause action. Supply a transaction hash only after the wallet has signed and broadcast it.",
+      description: "Verify the transaction receipt for a provider-approved listing or version. Supply a transaction hash only after the wallet has signed and broadcast it.",
       inputSchema: openObject,
     }, async (input) => {
-      const authenticatedActor = requireActor(context.authInfo);
+      const authenticatedActor = requireActor(context.authInfo, "listing:confirm");
       return typeof authenticatedActor === "string"
         ? adapterResult(await access.confirmListing(authenticatedActor, input))
+        : authenticatedActor;
+    });
+
+    server.registerTool("confirm_pause", {
+      title: "Confirm a signed listing pause",
+      description: "Verify the exact prepared pause transaction and its onchain receipt after the provider wallet signs and broadcasts it.",
+      inputSchema: openObject,
+    }, async (input) => {
+      const authenticatedActor = requireActor(context.authInfo, "listing:confirm");
+      return typeof authenticatedActor === "string"
+        ? adapterResult(await access.confirmPause(authenticatedActor, input))
         : authenticatedActor;
     });
 
@@ -222,7 +242,7 @@ export function createAgonNativeMcpHandler(access: AccessAdapter) {
         additionalProperties: false,
       }),
     }, async ({ draftId }) => {
-      const authenticatedActor = requireActor(context.authInfo);
+      const authenticatedActor = requireActor(context.authInfo, "agon:read");
       return typeof authenticatedActor === "string"
         ? adapterResult(await access.getListingPublication(authenticatedActor, draftId))
         : authenticatedActor;

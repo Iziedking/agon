@@ -172,12 +172,9 @@ contract AgonServiceRegistryV2 is AccessControl {
         emit ListingStatusChanged(id, msg.sender, status);
     }
 
-    function setVerification(uint256 id, Verification v) external onlyRole(VERIFIER_ROLE) {
-        if (listings[id].listingId == 0) revert ListingMissing();
-        if (v == Verification.Pending || v == Verification.Verified) revert ScopedVerificationRequired();
-        listings[id].verification = v;
-        listings[id].updatedAt = uint64(block.timestamp);
-        emit ListingVerificationChanged(id, msg.sender, v);
+    /// @dev Retained solely to fail closed for integrations still calling the V1 selector.
+    function setVerification(uint256, Verification) external pure {
+        revert ScopedVerificationRequired();
     }
 
     function verificationScopeSupported() external pure returns (bool) {

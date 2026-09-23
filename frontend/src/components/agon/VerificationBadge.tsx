@@ -12,7 +12,7 @@ const STYLES: Record<VerificationStatus, string> = {
 const LABELS: Record<VerificationStatus, string> = {
   Verified: "Tested by Agon",
   Pending: "Test in progress",
-  Unverified: "Not yet tested",
+  Unverified: "Not market verified",
   Expired: "Test expired",
   Suspended: "Test suspended",
   Revoked: "Test revoked",

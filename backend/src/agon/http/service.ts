@@ -23,6 +23,7 @@ import { buildX402ExecutionPlan } from "../execution/x402-facilitator.ts";
 import { createX402SettlementOrchestrator, type X402SettlementAdapter } from "../execution/x402-orchestrator.ts";
 import { createX402ExecutionPolicy } from "../execution/x402-policy.ts";
 import { isX402ProviderTransferId, isX402Transaction, validateX402ReceiptLookupResult, type X402ReceiptLookupAdapter } from "../execution/x402-reconciliation.ts";
+import { probeX402RecoveryCandidate as inspectX402RecoveryCandidate } from "../execution/x402-recovery.ts";
 import { validateX402DeliveryEvidence, type X402DeliveryEvidenceInput } from "../execution/x402-delivery.ts";
 import type { X402FacilitatorVerificationRequest as X402FacilitatorVerificationInput, X402FacilitatorVerificationResult, X402SettlementRequest as X402SettlementInput } from "../execution/x402-settlement.ts";
 import { buildX402ExecutionApproval, type X402ExecutionApprovalRequest } from "../execution/x402-execution-approval.ts";
@@ -33,7 +34,8 @@ import { createApprovalBoundAgonEscrowTransactionAdapter } from "../execution/es
 import type { AgonEscrowTransactionWriter } from "../execution/escrow-transaction-writer.ts";
 import { createAgonEscrowLifecycleOrchestrator, type AgonEscrowLifecycleAction } from "../execution/escrow-orchestrator.ts";
 import { createDisabledAgonEscrowAdapter, evaluateAgonEscrowTerms, hashAgonEscrowTerms, type AgonEscrowAdapter, type AgonEscrowListing } from "../escrow-policy.ts";
-import { inspectManifest } from "../manifest-inspector.ts";
+import { inspectManifest, verifyHostedManifestHash, type ManifestInspection } from "../manifest-inspector.ts";
+import { normalizeManifestV2 } from "../core/manifest.ts";
 import type {
   AgonCapabilities,
   AgonEndpointQa,
@@ -59,6 +61,8 @@ import type {
   X402SettlementReadinessView,
   X402ReconciliationReadinessView,
   X402ReconciliationRequest,
+  X402RecoveryProbeRequest,
+  X402RecoveryProbeView,
   X402AgentSpendRequest,
   X402AgentSpendView,
   X402DeliveryEvidenceRequest,
@@ -110,7 +114,7 @@ import { AgonListingVerificationError, type AgonListingVerifierAdapter, type Ago
 import type { X402AgentSpendExecutor } from "../execution/x402-agent-executor.ts";
 import type { AgonJobEscrowTransactionAdapter } from "../execution/agon-job-escrow-adapter.ts";
 import type { ProviderDraftInput } from "../mcp/contract.ts";
-import type { CompiledProviderManifest } from "../mcp/provider-manifest.ts";
+import { verifyHostedProviderManifest, type CompiledProviderManifest } from "../mcp/provider-manifest.ts";
 
 const cursorSchema = z.object({
   updatedAt: z.string().datetime(),
@@ -148,6 +152,8 @@ export type PostgresAgonMarketServiceOptions = {
   writer?: AgonWriteAdapter;
   /** Active catalog registry. Older registry rows remain available by exact reference for reconciliation. */
   activeServiceRegistryAddress?: `0x${string}`;
+  /** Test seam for the public hosted-file check before any publication. */
+  inspectProviderManifest?: (uri: string) => Promise<ManifestInspection>;
   identityReads?: boolean;
   endpointQa?: boolean | (() => Promise<boolean>);
   certificationLifecycle?: AgonCapabilities["certificationLifecycle"];
@@ -346,7 +352,7 @@ function listingView(listing: StoredListing, evidence?: StoredVerificationEviden
   const warning = listing.quarantineReason
     ? `This listing is quarantined because its indexed anchor failed validation: ${listing.quarantineReason}.`
     : unverified
-      ? "This service has not passed Agon Arena verification."
+      ? "Marketplace verification is not confirmed for this version. Arena test evidence may exist separately."
       : null;
   return {
     id: `${listing.chainId}:${listing.serviceRegistry}:${listing.listingId}`,
@@ -888,7 +894,25 @@ export class PostgresAgonMarketService implements AgonMarketService {
         error: { code: "capability_unavailable", message: "listing writes are unavailable" },
       };
     }
+    try {
+      const hosted = await verifyHostedManifestHash(request.manifestUri, request.manifestHash, this.options.inspectProviderManifest ?? inspectManifest);
+      const manifest = normalizeManifestV2(hosted.body);
+      if (!manifest.ok || manifest.value.identity.agentId !== request.agentId
+        || manifest.value.identity.serviceKey.toLowerCase() !== request.serviceKey.toLowerCase()
+        || manifest.value.service.version !== "1") {
+        throw new Error("The hosted service file must describe this agent, service key, and first listing version.");
+      }
+    } catch (error) {
+      return { ok: false, error: { code: "validation_failed", message: error instanceof Error ? error.message : "The hosted service file could not be checked" } };
+    }
     return this.options.writer.publishListing(actor, request);
+  }
+
+  async getProviderListingForVersion(listingId: string): Promise<Result<AgonListingView, AgonServiceError>> {
+    if (!/^[1-9]\d*$/.test(listingId) || !this.options.activeServiceRegistryAddress) {
+      return { ok: false, error: { code: "validation_failed", message: "an active registry and positive listing ID are required" } };
+    }
+    return this.getListing(`5042002:${this.options.activeServiceRegistryAddress}:${listingId}`);
   }
 
   async publishProviderDraft(
@@ -896,13 +920,18 @@ export class PostgresAgonMarketService implements AgonMarketService {
     draft: ProviderDraftInput,
     compiled: CompiledProviderManifest,
     manifestUri: string,
-  ): Promise<Result<{ operationId?: string; reference?: string }, AgonServiceError>> {
+  ): Promise<Result<SubmittedOperation, AgonServiceError>> {
     if (!this.options.writer) return { ok: false, error: { code: "capability_unavailable", message: "listing writes are unavailable" } };
     if (!/^\d+$/.test(draft.category) || BigInt(draft.category) <= 0n) {
       return { ok: false, error: { code: "validation_failed", message: "provider category must be a positive onchain category id" } };
     }
     if (!/^https:\/\//.test(manifestUri)) {
       return { ok: false, error: { code: "validation_failed", message: "a public HTTPS manifest URI is required" } };
+    }
+    try {
+      await verifyHostedProviderManifest(manifestUri, compiled, this.options.inspectProviderManifest ?? inspectManifest);
+    } catch (error) {
+      return { ok: false, error: { code: "validation_failed", message: error instanceof Error ? error.message : "The hosted service file could not be checked" } };
     }
     const result = await this.options.writer.publishListing(actor, {
       chainId: "5042002",
@@ -913,8 +942,7 @@ export class PostgresAgonMarketService implements AgonMarketService {
       category: draft.category,
       paymentRail: "X402",
     });
-    if (!result.ok) return result;
-    return { ok: true, value: { operationId: result.value.operationId, reference: result.value.resultReference ?? undefined } };
+    return result;
   }
 
   async publishProviderDraftVersion(
@@ -923,10 +951,24 @@ export class PostgresAgonMarketService implements AgonMarketService {
     compiled: CompiledProviderManifest,
     manifestUri: string,
     listingId: string,
-  ): Promise<Result<{ operationId?: string; reference?: string }, AgonServiceError>> {
+  ): Promise<Result<SubmittedOperation, AgonServiceError>> {
     if (!this.options.writer) return { ok: false, error: { code: "capability_unavailable", message: "listing writes are unavailable" } };
     if (!/^[1-9]\d*$/.test(listingId)) return { ok: false, error: { code: "validation_failed", message: "listing id must be a positive decimal string" } };
     if (!/^https:\/\//.test(manifestUri)) return { ok: false, error: { code: "validation_failed", message: "a public HTTPS manifest URI is required" } };
+    const current = await this.getProviderListingForVersion(listingId);
+    if (!current.ok) return current;
+    if (current.value.providerSnapshot.toLowerCase() !== actor.toLowerCase()
+      || current.value.agentId !== compiled.body.identity.agentId
+      || current.value.serviceKey.toLowerCase() !== compiled.serviceKey.toLowerCase()
+      || !/^[1-9]\d*$/.test(current.value.version)
+      || compiled.body.service.version !== (BigInt(current.value.version) + 1n).toString()) {
+      return { ok: false, error: { code: "validation_failed", message: "The existing listing changed or this file does not describe its next version. Compile the latest listing again." } };
+    }
+    try {
+      await verifyHostedProviderManifest(manifestUri, compiled, this.options.inspectProviderManifest ?? inspectManifest);
+    } catch (error) {
+      return { ok: false, error: { code: "validation_failed", message: error instanceof Error ? error.message : "The hosted service file could not be checked" } };
+    }
     const result = await this.options.writer.publishListingVersion(actor, {
       chainId: "5042002",
       listingId,
@@ -934,8 +976,7 @@ export class PostgresAgonMarketService implements AgonMarketService {
       manifestUri,
       paymentRail: "X402",
     });
-    if (!result.ok) return result;
-    return { ok: true, value: { operationId: result.value.operationId, reference: result.value.resultReference ?? undefined } };
+    return result;
   }
 
   async publishListingVersion(
@@ -948,13 +989,28 @@ export class PostgresAgonMarketService implements AgonMarketService {
         error: { code: "capability_unavailable", message: "listing writes are unavailable" },
       };
     }
+    const current = await this.getProviderListingForVersion(request.listingId);
+    if (!current.ok) return current;
+    try {
+      const hosted = await verifyHostedManifestHash(request.manifestUri, request.manifestHash, this.options.inspectProviderManifest ?? inspectManifest);
+      const manifest = normalizeManifestV2(hosted.body);
+      if (!manifest.ok || current.value.providerSnapshot.toLowerCase() !== actor.toLowerCase()
+        || manifest.value.identity.agentId !== current.value.agentId
+        || manifest.value.identity.serviceKey.toLowerCase() !== current.value.serviceKey.toLowerCase()
+        || !/^[1-9]\d*$/.test(current.value.version)
+        || manifest.value.service.version !== (BigInt(current.value.version) + 1n).toString()) {
+        throw new Error("The hosted service file must describe the next version of this listing and its current owner.");
+      }
+    } catch (error) {
+      return { ok: false, error: { code: "validation_failed", message: error instanceof Error ? error.message : "The hosted service file could not be checked" } };
+    }
     return this.options.writer.publishListingVersion(actor, request);
   }
 
   async pauseProviderListing(
     actor: string,
     reference: string,
-  ): Promise<Result<{ reference: string; operationId?: string }, AgonServiceError>> {
+  ): Promise<Result<SubmittedOperation, AgonServiceError>> {
     if (!this.options.writer?.pauseListing) {
       return { ok: false, error: { code: "capability_unavailable", message: "listing status writes are unavailable" } };
     }
@@ -966,8 +1022,7 @@ export class PostgresAgonMarketService implements AgonMarketService {
       chainId: parsed.chainId.toString(),
       listingId: parsed.listingId.toString(),
     });
-    if (!result.ok) return result;
-    return { ok: true, value: { reference, operationId: result.value.operationId } };
+    return result;
   }
 
   async confirmOperation(
@@ -1464,7 +1519,7 @@ export class PostgresAgonMarketService implements AgonMarketService {
       }
     };
     try {
-      let chain = await reader.inspectArenaEvaluation(evaluation.evaluationId);
+      let chain = await reader.inspectArenaEvaluation(evaluation.evaluationId, evaluation.arenaContract);
       const matches = [
         [chain.evaluationId === evaluation.evaluationId, "evaluation id"],
         [chain.listingId === evaluation.listingId, "listing id"],
@@ -1490,11 +1545,11 @@ export class PostgresAgonMarketService implements AgonMarketService {
       }
       const evaluator = this.options.arenaEvaluatorAdapter;
       if (chain.state === 0 && evaluator?.enabled) {
-        const transactionHash = await evaluator.startEvaluation(evaluation.evaluationId);
+        const transactionHash = await evaluator.startEvaluation(evaluation.evaluationId, evaluation.arenaContract);
         if (transactionHash) {
           return { ok: true, value: arenaEvaluationView(await this.repository.markAgonArenaEvaluationStarted({ intentId, transactionHash })) };
         }
-        chain = await reader.inspectArenaEvaluation(evaluation.evaluationId);
+        chain = await reader.inspectArenaEvaluation(evaluation.evaluationId, evaluation.arenaContract);
       }
       if (chain.state === 2 && evaluator?.enabled) {
         const storedRun = await this.options.playgroundStore?.getRun(evaluation.playgroundRunId);
@@ -1505,10 +1560,11 @@ export class PostgresAgonMarketService implements AgonMarketService {
         }
         await evaluator.scoreEvaluation({
           evaluationId: evaluation.evaluationId,
+          arenaAddress: evaluation.arenaContract,
           score: run.score,
           validationResponseHash: run.evidence.responseHash,
         });
-        chain = await reader.inspectArenaEvaluation(evaluation.evaluationId);
+        chain = await reader.inspectArenaEvaluation(evaluation.evaluationId, evaluation.arenaContract);
         if (chain.state !== 3 && chain.state !== 4) {
           await escalate(["score_confirmed_without_final_state"]);
           return { ok: false, error: { code: "reconciliation_unavailable", message: "Arena score transaction confirmed without a final contract state" } };
@@ -2313,9 +2369,9 @@ export class PostgresAgonMarketService implements AgonMarketService {
         if (!transaction && !providerTransferId) {
           status = "reference_required";
           reason = lookupEnabled
-            ? "The read-only lookup adapter is enabled, but this receipt has no valid provider reference to query."
-            : "The settlement outcome is ambiguous and has no valid provider reference. Enable a read-only receipt lookup after recording the provider reference.";
-          nextAction = "record_provider_reference";
+            ? "This ambiguous payment attempt has no trusted reference. A candidate can be probed, but an operator must correlate the original authorization before recovery."
+            : "This ambiguous payment attempt has no trusted reference. Operator review and read-only payment lookup are required before recovery.";
+          nextAction = "operator_review";
         } else if (!lookupEnabled) {
           status = "lookup_disabled";
           reason = "A provider receipt is required for this Arc Testnet settlement, but the read-only lookup adapter is disabled.";
@@ -2330,9 +2386,9 @@ export class PostgresAgonMarketService implements AgonMarketService {
         if (!transaction && !providerTransferId) {
           status = "reference_required";
           reason = lookupEnabled
-            ? "The read-only lookup adapter is enabled, but settlement was recorded without a valid provider reference."
-            : "Settlement was recorded without a valid provider reference. Enable lookup only after a provider reference is recorded.";
-          nextAction = "record_provider_reference";
+            ? "Settlement was submitted without a trusted reference. A candidate can be probed, but an operator must correlate the original authorization before recovery."
+            : "Settlement was submitted without a trusted reference. Operator review and read-only payment lookup are required before recovery.";
+          nextAction = "operator_review";
         } else if (!lookupEnabled) {
           status = "lookup_disabled";
           reason = "A settlement reference exists, but the read-only lookup adapter is disabled.";
@@ -2372,6 +2428,40 @@ export class PostgresAgonMarketService implements AgonMarketService {
         lookupEnabled,
         executionEnabled: false,
         nextAction,
+        checkedAt: new Date().toISOString(),
+      },
+    };
+  }
+
+  async probeX402RecoveryCandidate(
+    actor: string,
+    intentId: string,
+    request: X402RecoveryProbeRequest,
+  ): Promise<Result<X402RecoveryProbeView, AgonServiceError>> {
+    const intent = await this.repository.getX402CallIntent(intentId);
+    if (!intent) return { ok: false, error: { code: "not_found", message: "x402 call intent not found" } };
+    if (intent.actor !== actor.toLowerCase()) return { ok: false, error: { code: "not_owner", message: "only the intent owner can inspect payment recovery" } };
+    const receipt = await this.repository.getX402CallReceipt(intentId);
+    if (!receipt) return { ok: false, error: { code: "receipt_unavailable", message: "x402 receipt has not been created" } };
+    const lookup = this.options.x402ReceiptLookup;
+    if (!lookup?.enabled) return { ok: false, error: { code: "reconciliation_disabled", message: "read-only Arc Testnet receipt lookup is disabled by policy" } };
+    const probe = await inspectX402RecoveryCandidate({ receipt, reference: request, lookup });
+    if (!probe.ok) {
+      const code = probe.error.code === "not_recoverable" ? "conflict"
+        : probe.error.code === "lookup_disabled" ? "reconciliation_disabled"
+        : probe.error.code === "lookup_unavailable" ? "reconciliation_unavailable"
+        : "reconciliation_invalid";
+      return { ok: false, error: { code, message: probe.error.message } };
+    }
+    return {
+      ok: true,
+      value: {
+        receiptId: receipt.receiptId,
+        intentId,
+        state: receipt.state,
+        network: "eip155:5042002",
+        ...probe.value,
+        nextAction: "operator_review",
         checkedAt: new Date().toISOString(),
       },
     };
@@ -2666,7 +2756,7 @@ export class PostgresAgonMarketService implements AgonMarketService {
           serviceStatus: settled.delivery.serviceStatus, latencyMs: settled.delivery.latencyMs,
           responseHash: settled.delivery.responseHash, resultAttestationHash: null,
           chargedAmountUSDC: null, deliveredAt: new Date(settled.delivery.deliveredAt),
-        });
+        }, settled.delivery.paymentResponseHash);
         durableReceipt = await this.repository.getX402CallReceipt(intentId) ?? settled.receipt;
       } catch {
         return { ok: false, error: { code: "reconciliation_unavailable", message: "provider delivered the service, but delivery evidence could not be stored; reconcile before another attempt" } };
@@ -2808,7 +2898,7 @@ export class PostgresAgonMarketService implements AgonMarketService {
         arenaEvaluatorReadiness = {
           ...result,
           executionEnabled,
-          executionReason: executionEnabled ? "ready" : result.assigned ? "writer_disabled" : "role_not_assigned",
+          executionReason: executionEnabled ? "ready" : result.reason === "service_registry_link_mismatch" ? "service_registry_link_mismatch" : result.assigned ? "writer_disabled" : "role_not_assigned",
           checkedAt: new Date().toISOString(),
         };
       } catch {

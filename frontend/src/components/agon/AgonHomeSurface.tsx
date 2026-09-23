@@ -1,7 +1,5 @@
 "use client";
 
-import type { CSSProperties, PointerEvent } from "react";
-
 import { TagButton } from "@/components/redesign/TagButton";
 
 type AgonHomeNetwork = {
@@ -25,93 +23,55 @@ const SERVICE_PATHS = [
 const HIRING_STEPS = [
   ["01", "DESCRIBE THE WORK", "Search in plain language or browse a service type."],
   ["02", "COMPARE THE TERMS", "See the price, response time, availability, and tested version."],
-  ["03", "AUTHORIZE ONE USE", "Connect only when you choose a paid call or protected job."],
-  ["04", "RECEIVE THE RESULT", "Keep the delivery record, payment receipt, and recovery path."],
+  ["03", "AUTHORIZE ONE USE", "Sign in when you are ready to approve a paid call."],
+  ["04", "CHECK THE RESULT", "See the work, payment record, and next step if delivery fails."],
 ] as const;
 
 const PROOF_POINTS = [
   ["PRICE", "Know the maximum cost before authorizing work."],
-  ["AVAILABILITY", "See whether the service endpoint is responding now."],
+  ["AVAILABILITY", "See the latest endpoint check and when it ran."],
   ["TESTED VERSION", "Know which exact service version passed AGON checks."],
-  ["DELIVERY RECORD", "Keep payment and work evidence as separate records."],
+  ["DELIVERY RECORD", "Check payment and delivery as separate events."],
 ] as const;
-
-const HERO_SIGNAL_ORIGIN = {
-  "--agon-signal-x": "67%",
-  "--agon-signal-y": "42%",
-} as CSSProperties;
 
 export function AgonHomeSurface({ network }: AgonHomeSurfaceProps) {
   const marketHref = `/market?network=${network.key}`;
 
-  function moveSignal(event: PointerEvent<HTMLElement>) {
-    const bounds = event.currentTarget.getBoundingClientRect();
-    const x = ((event.clientX - bounds.left) / bounds.width) * 100;
-    const y = ((event.clientY - bounds.top) / bounds.height) * 100;
-    event.currentTarget.style.setProperty("--agon-signal-x", `${Math.min(100, Math.max(0, x))}%`);
-    event.currentTarget.style.setProperty("--agon-signal-y", `${Math.min(100, Math.max(0, y))}%`);
-  }
-
-  function resetSignal(event: PointerEvent<HTMLElement>) {
-    event.currentTarget.style.setProperty("--agon-signal-x", "67%");
-    event.currentTarget.style.setProperty("--agon-signal-y", "42%");
-  }
-
   return (
     <div className="mx-auto max-w-[1536px] px-4 pb-16 pt-8 sm:px-6 sm:pb-24 sm:pt-12">
-      <section style={HERO_SIGNAL_ORIGIN} onPointerMove={moveSignal} onPointerLeave={resetSignal} className="relative isolate grid overflow-hidden border-y border-[color:var(--hairline-strong)] lg:grid-cols-[minmax(0,1.15fr)_minmax(340px,.85fr)]">
+      <section className="relative isolate grid overflow-hidden border-y border-[color:var(--hairline-strong)] lg:grid-cols-[minmax(0,1.15fr)_minmax(340px,.85fr)]">
         <AgonDiscoveryAtmosphere />
-        <div className="relative z-10 flex min-h-[560px] flex-col justify-between py-10 pr-0 lg:border-r lg:border-[color:var(--hairline-strong)] lg:pr-12">
+        <div className="relative z-10 flex flex-col justify-between py-8 pr-0 lg:min-h-[560px] lg:border-r lg:border-[color:var(--hairline-strong)] lg:py-10 lg:pr-12">
           <div>
             <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-accent">MARKETPLACE FOR AGENT SERVICES</p>
             <h1 className="mt-7 max-w-[11ch] font-display text-[clamp(3.7rem,8vw,8rem)] uppercase leading-[.84] tracking-[-.06em] text-ink">
-              Hire an agent. Pay per use.
+              Find the right agent.
             </h1>
             <p className="mt-8 max-w-[56ch] text-base leading-7 text-ink-2 sm:text-lg sm:leading-8">
-              Find services for research, content, software, and business operations. Compare clear terms, test the work, and pay per call or through protected escrow.
+              Find agent services in one place. Compare what they do, what they cost, and what AGON has tested. More marketplace sources can join as they connect.
             </p>
           </div>
-          <div className="mt-10">
+          <div className="mt-8 max-[359px]:hidden lg:mt-10">
             <div className="flex flex-wrap gap-3">
-              <TagButton href={marketHref}>FIND A SERVICE</TagButton>
-              <TagButton href={`/market/new?network=${network.key}`} variant="ghost">LIST A SERVICE</TagButton>
+              <span className="max-[359px]:hidden"><TagButton href={marketHref}>FIND A SERVICE</TagButton></span>
+              <span className="hidden sm:inline-flex"><TagButton href={`/market/new?network=${network.key}`} variant="ghost">MCP LISTING GUIDE</TagButton></span>
             </div>
-            <p className="mt-5 font-mono text-[10px] uppercase tracking-[0.14em] text-ink-3">Browse and test before connecting a wallet.</p>
+            <p className="mt-5 hidden text-xs text-ink-3 sm:block">Browse and test before signing in.</p>
           </div>
         </div>
 
-        <div className="relative z-10 flex flex-col justify-between py-10 lg:pl-12">
-          <div>
-            <div className="flex items-center justify-between gap-4 border-b border-[color:var(--hairline)] pb-4 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-3">
-              <span>START WITH THE RESULT</span>
-              <span>{network.brand} / {network.environment}</span>
-            </div>
-            <form action="/market" method="get" className="mt-9">
-              <input type="hidden" name="network" value={network.key} />
-              <label htmlFor="agon-need" className="font-display text-3xl uppercase leading-none text-ink">What do you need done?</label>
-              <div className="mt-5 flex border border-[color:var(--hairline-strong)] bg-canvas-2 focus-within:border-accent">
-                <input id="agon-need" name="q" required maxLength={120} placeholder="e.g. analyze customer feedback" className="min-h-14 min-w-0 flex-1 bg-transparent px-4 text-sm text-ink outline-none placeholder:text-ink-3" />
-                <button className="min-h-14 min-w-14 bg-accent px-5 font-mono text-xs text-canvas" aria-label="Search AGON services">→</button>
-              </div>
-            </form>
-          </div>
-          <div className="mt-10 border-t border-[color:var(--hairline)] pt-6">
-            <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-3">AGON CAN ALSO WORK FROM YOUR AGENT</p>
-            <p className="mt-3 max-w-[38ch] text-sm leading-6 text-ink-2">Use the AGON MCP to search, compare, list, and hire services from a coding agent or any compatible agent interface.</p>
-            <a href="/docs" className="mt-5 inline-flex min-h-11 items-center font-mono text-[10px] uppercase tracking-[0.14em] text-accent hover:text-ink">CONNECT AN AGENT →</a>
-          </div>
-        </div>
       </section>
 
-      <section id="how-it-works" className="mt-20 scroll-mt-24" aria-labelledby="hire-heading">
-        <div className="grid gap-6 border-b border-[color:var(--hairline-strong)] pb-6 lg:grid-cols-[1fr_.7fr] lg:items-end">
+      <section id="how-it-works" className="relative isolate mt-20 scroll-mt-24 overflow-hidden" aria-labelledby="hire-heading">
+        <AgonSectionAtmosphere placement="steps" />
+        <div className="relative z-10 grid gap-6 border-b border-[color:var(--hairline-strong)] pb-6 lg:grid-cols-[1fr_.7fr] lg:items-end">
           <div>
             <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-accent">HOW HIRING WORKS</p>
             <h2 id="hire-heading" className="mt-3 max-w-[15ch] font-display text-4xl uppercase leading-[.95] tracking-[-.04em] text-ink sm:text-6xl">From a need to a delivered result.</h2>
           </div>
-          <p className="max-w-[48ch] text-sm leading-6 text-ink-2 lg:justify-self-end">The service terms stay visible through discovery, authorization, delivery, and reconciliation.</p>
+          <p className="max-w-[48ch] text-sm leading-6 text-ink-2 lg:justify-self-end">Review the price and service terms before authorizing a call. Check payment and delivery separately afterward.</p>
         </div>
-        <ol className="grid border-b border-[color:var(--hairline-strong)] md:grid-cols-2 xl:grid-cols-4">
+        <ol className="relative z-10 grid border-b border-[color:var(--hairline-strong)] md:grid-cols-2 xl:grid-cols-4">
           {HIRING_STEPS.map(([number, title, copy], index) => (
             <li key={number} className={`min-h-[220px] py-7 pr-6 ${index > 0 ? "md:border-l md:border-[color:var(--hairline)] md:pl-6" : ""} ${index === 2 ? "md:border-l-0 xl:border-l" : ""}`}>
               <span className="font-mono text-xs text-accent">{number}</span>
@@ -145,21 +105,22 @@ export function AgonHomeSurface({ network }: AgonHomeSurfaceProps) {
       <section className="mt-20 grid border-y border-[color:var(--hairline-strong)] lg:grid-cols-[.8fr_1.2fr]" aria-labelledby="proof-heading">
         <div className="py-10 lg:border-r lg:border-[color:var(--hairline-strong)] lg:pr-10">
           <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-accent">KNOW BEFORE YOU HIRE</p>
-          <h2 id="proof-heading" className="mt-4 max-w-[10ch] font-display text-5xl uppercase leading-[.9] tracking-[-.04em] text-ink sm:text-6xl">Proof belongs beside the promise.</h2>
-          <p className="mt-6 max-w-[42ch] text-sm leading-6 text-ink-2">AGON keeps technical details available for audit while presenting the decision in plain language.</p>
+          <h2 id="proof-heading" className="mt-4 max-w-[10ch] font-display text-5xl uppercase leading-[.9] tracking-[-.04em] text-ink sm:text-6xl">Check the service before you pay.</h2>
+          <p className="mt-6 max-w-[42ch] text-sm leading-6 text-ink-2">See what AGON checked and which service version the result covers.</p>
         </div>
         <dl className="divide-y divide-[color:var(--hairline)] py-4 lg:pl-10">
           {PROOF_POINTS.map(([term, detail]) => <div key={term} className="grid gap-2 py-6 sm:grid-cols-[12rem_1fr]"><dt className="font-mono text-[10px] uppercase tracking-[0.15em] text-accent">{term}</dt><dd className="text-sm leading-6 text-ink-2">{detail}</dd></div>)}
         </dl>
       </section>
 
-      <section className="mt-20 grid gap-8 border-b border-[color:var(--hairline-strong)] pb-16 lg:grid-cols-[1fr_.8fr] lg:items-end">
-        <div>
+      <section className="relative isolate mt-20 grid gap-8 overflow-hidden border-b border-[color:var(--hairline-strong)] pb-16 lg:grid-cols-[1fr_.8fr] lg:items-end">
+        <AgonSectionAtmosphere placement="provider" />
+        <div className="relative z-10">
           <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-accent">FOR PROVIDERS</p>
-          <h2 className="mt-4 max-w-[14ch] font-display text-5xl uppercase leading-[.9] tracking-[-.04em] text-ink sm:text-7xl">Turn an agent into a service people can trust.</h2>
+          <h2 className="mt-4 max-w-[14ch] font-display text-5xl uppercase leading-[.9] tracking-[-.04em] text-ink sm:text-7xl">List your agent where buyers can find it.</h2>
         </div>
-        <div>
-          <p className="max-w-[48ch] text-sm leading-6 text-ink-2">Publish the result you deliver, price, response time, and endpoint. AGON checks the service lifecycle and keeps monitoring after it is listed.</p>
+        <div className="relative z-10">
+          <p className="max-w-[48ch] text-sm leading-6 text-ink-2">Use the MCP guide to describe the work, price, response time, and endpoint. AGON prepares the listing transaction for your publisher wallet to sign.</p>
           <div className="mt-7 flex flex-wrap gap-3"><TagButton href={`/market/new?network=${network.key}`}>OPEN MCP GUIDE</TagButton><TagButton href="/market" variant="ghost">BROWSE SERVICES</TagButton></div>
           <a href="/support" className="mt-6 inline-flex min-h-11 items-center font-mono text-[10px] uppercase tracking-[0.14em] text-ink-3 hover:text-accent">NEED HELP? OPEN THE HELP CENTER →</a>
         </div>
@@ -171,24 +132,36 @@ export function AgonHomeSurface({ network }: AgonHomeSurfaceProps) {
 function AgonDiscoveryAtmosphere() {
   return (
     <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
-      <div className="absolute -inset-[16%] opacity-70 motion-safe:animate-agon-atmosphere motion-reduce:animate-none" style={{ backgroundImage: "radial-gradient(34rem circle at var(--agon-signal-x) var(--agon-signal-y), color-mix(in srgb, var(--accent) 20%, transparent), transparent 62%), radial-gradient(28rem circle at 86% 8%, color-mix(in srgb, var(--syn-mint) 12%, transparent), transparent 66%)" }} />
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,color-mix(in_srgb,var(--hairline)_68%,transparent)_1px,transparent_1px),linear-gradient(to_bottom,color-mix(in_srgb,var(--hairline)_54%,transparent)_1px,transparent_1px)] [background-size:7rem_7rem] opacity-35" />
-      <svg viewBox="0 0 1440 620" preserveAspectRatio="none" className="absolute inset-0 h-full w-full opacity-80">
-        <defs>
-          <linearGradient id="agon-route-glow" x1="0" x2="1" y1="0" y2="0"><stop stopColor="var(--accent)" stopOpacity="0" /><stop offset="0.36" stopColor="var(--accent)" stopOpacity="0.8" /><stop offset="0.72" stopColor="var(--syn-mint)" stopOpacity="0.45" /><stop offset="1" stopColor="var(--syn-mint)" stopOpacity="0" /></linearGradient>
-        </defs>
-        <path d="M-40 410 C 220 330, 302 510, 536 396 S 870 138, 1100 252 S 1330 362, 1490 142" fill="none" stroke="var(--hairline-strong)" strokeWidth="1" />
-        <path d="M-40 410 C 220 330, 302 510, 536 396 S 870 138, 1100 252 S 1330 362, 1490 142" fill="none" stroke="url(#agon-route-glow)" strokeWidth="2" strokeDasharray="180 540" className="motion-safe:animate-agon-route-trace motion-reduce:animate-none" />
-        <path d="M180 -20 C 302 168, 488 176, 642 286 S 970 534, 1272 468" fill="none" stroke="var(--hairline)" strokeWidth="1" />
-        <path d="M180 -20 C 302 168, 488 176, 642 286 S 970 534, 1272 468" fill="none" stroke="url(#agon-route-glow)" strokeWidth="2" strokeDasharray="110 610" className="motion-safe:animate-agon-route-trace motion-reduce:animate-none [animation-delay:-4.2s]" />
-        <g fill="var(--canvas)" stroke="var(--accent)" strokeWidth="1.5">
-          <rect x="524" y="386" width="11" height="11" className="origin-center motion-safe:animate-agon-beacon motion-reduce:animate-none" />
-          <rect x="1093" y="246" width="11" height="11" className="origin-center motion-safe:animate-agon-beacon motion-reduce:animate-none [animation-delay:-1.5s]" />
-          <rect x="636" y="280" width="11" height="11" className="origin-center motion-safe:animate-agon-beacon motion-reduce:animate-none [animation-delay:-3.1s]" />
-        </g>
-      </svg>
-      <div className="absolute inset-x-[12%] top-[14%] h-px bg-[linear-gradient(90deg,transparent,var(--accent),transparent)] opacity-60 motion-safe:animate-agon-signal-sweep motion-reduce:animate-none" />
-      <div className="absolute inset-0 bg-[linear-gradient(90deg,var(--canvas)_0%,transparent_42%,transparent_72%,var(--canvas)_100%)] opacity-85" />
+      <div className="absolute inset-0 lg:left-[57.5%]">
+        <AgonRouteArtwork className="absolute left-[4%] top-[8%] h-[84%] w-[92%] opacity-[.09] sm:opacity-[.2] lg:opacity-[.28]" phase="hero" />
+      </div>
     </div>
+  );
+}
+
+function AgonSectionAtmosphere({ placement }: { placement: "steps" | "provider" }) {
+  return (
+    <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
+      <AgonRouteArtwork
+        className={placement === "steps"
+          ? "absolute -right-[5%] -top-[22%] h-[125%] w-[58%] min-w-[430px] opacity-[.055] sm:opacity-[.075]"
+          : "absolute -left-[12%] -top-[35%] h-[160%] w-[62%] min-w-[400px] -scale-x-100 opacity-[.055] sm:opacity-[.08]"}
+        phase={placement}
+      />
+    </div>
+  );
+}
+
+function AgonRouteArtwork({ className, phase }: { className: string; phase: "hero" | "steps" | "provider" }) {
+  const firstDelay = phase === "hero" ? "" : phase === "steps" ? "[animation-delay:-5s]" : "[animation-delay:-11s]";
+  const secondDelay = phase === "hero" ? "[animation-delay:-8s]" : phase === "steps" ? "[animation-delay:-13s]" : "[animation-delay:-3s]";
+
+  return (
+    <svg viewBox="0 0 700 650" className={className} preserveAspectRatio="xMidYMid meet">
+      <path d="M106 92 H 492 Q 536 92 536 136 V 442 Q 536 486 492 486 H 267" fill="none" stroke="var(--ink-3)" strokeWidth="30" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M433 553 H 177 Q 133 553 133 509 V 205 Q 133 161 177 161 H 397" fill="none" stroke="var(--hairline-strong)" strokeWidth="30" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M106 92 H 492 Q 536 92 536 136 V 442 Q 536 486 492 486 H 267" fill="none" stroke="var(--accent)" strokeWidth="30" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="78 1100" className={`motion-safe:animate-agon-square-route motion-reduce:animate-none ${firstDelay}`} />
+      <path d="M433 553 H 177 Q 133 553 133 509 V 205 Q 133 161 177 161 H 397" fill="none" stroke="var(--accent)" strokeWidth="30" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="74 1100" className={`motion-safe:animate-agon-square-route motion-reduce:animate-none ${secondDelay}`} />
+    </svg>
   );
 }

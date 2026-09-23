@@ -29,7 +29,7 @@ function parseArgs(argv: string[]): { command: string; options: Options } {
     const arg = rest[index];
     if (!arg?.startsWith("--")) throw new AspCommandError("invalid_arguments", `Unexpected argument: ${arg ?? ""}`);
     const key = arg.slice(2);
-    if (key === "yes" || key === "json" || key === "force" || key === "run") options[key] = true;
+    if (key === "yes" || key === "json" || key === "force" || key === "run" || key === "device-auth") options[key] = true;
     else {
       const value = rest[index + 1];
       if (!value || value.startsWith("--")) throw new AspCommandError("invalid_arguments", `Missing value for --${key}`);
@@ -80,7 +80,92 @@ function output(value: unknown, json: boolean): void {
 }
 
 function help(): void {
-  console.log(`Agon ASP CLI\n\nCommands:\n  auth-device --api-url URL [--client-name NAME] [--scopes CSV] [--json]\n  categories [--json]\n  init --directory DIR --service-key KEY --name NAME --category SLUG [--description TEXT] [--force]\n  deploy --directory DIR [--target docker] [--port PORT] [--run] [--force]\n  prepare --config FILE --manifest-out FILE --payload-out FILE [--force]\n  verify-manifest --manifest FILE [--expected-hash HASH] [--json]\n  health --api-url URL [--json]\n  demo-run --api-url URL --category SLUG --task TASK_ID [--input FILE] [--json]\n  inspect --api-url URL --reference REF [--manifest FILE] [--current-owner ADDRESS] [--json]\n  publish --api-url URL --config FILE --manifest FILE --token-env NAME --yes [--signer circle|private-key] [--private-key-env NAME] [--rpc-url URL] [--json]\n  confirm --api-url URL --operation ID --tx-hash HASH --token-env NAME [--json]\n  update --api-url URL --listing-id ID --config FILE --manifest FILE --token-env NAME --yes [--signer circle|private-key] [--private-key-env NAME] [--rpc-url URL] [--json]\n  evaluate --api-url URL --reference REF --version N --category SLUG --task TASK_ID --token-env NAME [--input FILE] [--json]\n  request-verification --api-url URL --reference REF --playground-run ID --token-env NAME --yes [--expires-at ISO] [--idempotency-key KEY] [--json]\n\nAuthentication uses browser approval. Transaction signing is explicit: Circle uses --signer circle; Web3 uses --signer private-key with --private-key-env and --rpc-url. The CLI never accepts a private key as a command argument.`);
+  console.log(`Agon ASP CLI\n\nCommands:\n  auth-device --api-url URL [--client-name NAME] [--scopes CSV] [--json]\n  categories [--json]\n  init --directory DIR --service-key KEY --name NAME --category SLUG [--description TEXT] [--force]\n  deploy --directory DIR [--target docker] [--port PORT] [--run] [--force]\n  prepare --config FILE --manifest-out FILE --payload-out FILE [--force]\n  verify-manifest --manifest FILE [--expected-hash HASH] [--json]\n  health --api-url URL [--json]\n  demo-run --api-url URL --category SLUG --task TASK_ID [--input FILE] [--json]\n  inspect --api-url URL --reference REF [--manifest FILE] [--current-owner ADDRESS] [--json]\n  publish --api-url URL --config FILE --manifest FILE --device-auth --yes [--signer circle|private-key] [--private-key-env NAME] [--rpc-url URL] [--json]\n  confirm --api-url URL --operation ID --tx-hash HASH --device-auth [--json]\n  update --api-url URL --listing-id ID --config FILE --manifest FILE --device-auth --yes [--signer circle|private-key] [--private-key-env NAME] [--rpc-url URL] [--json]\n  evaluate --api-url URL --reference REF --version N --category SLUG --task TASK_ID --device-auth [--input FILE] [--json]\n  request-verification --api-url URL --reference REF --playground-run ID --device-auth --yes [--expires-at ISO] [--idempotency-key KEY] [--json]\n\nUse --device-auth to approve an action through the browser without exposing its token. Existing --token-env NAME remains supported for a token already supplied in the process environment. Transaction signing is explicit: Circle uses --signer circle; Web3 uses --signer private-key with --private-key-env and --rpc-url. The CLI never accepts a private key or token as a command argument.`);
+}
+
+const CLI_SCOPES = new Set(["agon:read", "listing:prepare", "listing:write", "listing:confirm", "wallet:execute", "playground:run", "arena:prepare"]);
+
+async function authorizeDevice(apiUrl: string, options: Options, scopes: string[], json: boolean): Promise<string> {
+  if (!scopes.length || scopes.some((scope) => !CLI_SCOPES.has(scope))) {
+    throw new AspCommandError("invalid_arguments", "Requested capabilities must contain only Agon CLI scopes");
+  }
+  let started: {
+    deviceCode: string;
+    userCode: string;
+    verificationUri: string;
+    scopes: string[];
+    expiresAt: string;
+    pollInterval: number;
+  };
+  try {
+    const response = await fetch(`${apiUrl}/auth/cli/device`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ clientName: stringOption(options, "client-name", "agon-cli"), scopes }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    const body = await readJsonResponse(response);
+    if (!response.ok) throw new AspCommandError("auth_failed", "Could not start CLI authorization");
+    started = body as typeof started;
+  } catch (error) {
+    if (error instanceof AspCommandError) throw error;
+    throw new AspCommandError("network_unavailable", "Agon auth service did not respond");
+  }
+  if (!started || typeof started.deviceCode !== "string" || typeof started.userCode !== "string"
+    || typeof started.verificationUri !== "string" || !Array.isArray(started.scopes)
+    || typeof started.expiresAt !== "string" || !Number.isFinite(started.pollInterval)) {
+    throw new AspCommandError("invalid_response", "Agon returned an invalid device authorization request");
+  }
+  if (started.scopes.length !== scopes.length || scopes.some((scope) => !started.scopes.includes(scope))) {
+    throw new AspCommandError("invalid_response", "Agon returned different authorization capabilities than requested");
+  }
+  const instructions = { status: "authorization_required", verificationUri: started.verificationUri, userCode: started.userCode, scopes: started.scopes, expiresAt: started.expiresAt };
+  if (json) console.error(JSON.stringify(instructions));
+  else {
+    console.log(`Open ${started.verificationUri}`);
+    console.log(`Enter code: ${started.userCode}`);
+    console.log("Waiting for browser approval...");
+  }
+
+  const deadline = new Date(started.expiresAt).getTime();
+  if (!Number.isFinite(deadline) || deadline <= Date.now()) throw new AspCommandError("auth_expired", "CLI authorization expired; start a new device login");
+  while (Date.now() < deadline) {
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, Math.max(1, started.pollInterval) * 1000));
+    let response: Response;
+    let body: unknown;
+    try {
+      response = await fetch(`${apiUrl}/auth/cli/device/token`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ deviceCode: started.deviceCode }),
+        signal: AbortSignal.timeout(30_000),
+      });
+      body = await readJsonResponse(response);
+    } catch {
+      throw new AspCommandError("network_unavailable", "Agon auth service did not respond while polling");
+    }
+    if (response.status === 428) continue;
+    if (response.status === 410) throw new AspCommandError("auth_expired", "CLI authorization expired; start a new device login");
+    if (!response.ok || typeof body !== "object" || !body || !("accessToken" in body)
+      || typeof body.accessToken !== "string" || !body.accessToken.trim()) {
+      throw new AspCommandError("auth_failed", "CLI authorization failed");
+    }
+    return body.accessToken;
+  }
+  throw new AspCommandError("auth_expired", "CLI authorization expired; start a new device login");
+}
+
+async function actionToken(apiUrl: string, options: Options, scopes: string[], json: boolean): Promise<string> {
+  const tokenEnv = stringOption(options, "token-env");
+  if (options["device-auth"] === true && tokenEnv) {
+    throw new AspCommandError("invalid_arguments", "Use either --device-auth or --token-env, not both");
+  }
+  if (options["device-auth"] === true) return authorizeDevice(apiUrl.replace(/\/$/, ""), options, scopes, json);
+  const selectedEnv = requiredOption(options, "token-env");
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(selectedEnv)) throw new AspCommandError("invalid_arguments", "--token-env must be an environment variable name");
+  const token = process.env[selectedEnv]?.trim();
+  if (!token) throw new AspCommandError("authentication_required", "The selected session-token environment variable is empty");
+  return token;
 }
 
 function signerOption(options: Options): "manual" | "circle" | "private-key" {
@@ -204,80 +289,10 @@ async function main(): Promise<void> {
   }
   if (command === "auth-device") {
     const apiUrl = requiredOption(options, "api-url").replace(/\/$/, "");
-    let started: {
-      deviceCode: string;
-      userCode: string;
-      verificationUri: string;
-      scopes: string[];
-      expiresAt: string;
-      pollInterval: number;
-    };
-    try {
-      const allowedScopes = new Set(["agon:read", "listing:prepare", "listing:write", "listing:confirm", "playground:run", "arena:prepare"]);
-      const scopes = stringOption(options, "scopes", "agon:read,listing:prepare,listing:write,listing:confirm,playground:run,arena:prepare")
-        .split(",")
-        .map((scope) => scope.trim())
-        .filter(Boolean);
-      if (!scopes.length || scopes.some((scope) => !allowedScopes.has(scope))) {
-        throw new AspCommandError("invalid_arguments", "--scopes must contain only Agon CLI scopes");
-      }
-      const response = await fetch(`${apiUrl}/auth/cli/device`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ clientName: stringOption(options, "client-name", "agon-cli"), scopes }),
-        signal: AbortSignal.timeout(30_000),
-      });
-      const body = await readJsonResponse(response);
-      if (!response.ok) throw new AspCommandError("auth_failed", typeof body === "object" && body && "error" in body ? String(body.error) : "could not start CLI authorization");
-      started = body as typeof started;
-    } catch (error) {
-      if (error instanceof AspCommandError) throw error;
-      throw new AspCommandError("network_unavailable", "Agon auth service did not respond");
-    }
-
-    if (!json) {
-      console.log(`Open ${started.verificationUri}`);
-      console.log(`Enter code: ${started.userCode}`);
-      console.log("Waiting for browser approval...");
-    } else {
-      // Keep stdout machine-readable for agents while still showing the human
-      // approval instructions immediately on the terminal.
-      console.error(JSON.stringify({
-        status: "authorization_required",
-        verificationUri: started.verificationUri,
-        userCode: started.userCode,
-        scopes: started.scopes,
-        expiresAt: started.expiresAt,
-      }));
-    }
-
-    const deadline = new Date(started.expiresAt).getTime();
-    let accessToken: string | null = null;
-    while (Date.now() < deadline) {
-      await new Promise((resolveDelay) => setTimeout(resolveDelay, Math.max(1, started.pollInterval) * 1000));
-      let response: Response;
-      let body: unknown;
-      try {
-        response = await fetch(`${apiUrl}/auth/cli/device/token`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ deviceCode: started.deviceCode }),
-          signal: AbortSignal.timeout(30_000),
-        });
-        body = await readJsonResponse(response);
-      } catch {
-        throw new AspCommandError("network_unavailable", "Agon auth service did not respond while polling");
-      }
-      if (response.status === 428) continue;
-      if (response.status === 410) throw new AspCommandError("auth_expired", "CLI authorization expired; start a new device login");
-      if (!response.ok || typeof body !== "object" || !body || !("accessToken" in body)) {
-        throw new AspCommandError("auth_failed", typeof body === "object" && body && "error" in body ? String(body.error) : "CLI authorization failed");
-      }
-      accessToken = String(body.accessToken);
-      break;
-    }
-    if (!accessToken) throw new AspCommandError("auth_expired", "CLI authorization expired; start a new device login");
-    output({ ...started, accessToken, tokenType: "Bearer" }, json);
+    const scopes = stringOption(options, "scopes", "agon:read").split(",").map((scope) => scope.trim()).filter(Boolean);
+    const token = await authorizeDevice(apiUrl, options, scopes, json);
+    const address = await authenticatedAddress(apiUrl, token);
+    output({ status: "authorized", address, scopes, nextAction: "Use --device-auth on an ASP action. This command does not print or save the token." }, json);
     return;
   }
   if (command === "init") {
@@ -366,19 +381,21 @@ async function main(): Promise<void> {
   }
   if (command === "publish") {
     const prepared = prepareAspListing(readJson(requiredOption(options, "config")));
-    const tokenEnv = requiredOption(options, "token-env");
+    const apiUrl = requiredOption(options, "api-url");
+    const signer = signerOption(options);
+    const token = await actionToken(apiUrl, options, ["listing:write", ...(signer === "manual" ? [] : ["listing:confirm"]), ...(signer === "circle" ? ["wallet:execute"] : [])], json);
     const operation = await publishAspListing({
-      apiUrl: requiredOption(options, "api-url"),
-      token: process.env[tokenEnv] ?? "",
+      apiUrl,
+      token,
       confirmed: options.yes === true,
       prepared,
       localManifest: readJson(requiredOption(options, "manifest")),
     });
     output(await executePreparedAspOperation({
-      apiUrl: requiredOption(options, "api-url"),
-      token: process.env[tokenEnv] ?? "",
+      apiUrl,
+      token,
       operation,
-      signer: signerOption(options),
+      signer,
       privateKeyEnv: stringOption(options, "private-key-env") || undefined,
       rpcUrl: stringOption(options, "rpc-url") || undefined,
     }), json);
@@ -391,19 +408,21 @@ async function main(): Promise<void> {
       manifest,
       requiredOption(options, "listing-id"),
     );
-    const tokenEnv = requiredOption(options, "token-env");
+    const apiUrl = requiredOption(options, "api-url");
+    const signer = signerOption(options);
+    const token = await actionToken(apiUrl, options, ["listing:write", ...(signer === "manual" ? [] : ["listing:confirm"]), ...(signer === "circle" ? ["wallet:execute"] : [])], json);
     const operation = await publishAspListingVersion({
-      apiUrl: requiredOption(options, "api-url"),
-      token: process.env[tokenEnv] ?? "",
+      apiUrl,
+      token,
       confirmed: options.yes === true,
       prepared,
       localManifest: manifest,
     });
     output(await executePreparedAspOperation({
-      apiUrl: requiredOption(options, "api-url"),
-      token: process.env[tokenEnv] ?? "",
+      apiUrl,
+      token,
       operation,
-      signer: signerOption(options),
+      signer,
       privateKeyEnv: stringOption(options, "private-key-env") || undefined,
       rpcUrl: stringOption(options, "rpc-url") || undefined,
     }), json);
@@ -412,11 +431,12 @@ async function main(): Promise<void> {
   if (command === "evaluate") {
     const inputPath = stringOption(options, "input");
     const input = inputPath ? readJson(inputPath) : undefined;
-    const tokenEnv = requiredOption(options, "token-env");
+    const apiUrl = requiredOption(options, "api-url");
+    const token = await actionToken(apiUrl, options, ["playground:run"], json);
     const category = stringOption(options, "category") as Parameters<typeof evaluateAspListing>[0]["category"];
     output(await evaluateAspListing({
-      apiUrl: requiredOption(options, "api-url"),
-      token: process.env[tokenEnv] ?? "",
+      apiUrl,
+      token,
       listingReference: requiredOption(options, "reference"),
       listingVersion: requiredOption(options, "version"),
       category,
@@ -427,11 +447,12 @@ async function main(): Promise<void> {
     return;
   }
   if (command === "request-verification") {
-    const tokenEnv = requiredOption(options, "token-env");
+    const apiUrl = requiredOption(options, "api-url");
+    const token = await actionToken(apiUrl, options, ["arena:prepare"], json);
     const expiresAt = stringOption(options, "expires-at", new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString());
     output(await requestAspVerification({
-      apiUrl: requiredOption(options, "api-url"),
-      token: process.env[tokenEnv] ?? "",
+      apiUrl,
+      token,
       confirmed: options.yes === true,
       listingReference: requiredOption(options, "reference"),
       playgroundRunId: requiredOption(options, "playground-run"),
@@ -441,10 +462,11 @@ async function main(): Promise<void> {
     return;
   }
   if (command === "confirm") {
-    const tokenEnv = requiredOption(options, "token-env");
+    const apiUrl = requiredOption(options, "api-url");
+    const token = await actionToken(apiUrl, options, ["listing:confirm"], json);
     output(await confirmAspOperation({
-      apiUrl: requiredOption(options, "api-url"),
-      token: process.env[tokenEnv] ?? "",
+      apiUrl,
+      token,
       operationId: requiredOption(options, "operation"),
       txHash: requiredOption(options, "tx-hash"),
     }), json);

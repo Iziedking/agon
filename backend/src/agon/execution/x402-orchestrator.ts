@@ -60,6 +60,11 @@ function isTransaction(value: string): value is `0x${string}` {
   return /^0x[0-9a-fA-F]{64}$/.test(value);
 }
 
+function hasTrustedSettlementReference(receipt: StoredX402CallReceipt): boolean {
+  return isTransaction(receipt.settlementRef ?? "")
+    || /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(receipt.providerTransferId ?? "");
+}
+
 function attemptReference(input: X402SettlementRequest): string {
   return `agon-x402:${input.approval.intentId}:${input.approval.approvalHash.toLowerCase()}`;
 }
@@ -79,6 +84,9 @@ export function createX402SettlementOrchestrator(options: {
     const current = await options.store.getX402CallReceipt(input.approval.intentId);
     if (!current) return failure("execution_not_ready", "x402 receipt does not exist", null);
     if (current.state === "settlement_submitted") {
+      if (!hasTrustedSettlementReference(current)) {
+        return failure("reconciliation_required", "settlement attempt has no trusted payment reference; reconcile before retrying", current);
+      }
       return { ok: true, state: "settlement_submitted", receipt: current, transaction: isTransaction(current.settlementRef ?? "") ? current.settlementRef as `0x${string}` : null, serviceDeliveryPending: true };
     }
     if (current.state === "unknown") {
@@ -103,6 +111,9 @@ export function createX402SettlementOrchestrator(options: {
     } catch {
       const raced = await options.store.getX402CallReceipt(input.approval.intentId);
       if (raced?.state === "settlement_submitted") {
+        if (!hasTrustedSettlementReference(raced)) {
+          return failure("reconciliation_required", "settlement attempt has no trusted payment reference; reconcile before retrying", raced);
+        }
         return { ok: true, state: "settlement_submitted", receipt: raced, transaction: isTransaction(raced.settlementRef ?? "") ? raced.settlementRef as `0x${string}` : null, serviceDeliveryPending: true };
       }
       return failure("execution_not_ready", "could not durably mark the settlement attempt", raced);

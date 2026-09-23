@@ -2189,7 +2189,7 @@ export class PostgresAgonRepository {
     return result.rows[0] ? mapX402CallReceipt(result.rows[0]) : null;
   }
 
-  async recordX402DeliveryEvidence(input: X402DeliveryEvidenceProjection): Promise<StoredX402DeliveryEvidence> {
+  async recordX402DeliveryEvidence(input: X402DeliveryEvidenceProjection, paymentResponseHash?: string): Promise<StoredX402DeliveryEvidence> {
     const evidence = validateX402DeliveryEvidence(input);
     const client = await this.pool.connect();
     try {
@@ -2216,7 +2216,7 @@ export class PostgresAgonRepository {
       const transition = transitionX402Receipt(receipt.state, {
         type: "service_delivered",
         serviceStatus: evidence.serviceStatus,
-        paymentResponseHash: evidence.responseHash,
+        paymentResponseHash,
         chargedAmountUSDC: evidence.chargedAmountUSDC,
       });
       const inserted = await client.query<X402DeliveryEvidenceRow>(
@@ -2247,7 +2247,7 @@ export class PostgresAgonRepository {
            state = $2, service_status = $3, payment_response_hash = $4,
            charged_amount_usdc = coalesce($5, charged_amount_usdc), updated_at = now()
          where intent_id = $1`,
-        [evidence.intentId, transition.to, evidence.serviceStatus, evidence.responseHash, transition.patch.chargedAmountUSDC ?? null],
+        [evidence.intentId, transition.to, evidence.serviceStatus, transition.patch.paymentResponseHash ?? null, transition.patch.chargedAmountUSDC ?? null],
       );
       await client.query("commit");
       return mapX402DeliveryEvidence(inserted.rows[0]!);

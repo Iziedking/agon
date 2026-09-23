@@ -13,7 +13,7 @@ import { createSupportRoutes } from "../support/routes.js";
 import { createWalletClient, http, parseAbi } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { config } from "../config/index.js";
-import { withActiveAgonServiceRegistry } from "../config/deployments.ts";
+import { withActiveAgonContracts } from "../config/deployments.ts";
 import { publicClient, arcTestnet } from "../chain/arc.js";
 import { usdcMinimalAbi } from "../chain/abi.js";
 import { pool, query } from "../db/pool.js";
@@ -29,6 +29,8 @@ import { evaluateAgonEscrowProductionReadiness } from "../agon/execution/escrow-
 import { AGON_ESCROW_TRANSACTION_APPROVAL_PHRASES } from "../agon/execution/escrow-transaction-approval.js";
 import { PostgresAgonMarketService } from "../agon/http/service.js";
 import { createPostgresProviderDraftStore } from "../agon/mcp/provider-draft-store.ts";
+import { createPostgresMcpHireStore } from "../agon/mcp/hire-store.ts";
+import { createPostgresHostedManifestStore } from "../agon/hosted-manifest-store.ts";
 import { inspectAgonProtocolReadiness } from "../agon/protocol-readiness.ts";
 import {
   createViemAgonJobEscrowReadAdapter,
@@ -70,7 +72,7 @@ import { notify } from "../notifications/index.js";
 import { setTierGate, getTierGate, type GateSurface } from "../lib/tierGate.js";
 import { merkleProof, merkleRoot, payoutLeaf } from "../coordinator/merkle.js";
 import { redis } from "../redis.js";
-import { issueToken, requireAgonScope, requireAuth, SESSION_COOKIE } from "./jwt.js";
+import { issueToken, requireAgonScope, requireAuth, SESSION_COOKIE, verifyTokenClaims } from "./jwt.js";
 import { walletPrincipalForOperator } from "./wallet-principal.js";
 import { walletPrincipalForLinkedCircleWallet } from "./wallet-principal.js";
 import { getWalletPrincipal, listWalletPrincipals, linkCircleUserControlledWallet } from "./wallet-principal-repository.js";
@@ -353,10 +355,25 @@ app.post("/auth/cli/device/token", async (c) => {
 const agonRepository = new PostgresAgonRepository(pool);
 const agonOperationsAlerts = new PostgresAgonOperationsAlertRepository(pool);
 const agonProviderDraftStore = createPostgresProviderDraftStore(pool);
+const agonMcpHireStore = createPostgresMcpHireStore(pool);
 const agonOperations = new PostgresAgonOperationStore(pool);
 const agonActiveDeployment = config.agon.deployment
-  ? withActiveAgonServiceRegistry(config.agon.deployment)
+  ? withActiveAgonContracts(config.agon.deployment)
   : null;
+const agonHostedManifestStore = config.agon.publicApiUrl && agonActiveDeployment
+  ? createPostgresHostedManifestStore(pool, {
+      publicApiUrl: config.agon.publicApiUrl,
+      isAgentOwner: async (actor, agentId) => {
+        const owner = await publicClient.readContract({
+          address: agonActiveDeployment.external.IdentityRegistry.address,
+          abi: parseAbi(["function ownerOf(uint256 tokenId) view returns (address)"]),
+          functionName: "ownerOf",
+          args: [BigInt(agentId)],
+        });
+        return owner.toLowerCase() === actor.toLowerCase();
+      },
+    })
+  : undefined;
 const agonReadiness = new CachedAgonReadiness(
   {
     enabled: config.agon.writesEnabled,
@@ -446,7 +463,7 @@ const agonCertificationEndpointQaRunner = createManifestDerivedAgonEndpointQaRun
 const configuredJobEscrowV2 = config.agon.deployment?.contracts.AgonJobEscrowV2;
 const configuredJobEscrow = configuredJobEscrowV2 ?? config.agon.deployment?.contracts.AgonJobEscrow;
 const configuredServiceRegistry = agonActiveDeployment?.contracts.AgonServiceRegistry;
-const configuredArena = config.agon.deployment?.contracts.AgonArena;
+const configuredArena = agonActiveDeployment?.contracts.AgonArena;
 
 function resolveConfiguredJobEscrowVersion(): AgonJobEscrowContractVersion | null {
   if (configuredJobEscrowV2) {
@@ -528,6 +545,9 @@ const arenaEvaluatorAdapter = configuredArena
   ? createViemAgonArenaEvaluator({
       enabled: config.agon.writesEnabled && config.agon.x402.validation.enabled && signerMatchesArenaEvaluator,
       arenaAddress: configuredArena,
+      legacyArenaAddresses: config.agon.deployment?.contracts.AgonArenaV2 && config.agon.deployment.contracts.AgonArena
+        ? [config.agon.deployment.contracts.AgonArena]
+        : [],
       client: publicClient as unknown as AgonArenaEvaluatorClient,
       wallet: arenaEvaluatorWallet
         ? {
@@ -572,6 +592,7 @@ function explainJobEscrowExecutionReadiness(): string | null {
 const agonService = new PostgresAgonMarketService(agonRepository, {
   writer: agonWriter,
   activeServiceRegistryAddress: configuredServiceRegistry,
+  inspectProviderManifest: agonHostedManifestStore?.inspect,
   x402ExecutionEnabled: config.agon.x402.executionEnabled,
   x402ExecutionPolicy,
   x402SettlementAdapter,
@@ -616,12 +637,13 @@ const agonService = new PostgresAgonMarketService(agonRepository, {
   jobEscrowCalldataSupported,
   jobEscrowExecutionReason: explainJobEscrowExecutionReadiness(),
   agonJobEscrowAddress: configuredJobEscrow,
-  agonArenaAddress: config.agon.deployment?.contracts.AgonArena,
-  arenaEvaluatorReadiness: config.agon.deployment?.contracts.AgonArena
+  agonArenaAddress: configuredArena,
+  arenaEvaluatorReadiness: configuredArena
     ? () => readAgonArenaEvaluatorReadiness({
         enabled: config.agon.x402.validation.enabled,
         client: publicClient as unknown as AgonArenaRoleReadClient,
-        arenaAddress: config.agon.deployment!.contracts.AgonArena!,
+        arenaAddress: configuredArena,
+        expectedServiceRegistry: configuredServiceRegistry,
         evaluatorAddress: typeof config.agon.x402.validation.validatorAddress === "string"
           && /^0x[a-fA-F0-9]{40}$/.test(config.agon.x402.validation.validatorAddress)
           ? config.agon.x402.validation.validatorAddress
@@ -650,20 +672,25 @@ const agonService = new PostgresAgonMarketService(agonRepository, {
   playgroundStore: agonPlaygroundStore,
   agonSyndicateRegistryAddress: config.agon.deployment?.contracts.AgonSyndicateRegistry,
   agonPrizeVaultAddress: config.agon.deployment?.contracts.AgonPrizeVault,
-  protocolFinalityReader: config.agon.deployment?.contracts.AgonArena
-    && config.agon.deployment.contracts.AgonSyndicateRegistry
-    && config.agon.deployment.contracts.AgonPrizeVault
+  protocolFinalityReader: configuredArena
+    && agonActiveDeployment?.contracts.AgonSyndicateRegistry
+    && agonActiveDeployment.contracts.AgonPrizeVault
     ? createViemAgonProtocolFinalityReader({
         client: publicClient as unknown as AgonProtocolFinalityClient,
-        arenaAddress: config.agon.deployment.contracts.AgonArena,
-        syndicateRegistryAddress: config.agon.deployment.contracts.AgonSyndicateRegistry,
-        prizeVaultAddress: config.agon.deployment.contracts.AgonPrizeVault,
+        arenaAddress: configuredArena,
+        legacyArenaAddresses: config.agon.deployment?.contracts.AgonArenaV2 && config.agon.deployment.contracts.AgonArena
+          ? [config.agon.deployment.contracts.AgonArena]
+          : [],
+        syndicateRegistryAddress: agonActiveDeployment.contracts.AgonSyndicateRegistry,
+        prizeVaultAddress: agonActiveDeployment.contracts.AgonPrizeVault,
       })
     : undefined,
 });
 app.route("/agon", createAgonRoutes({
   service: agonService,
+  verifyMcpToken: verifyTokenClaims,
   requireAuth: createAgonAuthMiddleware(config.adminToken, requireAuth),
+  requireListingPrepareAuth: createAgonAuthMiddleware(config.adminToken, requireAgonScope("listing:prepare")),
   requireListingWriteAuth: createAgonAuthMiddleware(config.adminToken, requireAgonScope("listing:write")),
   requireListingConfirmAuth: createAgonAuthMiddleware(config.adminToken, requireAgonScope("listing:confirm")),
   requirePlaygroundAuth: createAgonAuthMiddleware(config.adminToken, requireAgonScope("playground:run")),
@@ -675,6 +702,8 @@ app.route("/agon", createAgonRoutes({
   playgroundRateLimiter: new RedisPlaygroundRateLimiter(redis),
   playgroundProviderRunner: agonPlaygroundProviderRunner,
   providerDraftStore: agonProviderDraftStore,
+  hostedManifestStore: agonHostedManifestStore,
+  hireStore: agonMcpHireStore,
 }));
 
 if (config.agon.certification.workerEnabled) {
@@ -1181,6 +1210,9 @@ const WRITE_ALLOWLIST = new Set<string>(
           ...(config.agon.deployment.contracts.AgonArena
             ? [config.agon.deployment.contracts.AgonArena]
             : []),
+          ...(config.agon.deployment.contracts.AgonArenaV2
+            ? [config.agon.deployment.contracts.AgonArenaV2]
+            : []),
           // Email-login users create their ERC-8004 identity through the
           // same Circle signing boundary before binding it to Agon.
           config.agon.deployment.external.IdentityRegistry.address,
@@ -1193,14 +1225,24 @@ const AGON_WRITE_ADDRESSES = new Set(
   config.agon.deployment
     ? [
         config.agon.deployment.contracts.AgonProfileRegistry.toLowerCase(),
-        configuredServiceRegistry!.toLowerCase(),
+        config.agon.deployment.contracts.AgonServiceRegistry.toLowerCase(),
+        ...(config.agon.deployment.contracts.AgonServiceRegistryV2
+          ? [config.agon.deployment.contracts.AgonServiceRegistryV2.toLowerCase()]
+          : []),
       ]
     : [],
 );
 
 const AGON_ARENA_WRITE_ADDRESSES = new Set(
-  config.agon.deployment?.contracts.AgonArena
-    ? [config.agon.deployment.contracts.AgonArena.toLowerCase()]
+  config.agon.deployment
+    ? [
+        ...(config.agon.deployment.contracts.AgonArena
+          ? [config.agon.deployment.contracts.AgonArena.toLowerCase()]
+          : []),
+        ...(config.agon.deployment.contracts.AgonArenaV2
+          ? [config.agon.deployment.contracts.AgonArenaV2.toLowerCase()]
+          : []),
+      ]
     : [],
 );
 

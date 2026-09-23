@@ -1,21 +1,24 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { AgonListingView, ListingPage, SubmittedOperation, X402ApprovalRequest, X402CallIntentRequest, X402CallIntentView, X402SettlementReadinessView } from "../http/api-types.ts";
-import { authorizeHireInput, compileListingInput, confirmListingInput, pauseListingInput, previewHireInput, providerDraftInput, providerMutationResult, publishListingInput, publishListingVersionInput, serviceReference, serviceSearchInput, serviceTerms, type ProviderDraftInput, type ServiceReference } from "./contract.ts";
+import { authorizeHireInput, compileListingInput, confirmListingInput, confirmPauseInput, pauseListingInput, previewHireInput, providerDraftInput, providerMutationResult, publishListingInput, publishListingVersionInput, serviceReference, serviceSearchInput, serviceTerms, type ProviderDraftInput, type ServiceReference } from "./contract.ts";
 import { compileProviderManifest } from "./provider-manifest.ts";
 import { createMemoryProviderDraftStore, type ProviderDraftStore, type ProviderPublicationEvidence } from "./provider-draft-store.ts";
+import { createMemoryMcpHireStore, reviewedTermsDigest, type McpHireStore } from "./hire-store.ts";
+import { HostedManifestError, type HostedManifestStore } from "../hosted-manifest-store.ts";
 
 export type McpResult<T> = { ok: true; value: T } | { ok: false; code: string; message: string };
 
 export type McpCatalogService = {
   listListings(query: { limit: number; cursor: string | null; category: string | null; agentId: string | null; includeManifest: boolean }): Promise<{ ok: true; value: ListingPage } | { ok: false; error: { code: string; message: string } }>;
   getListing(reference: string): Promise<{ ok: true; value: AgonListingView } | { ok: false; error: { code: string; message: string } }>;
+  getProviderListingForVersion?(listingId: string): Promise<{ ok: true; value: AgonListingView } | { ok: false; error: { code: string; message: string } }>;
   prepareX402Call(actor: string, reference: string, request: X402CallIntentRequest): Promise<{ ok: true; value: X402CallIntentView } | { ok: false; error: { code: string; message: string } }>;
   approveX402Call?(actor: string, intentId: string, request: X402ApprovalRequest): Promise<{ ok: true; value: unknown } | { ok: false; error: { code: string; message: string } }>;
   getX402SettlementReadiness?(actor: string, intentId: string): Promise<{ ok: true; value: X402SettlementReadinessView } | { ok: false; error: { code: string; message: string } }>;
-  publishProviderDraft?(actor: string, draft: ProviderDraftInput, compiled: ReturnType<typeof compileProviderManifest>, manifestUri: string): Promise<{ ok: true; value: { operationId?: string; reference?: string } } | { ok: false; error: { code: string; message: string } }>;
+  publishProviderDraft?(actor: string, draft: ProviderDraftInput, compiled: ReturnType<typeof compileProviderManifest>, manifestUri: string): Promise<{ ok: true; value: SubmittedOperation } | { ok: false; error: { code: string; message: string } }>;
   confirmOperation?(actor: string, operationId: string, txHash: `0x${string}`): Promise<{ ok: true; value: SubmittedOperation } | { ok: false; error: { code: string; message: string } }>;
-  publishProviderDraftVersion?(actor: string, draft: ProviderDraftInput, compiled: ReturnType<typeof compileProviderManifest>, manifestUri: string, listingId: string): Promise<{ ok: true; value: { operationId?: string; reference?: string } } | { ok: false; error: { code: string; message: string } }>;
-  pauseProviderListing?(actor: string, reference: string): Promise<{ ok: true; value: { reference: string; operationId?: string } } | { ok: false; error: { code: string; message: string } }>;
+  publishProviderDraftVersion?(actor: string, draft: ProviderDraftInput, compiled: ReturnType<typeof compileProviderManifest>, manifestUri: string, listingId: string): Promise<{ ok: true; value: SubmittedOperation } | { ok: false; error: { code: string; message: string } }>;
+  pauseProviderListing?(actor: string, reference: string): Promise<{ ok: true; value: SubmittedOperation } | { ok: false; error: { code: string; message: string } }>;
 };
 
 function text(value: unknown, fallback: string): string {
@@ -53,8 +56,9 @@ function toServiceReference(listing: AgonListingView): ServiceReference {
   });
 }
 
-export function createMcpAccessAdapter(service: McpCatalogService, options: { providerDraftStore?: ProviderDraftStore } = {}) {
-  const hires = new Map<string, { terms: ReturnType<typeof serviceTerms.parse>; intent: X402CallIntentView }>();
+export function createMcpAccessAdapter(service: McpCatalogService, options: { providerDraftStore?: ProviderDraftStore; hireStore?: McpHireStore; hostedManifestStore?: HostedManifestStore; now?: () => number } = {}) {
+  const hireStore = options.hireStore ?? createMemoryMcpHireStore();
+  const now = options.now ?? Date.now;
   const providerDraftStore = options.providerDraftStore ?? createMemoryProviderDraftStore();
   const legacyDrafts = new Map<string, { draft: ProviderDraftInput; compiled: ReturnType<typeof compileProviderManifest> | null; manifestUri: string | null }>();
 
@@ -92,24 +96,30 @@ export function createMcpAccessAdapter(service: McpCatalogService, options: { pr
     async previewHire(actor: string, input: unknown): Promise<McpResult<{ terms: ReturnType<typeof serviceTerms.parse>; intent: X402CallIntentView }>> {
       const parsed = previewHireInput.safeParse(input);
       if (!parsed.success) return { ok: false, code: "invalid_request", message: parsed.error.issues[0]?.message ?? "Invalid hire preview" };
+      if (parsed.data.paymentMode === "escrow") return { ok: false, code: "capability_unavailable", message: "MCP escrow hiring is not available. Choose per_call for a verified x402 service." };
       const listing = await service.getListing(parsed.data.serviceReference);
       if (!listing.ok) return { ok: false, code: listing.error.code, message: listing.error.message };
       const serviceReference = toServiceReference(listing.value);
-      const request: X402CallIntentRequest = { idempotencyKey: `mcp-${createHash("sha256").update(JSON.stringify(parsed.data.input)).digest("hex").slice(0, 24)}`, method: "POST", input: parsed.data.input, maxAmountUSDC: serviceReference.priceUSDC, endpointUrl: listing.value.manifest.body && typeof listing.value.manifest.body === "object" && typeof (listing.value.manifest.body as { invocation?: { endpoint?: unknown } }).invocation?.endpoint === "string" ? (listing.value.manifest.body as { invocation: { endpoint: string } }).invocation.endpoint : undefined };
+      const request: X402CallIntentRequest = { idempotencyKey: `mcp-${randomUUID()}`, method: "POST", input: parsed.data.input, maxAmountUSDC: serviceReference.priceUSDC, endpointUrl: listing.value.manifest.body && typeof listing.value.manifest.body === "object" && typeof (listing.value.manifest.body as { invocation?: { endpoint?: unknown } }).invocation?.endpoint === "string" ? (listing.value.manifest.body as { invocation: { endpoint: string } }).invocation.endpoint : undefined };
       const intent = await service.prepareX402Call(actor, parsed.data.serviceReference, request);
       if (!intent.ok) return { ok: false, code: intent.error.code, message: intent.error.message };
-      const expiresAt = new Date(Date.now() + 10 * 60_000).toISOString();
-      const terms = serviceTerms.parse({ service: serviceReference, input: parsed.data.input, priceUSDC: serviceReference.priceUSDC, paymentMode: parsed.data.paymentMode, expiresAt, deliveryDeadlineMs: serviceReference.expectedLatencyMs, privacy: serviceReference.privacy, failurePolicy: "Payment and delivery are reconciled separately; unknown payment outcomes remain reconciling.", termsDigest: `0x${createHash("sha256").update(JSON.stringify({ serviceReference, input: parsed.data.input, expiresAt })).digest("hex")}` });
-      hires.set(intent.value.intentId, { terms, intent: intent.value });
-      return { ok: true, value: { terms, intent: intent.value } };
+      if (intent.value.actor.toLowerCase() !== actor.toLowerCase() || intent.value.listingReference !== listing.value.id || intent.value.listingVersion !== listing.value.version || intent.value.maxAmountUSDC !== serviceReference.priceUSDC) {
+        return { ok: false, code: "intent_mismatch", message: "The prepared payment intent does not match the reviewed service and buyer." };
+      }
+      const expiresAt = new Date(now() + 10 * 60_000).toISOString();
+      const reviewed = { service: serviceReference, input: parsed.data.input, priceUSDC: serviceReference.priceUSDC, paymentMode: parsed.data.paymentMode, expiresAt, deliveryDeadlineMs: serviceReference.expectedLatencyMs, privacy: serviceReference.privacy, failurePolicy: "Payment and delivery are reconciled separately; unknown payment outcomes remain reconciling." };
+      const terms = serviceTerms.parse({ ...reviewed, termsDigest: reviewedTermsDigest(reviewed) });
+      const stored = await hireStore.create(actor, intent.value.intentId, terms);
+      return { ok: true, value: { terms: stored.terms, intent: intent.value } };
     },
 
     async authorizeHire(actor: string, hireId: string, input: unknown): Promise<McpResult<import("./contract.ts").HireResult>> {
       const parsed = authorizeHireInput.safeParse(input);
       if (!parsed.success) return { ok: false, code: "invalid_request", message: parsed.error.issues[0]?.message ?? "Invalid hire authorization" };
-      const hire = hires.get(hireId);
+      const hire = await hireStore.get(actor, hireId);
       if (!hire) return { ok: false, code: "hire_not_found", message: "Preview this hire again before authorizing payment." };
       if (hire.terms.termsDigest.toLowerCase() !== parsed.data.termsDigest.toLowerCase()) return { ok: false, code: "terms_changed", message: "The hire terms changed; preview the service again." };
+      if (Date.parse(hire.terms.expiresAt) <= now()) return { ok: false, code: "terms_expired", message: "The reviewed hire terms expired; preview the service again." };
       if (!service.approveX402Call) return { ok: false, code: "execution_not_ready", message: "Payment authorization is not configured." };
       const result = await service.approveX402Call(actor, hireId, { approvedAmountUSDC: hire.terms.priceUSDC });
       if (!result.ok) return { ok: false, code: result.error.code, message: result.error.message };
@@ -117,8 +127,8 @@ export function createMcpAccessAdapter(service: McpCatalogService, options: { pr
     },
 
     async getWork(actor: string, hireId: string): Promise<McpResult<import("./contract.ts").HireResult>> {
-      const hire = hires.get(hireId);
-      if (!hire) return { ok: false, code: "hire_not_found", message: "The hire is not known to this session." };
+      const hire = await hireStore.get(actor, hireId);
+      if (!hire) return { ok: false, code: "hire_not_found", message: "The hire was not found for this account." };
       if (!service.getX402SettlementReadiness) return { ok: false, code: "execution_not_ready", message: "Work status is not configured." };
       const result = await service.getX402SettlementReadiness(actor, hireId);
       if (!result.ok) return { ok: false, code: result.error.code, message: result.error.message };
@@ -126,10 +136,11 @@ export function createMcpAccessAdapter(service: McpCatalogService, options: { pr
       return { ok: true, value: { status, nextAction: status === "complete" ? "none" : result.value.nextAction, hireId, terms: hire.terms, paymentEvidence: { state: result.value.state }, reconciliationEvidence: { status: result.value.status } } };
     },
 
-    async retryOrReportWork(hireId: string, action: "retry_delivery" | "report_problem"): Promise<McpResult<import("./contract.ts").HireResult>> {
-      const hire = hires.get(hireId);
-      if (!hire) return { ok: false, code: "hire_not_found", message: "The hire is not known to this session." };
-      return { ok: true, value: { status: action === "report_problem" ? "needs_attention" : "working", nextAction: action === "report_problem" ? "open_support_case" : "check_work_status", hireId, terms: hire.terms } };
+    async retryOrReportWork(actor: string, hireId: string, action: "retry_delivery" | "report_problem"): Promise<McpResult<import("./contract.ts").HireResult>> {
+      const hire = await hireStore.get(actor, hireId);
+      if (!hire) return { ok: false, code: "hire_not_found", message: "The hire was not found for this account." };
+      if (action === "retry_delivery") return { ok: false, code: "retry_unavailable", message: "Automatic delivery retry is not available. Check the settlement status before contacting support; do not pay again." };
+      return { ok: true, value: { status: "needs_attention", nextAction: "open_support_case", hireId, terms: hire.terms } };
     },
 
     async startListing(actorOrInput: string | unknown, maybeInput?: unknown): Promise<McpResult<{ draftId: string; draft: ProviderDraftInput; nextAction: string }>> {
@@ -175,8 +186,8 @@ export function createMcpAccessAdapter(service: McpCatalogService, options: { pr
       if (!service.publishProviderDraft) return { ok: true, value: providerMutationResult.parse({ status: "needs_attention", nextAction: "connect_provider_wallet", draftId: parsed.data.draftId }) };
       const result = await service.publishProviderDraft(actor, draft, compiled, manifestUri);
       if (!result.ok) return { ok: false, code: result.error.code, message: result.error.message };
-      if (stored) await providerDraftStore.markPrepared(actor, parsed.data.draftId, result.value.operationId ?? "prepared", result.value.reference);
-      return { ok: true, value: providerMutationResult.parse({ status: "prepared", nextAction: "review_and_sign_publication", draftId: parsed.data.draftId, operationId: result.value.operationId, reference: result.value.reference }) };
+      if (stored) await providerDraftStore.markPrepared(actor, parsed.data.draftId, result.value.operationId, result.value.resultReference ?? undefined);
+      return { ok: true, value: providerMutationResult.parse({ status: "prepared", nextAction: "review_and_sign_publication", draftId: parsed.data.draftId, operationId: result.value.operationId, reference: result.value.resultReference ?? undefined, transaction: result.value.transaction }) };
     },
 
     async publishListingVersion(actor: string, input: unknown): Promise<McpResult<import("./contract.ts").ProviderMutationResult>> {
@@ -189,8 +200,8 @@ export function createMcpAccessAdapter(service: McpCatalogService, options: { pr
       if (!service.publishProviderDraftVersion) return { ok: true, value: providerMutationResult.parse({ status: "needs_attention", nextAction: "connect_provider_wallet", draftId: parsed.data.draftId }) };
       const result = await service.publishProviderDraftVersion(actor, stored.draft, stored.compiled, stored.manifestUri, stored.listingId);
       if (!result.ok) return { ok: false, code: result.error.code, message: result.error.message };
-      await providerDraftStore.markPrepared(actor, parsed.data.draftId, result.value.operationId ?? "prepared", result.value.reference);
-      return { ok: true, value: providerMutationResult.parse({ status: "prepared", nextAction: "review_and_sign_publication", draftId: parsed.data.draftId, operationId: result.value.operationId, reference: result.value.reference }) };
+      await providerDraftStore.markPrepared(actor, parsed.data.draftId, result.value.operationId, result.value.resultReference ?? undefined);
+      return { ok: true, value: providerMutationResult.parse({ status: "prepared", nextAction: "review_and_sign_publication", draftId: parsed.data.draftId, operationId: result.value.operationId, reference: result.value.resultReference ?? undefined, transaction: result.value.transaction }) };
     },
 
     async pauseListing(actor: string, input: unknown): Promise<McpResult<import("./contract.ts").ProviderMutationResult>> {
@@ -199,7 +210,22 @@ export function createMcpAccessAdapter(service: McpCatalogService, options: { pr
       if (!service.pauseProviderListing) return { ok: true, value: providerMutationResult.parse({ status: "needs_attention", nextAction: "operator_pause_required", reference: parsed.data.reference }) };
       const result = await service.pauseProviderListing(actor, parsed.data.reference);
       if (!result.ok) return { ok: false, code: result.error.code, message: result.error.message };
-      return { ok: true, value: providerMutationResult.parse({ status: "prepared", nextAction: "review_and_sign_pause", reference: result.value.reference, operationId: result.value.operationId }) };
+      return { ok: true, value: providerMutationResult.parse({ status: "prepared", nextAction: "review_and_sign_pause", reference: parsed.data.reference, operationId: result.value.operationId, transaction: result.value.transaction }) };
+    },
+
+    async confirmPause(actor: string, input: unknown): Promise<McpResult<import("./contract.ts").ProviderMutationResult>> {
+      const parsed = confirmPauseInput.safeParse(input);
+      if (!parsed.success) return { ok: false, code: "invalid_request", message: parsed.error.issues[0]?.message ?? "Invalid pause confirmation" };
+      if (!service.confirmOperation) return { ok: false, code: "execution_not_ready", message: "Pause confirmation is not configured." };
+      const result = await service.confirmOperation(actor, parsed.data.operationId, parsed.data.txHash as `0x${string}`);
+      if (!result.ok) return { ok: false, code: result.error.code, message: result.error.message };
+      const operation = result.value;
+      const reference = parsed.data.reference.match(/^([1-9]\d*):(0x[0-9a-fA-F]{40}):([1-9]\d*)$/);
+      if (!reference || operation.transaction.functionName !== "setStatus" || operation.transaction.chainId !== reference[1] || operation.transaction.to.toLowerCase() !== reference[2]?.toLowerCase() || operation.transaction.args[0] !== reference[3] || operation.transaction.args[1] !== "1") {
+        return { ok: false, code: "operation_mismatch", message: "The receipt does not match the requested listing pause." };
+      }
+      if (!operation.txHash || !operation.proof) return { ok: false, code: "reconciliation_unavailable", message: "Pause receipt was accepted without complete proof." };
+      return { ok: true, value: providerMutationResult.parse({ status: "paused", nextAction: "none", reference: parsed.data.reference, operationId: operation.operationId, evidence: { txHash: operation.txHash, blockNumber: operation.proof.blockNumber, logIndex: operation.proof.logIndex } }) };
     },
 
     async confirmListing(actor: string, input: unknown): Promise<McpResult<import("./contract.ts").ProviderMutationResult>> {
@@ -208,7 +234,15 @@ export function createMcpAccessAdapter(service: McpCatalogService, options: { pr
       const stored = await providerDraftStore.get(actor, parsed.data.draftId);
       if (!stored) return { ok: false, code: "draft_not_found", message: "The provider draft is not available for this account." };
       if (stored.operationId !== parsed.data.operationId) return { ok: false, code: "operation_mismatch", message: "The transaction does not match the prepared publication." };
-      if (stored.state === "confirmed") return { ok: true, value: providerMutationResult.parse({ status: "published", nextAction: "wait_for_listing_checks", draftId: parsed.data.draftId, operationId: stored.operationId, reference: stored.reference }) };
+      if (stored.state === "confirmed") {
+        if (!stored.txHash || stored.blockNumber === null || stored.logIndex === null) {
+          return { ok: false, code: "reconciliation_unavailable", message: "Publication was confirmed without complete stored proof." };
+        }
+        if (stored.txHash.toLowerCase() !== parsed.data.txHash.toLowerCase()) {
+          return { ok: false, code: "operation_mismatch", message: "The transaction hash does not match the confirmed publication." };
+        }
+        return { ok: true, value: providerMutationResult.parse({ status: "published", nextAction: "wait_for_listing_checks", draftId: parsed.data.draftId, operationId: stored.operationId, reference: stored.reference, evidence: { txHash: stored.txHash, blockNumber: stored.blockNumber, logIndex: stored.logIndex } }) };
+      }
       if (!service.confirmOperation) return { ok: false, code: "execution_not_ready", message: "Publication confirmation is not configured." };
       const result = await service.confirmOperation(actor, parsed.data.operationId, parsed.data.txHash as `0x${string}`);
       if (!result.ok) return { ok: false, code: result.error.code, message: result.error.message };
@@ -238,7 +272,7 @@ export function createMcpAccessAdapter(service: McpCatalogService, options: { pr
       return { ok: true, value: providerMutationResult.parse({ status: stored.state === "confirmed" ? "published" : stored.state === "prepared" ? "prepared" : "needs_attention", nextAction, draftId, operationId: stored.operationId ?? undefined, reference: stored.reference ?? undefined, evidence }) };
     },
 
-    async compileListing(actorOrInput: string | unknown, maybeInput?: unknown): Promise<McpResult<ReturnType<typeof compileProviderManifest>>> {
+    async compileListing(actorOrInput: string | unknown, maybeInput?: unknown): Promise<McpResult<ReturnType<typeof compileProviderManifest> & { manifestUri?: string }>> {
       const actor = typeof actorOrInput === "string" && maybeInput !== undefined ? actorOrInput : null;
       const input = maybeInput === undefined ? actorOrInput : maybeInput;
       const parsed = compileListingInput.safeParse(input);
@@ -248,13 +282,29 @@ export function createMcpAccessAdapter(service: McpCatalogService, options: { pr
       const draft = stored?.draft ?? legacy?.draft;
       if (!draft) return { ok: false, code: "draft_not_found", message: "Create or resume the provider draft before compiling it." };
       try {
-        const compiled = compileProviderManifest(draft, { agentId: parsed.data.agentId });
+        let identity: Parameters<typeof compileProviderManifest>[1] = { agentId: parsed.data.agentId };
+        if (parsed.data.listingId) {
+          if (!service.getProviderListingForVersion) return { ok: false, code: "version_lookup_unavailable", message: "The current listing version cannot be checked." };
+          const current = await service.getProviderListingForVersion(parsed.data.listingId);
+          if (!current.ok) return { ok: false, code: current.error.code, message: current.error.message };
+          if (current.value.agentId !== parsed.data.agentId || current.value.providerSnapshot.toLowerCase() !== actor?.toLowerCase()) {
+            return { ok: false, code: "version_owner_mismatch", message: "The publisher must own the existing listing and use its agent ID." };
+          }
+          if (!/^0x[0-9a-fA-F]{64}$/.test(current.value.serviceKey) || !/^[1-9]\d*$/.test(current.value.version)) {
+            return { ok: false, code: "version_target_invalid", message: "The existing listing has an invalid service key or version." };
+          }
+          identity = { agentId: parsed.data.agentId, serviceKey: current.value.serviceKey as `0x${string}`, version: (BigInt(current.value.version) + 1n).toString() };
+        }
+        const compiled = compileProviderManifest(draft, identity);
         const target = parsed.data.listingId ? { kind: "version" as const, listingId: parsed.data.listingId } : { kind: "new" as const };
-        if (actor && stored) await providerDraftStore.saveCompilation(actor, parsed.data.draftId, compiled, parsed.data.manifestUri ?? null, target);
-        if (legacy) { legacy.compiled = compiled; legacy.manifestUri = parsed.data.manifestUri ?? null; }
-        return { ok: true, value: compiled };
+        const manifestUri = parsed.data.manifestUri ?? (actor && options.hostedManifestStore
+          ? (await options.hostedManifestStore.put(actor, compiled.body, compiled.manifestHash)).uri
+          : null);
+        if (actor && stored) await providerDraftStore.saveCompilation(actor, parsed.data.draftId, compiled, manifestUri, target);
+        if (legacy) { legacy.compiled = compiled; legacy.manifestUri = manifestUri; }
+        return { ok: true, value: { ...compiled, ...(manifestUri ? { manifestUri } : {}) } };
       } catch (error) {
-        return { ok: false, code: "manifest_invalid", message: error instanceof Error ? error.message : "Provider manifest is invalid" };
+        return { ok: false, code: error instanceof HostedManifestError ? error.code : "manifest_invalid", message: error instanceof Error ? error.message : "Provider manifest is invalid" };
       }
     },
   };

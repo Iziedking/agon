@@ -73,6 +73,7 @@ jobs:
           npm run test:auth --prefix bnb-market -- --local-db
           npm run test:lp-storage --prefix bnb-market
           npm run test:marketplace --prefix frontend
+          npm run test:asp --prefix frontend
           python3 -m unittest discover -s deploy -p 'test_*.py'
       - name: Build both applications
         run: |

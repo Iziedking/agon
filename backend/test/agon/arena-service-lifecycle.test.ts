@@ -120,7 +120,7 @@ test("reconciliation scores submitted evidence from the pinned playground result
 
   const result = await service.reconcileAgonArenaEvaluation(actor, current.intentId);
   assert.equal(result.ok, true);
-  assert.deepEqual(scored, { evaluationId: "9", score: 96, validationResponseHash: hash("8") });
+  assert.deepEqual(scored, { evaluationId: "9", arenaAddress: current.arenaContract, score: 96, validationResponseHash: hash("8") });
   if (result.ok) {
     assert.equal(result.value.state, "verified");
     assert.equal(result.value.marketplaceVerification.state, "failed");
