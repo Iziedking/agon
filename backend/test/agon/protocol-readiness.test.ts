@@ -28,8 +28,8 @@ test("protocol readiness fails closed for a partial receipt", () => {
 
 test("a configured V2 registry requires its own source-verification receipt", () => {
   const input = JSON.parse(readFileSync(new URL("../../../contracts/deployments/agon-arc-testnet.json", import.meta.url), "utf8"));
-  input.contracts.AgonServiceRegistryV2 = "0x5555555555555555555555555555555555555555";
-  input.contracts.AgonArenaV2 = "0x6666666666666666666666666666666666666666";
+  delete input.sourceVerification.AgonServiceRegistryV2;
+  delete input.sourceVerification.AgonArenaV2;
   const readiness = inspectAgonProtocolReadiness(input);
   assert.equal(readiness.ready, false);
   assert.deepEqual(readiness.missingContracts, []);
